@@ -314,3 +314,22 @@ tr.dragging td { background: var(--panel); }
 .p-source { font-size: .75rem; }
 .lyr.empty { opacity: .45; }
 .lyr.empty:hover, .lyr.empty:focus-visible { opacity: 1; }
+
+/* -- where a track's audio comes from (§9.34) ------------------------------------- */
+/* The panel sits under its row like the lyrics one, and a row may carry both. */
+tr.source > td { padding: .2rem .5rem .6rem; }
+.source-panel { display: grid; gap: .4rem; }
+.panel-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.panel-actions > button { margin-left: 0; }  /* `button.small` pushes a lone one to the end */
+/* the base `input { width: 100% }` would take the whole line and push the buttons below it */
+.panel-actions input[type=text] { flex: 0 1 26rem; width: auto; }
+.source-note:empty { display: none; }
+.source-note { font-size: .85em; }
+.source-note.bad { color: var(--bad); }
+button.src-pick { padding: 0 .35rem; font-size: .95em; line-height: 1.5; margin-left: .25rem; }
+button.src-pick.on { border-color: var(--accent); color: var(--accent); }
+/* The words are untouched and stay the user's; what changed is the file under them. The sentence
+   is `--ink` and only its edge is `--warn`: warn *text* measures 3.64 on the light panel, under
+   the 4.5:1 body text asks for, and this is a sentence to be read rather than a chip to be seen. */
+.timing-note { font-size: .85rem; color: var(--ink); border-left: 3px solid var(--warn);
+  padding: .15rem .5rem; border-radius: 4px; background: color-mix(in srgb, var(--warn) 12%, transparent); }

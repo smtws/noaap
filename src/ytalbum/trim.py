@@ -38,13 +38,22 @@ def signature(track: PlanTrack) -> str:
 
 
 def original_path(album_dir: Path, track: PlanTrack) -> Path:
-    """Where this track's untouched download is kept, in the track's own format."""
-    return album_dir / ORIGINALS / f"{track.video_id}.{track.ext}"
+    """Where this track's untouched download is kept, in the track's own format.
+
+    Keyed by the **effective** id: a track pointed at another video (§9.34) holds another
+    recording, and the two must never be cut from each other's original.
+    """
+    return album_dir / ORIGINALS / f"{track.effective_id}.{track.ext}"
+
+
+def originals_of(album_dir: Path, video_id: str) -> list[Path]:
+    """Every original kept for one video, whatever format it was taken in."""
+    return sorted((album_dir / ORIGINALS).glob(f"{video_id}.*")) if (album_dir / ORIGINALS).is_dir() else []
 
 
 def kept_originals(album_dir: Path, track: PlanTrack) -> list[Path]:
     """Every original kept for this track, whatever format it was taken in."""
-    return sorted((album_dir / ORIGINALS).glob(f"{track.video_id}.*")) if (album_dir / ORIGINALS).is_dir() else []
+    return originals_of(album_dir, track.effective_id)
 
 
 def holds(path: Path, ext: str) -> bool:

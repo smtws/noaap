@@ -1,0 +1,27 @@
+{
+  "_comment": "One table, two runners: tests/js/source.test.mjs checks logic.mjs's oneVideo and tests/test_source.py checks youtube.one_video against it. The page refuses a bad source before sending it and the server refuses it again; the two must agree on what a single video is (DESIGN.md §9.34).",
+  "cases": [
+    {"why": "a bare id is what the plan stores", "text": "dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "with the spaces a paste brings", "text": "  dQw4w9WgXcQ  ", "id": "dQw4w9WgXcQ"},
+    {"why": "the ordinary watch link", "text": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "copied from inside a playlist: one video, the list part ignored", "text": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabc&index=3", "id": "dQw4w9WgXcQ"},
+    {"why": "the v= is not always first", "text": "https://www.youtube.com/watch?app=desktop&v=dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "the share link", "text": "https://youtu.be/dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "the share link with a start time", "text": "http://youtu.be/dQw4w9WgXcQ?t=42", "id": "dQw4w9WgXcQ"},
+    {"why": "music.youtube, where an audio upload usually lives", "text": "https://music.youtube.com/watch?v=dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "the mobile host", "text": "https://m.youtube.com/watch?v=dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "a short", "text": "https://www.youtube.com/shorts/dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "an embed", "text": "https://www.youtube.com/embed/dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "no scheme, as a paste from the address bar can be", "text": "youtu.be/dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
+    {"why": "a playlist is not one video", "text": "https://www.youtube.com/playlist?list=PLfX9CI0JhSo6PJ4yWuk2Cn5HfvRwmOMrV", "id": null},
+    {"why": "nor is a channel", "text": "https://www.youtube.com/@MyDarkLullabies", "id": null},
+    {"why": "nor a channel by id", "text": "https://www.youtube.com/channel/UCq3d1I0ld1PBcmlwfHnHLdw", "id": null},
+    {"why": "nor a search", "text": "https://www.youtube.com/results?search_query=kupfergold", "id": null},
+    {"why": "another site's watch link is not ours", "text": "https://example.com/watch?v=dQw4w9WgXcQ", "id": null},
+    {"why": "ten characters is not an id", "text": "dQw4w9WgXc", "id": null},
+    {"why": "twelve is not either", "text": "dQw4w9WgXcQ1", "id": null},
+    {"why": "an id may not carry punctuation", "text": "dQw4w9WgX.Q", "id": null},
+    {"why": "empty is nothing to point at", "text": "", "id": null},
+    {"why": "and neither is prose", "text": "the official video", "id": null}
+  ]
+}

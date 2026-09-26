@@ -1,5 +1,6 @@
-import { LENGTH, asTime, fmt, fold, foldMap, hits, lengthBand, lyricsPanelState, maps, markedTrim,
-         movedRow, numberByDisc, ourLength, refLength, resetKind, roundMark, trimTarget }
+import { LENGTH, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lyricsPanelState, maps, markedTrim,
+         movedRow, numberByDisc, oneVideo, ourLength, refLength, resetKind, roundMark, sourceChange, timingNotice,
+         trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -499,6 +500,11 @@ function resetMark(plan, track, name, label = null) {
 }
 
 async function resetField(plan, track, name, button, what) {
+  if (name === "source") {
+    // going back is a source change like any other, and costs the same (§9.34)
+    const change = sourceChange(track, null);
+    if (change && !confirm(change.lines.join("\n"))) return;
+  }
   const edits = track ? { tracks: [{ video_id: track.video_id, reset: [name] }] } : { reset: [name] };
   const id = await submit("edit", { id: plan.source_id, edits }, button);
   if (id == null) return;
@@ -506,6 +512,79 @@ async function resetField(plan, track, name, button, what) {
   if (!job || job.state !== "done") return;
   toast(`reset ${what}`, "done");
   await refreshAlbumPanel();
+}
+
+// -- where a track's audio comes from (§9.34) ---------------------------------------------
+//
+// The playlist's video stays the track's identity — its place, its name, its match. This only
+// says which recording to take the audio from, for the case the playlist holds the film cut and
+// the song exists on its own. Everything the old file carried goes with the switch, so the
+// confirm says which marks it is about to clear before anything is fetched.
+const openSource = new Set();
+
+function sourceMark(p, t) {
+  const own = t.source_override;
+  return h("button", { class: "quiet small src-pick" + (own ? " on" : ""), type: "button",
+    title: own ? `Audio from ${own}, not the playlist's ${t.video_id} \u2014 click to change it or go back`
+      : "Take the audio from another video \u2014 the same song without the film around it",
+    onclick: (e) => toggleSource(e.currentTarget, p, t) }, "\u21c4");
+}
+
+function toggleSource(button, p, t) {
+  const row = button.closest("tr");
+  const open = panelUnder(row, "source");
+  if (open) {
+    openSource.delete(t.video_id);
+    return open.remove();
+  }
+  lastPanelUnder(row).after(h("tr", { class: "source", "data-id": t.video_id },
+    h("td", { colspan: "8" }, sourcePanel(p, t))));
+  openSource.add(t.video_id);
+  document.querySelector(`tr.source[data-id="${CSS.escape(t.video_id)}"] input`)?.focus();
+}
+
+function closeSource(el, t) {
+  openSource.delete(t.video_id);
+  el.closest("tr.source")?.remove();
+}
+
+function sourcePanel(p, t) {
+  const id = effectiveId(t);
+  const note = h("div", { class: "muted source-note" });
+  const field = h("input", { type: "text", name: "source", value: t.source_override || "",
+    placeholder: "YouTube URL or video id", "aria-label": `audio source of ${t.title}`, size: 34,
+    onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.parentElement.querySelector("button.use").click(); } } });
+  return h("div", { class: "source-panel" },
+    h("div", { class: "muted" }, `${t.artist} \u2014 ${t.title} \u00b7 audio from `,
+      h("a", { href: `https://www.youtube.com/watch?v=${id}`, target: "_blank", rel: "noopener" }, id),
+      t.source_override ? " \u2014 yours, not the playlist's video " : " \u2014 the playlist's own video",
+      t.source_override ? resetMark(p, t, "source", "audio source") : null),
+    h("div", { class: "panel-actions" }, field,
+      h("button", { class: "small use", type: "button", onclick: (e) => useSource(e.currentTarget, p, t, field.value, note) }, "Use this video"),
+      h("button", { class: "quiet small", type: "button", onclick: (e) => closeSource(e.currentTarget, t) }, "Cancel")),
+    note,
+    h("div", { class: "muted" }, "The track keeps its place, its name and your words \u2014 only the audio is fetched again, "
+      + "from the video you name here. Its length becomes the one the \u23f1 chip is measured against."));
+}
+
+function useSource(button, p, t, text, note) {
+  const value = (text || "").trim();
+  const chosen = value ? oneVideo(value) : null;
+  note.classList.remove("bad");
+  if (value && !chosen) {
+    note.classList.add("bad");
+    note.textContent = "That is not a single video. Paste the watch link of one video, or its 11-character id \u2014 "
+      + "a playlist or a channel cannot be a track's source.";
+    return;
+  }
+  const change = sourceChange(t, chosen === t.video_id ? null : chosen);
+  if (!change) {
+    note.textContent = "That is already where this track's audio comes from.";
+    return;
+  }
+  if (!confirm(change.lines.join("\n"))) return;
+  submit("edit", { id: p.source_id, edits: { tracks: [{ video_id: t.video_id, source: change.back ? "" : change.to }] } }, button);
+  closeSource(button, t);
 }
 
 // The .lrc file beside the track is the original; the tag is a copy of it, so what is
@@ -524,15 +603,31 @@ function lyricsMark(p, t) {
     onclick: (e) => toggleLyrics(e.currentTarget, p, t) }, t.lyrics === "instrumental" && !HAS_WORDS(t) ? "no words" : "\u266a");
 }
 
+// A track row can carry more than one panel under it (the words, and where the audio comes
+// from), so neither may assume it is the immediate next row.
+const PANEL = /^(lyrics|source)$/;
+const panelUnder = (row, kind) => {
+  for (let n = row.nextElementSibling; n && [...n.classList].some((c) => PANEL.test(c)); n = n.nextElementSibling) {
+    if (n.classList.contains(kind)) return n;
+  }
+  return null;
+};
+const lastPanelUnder = (row) => {
+  let last = row;
+  for (let n = row.nextElementSibling; n && [...n.classList].some((c) => PANEL.test(c)); n = n.nextElementSibling) last = n;
+  return last;
+};
+
 async function toggleLyrics(button, p, t) {
   const row = button.closest("tr");
-  if (row.nextElementSibling?.classList.contains("lyrics")) {
+  const open = panelUnder(row, "lyrics");
+  if (open) {
     openLyrics.delete(t.video_id);
-    return row.nextElementSibling.remove();
+    return open.remove();
   }
   button.classList.add("working");
   try {
-    row.after(await lyricsRow(p, t));
+    lastPanelUnder(row).after(await lyricsRow(p, t));
     openLyrics.add(t.video_id);
   } catch (e) {
     toast(e.message, "failed");
@@ -552,9 +647,9 @@ async function reopenLyrics() {
       openLyrics.delete(id);
       continue;
     }
-    if (row.nextElementSibling?.classList.contains("lyrics")) continue;
+    if (panelUnder(row, "lyrics")) continue;
     try {
-      row.after(await lyricsRow(p, track));
+      lastPanelUnder(row).after(await lyricsRow(p, track));
     } catch { /* the album moved or the track is gone; the next render tidies up */ }
     if (currentAlbum !== p) return; // the user opened another album meanwhile
   }
@@ -575,8 +670,13 @@ function lyricsPanel(p, t, d, editing) {
       : d.lrclib_id && d.text  // the id is kept after a clear (it is how a file is recognised as ours), but with no words it would read as if lrclib had some
         ? h("a", { href: `https://lrclib.net/api/get/${d.lrclib_id}`, target: "_blank", rel: "noopener", title: "the entry these words come from" }, ` \u00b7 lrclib #${d.lrclib_id}`)
         : null);
-  if (editing) return h("div", { class: "lyrics-panel" }, head, lyricsEditor(p, t, d));
-  return h("div", { class: "lyrics-panel" }, head,
+  const stale = timingNotice(d);
+  const notice = stale
+    ? h("div", { class: "timing-note", title: "Nothing was changed: the words and their timestamps are as you left them. "
+      + "Saving them here says they are for this file." }, `\u26a0 ${stale} \u2014 save them again to say they are for this one`)
+    : null;
+  if (editing) return h("div", { class: "lyrics-panel" }, head, notice, lyricsEditor(p, t, d));
+  return h("div", { class: "lyrics-panel" }, head, notice,
     d.text ? lyricsLines(p, t, d.text) : h("pre", {}, t.lyrics === "instrumental"
       ? "LRCLIB has no words for this recording. You can write them yourself."
       : "No .lrc beside this track. Write the words here, or let a lyrics run look them up."),
@@ -706,7 +806,8 @@ function renderAlbum() {
           onclick: (e) => trimChannel(t, e.currentTarget) }, "⇉") : null)),
       h("td", { class: "src" },
         t.provenance.artist === "user" ? resetMark(p, t, "artist", "artist") : null,
-        resetMark(p, t, "title", "title")),
+        resetMark(p, t, "title", "title"),
+        sourceMark(p, t)),
       h("td", { class: "src actions-cell" },
         t.state === "done" ? h("span", { class: "badge ok" }, "✓")
           : t.error_kind === "no_audio_stream" ? h("button", { class: "quiet small", type: "button", title: t.error || "", onclick: (e) => askAudioChoice(p, t, e.currentTarget) }, "no audio — choose")
@@ -988,6 +1089,7 @@ function previewView(p, close, known) {
   const rows = p.tracks.map((t) => h("tr", { class: t.in_source === false ? "muted" : "" },
     h("td", { class: "num" }, t.number), h("td", {}, t.artist), h("td", {}, t.title),
     h("td", { class: "src" }, provBadge(t.provenance.artist), provBadge(t.provenance.title),
+      t.source_override ? h("span", { class: "badge user", title: `its audio comes from ${t.source_override}, which you chose, not the playlist's ${t.video_id}` }, `audio \u2190 ${t.source_override}`) : null,
       t.in_source === false ? h("span", { class: "badge", title: "no longer in the source playlist; a fetch keeps the file, “Remove gone tracks” deletes it" }, "gone") : null)));
   return [
     h("div", { class: "panel-head" },

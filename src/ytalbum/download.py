@@ -166,9 +166,11 @@ def run(
         if not track.in_source or not download:
             continue  # gone from the playlist, or we are only tidying up files
 
+        if track.channel is None:
+            _follow_source(yt, track)  # whose upload this really is, and how long it runs
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                tmp = yt.download_audio(track.video_id, parts, track.audio_choice)
+                tmp = yt.download_audio(track.effective_id, parts, track.audio_choice)
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length = audio_length(tmp)
                 try:
@@ -194,7 +196,8 @@ def run(
                 if attempt < ATTEMPTS:
                     time.sleep(RETRY_DELAY)
         save_plan(plan, album_dir)
-        on_track(track, "downloaded" if track.state == "done" else "failed")
+        taken = f" from {track.effective_id}" if track.source_override else ""
+        on_track(track, f"downloaded{taken}" if track.state == "done" else "failed")
         if track.error == BOT_CHECK:
             log.warning("YouTube is blocking requests (bot check) - stopping this album")
             break
@@ -202,6 +205,25 @@ def run(
     if all(t.state == "done" or not t.in_source for t in plan.tracks) and parts.exists():
         shutil.rmtree(parts)  # only our own scratch dir, and only when nothing is left to resume
     return plan
+
+
+def _follow_source(yt: YouTube, track: PlanTrack) -> None:
+    """Take the uploader and the length from the video the audio actually comes from (§9.34).
+
+    Two things follow the *audio* rather than the identity: the channel, because "trim everything
+    from this uploader" must not apply another channel's cut to this file, and the duration the
+    page draws the trim bar with. Both are dropped by a source change in either direction, which
+    is what asks for them here; a playlist listing that carried no uploader at all is answered on
+    the way past. Failing to read it is not an error — the download itself will say so in a
+    moment, with a better message.
+    """
+    try:
+        facts = yt.probe(track.effective_id)
+    except (DownloadError, RuntimeError, OSError) as e:
+        log.info("could not read %s: %s", track.effective_id, e)
+        return
+    track.channel = facts.channel or track.channel
+    track.duration = facts.duration or track.duration
 
 
 # -- cover -------------------------------------------------------------------------------

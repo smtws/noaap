@@ -331,12 +331,38 @@ def user_owns(album_dir: Path, track: PlanTrack) -> bool:
     return track.provenance.get("lyrics") == Provenance.USER and sidecar_path(album_dir, track.filename).exists()
 
 
-def write_sidecar(album_dir: Path, track: PlanTrack, text: str) -> Path:
-    """Write the words and remember the bytes: anything else there later is the user's."""
+def write_sidecar(album_dir: Path, track: PlanTrack, text: str, length: float | None = None) -> Path:
+    """Write the words and remember the bytes: anything else there later is the user's.
+
+    Also remembers *which audio* these words were written against — the video they were timed to
+    and how long that file was — so a later change of either can say so instead of leaving
+    timestamps that quietly point at the wrong seconds (§9.34).
+    """
     path = sidecar_path(album_dir, track.filename)
     path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
     track.lyrics_sha = hashlib.sha1(path.read_bytes()).hexdigest()[:16]
+    track.lyrics_for_source = track.effective_id
+    track.lyrics_for_length = track.file_length if length is None else length
     return path
+
+
+STALE_BY = 1.0  # seconds: less than this is the same recording measured twice, not another file
+
+
+def timings_stale(track: PlanTrack) -> dict[str, Any] | None:
+    """Were the sidecar's timestamps written for a different file than the one on disk?
+
+    Only timestamps can be wrong in this way, so plain words never raise it. A sidecar from before
+    this was recorded says nothing either — we do not know what it was written for, and guessing
+    would put a notice on every old track (§9.34).
+    """
+    if track.lyrics != SYNCED or not track.lyrics_for_source:
+        return None
+    was, now = track.lyrics_for_length, track.file_length
+    moved = was is not None and now is not None and abs(now - was) > STALE_BY
+    if track.lyrics_for_source == track.effective_id and not moved:
+        return None
+    return {"source": track.lyrics_for_source, "was": was, "now": now}
 
 
 def remove_sidecar(album_dir: Path, filename: str) -> None:
@@ -441,8 +467,9 @@ def update_track(api: LyricsAPI, plan: AlbumPlan, track: PlanTrack, album_dir: P
             log.info("%s: the lyrics beside this track differ from the entry we saved — they are yours", track.title)
             return existing
         track.lyrics_sha = sidecar_sha(album_dir, track)  # ours after all; record it and carry on
+    length = audio_length(audio)
     try:
-        found = api.get(track.artist, track.title, plan.album, audio_length(audio), skip=track.lyrics_rejected)
+        found = api.get(track.artist, track.title, plan.album, length, skip=track.lyrics_rejected)
     except LyricsError as e:
         log.debug("no lyrics for %s - %s: %s", track.artist, track.title, e)
         return read_sidecar(album_dir, track)  # ask again next time
@@ -461,8 +488,9 @@ def update_track(api: LyricsAPI, plan: AlbumPlan, track: PlanTrack, album_dir: P
     # recording that matched are the timestamps of the file in front of us. A trim changes
     # that length, which is why a trim change makes the track be looked up again (download.py)
     text = found.text
-    write_sidecar(album_dir, track, text)
+    write_sidecar(album_dir, track, text, length)
     return text
 
 
-__all__ = ["Lrclib", "Lyrics", "LyricsAPI", "LyricsError", "consensus_length", "query_title", "read_sidecar", "reconcile", "sidecar_lost", "status_of", "update_track", "user_owns"]
+__all__ = ["Lrclib", "Lyrics", "LyricsAPI", "LyricsError", "consensus_length", "query_title", "read_sidecar", "reconcile",
+           "sidecar_lost", "status_of", "timings_stale", "update_track", "user_owns"]

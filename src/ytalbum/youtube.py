@@ -81,6 +81,29 @@ def channel_base_url(url: str) -> str | None:
     return m["base"] if m else None
 
 
+VIDEO_ID = re.compile(r"^[\w-]{11}$")
+_WATCH = re.compile(
+    r"^(?:https?://)?(?:www\.|m\.|music\.)?"
+    r"(?:youtube\.com/(?:watch\?(?:[^#]*&)?v=|v/|e(?:mbed)?/|shorts/|live/)|youtu\.be/)"
+    r"(?P<id>[\w-]{11})(?:[?&#/].*)?$"
+)
+
+
+def one_video(text: str) -> str | None:
+    """The single video a user pasted — a URL in any of YouTube's shapes, or a bare id.
+
+    Deliberately strict: a playlist, a channel, a search or anything unrecognised is **not** one
+    video and comes back as None, because the caller is choosing *which recording to download*
+    (DESIGN.md §9.34). A watch URL that also carries `list=` is still one video — that is the
+    link YouTube hands you from inside a playlist — and the playlist part is ignored.
+    """
+    value = (text or "").strip()
+    if VIDEO_ID.match(value):  # a URL can never match: the pattern allows no `:`, `/` or `.`
+        return value
+    m = _WATCH.match(value)
+    return m["id"] if m else None
+
+
 class _YdlLogger:
     def debug(self, msg: str) -> None:
         log.debug(msg.removeprefix("[debug] "))
@@ -344,6 +367,18 @@ class YouTube:
         if not path.exists():
             raise RuntimeError(f"download produced no {path.name}")
         return path
+
+    def probe(self, video_id: str) -> Entry:
+        """One video's own facts — uploader, length, title — outside any playlist.
+
+        A track whose audio comes from another video (`source_override`) needs them: the uploader
+        decides which channel-wide trim applies to it, and the length is what the page draws the
+        trim bar with until the file has been measured (DESIGN.md §9.34).
+        """
+        self.check()
+        with YoutubeDL(self._params(noplaylist=True)) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+        return entry_from_info(info, 1)
 
     def describe_combined(self, video_id: str) -> str:
         """What YouTube does offer instead: e.g. '360p video, AAC ~96 kbps'."""

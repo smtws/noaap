@@ -262,3 +262,21 @@ rest, and the row rule already gives it an edge where the glyph would otherwise 
 trim handles, whose `--panel` ring separates them from the track line while the handle itself is
 accent on panel at 5.71 / 5.62; and `.card` and `.pick`, which are identified by a cover and a title
 rather than by an edge. All four screenshots were retaken on the new edges.
+
+## 13. Re-timing the lyrics you already wrote — SUPERSEDED by P23
+
+Added 2026-09-27 out of P22. A track pointed at another video (§9.34) keeps the user's words, and
+the panel says when their timestamps were written against the old file — but it cannot fix them, and
+P22 deliberately did not try: shifting someone's stamps is a change to their work, and a silent one
+would be worse than the notice. What is missing is a **shift**: "move every timestamp by −2.4 s",
+applied in the editor, visible before it is saved, and undone by cancelling.
+
+Not automatic. Two recordings of the same song rarely differ by a constant — one has a longer intro
+*and* a shorter outro — so a computed offset would be right for the first verse and wrong by the
+last. A number the user types, applied to every stamped line, is honest and enough.
+
+**Superseded 2026-09-27 by TASK P23**, which takes this as one of four parts (tap-to-stamp, per-stamp
+play and nudge, a file-clock readout, and this shift). The reason it grew: stamps typed from the
+player's display land up to 3 s late on a *trimmed* track, because a trimmed track plays from its
+original and the player's clock is the original's while the stamps belong to the cut file's. The
+shift alone would only move a whole set of wrong stamps.

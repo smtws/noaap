@@ -305,9 +305,13 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
             _merge_fields(t, f, TRACK_FIELDS)
             if t.provenance.get("title") != Provenance.USER:
                 t.mbid = f.mbid or t.mbid
-            t.channel = f.channel or t.channel
             t.mb_length = f.mb_length or t.mb_length
-            t.duration = f.duration or t.duration
+            if not t.source_override:
+                # both describe the *video*, and a track pointed at another one (§9.34) is not
+                # taking its audio from the playlist's: its uploader decides which channel-wide
+                # trim applies to it, and its length is what the trim bar is drawn with
+                t.channel = f.channel or t.channel
+                t.duration = f.duration or t.duration
 
     for f in fresh.tracks:
         if f.video_id not in known:

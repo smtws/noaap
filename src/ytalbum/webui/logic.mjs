@@ -114,6 +114,63 @@ export function movedRow(rows, id, overId) {
   return rest;
 }
 
+// -- where a track's audio comes from (§9.34) -----------------------------------------------
+
+// Twin of youtube.one_video; tests/shared/video_ids.json is the table both are tested against.
+// A playlist, a channel or anything unrecognised is not one video, and the page refuses it here
+// rather than sending it — the server refuses it too, because the page is not the only door.
+const VIDEO_ID = /^[\w-]{11}$/;
+const WATCH = new RegExp(
+  "^(?:https?://)?(?:www\\.|m\\.|music\\.)?"
+  + "(?:youtube\\.com/(?:watch\\?(?:[^#]*&)?v=|v/|e(?:mbed)?/|shorts/|live/)|youtu\\.be/)"
+  + "([\\w-]{11})(?:[?&#/].*)?$");
+
+export function oneVideo(text) {
+  const value = (text || "").trim();
+  if (VIDEO_ID.test(value)) return value;   // a URL never matches: no `:`, `/` or `.` allowed
+  const m = WATCH.exec(value);
+  return m ? m[1] : null;
+}
+
+export const effectiveId = (t) => t.source_override || t.video_id;
+
+// What a source change costs, in the words the user is asked to confirm — because the marks and
+// the timings describe the file that is about to be replaced, and nothing may go quietly.
+export function sourceChange(track, wanted) {
+  const to = wanted || track.video_id;
+  if (to === effectiveId(track)) return null;
+  const marks = track.trim_start != null || track.trim_end != null
+    ? `${asTime(track.trim_start || 0)}\u2013${track.trim_end == null ? "end" : asTime(track.trim_end)}`
+    : null;
+  const lines = [
+    `\u201c${track.artist} \u2013 ${track.title}\u201d`,
+    "",
+    wanted
+      ? `Take the audio from ${to} instead of the playlist's own ${track.video_id}.`
+      : `Back to the playlist's own video, ${track.video_id}.`,
+    "The track is downloaded again \u2014 it is a different recording.",
+  ];
+  if (marks) lines.push(`The trim ${marks} belongs to the current file and will be cleared.`);
+  if (track.lyrics === "synced") {
+    lines.push("Your lyrics are kept, but their timings were written for the current file.");
+  }
+  lines.push("", "OK: fetch it now. Cancel: nothing changes.");
+  return { to, marks, back: !wanted, lines };
+}
+
+// The panel's notice when the words beside a track were timed against another file (§9.34).
+// The two lengths are only named when they really differ: a file measured again after the same
+// song was fetched from another upload can read 3:50 against 3:49 purely from rounding, and a
+// pair of numbers that look the same invites "so what?" rather than saying anything.
+export const STALE_BY = 1;  // seconds; the twin of lyrics.STALE_BY
+
+export function timingNotice(d) {
+  const t = d && d.timings;
+  if (!t) return null;
+  const drift = t.was != null && t.now != null && Math.abs(t.now - t.was) > STALE_BY;
+  return `these timings were written for a different file${drift ? `, ${fmt(t.was)} \u2192 ${fmt(t.now)}` : ""}`;
+}
+
 // -- what a panel offers --------------------------------------------------------------------
 
 // The lyrics panel, from what /api/lyrics answered: what the header says, whose the words are,

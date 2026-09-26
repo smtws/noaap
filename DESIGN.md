@@ -851,6 +851,40 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    panel's rendering, the player. Testing those would mean jsdom, which is the npm dependency this
    slice exists to avoid; the catalog's sections H and K–R remain their evidence.
 
+34. ✅ A track may take its audio from another video (2026-09-27, P22). The user's case: the
+   playlist holds the *official video* of "Und 'n Tripper" — theatrical material at both ends, ten
+   seconds of creaking floor in the middle, +0:23 against MusicBrainz — while the canonical 3:04
+   recording exists on YouTube as its own upload. Until now the only answers were to trim around the
+   film (which cannot remove the middle) or to let the album hold the wrong recording.
+   **The playlist video stays the track's identity.** `source_override` is a second field, never a
+   replacement for `video_id`: the order, `in_source`, prune, the merge and the MusicBrainz match all
+   keep looking at the playlist's video, and `PlanTrack.effective_id` is what the *audio* side asks —
+   the download, the kept original, the uploader. Ownership rides on the existing provenance system
+   (`provenance.source = user`, `auto.source` = the playlist id), so §9.29's badge is the way back
+   with no new mechanism behind it.
+   **A source change is a re-download, and it says so first.** Everything the old file carried is
+   about a different recording: the state, the tags, the trim marks, the measured length, and the
+   uploader and duration, which follow the audio (a channel-wide trim must not cut this file to
+   another channel's ident). The kept original of the previous source is deleted — it could only ever
+   shadow the new one — and originals are keyed by the effective id, so going back re-downloads
+   cleanly. The UI confirms with the marks named in it ("The trim 1:30–5:20 belongs to the current
+   file and will be cleared"), because a mark silently kept would cut the wrong seconds.
+   **The words are never touched, and the timings say what they were written for.** §9.21 stands: the
+   user's lyrics are theirs through any switch. But timestamps written against the old file point at
+   the wrong seconds of the new one, and nothing in the file can say so — hence `lyrics_for_source`
+   and `lyrics_for_length`, stamped by every sidecar write (ours or the editor's), and a notice in the
+   panel until the words are saved again. It names the two lengths only when they really differ: the
+   same song from another upload measures 3:50 against 3:49 by rounding alone, and a pair of numbers
+   that look identical says nothing. LRCLIB-owned lyrics are simply looked up again, with the new
+   length, which is usually the canonical one and matches where the film cut never could.
+   **No automatic re-timing here.** Shifting a user's stamps is a change to their work and needs its
+   own design and its own confirmation; it is P23's (`docs/backlog.md` item 13).
+   One rule the parser carries: a *single video* is a bare id or a watch/share/shorts/embed link in
+   any of YouTube's shapes, and a playlist, a channel or a search is refused. A `watch?v=…&list=…`
+   link is one video — that is what YouTube hands you from inside a playlist — and the list part is
+   ignored. The page refuses a bad paste before it sends it and the server refuses it again;
+   `tests/shared/video_ids.json` is the one table both are tested against (§9.33).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -926,3 +960,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **The drag handle is found rather than explained.** A stronger glyph and a row-level hover, no
   stored state: a one-time hint that must be dismissed is a nag, and it would be the only piece of
   remembered UI state in the page (backlog 11, catalog T5/T6).
+
+### Decisions of 2026-09-27 (an alternative source per track, §9.34)
+
+- **The playlist video is the identity; only the audio may be pointed elsewhere** (§9.34). Replacing
+  `video_id` would have been fewer lines and would have broken `in_source`, prune, the merge and the
+  MusicBrainz match, all of which are about *which entry this is*, not about which file plays.
+- **A source change clears the trim rather than keeping or converting it.** Marks are seconds of a
+  particular recording; the new one has its own silence at the front. Converting them would be a
+  guess, keeping them would cut the wrong audio, so they go — and the UI names them before it asks.
+- **The uploader follows the audio, not the identity** (§9.34): "trim everything from this channel"
+  is about who encoded the file in front of you. It is re-read from the video actually used, in both
+  directions, and a merge no longer overwrites it from the playlist entry.
+- **No automatic re-timing of a user's lyrics.** The notice states the problem and leaves the fix to
+  them; doing it for them is P23, where it can be confirmed and undone.

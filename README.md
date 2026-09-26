@@ -47,6 +47,12 @@ Comes with a command line and a small web app for the library.
 - **You can fix an album where you can see it.** Drag rows to reorder (or Alt+↑/↓), set trim
   points from what you are hearing and watch the length come right before you save, write or
   correct lyrics in the panel that shows them, and run the offline tidy-up from a button.
+- **A track can take its audio from another video.** Where the playlist holds the official video —
+  theatrical bits at both ends, a spoken passage in the middle — and the song exists on YouTube as
+  its own upload, point the track at that one: it keeps its place, its name, its number and your
+  lyrics, and only the audio is fetched again. What the marks and the tags described was another
+  recording, so they go, and the page says which before it asks. The badge that says "you" puts the
+  playlist's video back.
 - **Re-runs are cheap.** An update checks each album with a single request and only does
   real work when the playlist actually changed.
 - **You can find what you have.** Filter the library by album, artist **or song** — matches
@@ -141,6 +147,10 @@ keep it and everything is repeatable.
   appears.
 - **Nothing is decided on half-knowledge.** If any video can't be read (bot check, network),
   the run changes nothing at all instead of classifying or renaming from a partial view.
+- **An alternative source does not change what a track is.** The playlist's video stays the
+  track's identity — its order, whether it is still in the playlist, what MusicBrainz matched — and
+  only the audio comes from elsewhere. The uploader follows the audio, because "trim everything from
+  this channel" is about whoever encoded the file in front of you.
 - **Trimming is non-destructive.** The untouched original goes to `.originals/`, cuts are
   made from it with `ffmpeg -c copy`, and clearing the trim restores it byte for byte. Marks are
   set while listening — "start here", "end here", drag the handles, or arrow keys for tenths —
@@ -248,7 +258,7 @@ network.
 | `GET /api/thumb?u=<url>` | A thumbnail, fetched by the server (allow-listed hosts only, cached). |
 | `GET /api/audio?id=<source-id>&v=<video-id>` | The track's audio, with `Range` support so players can seek. |
 | `GET /api/job?id=<n>` | One job with its full log and result. |
-| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id` and `owner` (`user` when they are yours). |
+| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours) and `timings` — set when the timestamps were written against a different file than the one on disk. |
 
 ### Writing (POST, JSON body, header `X-Ytalbum: 1`)
 
@@ -258,7 +268,7 @@ network.
 | `/api/fetch` | `{urls: […]}` | Plan and download those sources. |
 | `/api/update` | `{artist?, deep?}` | Re-check the library, or one artist's albums. |
 | `/api/repair` | `{}` | Run `ytalbum repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
-| `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice; renames and retags. |
+| `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
 | `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
 | `/api/prune` | `{id}` | Delete tracks that left the playlist. |
 | `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |

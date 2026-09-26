@@ -128,6 +128,21 @@ class PlanTrack:
     lyrics_sha: str | None = None  # of the sidecar bytes *we* wrote; anything else is the user's
     lyrics_rejected: list[int] = field(default_factory=list)  # lrclib entries the user said are not this song
     file_length: float | None = None  # seconds of audio actually on disk, after any trim
+    # another video to take the audio from, when the playlist's is not the recording you want
+    # (a film cut, a live intro). The playlist video stays the track's identity (DESIGN.md §9.34).
+    source_override: str | None = None
+    lyrics_for_source: str | None = None  # the video the sidecar's timings were written against
+    lyrics_for_length: float | None = None  # and the length of the file at that moment
+
+    @property
+    def effective_id(self) -> str:
+        """The video the audio comes from: the playlist's, unless the user chose another one.
+
+        Everything about *identity* — ordering, `in_source`, prune, merge, the MusicBrainz match —
+        keeps looking at `video_id`. Everything about the *audio* — the download, the kept
+        original, the uploader whose trim applies — asks for this one.
+        """
+        return self.source_override or self.video_id
 
 
 @dataclass

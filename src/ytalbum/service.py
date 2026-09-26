@@ -37,8 +37,8 @@ from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, ren
 from .search import SearchResult, search_artist
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
-from .trim import ORIGINALS, kept_originals
-from .youtube import BOT_CHECK, Cancelled, YouTube, channel_base_url
+from .trim import ORIGINALS, kept_originals, originals_of
+from .youtube import BOT_CHECK, Cancelled, YouTube, channel_base_url, one_video
 
 log = logging.getLogger(__name__)
 
@@ -740,14 +740,20 @@ class Service:
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
         album_dir, plan = found
-        before = {t.video_id: t.filename for t in plan.tracks}
+        before = {t.video_id: (t.filename, t.effective_id) for t in plan.tracks}
         apply_user_edits(plan, edits)
-        for t in plan.tracks:  # a changed format leaves the old file behind
-            old = before.get(t.video_id)
+        for t in plan.tracks:
+            old, took = before.get(t.video_id, (None, None))
             if old and old != t.filename and Path(old).suffix != Path(t.filename).suffix:
-                stale = _inside(album_dir, old)
+                stale = _inside(album_dir, old)  # a changed format leaves the old file behind
                 if stale and stale.exists():
                     stale.unlink()
+            if took and took != t.effective_id:
+                # the original kept for the previous source is another recording: it can never be
+                # what this track is cut from, and keeping it would only shadow the new one (§9.34)
+                for path in originals_of(album_dir, took):
+                    path.unlink()
+                self.log(f"{t.title}: audio now from {t.effective_id} (was {took})")
         album_dir = relocate(album_dir, plan, self.library)
         return self.execute(plan, album_dir)
 
@@ -769,11 +775,45 @@ def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:
     """
     if name == "order":
         return isinstance(obj, AlbumPlan) and obj.provenance.pop("order", None) is not None
+    if name == "source":
+        # the way back is the playlist's own video, which `auto` does not have to remember: it is
+        # `video_id`. Going back costs what choosing cost — the track is fetched again (§9.34).
+        return isinstance(obj, PlanTrack) and switch_source(obj, None)
     editable = EDITABLE_ALBUM if isinstance(obj, AlbumPlan) else EDITABLE_TRACK
     if name not in editable or name not in obj.auto:
         return False  # nothing was derived for it, so there is nothing to go back to
     setattr(obj, name, obj.auto[name])
     obj.provenance.pop(name, None)
+    return True
+
+
+def switch_source(track: PlanTrack, video_id: str | None) -> bool:
+    """Point a track at another video — or back at the playlist's — and forget the old audio.
+
+    The playlist video stays the track's identity; only where the *audio* comes from changes
+    (DESIGN.md §9.34). Everything the old file was is therefore wrong at once: the state, because
+    there is another recording to fetch; the tags written from it; the trim marks, which describe
+    seconds of the old recording (the UI names them before it asks); the measured length; and the
+    uploader and duration, which follow the audio rather than the identity.
+
+    The lyrics *status* goes with it so the next pass looks the new length up again. The words
+    never do: the user's stay theirs, and a sidecar whose timings were written for the old file
+    says so in the panel until it is saved again (§9.21 is untouched by this).
+    """
+    if (track.source_override or None) == (video_id or None):
+        return False
+    track.source_override = video_id
+    if video_id:
+        track.provenance["source"] = Provenance.USER
+        track.auto["source"] = track.video_id  # what it goes back to, which P12's badge offers
+    else:
+        track.provenance.pop("source", None)
+        track.auto.pop("source", None)
+    track.state, track.error, track.error_kind = "pending", None, None
+    track.tagged = track.trimmed = None
+    track.trim_start = track.trim_end = None
+    track.file_length = track.duration = track.channel = None
+    track.lyrics = None
     return True
 
 
@@ -807,6 +847,12 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
             continue
         for name in te.get("reset") or []:
             reset_field(t, str(name))
+        if "source" in te:
+            wanted = str(te.get("source") or "").strip()
+            chosen = one_video(wanted) if wanted else None
+            if wanted and chosen is None:
+                raise ValueError(f"{t.title}: “{wanted}” is not a single YouTube video")
+            switch_source(t, None if chosen == t.video_id else chosen)
         if (choice := te.get("audio_choice")) in ("best", "combined") and choice != t.audio_choice:
             # switching means fetching the track again, in the other form
             t.audio_choice, t.ext = choice, "m4a" if choice == "combined" else "opus"

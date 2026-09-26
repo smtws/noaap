@@ -35,7 +35,7 @@ import httpx
 from . import config as config_mod
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
-from .lyrics import read_sidecar, reconcile
+from .lyrics import read_sidecar, reconcile, timings_stale
 from .models import AlbumPlan
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
@@ -348,7 +348,10 @@ class App:
         if not track:
             return None
         return {"status": track.lyrics, "lrclib_id": track.lyrics_id, "text": read_sidecar(album_dir, track) or "",
-                "owner": track.provenance.get("lyrics"), "state": track.state}
+                "owner": track.provenance.get("lyrics"), "state": track.state,
+                # timestamps written for another file point at the wrong seconds; the panel says so
+                # until the words are saved again, and never re-times anything itself (§9.34)
+                "timings": timings_stale(track)}
 
     def audio_path(self, source_id: str, video_id: str, original: bool = False) -> Path | None:
         """The finished track's file — looked up in the plan, never taken from the request.

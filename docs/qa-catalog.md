@@ -1264,10 +1264,92 @@ CT.edge(document.querySelector("button.quiet"));   // → { border: "#6f6882", o
     decision. Flagged rather than changed
   - **result:** pass, with that one gap named
 
+## U. A track's audio from another video (P22, DESIGN §9.34)
+
+Run 2026-09-27 against a scratch library inside the session scratchpad, seeded with **S1** — *Viva
+Vendetta (Official Video)*, 471 s of film around a 3:50 song, MusicBrainz 229.8 s — and pointed at
+**S10**, `Z2UO4FsFGFM`, the sung album recording as its own upload. The same shape as the user's
+Kupfergold case, with one difference that makes it a better specimen: the two uploads are by
+different channels (Napalm Records and Lord Of The Lost), so "the uploader follows the audio" is
+visible rather than argued. Nothing was written to the real library; the real library was used only
+for the read-only load below. Server on 8799, everything driven through the real page.
+
+- [x] **U1 · R** — old plans still load, and nothing lights up on them
+  - all **246 plans / 3946 tracks** of the real library loaded read-only with the new fields: 0
+    overrides, 0 tracks that would show a timing notice — and 2055 tracks with synced lyrics, none of
+    which raises one, because a sidecar from before the record exists says nothing about what it was
+    written for
+  - **result:** pass
+
+- [x] **U2 · M** — a paste that is not one video is refused, twice
+  - a playlist URL, a channel URL and the prose "not a video" are each refused *in the page*, before
+    anything is sent: "That is not a single video. Paste the watch link of one video, or its
+    11-character id — a playlist or a channel cannot be a track's source."
+  - the server refuses the same three itself (`apply_user_edits` raises with the track's title in the
+    message), because the page is not the only door; `tests/shared/video_ids.json` is the table both
+    sides are tested against
+  - **result:** pass
+
+- [x] **U3 · M** — the switch asks first, and names the marks it will clear
+  - with the track trimmed to 1:30–5:20 and the user's own timestamped `.lrc` beside it, the confirm
+    read: *"Take the audio from Z2UO4FsFGFM instead of the playlist's own ___ci9kmRc4. The track is
+    downloaded again — it is a different recording. The trim 1:30–5:20 belongs to the current file
+    and will be cleared. Your lyrics are kept, but their timings were written for the current file."*
+  - **result:** pass
+
+- [x] **U4 · M** — what the switch actually did
+  - `source_override` set, `video_id` unchanged; state → pending → done, downloaded from the override
+  - trim marks and `trimmed` cleared; `.originals/` left **empty** — the previous recording's kept
+    original was deleted, which is the one thing that could have shadowed the new file
+  - `channel` Napalm Records → **Lord Of The Lost**, `duration` 471 → 230: the ⇉ button now offers
+    "Apply this trim to every track from Lord Of The Lost", which is the point of following the
+    uploader
+  - `file_length` measured fresh at 229.841 against an unchanged `mb_length` of 229.8, so the ⏱ chip
+    went from **+4:01 (warn)** to **0:00 (muted)** without anything else being touched
+  - job log: `Viva Vendetta: audio now from Z2UO4FsFGFM (was ___ci9kmRc4)` and
+    `downloaded from Z2UO4FsFGFM: 01 Lord of the Lost - Viva Vendetta`
+  - **result:** pass
+
+- [x] **U5 · R** — the album view and the preview both say so
+  - in the row, the ⇄ button in the *from* cell turns accent and its title reads "Audio from
+    Z2UO4FsFGFM, not the playlist's ___ci9kmRc4"; the panel under the row carries the video as a link,
+    the field, and the "you ↺" badge
+  - the preview of the same URL (which is the merge, run dry) shows `audio ← Z2UO4FsFGFM` on the
+    track, titled "its audio comes from Z2UO4FsFGFM, which you chose, not the playlist's ___ci9kmRc4"
+  - the same preview is the merge evidence: the override survived a fresh reading of the source, and
+    the track was **not** marked "gone" — `in_source` is about the playlist's video, which is still there
+  - **result:** pass
+
+- [x] **U6 · M** — the words are untouched, and their timings say what they were written for
+  - the user's `.lrc` came through the switch unchanged and still marked "yours"
+  - the panel showed: *"⚠ these timings were written for a different file — save them again to say
+    they are for this one"*. No lengths, correctly: 230.0135 → 229.841 is the same song measured
+    twice, and printing "3:50 → 3:49" would have said nothing
+  - saving the words again in the editor cleared the notice; after the *reset* (back to the 471 s
+    film) it came back **with** its numbers — "3:49 → 7:50" — because now they really differ
+  - **result:** pass
+
+- [x] **U7 · M** — the way back costs what choosing cost
+  - the "you ↺" badge in the panel confirms first ("Back to the playlist's own video, ___ci9kmRc4 …"),
+    then re-downloads the playlist's video, clears the override, and takes the uploader back to
+    Napalm Records; the chip returned to +4:01
+  - **result:** pass
+
+- [x] **U8 · R** — looked at, in both themes
+  - the panel's field, "Use this video" and "Cancel" on one line (the base `input { width: 100% }`
+    had taken the whole row first — found by looking, fixed with a flex basis), the refusal in
+    `--bad` (5.44 on the light panel), the ⇄ button bounded like the row's other controls (3.43)
+  - the timing notice is `--ink` with a `--warn` edge rather than warn text: **warn text on the light
+    panel measures 3.64**, under the 4.5:1 body text asks for. As `--ink` on its own tint it reads
+    14.93 in light and 11.23 in dark. The page's existing warn *chips* (`.len.warn`, `.p-target.warn`)
+    have the same 3.64 and are not touched here — reported rather than changed
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the U cases (P22: audio from another video) | 8 | 0 in the package; 1 blemish of my own (the field took the whole line), fixed before the commit | S1 pointed at S10 on a scratch library, through the real page: the confirm named the trim, the uploader followed the audio both ways, the ⏱ chip went +4:01 → 0:00 → +4:01, the user's words were never touched. 554 pytest + 32 node. |
 | 2026-09-27 | the T cases (P21: `--edge` and the grip) | 7 | 0 | CSS only, measured in the page and looked at in every view and both themes. The one question the decision asked — whether `--edge` makes S5's highlighted-row rule redundant — is answered no, by measurement (2.53 / 2.82 on the band). The player bar was not exercised; see T7. |
 | 2026-09-26 | the 22 R cases | 17 | 0 in the software; 2 cases mis-specified (J8, J9) | E1, G3 and G4 deferred to the M pass. No file in the real library changed. |
 | 2026-09-26 | the M cases (A–E, H, J) | 28 | 3 real faults, 1 case impossible as written | The faults: a trim re-cut from the previous format's original and corrupted the file (B6/B7); a failed trim was recorded nowhere (I4); prune left the kept original behind (E5). E7 failed as written — a fetch did not unify the spelling. Scratch library only. |

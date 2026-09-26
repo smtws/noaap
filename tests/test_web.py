@@ -526,7 +526,19 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
     track = app.album(album_id)[1].tracks[0]
 
     got = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()
-    assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done"}
+    assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
+                   "timings": None}  # they were written for the file that is there
+
+    # point the track at another video and the same panel says the timings are for the old file
+    from ytalbum.download import save_plan
+    from ytalbum.service import switch_source
+
+    album_dir, plan = app.album(album_id)
+    switch_source(plan.tracks[0], "Z2UO4FsFGFM")
+    plan.tracks[0].lyrics, plan.tracks[0].file_length = "synced", 184.0
+    save_plan(plan, album_dir)
+    stale = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()["timings"]
+    assert stale and stale["source"] == track.video_id and stale["now"] == 184.0
 
     # the file is the original: remove it and the UI says so instead of showing a stale tag
     from ytalbum.lyrics import sidecar_path

@@ -10,7 +10,7 @@ import pytest
 from mutagen.oggopus import OggOpus
 
 from ytalbum.download import find_plan, load_plan, relocate, run
-from ytalbum.models import Collection, Provenance
+from ytalbum.models import Collection, Entry, Provenance
 from ytalbum.plan import build_plan, merge_plans
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
@@ -32,6 +32,10 @@ class FakeYouTube:
         out = dest_dir / f"{video_id}.opus"
         shutil.copy(self.template, out)
         return out
+
+    def probe(self, video_id: str) -> Entry:
+        """What the real client answers about one video: enough to follow an uploader (§9.34)."""
+        return Entry(video_id=video_id, position=1, title=video_id, channel="Napalm Records", duration=1.0)
 
     def fetch_bytes(self, url: str) -> bytes:
         return JPEG
