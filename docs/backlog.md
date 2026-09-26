@@ -175,7 +175,7 @@ imported by `app.js` as a module — no build step, no npm. 23 tests under `node
 the twins cannot drift. What stays browser-only: anything needing a DOM, which is what the catalog's
 Playwright sections are for.
 
-## 11. The drag grip is hard to find — OPEN, the user's call
+## 11. The drag grip is hard to find — DONE (P21, catalog T5/T6)
 
 Added 2026-09-26 by the assistant, from looking at `docs/screenshots/album.jpg`. Rows can be
 dragged since P15, and the only sign of it is `⋮⋮` in the position cell: `var(--muted)`, `.9em`,
@@ -200,7 +200,19 @@ Three ways out, roughly in order of cost:
 Keyboard users are already served: the position field takes a typed number, and Alt+↑ / Alt+↓
 moves the focused row. Nothing here is a functional gap — it is whether the feature is findable.
 
-## 12. Control boundaries are below the WCAG contrast minimum — OPEN, the user's call
+**Decided and done 2026-09-27:** the first two, CSS only — a stronger glyph and a row-level
+affordance. No stored state: a hint that must be dismissed is a nag, and it would be the only
+remembered UI state in the page. The glyph was chosen by looking: `⠿` and `⣿` were rendered in the
+live rows beside `⋮⋮` and photographed at 10×, and the braille pair falls back to another font on
+this system — softer, a pixel low, 18.9 px against 16.7 — so `⋮⋮` keeps its place at 1.05em with
+`letter-spacing: .06em` instead of `-.12em`, and nothing depends on a font having braille. The row
+now brightens its own handle on hover and on keyboard focus anywhere in it (5.78 → 14.05 in dark),
+while touch, which has no hover at all, is served by the separated columns alone — verified by
+listing every rule that matches `.grip`: three, of which two only add. `app.js` is untouched, so the
+drag, the tooltip and the Alt+↑/↓ alternative are the ones P15 shipped; one drag was run afterwards
+to prove the handle still picks a row up.
+
+## 12. Control boundaries are below the WCAG contrast minimum — DONE (P21, catalog T1–T4)
 
 Added 2026-09-26 by the assistant, out of P20. Fixing the borders on a *highlighted* row (they
 were invisible, 1.03 dark / 1.08 light with the band composited) showed that the same borders are
@@ -230,3 +242,23 @@ leaving `--line` to go on dividing; more places to keep right, but the page keep
 
 Not urgent and not a regression — it has been true since the first stylesheet. It is here because
 it was measured, and because the same measurement is what caught the highlighted-row case.
+
+**Decided and done 2026-09-27:** the second option — a `--edge` token used only by controls, with
+`--line` left to go on dividing at its old strength. `--edge` is `--line`'s own hue and saturation
+moved along the ramp until both backgrounds clear 3:1 with a little to spare: `#9185a8` in light and
+`#6f6882` in dark, measured in the page at **3.16 / 3.47** dark and **3.43 / 3.16** light against
+`--panel` and `--bg` (from 1.20 / 1.32 and 1.32 / 1.21). It reaches `button.quiet`, the text and
+number inputs, `select`, `.badge`, the row controls and `.to-top`, plus `textarea`, which had no
+border rule at all and was drawing the browser's default box.
+
+The question the decision asked — whether this makes 2df1cee's highlighted-row rule redundant — is
+answered **no** by measurement: composited over the playing band, `--edge` reaches only 2.53 in dark
+and 2.82 in light, so that rule stays and still measures 4.66 / 4.51. An input never needed it; it
+paints its own `--panel`, so the band is never behind its border.
+
+Three controls were deliberately left alone, each measured and recorded rather than changed quietly:
+the delete ✕, whose transparent border is what makes it a text button beside the boxed ♪ (1.00 at
+rest, and the row rule already gives it an edge where the glyph would otherwise float); the player's
+trim handles, whose `--panel` ring separates them from the track line while the handle itself is
+accent on panel at 5.71 / 5.62; and `.card` and `.pick`, which are identified by a cover and a title
+rather than by an edge. All four screenshots were retaken on the new edges.
