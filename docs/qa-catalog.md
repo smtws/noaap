@@ -1348,10 +1348,69 @@ for the read-only load below. Server on 8799, everything driven through the real
     measured in the page; dark was already 7.83 / 8.61 and is untouched)
   - **result:** pass
 
+## V. Stamping the words to the file's clock (P23, DESIGN §9.35)
+
+Run 2026-09-27 on a scratch library in the session scratchpad (S1, *Viva Vendetta*), **trimmed to
+1:30–5:20** so the player's clock and the file's differ by exactly 90 s — the condition that made the
+user's hand-typed stamps land late. Driven through the real page on 8799; the audio element was
+muted for the run, because the machine belongs to someone. Nothing was written to the real library.
+
+- [x] **V1 · R** — the two clocks, and the readout that names them
+  - the trimmed track plays from `?o=1` (the untouched original), the player's line says so, and the
+    editor's readout reads **"in file 0:05.8 · player 1:35.8"** — 90.0 s apart, to the tenth
+  - with the trim cleared, the same readout is one number ("in file 0:43.4" against a player time of
+    43.415): on an untrimmed track the two clocks are the same one, and a second number would be noise
+  - the player's own display and the trim bar are untouched, as the task asks — they are the video's
+    clock because the marks are
+  - **result:** pass
+
+- [x] **V2 · M** — the tap, which is the whole point
+  - playing, cursor on line 1, Ctrl+Enter: player at **114.870** → the line became **`[00:24.9]`**,
+    which is `114.870 − 90` rounded to a tenth, and the cursor moved to line 2
+  - paused, cursor on line 2: player **114.872** → `[00:24.9]` again, exactly `round((t − 90) × 10)/10`
+  - the button does the same for touch: on the untrimmed file at **100.0** it wrote `[01:40.0]`
+  - a second tap on a stamped line rewrites it; it never grows a second stamp
+  - **result:** pass
+
+- [x] **V3 · M** — nudge and play, by ear
+  - Alt+← on `[00:24.9]` → `[00:24.8]`; Shift+Alt+→ → `[00:25.3]`, and the player was at 115.85 a
+    moment later, i.e. playing from 25.3 + 90
+  - Alt+Enter from a rewound player jumped back to the same place and played
+  - a line with no stamp is left alone and says why: *"This line has no stamp yet — stamp it first"*
+  - **result:** pass
+
+- [x] **V4 · M** — shift all
+  - `-2.4` applied to *`[00:25.3]` / `[00:24.9]` / an unstamped line / a blank line / a last line*
+    gave `[00:22.9]` and `[00:22.5]`, with the three unstamped lines untouched, and the toast said
+    "moved 2 stamps by -2.4 s — nothing is saved until you press Save"
+  - **result:** pass
+
+- [x] **V5 · M** — what reaches the disk is what the textarea had
+  - Save wrote exactly `[00:22.9] Bury me in fire / [00:22.5] and call it a morning / Viva Vendetta /
+    (blank) / the last line`, the status became `synced`, the words stayed the user's, and
+    `lyrics_for_length` recorded the cut file's 230.0135 s — the length these stamps belong to
+  - nothing had touched the disk before that: the shift, the taps and the nudges only moved text
+  - **result:** pass
+
+- [x] **V6 · R** — the editor still behaves like a text box
+  - Enter alone still makes a newline; only Ctrl/⌘+Enter, Alt+Enter and Alt+arrows are taken, and the
+    page's own player keys already ignore anything typed inside a textarea
+  - **result:** pass
+
+- [x] **V7 · R** — looked at, both themes
+  - three tidy rows: the tap, ▶ and the four nudges; the shift field with its button; then Save /
+    Cancel / Delete. The readout sits at the right end of the first row and is empty when this track
+    is not playing
+  - one blemish of my own, found by looking: the shift field took the whole line, because
+    `.panel-actions input[type=text]` (from P22) outranks a plain `input.shift-by`. Specificity
+    fixed, field 80 px, on one line with its button in both themes
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the V cases (P23: stamping to the file's clock) | 7 | 0 in the package; 1 blemish of my own (the shift field's width), fixed before the commit | A track trimmed to 1:30–5:20, so the player's clock and the file's differ by 90 s. The tap wrote `[00:24.9]` from a player time of 114.870, which is the arithmetic the case asks for. 554 pytest + 45 node. |
 | 2026-09-27 | the U cases (P22: audio from another video) | 8 | 0 in the package; 1 blemish of my own (the field took the whole line), fixed before the commit | S1 pointed at S10 on a scratch library, through the real page: the confirm named the trim, the uploader followed the audio both ways, the ⏱ chip went +4:01 → 0:00 → +4:01, the user's words were never touched. 554 pytest + 32 node. |
 | 2026-09-27 | the T cases (P21: `--edge` and the grip) | 7 | 0 | CSS only, measured in the page and looked at in every view and both themes. The one question the decision asked — whether `--edge` makes S5's highlighted-row rule redundant — is answered no, by measurement (2.53 / 2.82 on the band). The player bar was not exercised; see T7. |
 | 2026-09-26 | the 22 R cases | 17 | 0 in the software; 2 cases mis-specified (J8, J9) | E1, G3 and G4 deferred to the M pass. No file in the real library changed. |

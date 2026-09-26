@@ -885,6 +885,35 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    ignored. The page refuses a bad paste before it sends it and the server refuses it again;
    `tests/shared/video_ids.json` is the one table both are tested against (§9.33).
 
+35. ✅ Stamping the words to the file's own clock (2026-09-27, P23, backlog 13). The user timed
+   "Und 'n Tripper" by hand and every stamp landed up to three seconds late. Three causes, measured
+   in that order: the track is trimmed from 1.6 s and **a trimmed track is played from its untouched
+   original** (§9.15 — the marks count from the start of the video, so the player must hear the file
+   those numbers describe), which puts the player's display on the video's clock while a lyric stamp
+   belongs to the *cut* file's; the display shows whole seconds; and there is the latency of hearing,
+   deciding and pausing. `lyricsLines` already added the trim back when *seeking* — but a human
+   reading the display and typing it does not subtract anything. Nobody should read one clock and
+   type the other.
+   **What the editor does now.** One key (Ctrl/⌘+Enter, and a button for touch) writes the moment
+   being heard onto the line the cursor is in, converted to the file's clock and rounded to a tenth,
+   and moves to the next line; a line that already had a stamp is rewritten rather than given a
+   second one. Alt+Enter plays from the current line's stamp. Alt+← / Alt+→ move it by a tenth, with
+   Shift by half a second, and play it back from there, so alignment is done by ear rather than by
+   arithmetic. A readout beside the tools shows the position **in the file** with tenths, and both
+   clocks side by side whenever they differ — which is exactly the case that caused this.
+   **The shift** (backlog 13's original ask) moves every stamped line by a typed number of seconds,
+   leaves unstamped lines where they are, and is reversible by shifting back.
+   **The textarea stays the only source of truth.** Every one of these rewrites its text and nothing
+   reaches the disk until Save, so the ownership contract (§9.21, §9.26) is untouched and a stamp
+   written by the tap is byte-for-byte what a hand-typed `[mm:ss.t]` would be — verified by reading
+   the saved `.lrc` back.
+   **The offset is the trim the file was *cut* to, not a mark being placed.** `trimOffset` reads the
+   saved mark, because the `.lrc` belongs to the file on disk; the two differ exactly while someone
+   is dragging a trim handle. The same helper now serves the seek and the sung-line highlight, which
+   both used the pending mark before and were a fraction out in that one state.
+   Deliberately unchanged: the player's own display and the trim bar keep the original's clock
+   (outcome 6 of the task, and §9.15's reason — the trim marks depend on it).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -974,3 +1003,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   directions, and a merge no longer overwrites it from the playlist entry.
 - **No automatic re-timing of a user's lyrics.** The notice states the problem and leaves the fix to
   them; doing it for them is P23, where it can be confirmed and undone.
+
+### Decisions of 2026-09-27 (stamping to the file's clock, §9.35)
+
+- **The tools act on the line the cursor is in, not on a widget per stamp.** The editor is a
+  textarea and stays one (the task pins it as the source of truth), so per-stamp buttons would mean
+  a second representation of the same text and two ways for them to disagree. The cursor already
+  decides the line for the tap; play, nudge and shift use the same rule.
+- **The stamp is a tenth.** `audio.currentTime` carries a dozen decimals of nothing, LRC players
+  read hundredths, and a tenth is finer than anyone can tap — the same decision §9.31 took for the
+  trim marks, for the same reason.
+- **A nudge plays what it changed.** Aligning by ear means hearing the result immediately; a nudge
+  that only rewrote the text would make the user press play after every tenth.
+- **No automatic alignment.** Still true after P23: everything here is the user pointing at a
+  moment. Whether a model could place the lines is a separate question, and a measurement rather
+  than an opinion — P24.

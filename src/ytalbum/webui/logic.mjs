@@ -171,6 +171,81 @@ export function timingNotice(d) {
   return `these timings were written for a different file${drift ? `, ${fmt(t.was)} \u2192 ${fmt(t.now)}` : ""}`;
 }
 
+// -- the two clocks, and stamping to them (§9.35) -------------------------------------------
+//
+// A trimmed track is played from its untouched **original** (§9.15: the trim marks count from the
+// start of the video, so the player must hear the file those numbers describe), while a lyric
+// stamp counts from the start of the file on disk. The two clocks differ by exactly what was cut
+// off the front — and by the *saved* mark, not one being edited: the `.lrc` belongs to the file
+// that is there, not to the trim someone is still placing.
+
+export const trimOffset = (playing) => (playing && playing.trimmed ? playing.savedStart || 0 : 0);
+export const tenth = (seconds) => Math.round(seconds * 10) / 10;
+export const toFileClock = (seconds, offset = 0) => Math.max(0, tenth(seconds - offset));
+export const toPlayerClock = (seconds, offset = 0) => Math.max(0, seconds + offset);
+
+// Exactly what a hand-typed stamp looks like, so nothing can tell the two apart afterwards.
+export function stampText(seconds) {
+  const t = Math.max(0, Math.round(seconds * 10));
+  return `[${String(Math.floor(t / 600)).padStart(2, "0")}:${String(Math.floor((t % 600) / 10)).padStart(2, "0")}.${t % 10}]`;
+}
+
+// The same shape app.js reads timed lines with, plus the space that follows it.
+const STAMP = /^(\s*)\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]\s?/;
+
+export const stampOf = (line) => {
+  const m = STAMP.exec(line || "");
+  return m ? Number(m[2]) * 60 + parseFloat(m[3].replace(":", ".")) : null;
+};
+
+// Replace the stamp on a line, or put one there; `null` takes it off and leaves the words.
+export function withStamp(line, seconds) {
+  const words = (line || "").replace(STAMP, "");
+  if (seconds == null) return words;
+  return words ? `${stampText(seconds)} ${words}` : stampText(seconds);
+}
+
+export const lineAt = (text, caret) => ((text || "").slice(0, Math.max(0, caret)).match(/\n/g) || []).length;
+
+export function lineStart(text, index) {
+  const lines = (text || "").split("\n");
+  let at = 0;
+  for (let i = 0; i < Math.min(index, lines.length); i++) at += lines[i].length + 1;
+  return at;
+}
+
+// One tap: the line the cursor is in takes the time, and the cursor moves on, so a whole song
+// can be stamped without reaching for the mouse. A line that already had one is rewritten.
+export function tapped(text, caret, seconds) {
+  const lines = (text || "").split("\n");
+  const i = Math.min(lineAt(text, caret), lines.length - 1);
+  lines[i] = withStamp(lines[i], seconds);
+  const value = lines.join("\n");
+  const next = Math.min(i + 1, lines.length - 1);
+  return { text: value, caret: lineStart(value, next), line: i, at: tenth(seconds), last: i >= lines.length - 1 };
+}
+
+// A nudge is the same rewrite with the stamp's own value moved; a line with no stamp has
+// nothing to move, and says so rather than growing one by accident.
+export function nudged(line, delta) {
+  const at = stampOf(line);
+  if (at == null) return null;
+  const to = Math.max(0, tenth(at + delta));
+  return { line: withStamp(line, to), at: to };
+}
+
+// Every stamped line by the same amount; the words between verses keep their place in the file.
+export function shifted(text, delta) {
+  let moved = 0;
+  const lines = (text || "").split("\n").map((line) => {
+    const at = stampOf(line);
+    if (at == null) return line;
+    moved++;
+    return withStamp(line, Math.max(0, tenth(at + delta)));
+  });
+  return { text: lines.join("\n"), moved };
+}
+
 // -- what a panel offers --------------------------------------------------------------------
 
 // The lyrics panel, from what /api/lyrics answered: what the header says, whose the words are,

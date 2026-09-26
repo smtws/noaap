@@ -1,6 +1,6 @@
-import { LENGTH, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lyricsPanelState, maps, markedTrim,
-         movedRow, numberByDisc, oneVideo, ourLength, refLength, resetKind, roundMark, sourceChange, timingNotice,
-         trimTarget }
+import { LENGTH, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lineAt, lineStart, lyricsPanelState,
+         maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo, ourLength, refLength, resetKind, roundMark,
+         shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -704,17 +704,121 @@ async function lyricsTrack(button, p, t, reject) {
 
 function lyricsEditor(p, t, d) {
   const area = h("textarea", { class: "lyrics-edit", spellcheck: "false",
-    rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)) });
+    rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)),
+    onkeydown: (e) => editorKey(e, p, t, area) });
   area.value = d.text;
+  const by = h("input", { type: "text", class: "shift-by", value: "-0.5", size: 5, "aria-label": "seconds to move every stamp by",
+    onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); shiftStamps(area, by); } } });
+  const nudge = (delta, label) => h("button", { class: "quiet small", type: "button",
+    title: `Move this line's stamp by ${label} s and play it from there (Alt+${delta < 0 ? "←" : "→"}${Math.abs(delta) > 0.1 ? " with Shift" : ""})`,
+    onclick: () => nudgeStamp(p, t, area, delta) }, label);
   return h("div", {}, area,
+    h("div", { class: "panel-actions stamp-tools" },
+      h("button", { class: "quiet small", type: "button",
+        title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.",
+        onclick: () => tapStamp(p, t, area) }, "⏱ stamp this line"),
+      h("button", { class: "quiet small", type: "button", title: "Play from this line's stamp (Alt+Enter)",
+        onclick: () => playLine(p, t, area) }, "▶"),
+      nudge(-0.5, "−0.5"), nudge(-0.1, "−0.1"), nudge(0.1, "+0.1"), nudge(0.5, "+0.5"),
+      h("span", { class: "muted stamp-clock" })),
+    h("div", { class: "panel-actions" },
+      h("span", { class: "muted" }, "shift every stamp by"), by, h("span", { class: "muted" }, "s"),
+      h("button", { class: "quiet small", type: "button",
+        title: "Move every timestamped line by that many seconds. Nothing is saved until you press Save.",
+        onclick: () => shiftStamps(area, by) }, "shift all")),
     h("div", { class: "lyrics-actions" },
       h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value) }, "Save"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, false) }, "Cancel"),
       d.text ? h("button", { class: "quiet small danger", type: "button",
         title: "Remove the .lrc beside this track. Its tag goes with it, and a later “look up all again” may fetch LRCLIB's words.",
         onclick: (e) => saveLyrics(e.currentTarget, p, t, "") }, "Delete") : null,
-      h("span", { class: "muted" }, "A line like [01:23.45] Words becomes clickable and follows the song.")));
+      h("span", { class: "muted" }, "A line like [01:23.4] Words becomes clickable and follows the song.")));
 }
+
+// -- stamping the words to the file's clock (§9.35) ------------------------------------------
+//
+// A trimmed track plays from its untouched original, so the player's display is the video's clock
+// while a stamp belongs to the file on disk. Nobody should read one clock and type the other: the
+// tap converts, the nudges move a stamp by a tenth or a half and play it back, and the readout
+// says what the current moment is *in the file*. The textarea stays the only source of truth —
+// each of these rewrites its text, and nothing is saved until Save.
+
+const nowPlaying = (p, t) => (isPlaying(p.source_id, t.video_id) ? queue[qi] : null);
+
+function tapStamp(p, t, area) {
+  const playing = nowPlaying(p, t);
+  if (!playing) return toast("Play this track first — a stamp is the moment you are hearing", "blocked");
+  const got = tapped(area.value, area.selectionStart, toFileClock(audio.currentTime, trimOffset(playing)));
+  area.value = got.text;
+  area.focus();
+  area.setSelectionRange(got.caret, got.caret);
+}
+
+function currentLine(area) {
+  const lines = area.value.split("\n");
+  return { lines, i: Math.min(lineAt(area.value, area.selectionStart), lines.length - 1) };
+}
+
+function nudgeStamp(p, t, area, delta) {
+  const { lines, i } = currentLine(area);
+  const got = nudged(lines[i], delta);
+  if (!got) return toast("This line has no stamp yet — stamp it first", "blocked");
+  lines[i] = got.line;
+  area.value = lines.join("\n");
+  const caret = lineStart(area.value, i);
+  area.focus();
+  area.setSelectionRange(caret, caret);
+  seekLyric(p, t, got.at);  // hearing it is the point; the seek converts back to the player's clock
+}
+
+function playLine(p, t, area) {
+  const { lines, i } = currentLine(area);
+  const at = stampOf(lines[i]);
+  if (at == null) return toast("This line has no stamp yet", "blocked");
+  seekLyric(p, t, at);
+}
+
+function shiftStamps(area, by) {
+  const delta = Number(String(by.value).replace(",", "."));
+  if (!Number.isFinite(delta) || delta === 0) return toast("Type how many seconds to move every stamp by, e.g. -2.4", "blocked");
+  const got = shifted(area.value, delta);
+  if (!got.moved) return toast("There are no stamps to move yet", "blocked");
+  area.value = got.text;
+  toast(`moved ${got.moved} stamp${got.moved > 1 ? "s" : ""} by ${delta > 0 ? "+" : ""}${tenth(delta)} s — nothing is saved until you press Save`);
+}
+
+function editorKey(e, p, t, area) {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); return tapStamp(p, t, area); }
+  if (e.key === "Enter" && e.altKey) { e.preventDefault(); return playLine(p, t, area); }
+  if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    e.preventDefault();
+    return nudgeStamp(p, t, area, (e.shiftKey ? 0.5 : 0.1) * (e.key === "ArrowLeft" ? -1 : 1));
+  }
+}
+
+// The readout runs on its own small timer rather than on `timeupdate`, which fires about four
+// times a second: a tenth that changes every 250 ms is not a tenth. With no editor open it costs
+// one selector lookup.
+function renderStampClock() {
+  for (const el of document.querySelectorAll(".stamp-clock")) {
+    const id = el.closest("tr.lyrics")?.dataset.id;
+    const playing = id && currentAlbum && isPlaying(currentAlbum.source_id, id) ? queue[qi] : null;
+    if (!playing) {
+      el.textContent = "";
+      continue;
+    }
+    const offset = trimOffset(playing);
+    // both clocks, but only where they differ: on an untrimmed track one number is the answer
+    el.textContent = offset
+      ? `in file ${asTime(toFileClock(audio.currentTime, offset))} · player ${asTime(tenth(audio.currentTime))}`
+      : `in file ${asTime(toFileClock(audio.currentTime, 0))}`;
+    el.title = offset
+      ? "The file on disk starts where the trim cut it, and the player is holding the untouched original, "
+        + "so its own display counts from the start of the video. A stamp belongs to the first number."
+      : "The moment you are hearing, in the file's own clock — which is what a stamp holds.";
+  }
+}
+setInterval(renderStampClock, 100);
 
 // swap the panel between reading and editing without asking the server again
 async function editLyrics(button, p, t, editing) {
@@ -770,8 +874,9 @@ async function seekLyric(p, t, at) {
   }
   const playing = queue[qi];
   // the lyrics were matched against the file as it is on disk; when that file was cut, the
-  // player is holding the original, so the trim has to be added back to reach the same spot
-  const target = at + (playing?.trimmed ? playing.start || 0 : 0);
+  // player is holding the original, so the trim has to be added back to reach the same spot —
+  // the trim the file was *cut* to, not a mark someone is still placing (§9.35)
+  const target = at + trimOffset(playing);
   const go = () => { audio.currentTime = target; audio.play().catch(() => {}); };
   if (audio.readyState >= 1) go();
   else audio.addEventListener("loadedmetadata", go, { once: true });
@@ -1393,7 +1498,7 @@ function markLyricLine() {
   const t = queue[qi];
   for (const row of document.querySelectorAll("#album tr.lyrics")) {
     const playing = t && isPlaying(currentAlbum?.source_id, row.dataset.id);
-    const at = audio.currentTime - (t?.trimmed ? t.start || 0 : 0);
+    const at = audio.currentTime - trimOffset(t);
     let active = null;
     if (playing) for (const line of row.querySelectorAll(".line.timed")) if (Number(line.dataset.at) <= at) active = line;
     const before = row.querySelector(".line.now");

@@ -47,6 +47,11 @@ Comes with a command line and a small web app for the library.
 - **You can fix an album where you can see it.** Drag rows to reorder (or Alt+↑/↓), set trim
   points from what you are hearing and watch the length come right before you save, write or
   correct lyrics in the panel that shows them, and run the offline tidy-up from a button.
+- **You can time the lyrics by tapping.** With the song playing, one key writes the moment you are
+  hearing onto the line the cursor is in and moves to the next — in the *file's* clock, which is not
+  the player's on a trimmed track, and rounded to a tenth. Each stamp can then be played back and
+  nudged by a tenth or a half until it sits right, or every stamp moved at once. Nothing is saved
+  until you press Save.
 - **A track can take its audio from another video.** Where the playlist holds the official video —
   theatrical bits at both ends, a spoken passage in the middle — and the song exists on YouTube as
   its own upload, point the track at that one: it keeps its place, its name, its number and your

@@ -263,7 +263,7 @@ trim handles, whose `--panel` ring separates them from the track line while the 
 accent on panel at 5.71 / 5.62; and `.card` and `.pick`, which are identified by a cover and a title
 rather than by an edge. All four screenshots were retaken on the new edges.
 
-## 13. Re-timing the lyrics you already wrote — SUPERSEDED by P23
+## 13. Re-timing the lyrics you already wrote — DONE (P23, DESIGN §9.35)
 
 Added 2026-09-27 out of P22. A track pointed at another video (§9.34) keeps the user's words, and
 the panel says when their timestamps were written against the old file — but it cannot fix them, and
@@ -280,3 +280,13 @@ play and nudge, a file-clock readout, and this shift). The reason it grew: stamp
 player's display land up to 3 s late on a *trimmed* track, because a trimmed track plays from its
 original and the player's clock is the original's while the stamps belong to the cut file's. The
 shift alone would only move a whole set of wrong stamps.
+
+**Done 2026-09-27 (P23), as four parts rather than one.** The shift is there — a typed number of
+seconds, every stamped line, unstamped lines left alone, reversible by shifting back — but it is the
+last resort now rather than the tool. The other three remove the reason stamps are wrong in the first
+place: **Ctrl/⌘+Enter** (and a button) writes the moment being heard onto the cursor's line,
+*converted to the file's clock*, rounded to a tenth, and moves on; **Alt+Enter** plays from a line's
+stamp and **Alt+←/→** move it by a tenth (with Shift, half a second) and play it back, so alignment
+is done by ear; and a readout shows the position **in the file**, beside the player's own time
+whenever the two differ. Nothing is saved until Save, and a stamp written this way is byte-for-byte
+what a hand-typed one would be. Catalog section V.

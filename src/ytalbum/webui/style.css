@@ -333,3 +333,10 @@ button.src-pick.on { border-color: var(--accent); color: var(--accent); }
    the warning belongs in the edge and the tint. */
 .timing-note { font-size: .85rem; color: var(--ink); border-left: 3px solid var(--warn);
   padding: .15rem .5rem; border-radius: 4px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+
+/* -- stamping the words to the file's clock (§9.35) -------------------------------- */
+.stamp-tools { margin-top: .35rem; }
+.stamp-tools button { font-variant-numeric: tabular-nums; }
+.stamp-clock { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
+/* more specific than the `.panel-actions input[type=text]` above, or it takes the whole line */
+.panel-actions input[type=text].shift-by { flex: 0 0 5rem; text-align: right; }
