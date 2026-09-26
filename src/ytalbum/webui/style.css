@@ -6,7 +6,7 @@
    3.43/3.16 light and 3.16/3.47 dark. Change one and the other stays as it is. */
 :root {
   --bg: #f6f5f8; --panel: #ffffff; --ink: #1d1b22; --muted: #6b6775; --line: #e2dfe8; --edge: #9185a8;
-  --accent: #6b4fd8; --accent-ink: #ffffff; --ok: #2f8a4c; --warn: #b7791f; --bad: #c0392b;
+  --accent: #6b4fd8; --accent-ink: #ffffff; --ok: #2f8a4c; --warn: #98641a; --bad: #c0392b;
   --radius: 10px; color-scheme: light;
 }
 /* dark: when chosen explicitly, or on "auto" when the system/browser prefers it */
@@ -329,7 +329,7 @@ tr.source > td { padding: .2rem .5rem .6rem; }
 button.src-pick { padding: 0 .35rem; font-size: .95em; line-height: 1.5; margin-left: .25rem; }
 button.src-pick.on { border-color: var(--accent); color: var(--accent); }
 /* The words are untouched and stay the user's; what changed is the file under them. The sentence
-   is `--ink` and only its edge is `--warn`: warn *text* measures 3.64 on the light panel, under
-   the 4.5:1 body text asks for, and this is a sentence to be read rather than a chip to be seen. */
+   is `--ink` and only its edge is `--warn`: a sentence to be read wants the body text colour, and
+   the warning belongs in the edge and the tint. */
 .timing-note { font-size: .85rem; color: var(--ink); border-left: 3px solid var(--warn);
   padding: .15rem .5rem; border-radius: 4px; background: color-mix(in srgb, var(--warn) 12%, transparent); }

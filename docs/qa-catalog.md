@@ -1339,10 +1339,13 @@ for the read-only load below. Server on 8799, everything driven through the real
   - the panel's field, "Use this video" and "Cancel" on one line (the base `input { width: 100% }`
     had taken the whole row first — found by looking, fixed with a flex basis), the refusal in
     `--bad` (5.44 on the light panel), the ⇄ button bounded like the row's other controls (3.43)
-  - the timing notice is `--ink` with a `--warn` edge rather than warn text: **warn text on the light
-    panel measures 3.64**, under the 4.5:1 body text asks for. As `--ink` on its own tint it reads
-    14.93 in light and 11.23 in dark. The page's existing warn *chips* (`.len.warn`, `.p-target.warn`)
-    have the same 3.64 and are not touched here — reported rather than changed
+  - the timing notice is `--ink` with a `--warn` edge rather than warn text: a sentence to be read
+    wants the body text colour. As `--ink` on its own tint it reads 14.93 in light and 11.23 in dark
+  - measuring it found that `--warn` itself was **3.64** on the light panel and 3.35 on the page
+    background, under the 4.5:1 body text asks for — which the page's own chips (`.len.warn`,
+    `.p-target.warn`, `.badge.warn`) were drawn in. Reported rather than changed here; the owner
+    asked for it as its own commit, and light `--warn` is `#98641a` since (**5.03** and **4.63**,
+    measured in the page; dark was already 7.83 / 8.61 and is untouched)
   - **result:** pass
 
 ## Results
