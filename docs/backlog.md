@@ -174,3 +174,59 @@ imported by `app.js` as a module — no build step, no npm. 23 tests under `node
 (`tests/shared/trim_target.json`) that both `plan.trimmed_gap` and `trimTarget` are tested against so
 the twins cannot drift. What stays browser-only: anything needing a DOM, which is what the catalog's
 Playwright sections are for.
+
+## 11. The drag grip is hard to find — OPEN, the user's call
+
+Added 2026-09-26 by the assistant, from looking at `docs/screenshots/album.jpg`. Rows can be
+dragged since P15, and the only sign of it is `⋮⋮` in the position cell: `var(--muted)`, `.9em`,
+`letter-spacing: -.12em`, which at this size renders as one faint vertical column rather than two
+of dots. It is legible — measured 5.78:1 in dark and 5.49:1 in light against the panel, well past
+any text threshold — so this is discoverability, not contrast: nothing about it says *pick me up*
+until the pointer is already on it, and the `title` that explains it (and names the Alt+↑ / Alt+↓
+alternative) only appears on hover. A user who never hovers the leftmost 10 px of a row will not
+learn the album can be reordered by hand.
+
+Three ways out, roughly in order of cost:
+
+- **A stronger glyph.** `⠿` (braille pattern dots-123456) or `⣿` draws as a proper two-column
+  grid at this size; `⋮⋮` needs positive letter-spacing to stop merging. CSS only.
+- **A hover affordance on the row**, not on the grip: the grip darkens to `--ink` and gains a
+  faint background when the pointer is anywhere on the row, so it announces itself before it is
+  aimed at. `.grip:hover` already does the colour half for the grip alone.
+- **A one-time hint** under the track table the first time an album is opened ("Drag a row by its
+  grip to reorder — or Alt+↑ / Alt+↓"), dismissed and remembered. The most discoverable and the
+  only one that needs state, in `localStorage` or in settings.
+
+Keyboard users are already served: the position field takes a typed number, and Alt+↑ / Alt+↓
+moves the focused row. Nothing here is a functional gap — it is whether the feature is findable.
+
+## 12. Control boundaries are below the WCAG contrast minimum — OPEN, the user's call
+
+Added 2026-09-26 by the assistant, out of P20. Fixing the borders on a *highlighted* row (they
+were invisible, 1.03 dark / 1.08 light with the band composited) showed that the same borders are
+thin everywhere else too — the highlighted row was the extreme of a condition the whole page has.
+`button.quiet`, the text inputs and `.badge` all draw their edge in `var(--line)`, which is chosen
+to divide two backgrounds rather than to outline a control:
+
+| pair | dark | light |
+|---|---|---|
+| `--line` on `--panel` (buttons, inputs, badges inside a panel) | **1.20** | **1.32** |
+| `--line` on `--bg` (the same controls on the page background) | **1.32** | **1.21** |
+| `--muted` on `--panel` (for comparison — the grip, secondary text) | 5.78 | 5.49 |
+| `--accent` on `--panel` (for comparison — the reset badge's border) | 5.71 | 5.62 |
+
+WCAG 2.2 **1.4.11 Non-text Contrast** asks 3:1 for the visual boundary of a control, so every
+value in the first two rows fails by a factor of about two and a half. The controls are not
+invisible — they carry a label, and inputs also carry `--panel` against `--bg` — but their edges
+are decoration rather than a boundary anyone can rely on.
+
+A fix touches one line if it is taken at the root: `--line` in `:root` and in both dark blocks
+(`style.css:2`, `:8`, `:13`). Raising it to about `#c4bfcd` in light and `#565165` in dark clears
+3:1 on both backgrounds, and changes every divider on the page with it — table row rules, panel
+edges, the header's underline — which is the actual decision, because those dividers are quiet on
+purpose and this would make the tables look ruled. The alternative is a second token
+(`--edge`, contrast-checked) used only by `button.quiet`, `input`, `.badge` and the row controls,
+leaving `--line` to go on dividing; more places to keep right, but the page keeps its calm.
+
+Not urgent and not a regression — it has been true since the first stylesheet. It is here because
+it was measured, and because the same measurement is what caught the highlighted-row case.
