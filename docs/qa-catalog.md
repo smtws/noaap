@@ -1131,10 +1131,144 @@ and on a two-disc album.
   - **result:** pass. Caught by measuring rather than by looking, which is the complement to the
     entry below
 
+## T. A control boundary you can see, and a handle you can find (P21, backlog 11 + 12)
+
+Both items came out of P20's measurements rather than from use: the highlighted-row fix (S5) was the
+extreme of a condition the whole page had, and the grip that S1 put back in line was still hard to
+spot. CSS only — no markup changed, so the glyph, the tooltip and the drag are the ones P15 shipped.
+
+**The measurement.** Every figure below comes from this, run in the page's own console (or through
+`browser_evaluate`). It exists because the first attempt at S5 lied: Chrome answers a `color-mix`
+with `color(srgb 0.6 0.52 1 / 0.14)`, whose floats are 0..1, and reading them as 0..255 gives
+plausible, wrong numbers. It also composites — a translucent band or a transparent border means
+nothing until it is laid over what is actually behind it.
+
+```js
+const CT = (() => {
+  const parse = (s) => {
+    let m = s.match(/^color\(srgb\s+([\d.eE+-]+)\s+([\d.eE+-]+)\s+([\d.eE+-]+)(?:\s*\/\s*([\d.eE+-]+))?\)$/);
+    if (m) return [+m[1] * 255, +m[2] * 255, +m[3] * 255, m[4] === undefined ? 1 : +m[4]];
+    m = s.match(/^rgba?\(([^)]+)\)$/);
+    if (m) { const p = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p[3] ?? 1]; }
+    if (s === "transparent") return [0, 0, 0, 0];
+    throw new Error("unparsed colour: " + s);
+  };
+  const over = (fg, bg) => [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3])).concat([1]);
+  const lum = (c) => { const f = (u) => (u /= 255) <= 0.03928 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4;
+    return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b);
+    return +((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)).toFixed(2); };
+  const behind = (el) => {                       // what is painted behind el, from the page up
+    const stack = [];
+    for (let n = el.parentElement; n; n = n.parentElement) stack.push(parse(getComputedStyle(n).backgroundColor));
+    stack.push(parse(getComputedStyle(document.documentElement).backgroundColor));
+    let c = [255, 255, 255, 1];
+    for (let i = stack.length - 1; i >= 0; i--) c = over(stack[i], c);
+    return c;
+  };
+  const hex = (c) => "#" + c.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, "0")).join("");
+  const edge = (el) => {                         // the control's border over its own background
+    const cs = getComputedStyle(el), back = behind(el);
+    const own = over(parse(cs.backgroundColor), back);
+    const line = over(parse(cs.borderTopColor), own);
+    return { border: hex(line), on: hex(own), ratio: ratio(line, own) };
+  };
+  return { parse, over, lum, ratio, behind, hex, edge };
+})();
+CT.edge(document.querySelector("button.quiet"));   // → { border: "#6f6882", on: "#1f1d25", ratio: 3.16 }
+```
+
+- [x] **T1 · R** — `--edge` clears 3:1 where `--line` did not
+  - the four pairs, measured in the page before and after (WCAG 2.2 1.4.11 asks 3:1 of a control's
+    visual boundary):
+
+    | pair | before (`--line`) | after (`--edge`) |
+    |---|---|---|
+    | dark, control on `--panel` | 1.20 | **3.16** |
+    | dark, control on `--bg` | 1.32 | **3.47** |
+    | light, control on `--panel` | 1.32 | **3.43** |
+    | light, control on `--bg` | 1.21 | **3.16** |
+
+  - the same 3.16 / 3.43 was read off every control that takes the token: the header's quiet
+    buttons, the filter and URL inputs, both settings selects, the settings and row text inputs, the
+    row's ⇉ and ♪, the lyrics editor's textarea (which had no border rule at all and drew the
+    browser's default box), and a plain `.badge`
+  - `--edge` is the same hue and saturation as `--line`, moved along the ramp until both pairs clear
+    3:1 with a little to spare, so the page's colour does not change — only the strength of an edge
+  - **result:** pass
+
+- [x] **T2 · R** — the dividers stayed quiet, and `.card` stayed as it was
+  - `--line` is untouched on table rules, panel and card edges, the header's underline, the sticky
+    action bar, the job and toast cards, the rail and the lyrics box frame — measured still 1.20 in
+    dark on `.panel` and `.card`, which is what "quiet" means here
+  - `.card` is a `<button>` and so is a control, but it is not in the decision's list and it is not
+    identified by its edge: it is a cover image, a title and its badges. Left alone deliberately;
+    the same goes for `.pick`, whose hover border is an affordance and whose state is a real
+    checkbox. Named here so the next reader knows it was a decision and not an oversight
+  - **result:** pass
+
+- [x] **T3 · R** — the highlighted row still needs its own rule
+  - the question the decision asked: does `--edge` make S5's override redundant? **No.** Composited
+    over the playing band, `--edge` measures **2.53** in dark and **2.82** in light — better than
+    the 1.03 / 1.08 it replaced, still short of 3:1
+  - so `tr.playing td button` keeps following the foreground: measured again after the change,
+    **4.66** dark and **4.51** light
+  - an `input` on a highlighted row is unaffected either way (3.16 / 3.43): it paints its own
+    `--panel` background, so the band is never behind its border. Only the transparent-backed
+    controls were ever the problem
+  - a plain `.badge` on the band sits at 2.53 / 2.82 and is left there: a badge is a label, not a
+    control, and the coloured ones (`mb`, `ok`, `bad`) carry meaning in their border that a
+    blanket override would flatten — measured 4.60 for `.badge.mb` on the band
+  - **result:** pass
+
+- [x] **T4 · R** — the ✕ still has no edge, on purpose
+  - `button.danger-text` measures **1.00** at rest in both themes: `border-color: transparent` is
+    what makes it a text button beside the boxed ♪. Its glyph carries it (`--bad` on the panel), and
+    where the glyph would float — the highlighted row — S5's rule already gives it 4.66 / 4.51
+  - left as it is rather than boxed: 1.4.11 asks for a boundary where the boundary is what
+    identifies the control, and here it is the red ✕
+  - **result:** pass, recorded so the 1.00 is not read later as an oversight
+
+- [x] **T5 · R** — the grip reads as a handle, and the row lights it
+  - at rest: two separated columns of three dots, `--muted`, **5.78** dark and **5.49** light
+    (contrast was never the problem — the columns merging into one stripe was)
+  - on row hover, and on keyboard focus anywhere in the row: `--ink`, **14.05** dark. Measured with
+    a real pointer over the title field of row 3 — that row's grip brightened, the others stayed
+    `rgb(154,150,166)`
+  - cursor `grab` over the handle, `grabbing` while a row is being dragged
+  - touch, where there is no hover at all: the rest state *is* the touch state. Proven by listing
+    every rule that matches `.grip` — three, of which two only *add* (colour on hover/focus, the
+    grabbing cursor). Nothing is hidden until hovered, which is why the glyph had to change too
+  - the drag itself still works after the restyle: dragging row 3 onto row 1 by the grip reordered
+    the rows to *Pale Tortured Blue, Louise, And There Will…* and renumbered 1–4. Nothing was saved
+  - **result:** pass
+
+- [x] **T6 · R** — which glyph, decided by looking
+  - the decision offered `⠿`, `⣿` or separated `⋮⋮`. All three were rendered in the live rows at
+    the row's own size and photographed at 10×: the braille pair falls back to another font on this
+    system — softer, a pixel low, and 18.9 px wide against 16.7 — while `⋮⋮` comes from the UI font
+    and draws two crisp columns once the letter-spacing stops pulling them together
+  - so: `⋮⋮` at 1.05em with `letter-spacing: .06em` (was .9em at `-.12em`). No glyph change in
+    `app.js`, which also means no dependency on a font having braille at all
+  - **result:** pass
+
+- [x] **T7 · R** — a pass over every view, both themes
+  - library, album, channel listing (*My Dark Lullabies*, 20 albums) and settings, in dark and in
+    light, looked at one by one: controls bounded, dividers unchanged, nothing newly ruled, no
+    truncation or overlap introduced, badge colours intact, the `.to-top` button bounded like the
+    rest
+  - the player bar was **not** exercised: it only renders while audio plays, and the check would
+    have played sound on the user's desktop. Its trim handles are accent on `--panel` (5.71 dark,
+    5.62 light) and already clear 3:1 without a ring, so their 1 px `--panel` outline — a separator
+    from the track line beneath, not a boundary — was left alone, against the letter of the
+    decision. Flagged rather than changed
+  - **result:** pass, with that one gap named
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the T cases (P21: `--edge` and the grip) | 7 | 0 | CSS only, measured in the page and looked at in every view and both themes. The one question the decision asked — whether `--edge` makes S5's highlighted-row rule redundant — is answered no, by measurement (2.53 / 2.82 on the band). The player bar was not exercised; see T7. |
 | 2026-09-26 | the 22 R cases | 17 | 0 in the software; 2 cases mis-specified (J8, J9) | E1, G3 and G4 deferred to the M pass. No file in the real library changed. |
 | 2026-09-26 | the M cases (A–E, H, J) | 28 | 3 real faults, 1 case impossible as written | The faults: a trim re-cut from the previous format's original and corrupted the file (B6/B7); a failed trim was recorded nowhere (I4); prune left the kept original behind (E5). E7 failed as written — a fetch did not unify the spelling. Scratch library only. |
 | 2026-09-26 | the D cases (D3, E6, F1–F3, C6) | 6 | 0 | All in the scratch library, after the plan-file backup described above. E6 was observe-only on instruction and is now run to a conclusion; C6 confirmed the unmarked-sidecar overwrite it predicted, which P2 then changed. |

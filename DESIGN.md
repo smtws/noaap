@@ -913,3 +913,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **No JavaScript test harness inside a feature package** (§9.31): the arithmetic lives in Python
   where it is tested and the browser cases are the evidence for the rest. Whether the repo gets one
   is open — `docs/backlog.md` item 10.
+
+### Decisions of 2026-09-27 (backlog 11 and 12, catalog T)
+
+- **Two edge colours, not one.** `--line` divides two surfaces and stays quiet; `--edge` outlines a
+  control and clears the 3:1 WCAG 2.2 1.4.11 asks of it. Raising `--line` itself would have been one
+  line of CSS and would have ruled every table on the page, so the cost was paid in a second token
+  instead. Which selectors take which is written above the tokens in `style.css`.
+- **A boundary is only required where the boundary is what identifies the control.** The delete ✕
+  keeps `border-color: transparent` and is identified by its red glyph; the album card is identified
+  by its cover and title. Both measured and left alone (catalog T2, T4).
+- **The drag handle is found rather than explained.** A stronger glyph and a row-level hover, no
+  stored state: a one-time hint that must be dismissed is a nag, and it would be the only piece of
+  remembered UI state in the page (backlog 11, catalog T5/T6).

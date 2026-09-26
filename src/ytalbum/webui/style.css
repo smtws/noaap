@@ -1,16 +1,22 @@
+/* Two edge colours on purpose. `--line` divides two surfaces — table rules, panel edges, the
+   header's underline — and is meant to be quiet. `--edge` outlines a *control*, where WCAG 2.2
+   1.4.11 asks 3:1 against whatever is behind it; `--line` measured 1.20/1.32 dark and 1.32/1.21
+   light against `--panel`/`--bg` and was no boundary at all (backlog 12). `--edge` is the same hue
+   and saturation, moved along the ramp until both pairs clear 3:1 with a little to spare:
+   3.43/3.16 light and 3.16/3.47 dark. Change one and the other stays as it is. */
 :root {
-  --bg: #f6f5f8; --panel: #ffffff; --ink: #1d1b22; --muted: #6b6775; --line: #e2dfe8;
+  --bg: #f6f5f8; --panel: #ffffff; --ink: #1d1b22; --muted: #6b6775; --line: #e2dfe8; --edge: #9185a8;
   --accent: #6b4fd8; --accent-ink: #ffffff; --ok: #2f8a4c; --warn: #b7791f; --bad: #c0392b;
   --radius: 10px; color-scheme: light;
 }
 /* dark: when chosen explicitly, or on "auto" when the system/browser prefers it */
 :root[data-theme="dark"] {
-  --bg: #151419; --panel: #1f1d25; --ink: #ecebf0; --muted: #9a96a6; --line: #2e2b36;
+  --bg: #151419; --panel: #1f1d25; --ink: #ecebf0; --muted: #9a96a6; --line: #2e2b36; --edge: #6f6882;
   --accent: #9b85ff; --accent-ink: #151419; --ok: #5cc27d; --warn: #e0a84a; --bad: #ef6f5f; color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #151419; --panel: #1f1d25; --ink: #ecebf0; --muted: #9a96a6; --line: #2e2b36;
+    --bg: #151419; --panel: #1f1d25; --ink: #ecebf0; --muted: #9a96a6; --line: #2e2b36; --edge: #6f6882;
     --accent: #9b85ff; --accent-ink: #151419; --ok: #5cc27d; --warn: #e0a84a; --bad: #ef6f5f; color-scheme: dark;
   }
 }
@@ -20,10 +26,11 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
 button, input { font: inherit; color: inherit; }
 button { border: 0; border-radius: 8px; padding: .5rem .9rem; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
-button.quiet { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+button.quiet { background: transparent; border: 1px solid var(--edge); color: var(--ink); }
 button.danger { background: transparent; border: 1px solid var(--bad); color: var(--bad); }
 button:disabled { opacity: .5; cursor: default; }
-input[type=text], input[type=number] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; background: var(--panel); }
+input[type=text], input[type=number] { width: 100%; border: 1px solid var(--edge); border-radius: 8px; padding: .45rem .6rem; background: var(--panel); }
+textarea { border: 1px solid var(--edge); border-radius: 8px; padding: .45rem .6rem; background: var(--panel); color: inherit; }
 .muted { color: var(--muted); }
 .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: .75rem; align-items: center; padding: .75rem 1rem;
        background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -65,7 +72,7 @@ h2 { font-size: 1rem; margin: .25rem 0 .75rem; }
 /* the badges wrap instead of being cut off: a card can carry tracks, MB, lyrics and a length */
 .card .info { font-size: .85rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: .2rem; }
 .card .info .badge { margin-left: 0; }
-.badge { display: inline-block; font-size: .72rem; padding: .05rem .4rem; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); margin-left: .25rem; }
+.badge { display: inline-block; font-size: .72rem; padding: .05rem .4rem; border-radius: 99px; border: 1px solid var(--edge); color: var(--muted); margin-left: .25rem; }
 .badge.mb, .badge.user { border-color: var(--accent); color: var(--accent); }
 .badge.ok { border-color: var(--ok); color: var(--ok); }
 .badge.bad { border-color: var(--bad); color: var(--bad); }
@@ -111,7 +118,7 @@ button.cancel { margin-left: auto; flex: none; }
 .job button { padding: .1rem .5rem; font-size: .78rem; }
 @media (max-width: 40rem) { .fields { grid-template-columns: 1fr; } td.src { display: none; } }
 .login { font-size: .85rem; color: var(--muted); display: flex; gap: .4rem; align-items: center; }
-select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .4rem .5rem; }
+select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: .4rem .5rem; }
 
 /* -- direct feedback ------------------------------------------------------------ */
 button.working { position: relative; padding-left: 2rem; opacity: .85; cursor: progress; }
@@ -150,10 +157,12 @@ td.num { width: 4.6rem; }
 .row-play { visibility: hidden; padding: .15rem .45rem; font-size: .75rem; background: var(--accent); color: var(--accent-ink); }
 tr:hover .row-play, .row-play:focus-visible { visibility: visible; }
 tr.playing td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-/* `--line` is chosen against the panel, and the highlight band sits on top of it: measured, a
-   control's edge against the band is 1.03 in dark and 1.08 in light — no boundary at all, leaving
-   a floating glyph. On a highlighted row the borders follow the foreground instead, which clears
-   3:1 in both themes (WCAG 1.4.11 asks that of a control's boundary). */
+/* The highlight band sits on top of whatever a control's edge is chosen against: measured, `--line`
+   against the band was 1.03 in dark and 1.08 in light — no boundary at all, leaving a floating
+   glyph. `--edge` does not rescue this either (2.53 and 2.82, still under the 3:1 WCAG 1.4.11 asks
+   of a control's boundary), so on a highlighted row the borders follow the foreground: 4.66 and
+   4.51. Inputs need none of this — they paint their own `--panel`, so the band is never behind
+   their border. */
 tr.playing td button, tr.playing td button.danger-text { border-color: var(--muted); }
 tr.playing td.num .n { color: var(--accent); font-weight: 700; }
 .grid-wrap { display: flex; gap: .5rem; align-items: start; }
@@ -166,7 +175,7 @@ body.has-player .rail { height: calc(100vh - 13.5rem); }
 .rail button { padding: .1rem .3rem; font-size: .7rem; line-height: 1.25; background: none; border: 0; color: var(--muted); cursor: pointer; }
 .rail button:hover, .rail button:focus-visible { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 4px; }
 .to-top { position: fixed; right: 1rem; bottom: 1rem; z-index: 5; width: 2.4rem; height: 2.4rem; padding: 0;
-  border-radius: 50%; font-size: 1.1rem; background: var(--panel); border: 1px solid var(--line); color: var(--fg); cursor: pointer; }
+  border-radius: 50%; font-size: 1.1rem; background: var(--panel); border: 1px solid var(--edge); color: var(--fg); cursor: pointer; }
 .to-top:hover { border-color: var(--accent); color: var(--accent); }
 body.has-player .to-top { bottom: 6.5rem; }
 @media (max-width: 720px) { .rail { display: none; } }
@@ -189,6 +198,9 @@ button.big { width: 2.6rem; height: 2.6rem; border-radius: 50%; padding: 0; font
 .p-seek input[type=range]::-moz-range-track { background: transparent; height: .35rem; }
 .p-seek input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: .85rem; height: .85rem; margin-top: -.25rem; border-radius: 50%; background: var(--ink); border: 2px solid var(--panel); }
 .p-seek input[type=range]::-moz-range-thumb { width: .85rem; height: .85rem; border-radius: 50%; background: var(--ink); border: 2px solid var(--panel); }
+/* the handle's ring is `--panel` on purpose: it separates the handle from the track line beneath
+   rather than outlining it. The handle itself is accent on panel — 5.71 dark, 5.62 light — so it
+   clears 1.4.11 without an `--edge` outline, which would only draw a grey box around it. */
 .p-handle { position: absolute; top: 50%; z-index: 2; width: .55rem; height: 1.1rem; margin: -.55rem 0 0 -.275rem; padding: 0; border-radius: 3px;
   background: var(--accent); border: 1px solid var(--panel); cursor: ew-resize; touch-action: none; }
 .p-handle:focus-visible { outline: 2px solid var(--ink); }
@@ -282,13 +294,18 @@ button.badge.reset {
 }
 button.badge.reset:hover, button.badge.reset:focus-visible { background: var(--accent); color: var(--accent-ink); }
 .order-mark { display: flex; gap: .4rem; align-items: center; margin: -.25rem 0 .5rem; }
+/* A handle has to say "pick me up" before the pointer is on it (backlog 11). At .9em with the
+   columns pulled together by -.12em, `⋮⋮` drew as one faint stripe, and the title that explains
+   dragging only appears once you are already there. Two separated columns, and the whole row
+   brightens the handle when the pointer or the keyboard reaches it — on touch, where there is no
+   hover at all, the glyph carries it alone, which is why the spacing is not optional. */
 .grip {
   cursor: grab; touch-action: none; user-select: none; color: var(--muted);
-  padding: 0 .15rem; font-size: .9em; letter-spacing: -.12em;
+  padding: 0 .2rem; font-size: 1.05em; line-height: 1; letter-spacing: .06em;
 }
-.grip:hover { color: inherit; }
+tr:hover .grip, tr:focus-within .grip, .grip:hover { color: var(--ink); }
 tr.dragging { opacity: .55; }
-tr.dragging .grip { cursor: grabbing; }
+tr.dragging .grip, .grip:active { cursor: grabbing; }
 tr.dragging td { background: var(--panel); }
 .p-target { font-size: .8rem; white-space: nowrap; }
 .p-target.warn { color: var(--warn); }
