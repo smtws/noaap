@@ -2329,7 +2329,7 @@ on real audio. Details and the rule for adding a case are in `docs/regression.md
   the artist the case named, so it skipped with "not in this library" — a skip that reads like a fact
   about the library and was a fact about the test. A skip message has to be true.
 
-## AI. A chip nobody could see (P38, docs/regression.md)
+## AI. A chip nobody could see (P38)
 
 Found by looking at the album screenshot for P36, not by any assertion: the element, its class, its
 title and its click handler were all correct, and it was drawn in the page background colour.
