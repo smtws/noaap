@@ -90,16 +90,28 @@ test("a draft becomes editor text, with a stamp only where the provider gave one
   assert.equal(draftText(null), "");
 });
 
-test("the draft notice never claims more than a guess", () => {
-  const drafted = { provider: "deepgram", model: "nova-3", lines: [
-    { text: "one", start: 1 }, { text: "two", start: null }] };
+test("the draft notice says how much of the song it actually heard", () => {
+  // the old sentence, "11 of 11 lines came with a time", is true of every draft ever made
+  const drafted = { provider: "deepgram", model: "nova-3",
+    parameters: { covered: "61.3", length: "218.1", gaps: "4", gap_longer_than: "6",
+      heard: "the separated voice" },
+    lines: [{ text: "one", start: 1 }, { text: "two", start: null }] };
   const text = draftNotice(drafted);
   assert.match(text, /drafted by deepgram\/nova-3/);
   assert.match(text, /a machine's guess/);
-  assert.match(text, /half a song for some tracks/);
-  assert.match(text, /1 of 2 lines came with a time/);
-  assert.doesNotMatch(text, /yours/);
+  assert.match(text, /Words for 1:01.3 of 3:38.1 of audio/);
+  assert.match(text, /4 gaps longer than 6 s marked in the text/);
+  assert.match(text, /It listened to the separated voice/);
+  assert.doesNotMatch(text, /lines came with a time/);
   assert.equal(draftNotice(null), null);
+});
+
+test("and says nothing it cannot know", () => {
+  const bare = { provider: "elevenlabs", model: "scribe_v2", lines: [{ text: "one", start: 1 }] };
+  const text = draftNotice(bare);
+  assert.match(text, /a machine's guess/);
+  assert.doesNotMatch(text, /Words for/);          // no length, no claim
+  assert.doesNotMatch(text, /listened to/);
 });
 
 // -- a second opinion (§9.38) -----------------------------------------------------------------

@@ -30,6 +30,8 @@ timing = [
     # demucs imports numpy at module level and does not declare it (demucs/transformer.py), so a
     # clean `uv sync --extra timing` installed the extra and still could not load the provider
     "numpy>=1.26",
+    # writing the separated voice to a file for a transcriber to hear (§9.45)
+    "soundfile>=0.12",
 ]
 # A second opinion on every alignment, and the ability to draft words for a track that has none.
 # It carries a Whisper decoder — **3.09 GB of model on first use** — and is worth it only if you

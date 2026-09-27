@@ -1184,6 +1184,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    every saved verdict, and a track a user reports as wrongly judged is a recorded case with its two
    spans already in it.
 
+45. ✅ A draft that reads like a song (2026-09-27, P34, from the user's own test). Their first real
+   draft came back as eleven lines for a 3:25 song, one of them a whole verse, with a minute of
+   silence nobody was told about, under a notice reading *"11 of 11 lines came with a time"*. Three
+   things were wrong, and only one of them was the vendor's.
+   **A lyric's lines are pauses, not full stops.** Lines are built from the word timings: a pause
+   over `LINE_GAP` (0.6 s) ends a line, a line may not run past `LINE_SECONDS` (8 s) or hold more
+   than `LINE_WORDS` (12), and punctuation may end a line but can never hold one together across a
+   pause. Where a line must still be split it splits **at its own longest internal pause** — cutting
+   at the word count left a line reading just *"Rauch."*, which only rendering the real output
+   showed. A vendor's sentences are now used for nothing except the case where it returns no word
+   timings at all.
+   **Silence is written down.** A stretch over `SILENCE_GAP` (6 s) with no words becomes a line of
+   its own — `… (46 s without words)`, stamped where the singing stopped — because in an editor a
+   hole looks exactly like an instrumental, and this was a transcriber missing every chorus.
+   **The notice counts seconds, not lines.** *"Words for 1:01 of 3:38 of audio, with 4 gaps longer
+   than 6 s marked in the text."* The old sentence was true of every draft ever made: of course each
+   line has a time, the machine wrote them from times.
+   **A transcriber listens to the voice, not the band.** Measured on that one song against LRCLIB's
+   own lyric for the recording (`docs/qa-catalog.md`, section AF): Deepgram found 16 of 52 lines on
+   the mix and **32** on the separated voice; the local decoder 28 and **38**. So a draft separates
+   first wherever the `timing` extra is installed, falls back to the mix where it is not, and the
+   notice says which it heard. For a paid provider this also means the isolated voice leaves the
+   house instead of the record. A vendor draft is therefore at its best only with the local extra
+   installed, which the README says in one sentence.
+   And *more lines is not better*: on the mix the local decoder wrote 71 lines and found 28 of the
+   reference's, writing words over the instrumental passages; on the voice it wrote 54 — almost
+   exactly the reference's 52 — and found 38.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1407,3 +1435,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   provenance as numbers; neither decides anything.
 - **Collect the cases the measurement could not have.** Saved alignments carry both methods' figures,
   so the thresholds can be widened from the library instead of from another sixteen copies.
+
+### Decisions of 2026-09-27 (a draft that reads like a song, §9.45)
+
+- **Break where the singing pauses.** Punctuation is the vendor's; pauses are the song's.
+- **Say what was not heard.** A hole in a draft is invisible unless it is written down.
+- **Count what the machine covered, not what it emitted.** "N of N lines came with a time" is a
+  sentence that cannot be false.
+- **Give the transcriber the voice.** It doubles what a vendor hears on real material, and it sends
+  less of the recording away.

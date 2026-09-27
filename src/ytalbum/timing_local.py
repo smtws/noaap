@@ -383,6 +383,36 @@ class LocalTiming:
         return vocals, int(separator.samplerate)  # type: ignore[attr-defined]
 
 
+def separated_voice(audio: Path, into: Path, log: Callable[[str], None] | None = None,
+                    check: Callable[[], None] | None = None) -> Path | None:
+    """Write the track's isolated voice to `into`, or return None if that cannot be done (§9.45).
+
+    A transcriber hears far more of a song when the band is taken off it. Measured on one real
+    track against its own published lyric (`docs/qa-catalog.md`, section AF): Deepgram found 16 of
+    52 lines on the mix and **32** on the voice; the local decoder 28 and **38**. It is also less of
+    the recording to send anywhere, which matters when the transcriber is somebody else's computer.
+
+    Never fatal: without the `ytalbum[timing]` extra, or if anything goes wrong, the caller falls
+    back to the mixed track, which is what it always sent.
+    """
+    say = log or (lambda _: None)
+    try:
+        import soundfile
+        import torch  # noqa: F401
+    except ImportError:
+        return None
+    engine = LocalTiming(log=say)
+    try:
+        wave, rate = engine._vocals(audio, engine.resolved_device(), check)
+        soundfile.write(into, wave[0].cpu().numpy(), rate)
+    except (TimingUnavailable, RuntimeError, OSError) as e:
+        say(f"could not separate the voice ({e}); listening to the mixed track instead")
+        return None
+    finally:
+        engine.release()
+    return into
+
+
 def sung_stretches(wave, rate: int, frame: float = 0.1, bridge: float = 0.4,
                    floor: float = 0.06) -> list[tuple[float, float]]:
     """When somebody is singing, from the separated vocal the aligner already made (§9.44).

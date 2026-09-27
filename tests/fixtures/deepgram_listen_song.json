@@ -1,0 +1,108 @@
+{
+ "_source": "a real POST /v1/listen for one 3:38 track, 2026-09-27 — the SHAPE, trimmed to twelve words around the largest hole. The full transcript is a record's lyrics and is not kept here.",
+ "_note": "the 57 s gap in the middle is the point: lines are built from the word timings (§9.45), a pause ends a line, and a hole this long becomes a marker line in the draft instead of the next line quietly jumping a minute.",
+ "metadata": {
+  "model_info": {
+   "name": "nova-3"
+  },
+  "duration": 218.061,
+  "channels": 1
+ },
+ "results": {
+  "channels": [
+   {
+    "alternatives": [
+     {
+      "transcript": "zwanzig Hiebe, die brachten ihn schließlich zu Fall. Mehr Teufel als Mann.",
+      "words": [
+       {
+        "word": "zwanzig",
+        "start": 144.045,
+        "end": 144.525,
+        "confidence": 0.9980469,
+        "punctuated_word": "zwanzig"
+       },
+       {
+        "word": "hiebe",
+        "start": 144.525,
+        "end": 145.405,
+        "confidence": 0.90934247,
+        "punctuated_word": "Hiebe,"
+       },
+       {
+        "word": "die",
+        "start": 145.405,
+        "end": 145.565,
+        "confidence": 1.0,
+        "punctuated_word": "die"
+       },
+       {
+        "word": "brachten",
+        "start": 145.565,
+        "end": 146.125,
+        "confidence": 0.9980469,
+        "punctuated_word": "brachten"
+       },
+       {
+        "word": "ihn",
+        "start": 146.125,
+        "end": 146.44499,
+        "confidence": 0.9970703,
+        "punctuated_word": "ihn"
+       },
+       {
+        "word": "schließlich",
+        "start": 146.44499,
+        "end": 147.08499,
+        "confidence": 0.9921875,
+        "punctuated_word": "schließlich"
+       },
+       {
+        "word": "zu",
+        "start": 147.08499,
+        "end": 147.325,
+        "confidence": 0.9951172,
+        "punctuated_word": "zu"
+       },
+       {
+        "word": "fall",
+        "start": 147.325,
+        "end": 147.725,
+        "confidence": 0.9333496,
+        "punctuated_word": "Fall."
+       },
+       {
+        "word": "mehr",
+        "start": 204.855,
+        "end": 205.17499,
+        "confidence": 0.2322998,
+        "punctuated_word": "Mehr"
+       },
+       {
+        "word": "teufel",
+        "start": 205.17499,
+        "end": 205.73499,
+        "confidence": 0.9760742,
+        "punctuated_word": "Teufel"
+       },
+       {
+        "word": "als",
+        "start": 205.73499,
+        "end": 206.135,
+        "confidence": 0.9980469,
+        "punctuated_word": "als"
+       },
+       {
+        "word": "mann",
+        "start": 206.135,
+        "end": 206.53499,
+        "confidence": 0.90112305,
+        "punctuated_word": "Mann."
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

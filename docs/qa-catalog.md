@@ -1755,6 +1755,60 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AF. A draft that reads like a song (P34, DESIGN §9.45)
+
+From the user's own test: **“draft the words” on Mr. Hurley & Die Pulveraffen — *Blackbeard*** (3:38)
+came back as **eleven lines**, one of them a whole verse of three sung lines, with a minute of silence
+in the middle that nothing on the screen mentioned, under the notice *“11 of 11 lines came with a
+time”*. Two faults, one ours and one the vendor's, measured 2026-09-27 on a read-only copy.
+
+- [x] **AF1 · M** — the line builder, on the user's own response
+
+  No new request: the same Deepgram answer, re-read.
+
+| | lines | longest line | gap markers | what the notice says |
+|---|---|---|---|---|
+| before | 11 | a whole verse (three sung lines) | none | "11 of 11 lines came with a time" |
+| after | **17** | **6.5 s** | **4** | "Words for 1:01.3 of 3:38.1 of audio, with 4 gaps longer than 6 s marked in the text" |
+
+  - lines now break where the singing pauses (over 0.6 s), not where the vendor put a full stop;
+    where a line must still be split, it splits **at its own longest internal pause** — the first
+    attempt cut at the twelfth word and left a line reading just *“Rauch.”*
+  - the holes are visible: `… (46 s without words)` stamped where the singing stopped
+  - **result:** pass
+
+- [x] **AF2 · M** — what the transcriber should listen to: the mix, or the separated voice?
+
+  Four arms on the same 218 s track, scored against **LRCLIB's own synced lyric for the recording**
+  (52 usable lines), which is a reference rather than my ear. Two of the arms are paid requests; that
+  is all the money this section spent.
+
+| arm | lines | covered | gaps | longest line | reference lines found | time |
+|---|---|---|---|---|---|---|
+| whisper · mix | 71 | 152.6 s | 0 | 8.9 s | 28 of 52 | 208 s |
+| whisper · **stem** | 54 | 144.4 s | 1 | 11.0 s | **38 of 52** | 116 s |
+| deepgram · mix | 17 | 61.3 s | 4 | 6.9 s | 16 of 52 | 3.9 s |
+| deepgram · **stem** | 27 | 103.3 s | 4 | 6.6 s | **32 of 52** | 21 s |
+
+  - **the voice wins for both vendors**: Deepgram doubles (16 → 32), the local decoder gains a third
+    (28 → 38). Drafting now separates first wherever the `timing` extra is installed, and says so
+  - **more lines is not better**: whisper on the mix wrote the *most* lines (71) and found the
+    *fewest* of the reference's (28) — it writes words over the instrumental passages. The stem arm
+    produced 54, almost exactly the reference's 52, and found ten more of them
+  - sending the isolated voice instead of the record is also less of somebody's music leaving the
+    house, which is worth having for free
+  - **result:** pass
+
+### The thing this found that was bigger than the package
+
+**LRCLIB has this song's words** — entry 24423598, 53 timed lines, the same recording. ytalbum
+refused it because the file is **218.06 s** and the entry says **213.68 s**: 4.4 s apart, against
+`TOLERANCE = 3.0`. The user was offered a machine's guess for a song whose words were one lookup
+away, and the eleven lines they got were a poor copy of something that already existed. A 2% length
+difference on a four-minute song is ordinary, so this is unlikely to be one track. It is not fixed
+here — a tuned constant with its own reasons does not get widened inside a package about line breaks
+— and it is queued as its own measurement-first package.
+
 ## AE. Telling which method lost the song (P33, DESIGN §9.44, backlog 21)
 
 Run 2026-09-27 on the sixteen P27 tracks (copied read-only out of the real library again) plus two
@@ -2121,6 +2175,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AF cases (P34: a draft that reads like a song) | 2 | 0 | The user's own draft, re-read: 11 lines → 17, longest a whole verse → 6.5 s, four gap markers, and a notice that counts seconds instead of lines. Four arms scored against LRCLIB's lyric for the recording: separating the voice doubles what Deepgram hears (16 → 32 of 52) and gains the local decoder a third (28 → 38). 665 pytest + 78 node. |
 | 2026-09-27 | the AE cases (P33: which method lost the song) | 1 | 0 | Eighteen tracks, both methods, every candidate signal. Coverage of the singing separates cleanly (lost 0.41–0.70, good 0.86–1.12): five right, none wrong, none missed, and the held-out pair correct after the thresholds were fixed. Two signals measured and discarded, including the one the task specified. 646 pytest + 77 node. |
 | 2026-09-27 | the AD cases (P32: offering an album to MusicBrainz) | 3 | 0 in the design; 1 of my own (a second badge printing the length chip's own numbers with the opposite implication), fixed by making the chip the button | Against a stand-in for their release editor — **nothing touched musicbrainz.org**. 41 seeded fields including eleven tracks with millisecond lengths measured from the files, the refusal for compilations shown where the button would be, and the recording deep link the seeding format cannot replace. 636 pytest + 75 node. |
 | 2026-09-27 | the AC cases (P31: publishing to LRCLIB) | 5 | 0 | Against a server speaking LRCLIB's documented publish flow — **nothing reached lrclib.net**, and the only live request in the package was one `request-challenge`, which publishes nothing. The gate, the confirm, the payload (with the file's length), the fingerprint, the never-twice rule and a refusal that changes nothing on disk. 621 pytest + 70 node. |

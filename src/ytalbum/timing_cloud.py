@@ -203,20 +203,23 @@ class DeepgramTiming(CloudTiming):
             check()
         alternative = (((body.get("results") or {}).get("channels") or [{}])[0].get("alternatives") or [{}])[0]
         words = alternative.get("words") or []
-        # `paragraphs` is only present when asked for (and the docs do not promise it for every
-        # model), so its sentences are used when they are there and the words are grouped otherwise
+        # **Lines come from the word timings, never from the sentences** (§9.45). Their sentences are
+        # punctuation, and a song's lines are pauses: the user's first real draft came back as eleven
+        # lines for a 3:25 song, one of them a whole verse, because a full stop was the only break
+        # the vendor offered. The sentences are still asked for — they are the fallback when a model
+        # returns no word timings at all — but they can never hold a line together across a pause.
         sentences = [s for p in ((alternative.get("paragraphs") or {}).get("paragraphs") or [])
                      for s in (p.get("sentences") or [])]
-        if sentences:
+        if words:
+            lines = lines_from_words(words)
+        else:
             lines = [TimedLine(text=str(s.get("text", "")).strip(),
                                start=None if s.get("start") is None else float(s["start"]),
                                end=None if s.get("end") is None else float(s["end"]))
                      for s in sentences if str(s.get("text", "")).strip()]
-        else:
-            lines = lines_from_words(words)
         return Timed(lines=lines, provider=self.name, model=self.MODEL,
                      parameters={"words": str(len(words)),
-                                 "grouped_by": "sentences" if sentences else "words",
+                                 "grouped_by": "words" if words else "sentences",
                                  "language": str(language or "multi")})
 
 

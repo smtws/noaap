@@ -425,31 +425,117 @@ def line_starts(owners: list[int], wanted: list[str], got: list[dict[str, Any]])
 SENTENCE_END = re.compile(r"[.!?…]$")
 
 
-def lines_from_words(words: list[dict[str, Any]], per_line: int = 9) -> list[TimedLine]:
-    """A transcript's words grouped into lines a lyric editor can hold.
+# A lyric line is a phrase between two pauses, not a sentence between two full stops (§9.45). The
+# user's own test showed what the difference costs: one "line" of a draft was a whole verse of three
+# sung lines, because the vendor's punctuation put a full stop there and nowhere else.
+LINE_GAP = 0.6        # a pause this long between two words ends the line
+LINE_SECONDS = 8.0    # and no line runs longer than this, however the singer breathes
+LINE_WORDS = 12       # nor holds more words than this
+SILENCE_GAP = 6.0     # a stretch this long with no words at all gets a line of its own, saying so
 
-    Vendors return words, not verses. Breaking at sentence punctuation and otherwise every few
-    words gives something a person can read and re-break by hand; it is a draft, and it says so.
+
+def lines_from_words(words: list[dict[str, Any]], gap: float = LINE_GAP,
+                     seconds: float = LINE_SECONDS, most: int = LINE_WORDS) -> list[TimedLine]:
+    """A transcript's words grouped into lines a lyric editor can hold — by **when they were sung**.
+
+    Three rules, in order: a pause longer than `gap` between two words ends a line, because that is
+    what a line break is in a song; a line may not run longer than `seconds` or hold more than
+    `most` words, because a singer who never pauses still sings in phrases; and punctuation *may*
+    end a line but can never hold one together across a pause. Before this the breaks followed the
+    vendor's sentences alone, and a draft of a 3:25 song came back as eleven lines, one of them a
+    whole verse (`docs/qa-catalog.md`, section AF).
     """
     lines: list[TimedLine] = []
-    current: list[str] = []
-    start: float | None = None
-    end: float | None = None
+    current: list[tuple[str, float | None, float | None]] = []
+
+    def flush(upto: int | None = None) -> None:
+        """Turn the words held so far (or the first `upto` of them) into a line."""
+        nonlocal current
+        take, current = (current, []) if upto is None else (current[:upto], current[upto:])
+        if not take:
+            return
+        starts = [a for _, a, _ in take if a is not None]
+        ends = [b for _, _, b in take if b is not None]
+        lines.append(TimedLine(text=" ".join(t for t, _, _ in take),
+                               start=starts[0] if starts else None, end=ends[-1] if ends else None))
+
+    def widest_gap() -> int | None:
+        """Where a line that must be split should be split: at its own longest pause.
+
+        Cutting at the word count instead leaves orphans — the user's draft had a line reading
+        just "Rauch." because the twelfth word happened to fall there.
+        """
+        best, where = 0.0, None
+        for i in range(1, len(current)):
+            before, after = current[i - 1][2], current[i][1]
+            if before is not None and after is not None and after - before > best:
+                best, where = after - before, i
+        return where
+
     for w in words:
         text = str(w.get("punctuated_word") or w.get("text") or w.get("word") or "").strip()
         if not text:
             continue
-        if start is None:
-            start = None if w.get("start") is None else float(w["start"])
-        if w.get("end") is not None:
-            end = float(w["end"])
-        current.append(text)
-        if SENTENCE_END.search(text) or len(current) >= per_line:
-            lines.append(TimedLine(text=" ".join(current), start=start, end=end))
-            current, start, end = [], None, None
-    if current:
-        lines.append(TimedLine(text=" ".join(current), start=start, end=end))
+        at = None if w.get("start") is None else float(w["start"])
+        ends_at = None if w.get("end") is None else float(w["end"])
+        last_end = next((b for _, _, b in reversed(current) if b is not None), None)
+        started = next((a for _, a, _ in current if a is not None), None)
+        # the pause *before* this word decides whether it belongs to the line being built
+        if current and last_end is not None and at is not None and at - last_end > gap:
+            flush()
+        elif current and ((started is not None and at is not None and at - started > seconds)
+                          or len(current) >= most):
+            flush(widest_gap())
+        current.append((text, at, ends_at))
+        if SENTENCE_END.search(text):
+            flush()
+    flush()
     return lines
+
+
+def with_gaps(lines: list[TimedLine], length: float | None = None,
+              gap: float = SILENCE_GAP) -> list[TimedLine]:
+    """Say where the machine heard nothing, instead of letting the next line jump a minute (§9.45).
+
+    A draft that goes from 0:23 to 1:16 without a word looks, in the editor, exactly like a song
+    with a long instrumental — and exactly like a transcriber that missed the whole chorus. It was
+    the second, and nothing on the screen said so.
+    """
+    out: list[TimedLine] = []
+    last: float | None = None
+    for line in lines:
+        if last is not None and line.start is not None and line.start - last > gap:
+            out.append(TimedLine(text=f"\u2026 ({round(line.start - last)} s without words)", start=round(last, 2)))
+        out.append(line)
+        if line.end is not None:
+            last = line.end
+        elif line.start is not None:
+            last = line.start
+    if length and last is not None and length - last > gap:
+        out.append(TimedLine(text=f"\u2026 ({round(length - last)} s without words)", start=round(last, 2)))
+    return out
+
+
+def coverage(lines: list[TimedLine], length: float | None = None,
+             gap: float = SILENCE_GAP) -> dict[str, str]:
+    """How much of the audio a draft actually has words for, and how many holes it left.
+
+    The old notice said "11 of 11 lines came with a time", which is true of any draft and tells
+    nobody anything: of course every line the machine wrote has a time, it wrote them from times.
+    """
+    spoken = [line for line in lines if line.start is not None and not line.text.startswith("\u2026 (")]
+    covered = sum((line.end or line.start or 0) - (line.start or 0) for line in spoken)
+    holes, last = 0, None
+    for line in spoken:
+        if last is not None and line.start is not None and line.start - last > gap:
+            holes += 1
+        last = line.end if line.end is not None else line.start
+    if length and last is not None and length - last > gap:
+        holes += 1
+    got = {"covered": f"{covered:.1f}", "gaps": str(holes), "gap_longer_than": f"{gap:g}"}
+    if length:
+        got["length"] = f"{length:.1f}"
+    return got
 
 
 # -- a provider on another machine ------------------------------------------------------------

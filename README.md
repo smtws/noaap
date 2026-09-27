@@ -423,6 +423,20 @@ Neither is retried: one press is one request, so one press is at most one charge
 ### Drafting the words of a track that has none
 
 Where a provider can transcribe and a track has **no words at all**, its lyrics panel offers
+**ytalbum separates the voice first** wherever the `ytalbum[timing]` extra is installed, and sends
+*that* to the transcriber rather than the finished track. It is worth doing: on one real song, scored
+against its own published lyric, Deepgram found 16 of 52 lines on the mix and **32** on the voice,
+and the local decoder 28 against **38** (`docs/qa-catalog.md`, section AF). So a draft from a paid
+provider is at its best only when the local extra is installed too — and where it is, what leaves
+your machine is the isolated voice rather than the record. Without the extra it sends the track, as
+it always did, and the notice says which it heard.
+
+**Lines come from the singing.** A draft breaks where the singer pauses, not where the transcriber
+put a full stop, and a stretch of six seconds or more with no words becomes a line of its own —
+`… (46 s without words)` — so a chorus the machine missed is visible instead of looking like an
+instrumental. The notice says how much of the song it actually heard: *"Words for 1:01 of 3:38 of
+audio, with 4 gaps longer than 6 s marked in the text."*
+
 **“✎ draft the words”**. The transcript lands in the editor labelled as what it is — *a machine's
 guess, half a song for some tracks* — with a stamp on each line the vendor timed. Nothing is saved
 until you save it, and what is saved remembers that the words were drafted (the panel then says

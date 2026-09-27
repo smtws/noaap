@@ -150,7 +150,13 @@ def test_elevenlabs_transcribes_words_and_leaves_out_the_noise(audio):
 # -- Deepgram -----------------------------------------------------------------------------
 
 
-def test_deepgram_uses_its_own_sentences_when_it_sends_them(audio):
+def test_deepgram_lines_come_from_the_word_timings_not_the_sentences(audio):
+    """A song's lines are pauses, not full stops (§9.45).
+
+    Here the two agree — the fixture's sentences and its 0.6 s pause fall in the same place — and
+    what matters is that the *pause* is what produced the break: `grouped_by` says words, and the
+    test below shows a case where the two disagree and the pause wins.
+    """
     server = Recorder({"/v1/listen": (200, fixture("deepgram_listen"))})
     try:
         client = DeepgramTiming("dg-key")
@@ -160,7 +166,7 @@ def test_deepgram_uses_its_own_sentences_when_it_sends_them(audio):
         server.close()
     assert [line.text for line in timed.lines] == ["One two three.", "Four five."]
     assert [line.start for line in timed.lines] == [0.5, 2.4]
-    assert timed.parameters["grouped_by"] == "sentences"
+    assert timed.parameters["grouped_by"] == "words"
     sent = server.requests[0]
     assert sent["headers"]["Authorization"] == "Token dg-key"
     assert "language=en" in sent["query"] and "model=nova-3" in sent["query"]

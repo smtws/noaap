@@ -351,10 +351,20 @@ export function draftText(timed) {
 export function draftNotice(timed) {
   if (!timed) return null;
   const by = timed.provider ? `${timed.provider}/${timed.model}` : "a provider";
-  const stamped = ((timed.lines) || []).filter((l) => l.start != null).length;
-  const total = ((timed.lines) || []).length;
+  const p = timed.parameters || {};
+  // What the old notice said — "11 of 11 lines came with a time" — is true of every draft ever
+  // made and tells nobody anything: the machine wrote those lines *from* times. What a person
+  // needs to know is how much of their song it actually heard (\u00a79.45).
+  const covered = Number(p.covered || 0);
+  const length = Number(p.length || 0);
+  const gaps = Number(p.gaps || 0);
+  const heard = p.heard ? ` It listened to ${p.heard}.` : "";
+  const how = length
+    ? `. Words for ${asTime(covered)} of ${asTime(length)} of audio`
+      + (gaps ? `, with ${gaps} gap${gaps > 1 ? "s" : ""} longer than ${p.gap_longer_than || 6} s marked in the text.` : ".")
+    : ".";
   return `drafted by ${by} \u2014 a machine's guess, half a song for some tracks: read it before you save it`
-    + (stamped ? `. ${stamped} of ${total} lines came with a time.` : ".");
+    + how + heard;
 }
 
 // -- what a panel offers --------------------------------------------------------------------

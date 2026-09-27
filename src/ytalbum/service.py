@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import tempfile
 import threading
 from collections import Counter
 from collections.abc import Callable
@@ -42,7 +43,7 @@ from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .search import SearchResult, search_artist
 from .tag import audio_length
-from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, plain_lines
+from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, coverage, plain_lines, with_gaps
 from .timing import provider as timing_provider
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
@@ -658,10 +659,31 @@ class Service:
 
         engine = self._timing(TRANSCRIBE, "derive words")
         audio = album_dir / track.filename
-        self.log(f"asking {engine.name} to draft the words of {track.title} · {_minutes(audio)} of audio")
-        timed = engine.transcribe(audio, check=self.check)
+        # A transcriber hears far more of a song with the band taken off it — measured, and by a
+        # lot (§9.45) — and where the transcriber is somebody else's computer, the isolated voice
+        # is also less of the record to send. Where no separator is installed this is the mixed
+        # track, exactly as before.
+        # imported here and nowhere else, so an installation with no timing extra still never
+        # touches this module (§9.36)
+        from .timing_local import separated_voice
+
+        with tempfile.TemporaryDirectory(prefix="ytalbum-voice-") as tmp:
+            voice = separated_voice(audio, Path(tmp) / "voice.wav", self.log, self.check)
+            heard = "the separated voice" if voice else "the mixed track"
+            self.log(f"asking {engine.name} to draft the words of {track.title} · "
+                     f"{_minutes(audio)} of audio · listening to {heard}")
+            timed = engine.transcribe(voice or audio, check=self.check)
+        timed.parameters["heard"] = heard
+        # where the machine heard nothing for a long stretch, the draft says so rather than letting
+        # the next line jump a minute — and the notice counts what it actually covered (§9.45)
+        length = track.file_length or track.duration
+        timed.lines = with_gaps(timed.lines, length)
+        timed.parameters.update(coverage(timed.lines, length))
         text = "\n".join(line.text for line in timed.lines)
-        self.log(f"drafted {len(timed.lines)} lines · {timed.by} — a machine's guess, check it")
+        heard = float(timed.parameters.get("covered", 0) or 0)
+        self.log(f"drafted {len(timed.lines)} lines · {timed.by} — words for {heard:.0f} s of "
+                 f"{length:.0f} s of audio, {timed.parameters.get('gaps', '0')} gaps — a machine's guess, check it"
+                 if length else f"drafted {len(timed.lines)} lines · {timed.by} — a machine's guess, check it")
         return {"timed": timed.to_dict(), "by": timed.by, "lines": len(timed.lines),
                 "placed": len(timed.lines) - len(timed.unplaced), "text": text}
 
