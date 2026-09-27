@@ -35,6 +35,8 @@ from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .search import SearchResult, search_artist
+from .timing import ALIGN, TimingUnavailable, plain_lines
+from .timing import provider as timing_provider
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
 from .trim import ORIGINALS, kept_originals, originals_of
@@ -494,7 +496,7 @@ class Service:
         self.log("lyrics: " + (", ".join(f"{n} {what}" for what, n in counts.most_common()) or "no tracks"))
         return outcomes
 
-    def save_lyrics(self, source_id: str, video_id: str, text: str) -> Outcome:
+    def save_lyrics(self, source_id: str, video_id: str, text: str, timed_by: str = "") -> Outcome:
         """Write the words a user typed beside one track — or clear them — and retag it.
 
         This is the one door into the ownership contract from the UI side: it does by hand what
@@ -514,12 +516,16 @@ class Service:
             write_sidecar(album_dir, track, body)  # records lyrics_sha as the bytes it wrote
             track.lyrics = status_of(body)
             track.provenance["lyrics"] = Provenance.USER
-            self.log(f"wrote your lyrics for {track.title} ({track.lyrics})")
+            # the words stay the user's; the *clock* may be a machine's, and says so (§9.36)
+            track.lyrics_timed_by = timed_by or None
+            self.log(f"wrote your lyrics for {track.title} ({track.lyrics})"
+                     + (f", timed by {timed_by}" if timed_by else ""))
         else:
             # empty is a clear, not an empty file — and it gives the mark up with the words, so
             # `--refetch` may bring lrclib's back, exactly as deleting the file by hand does
             remove_sidecar(album_dir, track.filename)
             track.lyrics, track.lyrics_sha = "none", None
+            track.lyrics_timed_by = None
             track.provenance.pop("lyrics", None)
             self.log(f"removed the lyrics of {track.title}")
         save_plan(plan, album_dir)
@@ -528,6 +534,39 @@ class Service:
         run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
+
+    def align_lyrics(self, source_id: str, video_id: str, text: str) -> dict[str, Any]:
+        """Put the words the editor is holding onto this track's clock. **Writes nothing** (§9.36).
+
+        The words come from the page, not from the disk, because the user may have just typed them;
+        what comes back is a proposal the editor shows and the user saves — or does not. That is
+        what keeps the ownership contract (§9.21) out of this entirely: the only door to the disk is
+        still `save_lyrics`, with the user's hand on it.
+        """
+        found = self.find_album(source_id)
+        if not found:
+            raise ValueError(f"unknown album {source_id}")
+        album_dir, plan = found
+        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        if not track:
+            raise ValueError("no such track in this album")
+        if track.state != "done":
+            raise ValueError(f"{track.title}: there is no file to align against yet")
+        lines = plain_lines(text)
+        if not lines:
+            raise ValueError("there are no words to place")
+
+        engine = timing_provider(self.cfg)
+        if ALIGN not in engine.capabilities():
+            raise TimingUnavailable(f"the {engine.name} timing provider cannot align words")
+        if hasattr(engine, "log"):
+            engine.log = self.log
+        self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} …")
+        timed = engine.align(album_dir / track.filename, lines, check=self.check)
+        placed = len(lines) - len(timed.unplaced)
+        self.log(f"placed {placed}/{len(lines)} lines · {timed.by}"
+                 + (f" · {len(timed.unplaced)} left unplaced" if timed.unplaced else ""))
+        return {"timed": timed.to_dict(), "by": timed.by, "placed": placed, "lines": len(lines)}
 
     def sync_lyrics(self, source_id: str) -> Outcome:
         """Make the plan agree with the `.lrc` files beside the tracks, and the tags with the plan.

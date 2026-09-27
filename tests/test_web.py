@@ -527,7 +527,8 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
 
     got = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()
     assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
-                   "timings": None}  # they were written for the file that is there
+                   "timed_by": None,  # nobody's clock but LRCLIB's
+                   "timings": None}  # and they were written for the file that is there
 
     # point the track at another video and the same panel says the timings are for the old file
     from ytalbum.download import save_plan

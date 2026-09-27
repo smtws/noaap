@@ -47,6 +47,12 @@ Comes with a command line and a small web app for the library.
 - **You can fix an album where you can see it.** Drag rows to reorder (or Alt+↑/↓), set trim
   points from what you are hearing and watch the length come right before you save, write or
   correct lyrics in the panel that shows them, and run the offline tidy-up from a button.
+- **Or let a model place them, if you want one.** Off by default and no dependency of ytalbum: with
+  a *timing provider* configured, one button in the editor puts every line on the file's clock. It
+  writes nothing — the stamps appear in the editor, you play a line to check them and press Save, and
+  the words stay yours while the clock is recorded as the provider's. Measured on twenty real tracks
+  before it was built: a median of under a second per line, growled vocals no harder than clean ones
+  ([the spike](docs/spikes/2026-09-alignment.md)).
 - **You can time the lyrics by tapping.** With the song playing, one key writes the moment you are
   hearing onto the line the cursor is in and moves to the next — in the *file's* clock, which is not
   the player's on a trimmed track, and rounded to a tenth. Each stamp can then be played back and
@@ -276,6 +282,7 @@ network.
 | `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
 | `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
 | `/api/prune` | `{id}` | Delete tracks that left the playlist. |
+| `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
 | `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
 | `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
 | `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
@@ -287,6 +294,51 @@ network.
 
 Jobs run in two lanes: everything that changes the library runs strictly one at a time,
 while searches and previews run alongside.
+
+## Optional: placing lyrics on the clock
+
+Entirely optional, and **nothing below is installed or imported unless you ask for it**. With no
+provider configured — the default — ytalbum has no machine-learning dependency, the editor shows no
+alignment action, and everything else works exactly as it does now.
+
+Two providers, and the choice is mostly about which machine does the arithmetic:
+
+| `timing_provider` | what it needs | where the audio goes | how long one track takes |
+|---|---|---|---|
+| `none` (default) | nothing | nowhere | — |
+| `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | ~12 s with a GPU, ~2 minutes without |
+| `http` | nothing on this machine | to the machine you name, and no further | the same, plus a second |
+
+```sh
+# on the machine that will do the work (it may be this one)
+uv pip install "ytalbum[timing]"
+# without a usable GPU, ask for the small CPU build of torch first — 200 MB rather than some 4 GB:
+#   uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+ytalbum timing-serve --port 8770          # ... if it is a different machine
+```
+
+and in `~/.config/ytalbum/config.toml` (or from the settings panel):
+
+```toml
+timing_provider = "local"                        # or "http"
+timing_endpoint = "http://thatmachine:8770"      # for "http"
+timing_device   = "auto"                         # "cpu" or "cuda" to force it
+```
+
+**What it does.** Given the words that are already in the editor, it places each line on the file's
+own clock. It downloads two models on first use, into torch's usual cache: a wav2vec2 aligner for
+the language (361 MB, English and German for now, chosen from the words themselves) and Demucs
+(81 MB), which separates the voice first — that separation is what makes the alignment work at all.
+
+**What it does not do.** It does not write anything: the stamps appear in the editor and you press
+Save, exactly as if you had typed them. It does not transcribe — it can only place words you already
+have. It cannot promise every line: one it will not place keeps its words and gets no stamp, and the
+panel says how many. And it is a proposal, not an answer — press ▶ on the first line and you will
+know in a second whether it found the song.
+
+**Privacy.** `local` and `http` never send anything outside your own machine or network. There is no
+commercial provider in ytalbum, and there will not be one unless you ask for it.
 
 ## Configuration
 
@@ -304,6 +356,9 @@ while searches and previews run alongside.
 | `pot_port`, `pot_idle` | `4416`, `300` | Token server port and idle timeout in seconds. |
 | `pot_provider_home` | `.pot-provider/server` | Where the token generator is built. |
 | `js_runtime`, `js_runtime_path` | autodetect | deno, node, bun or quickjs for yt-dlp. |
+| `timing_provider` | `"none"` | Who may place lyric timestamps: `none`, `local` (the `ytalbum[timing]` extra) or `http`. |
+| `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `ytalbum timing-serve` runs. |
+| `timing_device` | `"auto"` | `cpu` or `cuda` to force the local provider's device. |
 
 ## Limits
 

@@ -57,6 +57,12 @@ class Config:
     pot_mode: str = "server"
     pot_port: int = 4416
     pot_idle: int = 300
+    # who may put words on a clock (DESIGN.md §9.36). "none" is the default and the app is exactly
+    # what it was without it; "local" needs the `ytalbum[timing]` extra; "http" is another machine
+    # running `ytalbum timing-serve`. Nothing is imported until one of the other two is chosen.
+    timing_provider: str = "none"
+    timing_endpoint: str | None = None
+    timing_device: str = "auto"  # "auto" | "cpu" | "cuda", for the local provider
 
     def resolved_node(self) -> str | None:
         runtime = self.resolved_js_runtime()
@@ -101,6 +107,11 @@ def load(path: Path | None = None) -> Config:
     cfg.pot_mode = str(data.get("pot_mode", "server"))
     cfg.pot_port = int(data.get("pot_port", 4416))
     cfg.pot_idle = int(data.get("pot_idle", 300))
+    # flat keys like the rest of this file, and a `[timing]` table for whoever prefers to group them
+    timing = data.get("timing") if isinstance(data.get("timing"), dict) else {}
+    cfg.timing_provider = str(data.get("timing_provider") or timing.get("provider") or "none")
+    cfg.timing_endpoint = (data.get("timing_endpoint") or timing.get("endpoint") or None) or None
+    cfg.timing_device = str(data.get("timing_device") or timing.get("device") or "auto")
     return cfg
 
 

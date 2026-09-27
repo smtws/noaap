@@ -914,6 +914,43 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Deliberately unchanged: the player's own display and the trim bar keep the original's clock
    (outcome 6 of the task, and §9.15's reason — the trim marks depend on it).
 
+36. ✅ Words on a clock, behind a provider boundary (2026-09-27, P25, backlog item 14). P24 measured
+   what a local model can do and the answer was worth having: wav2vec2 CTC alignment on a separated
+   vocal stem places the lines of 17 of 20 real tracks within a median of 0.94 s, with no penalty for
+   growled vocals or for German, from 442 MB of models and no GPU. The question P25 answers is not
+   "can it" but **where the inference lives**, because the one thing ytalbum must not acquire is a
+   baseline of "modern GPU plus gigabytes of CUDA and weights": most machines do not have it, the
+   user's older desktop may never, and the core product — fetch, name, tag, trim, LRCLIB — has to
+   stay exactly as usable without any of it.
+   **Two capabilities, not one.** `transcribe` derives words from audio; `align` places words you
+   already have. They have different markets (every speech vendor sells the first; of the mainstream
+   ones only ElevenLabs sells the second) and different costs (3 GB against 442 MB). ytalbum wants
+   the second far more often, so the interface keeps them apart and a provider answers
+   `capabilities()` for itself.
+   **`none` is the default and is not a special case.** It answers `frozenset()`, the page renders no
+   action, and nothing imports a model: `timing_local` is imported by `provider()` and by nothing
+   else. An installation that never touches the config is byte-for-byte what it was.
+   **Three providers.** `local` is the optional extra `ytalbum[timing]` (torch, torchaudio, demucs;
+   ~1.5 GB with the CPU build of torch) and needs no GPU — measured at 12.2 s per track with one and
+   108.4 s without. `http` is `ytalbum timing-serve` on another machine, which is the deployment this
+   house wants: the app holds a URL and inherits no dependency at all, and the audio stays on the
+   network. A commercial provider is backlog 15 and waits on a decision that is the user's, not the
+   code's: whether their audio may leave the house.
+   **The result is a proposal, not a write.** The align action fills the editor's textarea; the user
+   plays a line, nudges it, shifts it (§9.35) and presses Save, which is `save_lyrics` exactly as
+   before. So the ownership contract (§9.21) needed no new rule: the words stay the user's, the
+   *clock* is recorded separately as `lyrics_timed_by`, and the panel says "timed by local" beside
+   "yours" rather than claiming both. A line the provider will not place keeps its words and gets no
+   stamp — `unplaced` is in the type, because every method measured in P24 fails on some track and a
+   guess would be indistinguishable from an answer.
+   **The alignment job is read-lane.** It writes nothing, so it may run beside a download, and — the
+   part that had to be fixed — a read-lane job must not trigger the album panel's rebuild, or the
+   proposal is thrown away the instant it arrives (catalog W7).
+   Left out on purpose: transcription (P24 measured it as the weaker half and no provider here
+   offers it), a library-wide pass, and the second aligner for an automatic cross-check, which is
+   backlog 16. One aligner plus the user's ear is the safety valve, and P23's ▶ is what makes the
+   ear cheap.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1030,3 +1067,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   is `none`, the app is exactly what it is today without one, and local inference is one optional
   implementation beside a self-hosted endpoint and commercial APIs. The spike's §5 carries the
   interface sketch and the costs of each.
+
+### Decisions of 2026-09-27 (the timing boundary, §9.36)
+
+- **Built as the spike recommended, with two providers rather than one** (P25): `local` for whoever
+  has the extra, and `http` + `ytalbum timing-serve` because "run the inference on the other
+  machine" is this household's actual deployment and is fifty lines around the same code.
+- **The provider never writes.** It answers with lines and a `Timed` record of itself; the editor
+  shows them and the user saves. That is what keeps §9.21 untouched and makes a wrong alignment cost
+  a "Cancel" rather than a restore.
+- **`unplaced` is part of the answer**, not an error. A provider that cannot say which lines it
+  would not place cannot be trusted with the rest.
+- **The words choose the aligner.** The language comes from counting stopwords in the lyrics, as the
+  spike did, rather than from a configuration key or a language-detection dependency.
+- **No transcription and no library-wide pass in this package.** Both are decisions of their own
+  (backlog 15 and 16), and the measurements do not support making them quietly.

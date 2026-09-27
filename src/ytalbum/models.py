@@ -133,6 +133,7 @@ class PlanTrack:
     source_override: str | None = None
     lyrics_for_source: str | None = None  # the video the sidecar's timings were written against
     lyrics_for_length: float | None = None  # and the length of the file at that moment
+    lyrics_timed_by: str | None = None  # "local/WAV2VEC2…" when a provider placed the stamps (§9.36)
 
     @property
     def effective_id(self) -> str:

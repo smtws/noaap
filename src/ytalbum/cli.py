@@ -79,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--port", type=int, default=8765)
     sv.add_argument("--idle-exit", type=float, default=0, metavar="SECONDS", help="stop after this long without requests or jobs (for socket activation)")
 
+    tm = sub.add_parser("timing-serve", help="run the local aligner as a small HTTP service for another machine")
+    tm.add_argument("--host", default="0.0.0.0", help="0.0.0.0 by default: the point is to be reached from the LAN")
+    tm.add_argument("--port", type=int, default=8770)
+    tm.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+
     sd = sub.add_parser("service", help="run the web UI on demand via systemd (user level)")
     sd.add_argument("action", choices=("install", "uninstall", "status", "restart"))
     sd.add_argument("--force", action="store_true", help="restart even while a job is running")
@@ -123,6 +128,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2 if library is None else exit_code(_service(cfg, library).update_all(report_only=args.dry_run, deep=args.deep))
             case "serve":
                 return _serve(args, cfg)
+            case "timing-serve":
+                from .timing_serve import serve as timing_serve
+
+                return timing_serve(host=args.host, port=args.port, device=args.device)
             case "prune":
                 return _prune(args, cfg)
             case "service":

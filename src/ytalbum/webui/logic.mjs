@@ -246,6 +246,40 @@ export function shifted(text, delta) {
   return { text: lines.join("\n"), moved };
 }
 
+// -- stamps a provider proposed (\u00a79.36) ------------------------------------------------------
+
+// The provider is given the words without their stamps, one line each, blank lines dropped; what
+// comes back is in the same order. Putting it into the textarea is therefore a walk down the lines:
+// blanks keep their place, a line the provider would not place keeps its words and loses its stamp,
+// and nothing is saved until the user saves it.
+export function applyStamps(text, timed) {
+  const stamps = (timed && timed.lines) || [];
+  const unplaced = [];
+  let i = 0;
+  let placed = 0;
+  const out = (text || "").split("\n").map((line, n) => {
+    const words = withStamp(line, null).trim();
+    if (!words) return line;
+    const got = stamps[i++];
+    if (!got || got.start == null) {
+      unplaced.push(n);
+      return words;                       // its own words, with no time it cannot vouch for
+    }
+    placed++;
+    return withStamp(words, got.start);
+  });
+  return { text: out.join("\n"), unplaced, placed, total: placed + unplaced.length };
+}
+
+// What the editor says over the proposal. Never "yours": the words may be, the clock is not.
+export function alignNotice(timed, result) {
+  if (!result) return null;
+  const by = (timed && timed.provider ? `${timed.provider}/${timed.model}` : "a provider");
+  const left = result.unplaced.length;
+  return `timed by ${by} \u2014 a machine's proposal, nothing is saved yet: press \u25b6 on the first line`
+    + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.` : ".");
+}
+
 // -- what a panel offers --------------------------------------------------------------------
 
 // The lyrics panel, from what /api/lyrics answered: what the header says, whose the words are,

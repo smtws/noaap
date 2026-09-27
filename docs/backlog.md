@@ -291,7 +291,7 @@ is done by ear; and a readout shows the position **in the file**, beside the pla
 whenever the two differ. Nothing is saved until Save, and a stamp written this way is byte-for-byte
 what a hand-typed one would be. Catalog section V.
 
-## 14. Automatic lyric timing — OPEN, the user's call (P24, `docs/spikes/2026-09-alignment.md`)
+## 14. Automatic lyric timing — DONE (P25, DESIGN §9.36, measured in `docs/spikes/2026-09-alignment.md`)
 
 Added 2026-09-27 out of the P24 spike, which measured it on twenty tracks of the real library rather
 than arguing about it. The short of it: **forced alignment works**. wav2vec2 CTC alignment on a
@@ -322,3 +322,51 @@ commercial APIs — of which only ElevenLabs sells alignment of supplied text, a
 hour, i.e. **$8.60** to time every track in this library that has words but no timings. The core
 product keeps working with none of it installed, and the recommendation is to define the boundary
 before building anything behind it.
+
+**Decided and done 2026-09-27 (P25).** The boundary is a `Timing` Protocol with `capabilities()`,
+`align()` and `transcribe()`; `none` is the default and the app is byte-for-byte what it was under
+it. Two providers ship: **`local`** (the `ytalbum[timing]` extra — torch, torchaudio, demucs;
+~1.5 GB with the CPU build of torch, no Whisper) and **`http`** with `ytalbum timing-serve`, which
+is the one this household will use, because the app then needs no machine-learning dependency at
+all. Alignment fills the editor's textarea and the user saves it: the words stay theirs,
+`lyrics_timed_by` records whose clock it is, and the panel says "timed by local" beside "yours".
+Measured in catalog W: 12.2 s per track with a GPU, 108.4 s without, and both of the `.lrc` files
+the spike found to be six seconds early were corrected. Transcription, a library-wide pass and the
+automatic two-aligner cross-check were deliberately left out — items 15 and 16.
+
+## 15. A commercial timing provider — OPEN, the user's call
+
+Added 2026-09-27 out of P25. The boundary (§9.36) makes this a small piece of code: an
+`ElevenLabsTiming` with the same three methods, a key in the config, and the audio posted to their
+[Forced Alignment API](https://elevenlabs.io/docs/overview/capabilities/forced-alignment) — 29
+languages including German, **$0.22 per audio hour**, which is **$8.60** for every track in this
+library that has words but no timings, and about **1.5 cents** for one track from the editor. It is
+the only mainstream vendor that sells alignment of *supplied* text; the others sell transcription.
+
+**What makes it the user's decision and not a technical one: the audio leaves the house.** Local and
+HTTP providers keep everything on the network by construction. A commercial provider uploads the
+recording — to a company, under their retention terms, for a few cents. That is a preference, not a
+trade-off the code can weigh, so nothing is built until they say so.
+
+Worth having anyway if they do: it needs no GPU, no 1.5 GB of models, no install at all, and it is
+the answer for a machine that cannot run inference and has no other machine to ask.
+
+## 16. A second aligner, for an automatic cross-check — OPEN, the user's call
+
+Added 2026-09-27 out of P25, deferred from P24's recommendation. The spike's strongest safety result
+was that **two independent aligners agree where they are right**: a Whisper-based aligner and the
+wav2vec2 CTC one agreed within a second on 16 of 20 tracks and were both correct there, including on
+the two tracks where LRCLIB was wrong; where they disagreed, one of them was half a song out. A
+provider that ran both and refused to place anything they disagree about would be safe without a
+human in the loop.
+
+**The cost is the reason it is not in P25:** the second aligner is faster-whisper `large-v3`,
+**3.09 GB** — seven times the models the whole local provider needs today, and the thing the
+architecture exists to keep out of the baseline. So it belongs as its own optional extra
+(`ytalbum[timing-check]`), off by default, for someone who wants a library-wide pass without
+listening to every track.
+
+What P25 ships instead is option 1 of the spike's three: one aligner, `unplaced` honoured, the
+stamps labelled as a machine's proposal, and P23's ▶ on the first line as the check — which takes a
+second and catches exactly the failure mode that occurs (out by half a song, never by half a second).
+

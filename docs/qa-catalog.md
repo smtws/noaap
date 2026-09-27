@@ -1406,10 +1406,90 @@ muted for the run, because the machine belongs to someone. Nothing was written t
     fixed, field 80 px, on one line with its button in both themes
   - **result:** pass
 
+## W. Words placed on a clock by a provider (P25, DESIGN §9.36)
+
+Run 2026-09-27 on a scratch library inside the session scratchpad: the two albums that hold the
+spike's mis-timed specimens, **Feuerschwanz — Fegefeuer** (*Berzerkermode*) and **Visions of
+Atlantis — Pirates** (*Clocks*), copied out of the real library read-only. Each server ran with its
+own `XDG_CONFIG_HOME`, so the user's own configuration was never touched. The audio element was
+muted for the run.
+
+- [x] **W1 · R** — with no provider, nothing exists
+  - default config: `/api/state` reports `timing: {provider: "none", capabilities: []}`, and the
+    lyrics editor has no align action — the tool row is P23's six buttons and nothing else
+  - asking anyway is refused by the server: `POST /api/align` → 400, *"no timing provider can align
+    words — see `timing_provider` in the config"*
+  - **result:** pass
+
+- [x] **W2 · M** — the local provider corrects a `.lrc` the spike found to be wrong
+  - `timing_provider = "local"`, GPU. *Berzerkermode*: the LRCLIB stamps read `[00:12.52]`,
+    `[00:31.06]`, `[00:31.92]`; the proposal reads **`[00:19.6]`, `[00:37.0]`, `[00:38.0]`** — the
+    +6.3 s correction the spike predicted, arrived at independently here
+  - all 65 lines placed; the notice says *"timed by local/VOXPOPULI_ASR_BASE_10K_DE + htdemucs — a
+    machine's proposal, nothing is saved yet: press ▶ on the first line"*
+  - **12.2 s** end to end, from the click to the stamps appearing
+  - **result:** pass
+
+- [x] **W3 · M** — and the English one, with the English aligner
+  - *Clocks*: `[00:00.02]`, `[00:02.89]` → **`[00:06.8]`, `[00:09.5]`**, the +6.5 s the spike
+    measured. `local/WAV2VEC2_ASR_BASE_960H + htdemucs`, **18.3 s** for a 5:19 track
+  - the language is chosen from the words, not configured: German words took the German model in W2
+    and English words the English one here
+  - **result:** pass
+
+- [x] **W4 · M** — what Save writes, and what it does not
+  - after Save: the `.lrc` holds exactly the proposal, `lyrics` is `synced`,
+    `lyrics_timed_by = "local/VOXPOPULI_ASR_BASE_10K_DE + htdemucs 2.11.0+cu130"`, and
+    `provenance.lyrics` is still **`user`** — the words are the user's, the clock is a machine's
+  - the panel afterwards carries both badges: **“timed by local”** beside **“yours”**
+  - before Save, nothing on disk had changed: the album folder's files and mtimes were identical
+    after an alignment (also asserted in `tests/test_timing.py`)
+  - **result:** pass
+
+- [x] **W5 · R** — the same work without a GPU
+  - `timing_device = "cpu"`, same track: **108.4 s** against 12.2 s, which is the two minutes the
+    spike predicted for a four-minute track and the number that matters for a machine without a GPU
+  - the two devices agreed on **64 of 65 lines to the tenth**. They disagreed on the *first* line
+    (0.0 s on the CPU against 19.6 s on the GPU) — the line a CTC aligner has most freedom over,
+    since the song opens with a shouted intro. One line in sixty-five, and it is why the result is
+    a proposal in an editor rather than a write to disk
+  - **result:** pass, with that difference recorded rather than smoothed over
+
+- [x] **W6 · M** — the other machine's shape, on this machine
+  - `ytalbum timing-serve --port 8770 --device cuda` in the environment that has the extra;
+    `GET /capabilities` → `{"capabilities": ["align"], "device": "cuda", "provider": "local"}`
+  - the web UI run from the **project environment, which has no torch at all**
+    (`import torch` → `ModuleNotFoundError`), with `timing_provider = "http"`: the page offered the
+    action, and *Clocks* aligned to the same `[00:06.8]`, `[00:09.5]` in **19.3 s** — about a second
+    of HTTP over the direct run
+  - this is the deployment the user asked for, demonstrated with the app and the model in different
+    processes with different interpreters
+  - **result:** pass
+
+- [x] **W7 · R** — two defects of my own, found by using it
+  - the editor was **thrown away when the job finished**: `poll()` rebuilt the album panel on every
+    busy→idle transition, which is right for a job that changed the disk and exactly wrong for one
+    whose whole purpose is to put text into the open editor. A read-lane job no longer triggers the
+    rebuild
+  - `applyStamps` was used but never imported, so the alignment finished and the editor sat on
+    "asking the timing provider" for ever. The page's own error handling had it (`ReferenceError`
+    in the console, a toast for the sibling bug) — I had not looked
+  - both fixed before the commit; neither would have been caught by a unit test, and both were
+    obvious within one click of using the thing
+  - **result:** pass
+
+- [x] **W8 · R** — a stamped line with no words keeps its stamp
+  - LRCLIB entries often end with a bare `[03:05.66]` marking the outro. The provider is only ever
+    given lines that have words, so such a line is left exactly as it was — which after an
+    alignment can leave it out of order. Recorded rather than fixed: an empty stamped line is a
+    legitimate LRC device, and rewriting it would be guessing at what it means
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the W cases (P25: a timing provider) | 8 | 0 in the design; 2 defects of my own (the editor discarded when a read job finished, a missing import), both fixed before the commit | Scratch library with the spike's two mis-timed specimens. Local provider 12.2 s (GPU) and 108.4 s (CPU) for the same track, agreeing on 64 of 65 lines; the HTTP provider 19.3 s from an app with no torch installed. Both `.lrc` files corrected by about 6.4 s. 567 pytest + 52 node. |
 | 2026-09-27 | the V cases (P23: stamping to the file's clock) | 7 | 0 in the package; 1 blemish of my own (the shift field's width), fixed before the commit | A track trimmed to 1:30–5:20, so the player's clock and the file's differ by 90 s. The tap wrote `[00:24.9]` from a player time of 114.870, which is the arithmetic the case asks for. 554 pytest + 45 node. |
 | 2026-09-27 | the U cases (P22: audio from another video) | 8 | 0 in the package; 1 blemish of my own (the field took the whole line), fixed before the commit | S1 pointed at S10 on a scratch library, through the real page: the confirm named the trim, the uploader followed the audio both ways, the ⏱ chip went +4:01 → 0:00 → +4:01, the user's words were never touched. 554 pytest + 32 node. |
 | 2026-09-27 | the T cases (P21: `--edge` and the grip) | 7 | 0 | CSS only, measured in the page and looked at in every view and both themes. The one question the decision asked — whether `--edge` makes S5's highlighted-row rule redundant — is answered no, by measurement (2.53 / 2.82 on the band). The player bar was not exercised; see T7. |

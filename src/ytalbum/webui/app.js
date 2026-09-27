@@ -1,6 +1,7 @@
-import { LENGTH, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lineAt, lineStart, lyricsPanelState,
-         maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo, ourLength, refLength, resetKind, roundMark,
-         shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
+import { LENGTH, alignNotice, applyStamps, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lineAt,
+         lineStart, lyricsPanelState, maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo, ourLength,
+         refLength, resetKind, roundMark, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock,
+         trimOffset, trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -108,10 +109,17 @@ function renderActivity() {
 
 // -- polling -------------------------------------------------------------------
 
+// A job in the read lane changes nothing on disk, so the album panel must NOT be rebuilt when one
+// finishes: the alignment's whole purpose is to put text into the open editor, and a rebuild would
+// throw that text away before the user could look at it (§9.36).
+const READ_LANE = new Set(["align", "preview", "search", "channel"]);
+let ranWrite = false;
+
 async function poll() {
   try {
     const prevBusy = state.busy;
     state = await api("/api/state");
+    if (state.jobs?.some((j) => ["queued", "running"].includes(j.state) && !READ_LANE.has(j.kind))) ranWrite = true;
     if (state.tracks_version && state.tracks_version !== trackIndex.version) loadTracks();
     renderLibrary();
     renderJobs();
@@ -126,7 +134,10 @@ async function poll() {
       }
     }
     if (openLog) renderLog(await api(`/api/job?id=${openLog}`).catch(() => null));
-    if (prevBusy && !state.busy) refreshAlbumPanel();
+    if (prevBusy && !state.busy) {
+      if (ranWrite) refreshAlbumPanel();
+      ranWrite = false;
+    }
     setOffline(false);
   } catch (e) {
     console.warn("poll failed", e);
@@ -665,6 +676,8 @@ async function lyricsRow(p, t, editing = false) {
 function lyricsPanel(p, t, d, editing) {
   const { where, actions } = lyricsPanelState(d);
   const head = h("div", { class: "muted" }, `${t.artist} — ${t.title} · ${where}`,
+    d.timed_by ? h("span", { class: "badge", title: `The words are yours; these timestamps were placed by ${d.timed_by}.` },
+      `timed by ${d.timed_by.split("/")[0]}`) : null,
     d.owner === "user"
       ? h("span", { class: "badge", title: "Your words. A lyrics run never replaces them — delete them to let LRCLIB answer again." }, "yours")
       : d.lrclib_id && d.text  // the id is kept after a clear (it is how a file is recognised as ours), but with no words it would read as if lrclib had some
@@ -707,6 +720,9 @@ function lyricsEditor(p, t, d) {
     rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)),
     onkeydown: (e) => editorKey(e, p, t, area) });
   area.value = d.text;
+  // what a provider proposed, carried to the Save so the plan can record whose clock this is
+  const timing = { by: d.timed_by || "" };
+  const proposal = h("div", { class: "timing-note", hidden: true });
   const by = h("input", { type: "text", class: "shift-by", value: "-0.5", size: 5, "aria-label": "seconds to move every stamp by",
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); shiftStamps(area, by); } } });
   const nudge = (delta, label) => h("button", { class: "quiet small", type: "button",
@@ -720,14 +736,20 @@ function lyricsEditor(p, t, d) {
       h("button", { class: "quiet small", type: "button", title: "Play from this line's stamp (Alt+Enter)",
         onclick: () => playLine(p, t, area) }, "▶"),
       nudge(-0.5, "−0.5"), nudge(-0.1, "−0.1"), nudge(0.1, "+0.1"), nudge(0.5, "+0.5"),
+      canAlign() ? h("button", { class: "quiet small", type: "button",
+        title: "Ask the configured timing provider to place these words on this file's clock.\n"
+          + "It writes nothing: the stamps appear here and you decide whether to save them.\n"
+          + "Without a GPU this takes a couple of minutes for a four-minute track.",
+        onclick: (e) => alignWords(e.currentTarget, p, t, area, proposal, timing) }, "⚖ align these words") : null,
       h("span", { class: "muted stamp-clock" })),
+    proposal,
     h("div", { class: "panel-actions" },
       h("span", { class: "muted" }, "shift every stamp by"), by, h("span", { class: "muted" }, "s"),
       h("button", { class: "quiet small", type: "button",
         title: "Move every timestamped line by that many seconds. Nothing is saved until you press Save.",
         onclick: () => shiftStamps(area, by) }, "shift all")),
     h("div", { class: "lyrics-actions" },
-      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value) }, "Save"),
+      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by) }, "Save"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, false) }, "Cancel"),
       d.text ? h("button", { class: "quiet small danger", type: "button",
         title: "Remove the .lrc beside this track. Its tag goes with it, and a later “look up all again” may fetch LRCLIB's words.",
@@ -787,6 +809,33 @@ function shiftStamps(area, by) {
   toast(`moved ${got.moved} stamp${got.moved > 1 ? "s" : ""} by ${delta > 0 ? "+" : ""}${tenth(delta)} s — nothing is saved until you press Save`);
 }
 
+// Only offered where a provider says it can do it; with the default provider (`none`) there is no
+// button at all and the page is what it was before any of this existed (§9.36).
+const canAlign = () => (state.settings?.timing?.capabilities || []).includes("align");
+
+async function alignWords(button, p, t, area, notice, timing) {
+  const id = await submit("align", { id: p.source_id, video_id: t.video_id, text: area.value }, button);
+  if (id == null) return;
+  notice.hidden = false;
+  notice.textContent = "⏳ asking the timing provider — minutes, on a machine without a GPU";
+  const job = await jobSettled(id, 4800);  // up to twenty minutes: a CPU box is slow, not broken
+  if (!job || job.state !== "done") {
+    notice.hidden = true;
+    return;  // submit() and the job log have already said why
+  }
+  const timed = job.result?.timed;
+  if (!timed) {
+    notice.hidden = true;
+    return toast("the timing provider answered with nothing", "failed");
+  }
+  const got = applyStamps(area.value, timed);
+  area.value = got.text;
+  timing.by = job.result.by || "";
+  notice.textContent = `⚠ ${alignNotice(timed, got)}`;
+  area.focus();
+  area.setSelectionRange(0, 0);
+}
+
 function editorKey(e, p, t, area) {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); return tapStamp(p, t, area); }
   if (e.key === "Enter" && e.altKey) { e.preventDefault(); return playLine(p, t, area); }
@@ -830,8 +879,8 @@ async function editLyrics(button, p, t, editing) {
   }
 }
 
-async function saveLyrics(button, p, t, text) {
-  const id = await submit("save_lyrics", { id: p.source_id, video_id: t.video_id, text }, button);
+async function saveLyrics(button, p, t, text, timedBy = "") {
+  const id = await submit("save_lyrics", { id: p.source_id, video_id: t.video_id, text, timed_by: timedBy }, button);
   if (id == null) return;
   const job = await jobSettled(id);
   if (!job || job.state !== "done") return; // submit() already showed why
@@ -1358,6 +1407,12 @@ function openSettings() {
         h("input", { type: "number", name: "pot_idle_minutes", min: 1, max: 120, value: st.pot_idle_minutes })),
       row("Parallel YouTube requests", "1–4; more is faster but trips YouTube's bot check sooner",
         h("input", { type: "number", name: "concurrency", min: 1, max: 4, value: st.concurrency })),
+      row("Lyric timing", "who may place timestamps on words: nobody, a model on this machine (the "
+        + "ytalbum[timing] extra), or another machine running `ytalbum timing-serve`",
+        h("select", { name: "timing_provider" }, ["none", "local", "http"].map((m) =>
+          h("option", { value: m, selected: m === (st.timing?.provider || "none") }, m)))),
+      row("Timing endpoint", "for `http`: http://thatmachine:8770 — the audio never leaves your network",
+        h("input", { type: "text", name: "timing_endpoint", value: st.timing?.endpoint || "", placeholder: "http://host:8770" })),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
   panel.hidden = false;
@@ -1373,6 +1428,7 @@ async function saveSettings(ev) {
     state.settings = await api("/api/settings", {
       library: f.library.value, cookies_from_browser: f.cookies_from_browser.value, musicbrainz: f.musicbrainz.checked,
       pot_mode: f.pot_mode.value, pot_idle_minutes: Number(f.pot_idle_minutes.value), concurrency: Number(f.concurrency.value),
+      timing_provider: f.timing_provider.value, timing_endpoint: f.timing_endpoint.value.trim(),
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;

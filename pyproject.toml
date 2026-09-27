@@ -16,6 +16,19 @@ dependencies = [
     "yt-dlp[default]>=2026.8.19",
 ]
 
+# Everything a timing provider needs, and nothing the rest of ytalbum imports. Install it only if
+# you want the `local` provider (or are running `ytalbum timing-serve` for another machine):
+#     uv pip install "ytalbum[timing]"
+# On a machine without a usable GPU, ask for the small CPU build of torch first — it is ~200 MB
+# against some 4 GB of CUDA libraries, and the aligner runs perfectly well on a processor:
+#     uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+[project.optional-dependencies]
+timing = [
+    "torch>=2.4",
+    "torchaudio>=2.4",
+    "demucs>=4.0.1",
+]
+
 [project.scripts]
 ytalbum = "ytalbum:main"
 
