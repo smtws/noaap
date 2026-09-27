@@ -2112,8 +2112,9 @@ trust — and so nobody proposes them again.
   "is a phrase starting here", is no better: on a good track the **human's own** sidecar has 26 of 42
   stamps away from any detected onset, because lines begin inside sung stretches, not at their edges.
 - **"Each method's own confidence"**, which looked decisive for an hour and is not. The CTC pass and
-  the decoder do not report the same quantity (0.13–0.41 against 0.77–0.98 for the same quality of
-  work), so no shared threshold is honest — and the per-method version fails on its own terms:
+  the decoder do not report the same quantity — CTC **0.03–0.81** over the sixteen tracks against the
+  decoder's 0.03–0.98, and the two are unrelated even on the same work: *Bösewicht*, which both got
+  right, scores **0.81** on CTC and 0.98 on the decoder. So no shared threshold is honest — and the per-method version fails on its own terms:
   Whisper **lost** *A Love That Never Dies* at **0.60**, higher than the CTC pass's **0.36** on
   *Argent* where it was right, and on *Armata Strigoi* both collapse at once (0.07 and 0.03) so it
   names nobody.

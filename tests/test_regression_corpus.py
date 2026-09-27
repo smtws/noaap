@@ -80,6 +80,22 @@ def signals_for(row: dict[str, Any], method: str, placed: int = 50) -> Signals:
                    piled=round(share * placed))
 
 
+# ── the fixtures themselves ──────────────────────────────────────────────────────────────
+
+def test_no_fixture_carries_a_filesystem_path() -> None:
+    """This repository is public and these rows were measured in somebody's home directory.
+
+    A `~/` slipped through a grep for `/home/` once, in `verify_signals`'s own `_source`. So the
+    check is a test now rather than a habit.
+    """
+    import re
+
+    looks_like_a_path = re.compile(r"~/|/home/|/Users/|[A-Za-z]:\\\\|\.cache/|/tmp/")
+    for path in sorted(FIXTURES.glob("*.json")):
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            assert not looks_like_a_path.search(line), f"{path.name}:{n} carries a path: {line[:100]}"
+
+
 # ── the whole-track cases: one method is elsewhere, and the stamps are still worth keeping ──
 
 def test_the_five_whole_track_cases_keep_every_stamp() -> None:
