@@ -257,9 +257,16 @@ export function applyStamps(text, timed) {
   const unplaced = [];
   let i = 0;
   let placed = 0;
+  let kept = 0;
   const out = (text || "").split("\n").map((line, n) => {
     const words = withStamp(line, null).trim();
-    if (!words) return line;
+    if (!words) {
+      // a stamp with no words behind it — LRCLIB's trailing outro marker, and a legitimate LRC
+      // device for "silence starts here". It was never sent, so it is never rewritten; the notice
+      // says how many there are, because a kept stamp can end up out of order after a shift.
+      if (stampOf(line) != null) kept++;
+      return line;
+    }
     const got = stamps[i++];
     if (!got || got.start == null) {
       unplaced.push(n);
@@ -268,7 +275,7 @@ export function applyStamps(text, timed) {
     placed++;
     return withStamp(words, got.start);
   });
-  return { text: out.join("\n"), unplaced, placed, total: placed + unplaced.length };
+  return { text: out.join("\n"), unplaced, placed, kept, total: placed + unplaced.length };
 }
 
 // What the editor says over the proposal. Never "yours": the words may be, the clock is not.
@@ -276,8 +283,14 @@ export function alignNotice(timed, result) {
   if (!result) return null;
   const by = (timed && timed.provider ? `${timed.provider}/${timed.model}` : "a provider");
   const left = result.unplaced.length;
+  const kept = result.kept || 0;
   return `timed by ${by} \u2014 a machine's proposal, nothing is saved yet: press \u25b6 on the first line`
-    + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.` : ".");
+    + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.` : ".")
+    + (kept
+      ? kept > 1
+        ? ` ${kept} stamped lines without words were left as they were; check they are still in order.`
+        : " 1 stamped line without words was left as it was; check it is still in order."
+      : "");
 }
 
 // -- what a panel offers --------------------------------------------------------------------

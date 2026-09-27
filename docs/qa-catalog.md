@@ -1481,8 +1481,11 @@ muted for the run.
 - [x] **W8 · R** — a stamped line with no words keeps its stamp
   - LRCLIB entries often end with a bare `[03:05.66]` marking the outro. The provider is only ever
     given lines that have words, so such a line is left exactly as it was — which after an
-    alignment can leave it out of order. Recorded rather than fixed: an empty stamped line is a
-    legitimate LRC device, and rewriting it would be guessing at what it means
+    alignment can leave it out of order. Not fixed, on the owner's call: an empty stamped line is a
+    legitimate LRC device and rewriting it would be guessing at what it means
+  - **said rather than fixed**, though: the notice now ends with *"1 stamped line without words was
+    left as it was; check it is still in order"* (plural for more), so the one thing the user has to
+    look at is named instead of left to be discovered
   - **result:** pass
 
 ## Results
