@@ -1805,7 +1805,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 ### Evidence methods that lied
 
-Eight of my own checks produced a false result, or none at all, before the software did anything
+Nine of my own checks produced a false result, or none at all, before the software did anything
 wrong. Use these forms:
 
 - **A layout check needs a picture *and* a measurement, and neither finds the other's faults.**
@@ -1839,6 +1839,18 @@ wrong. Use these forms:
 - **Process checks**: never `pgrep -f`/`pkill -f` with a pattern that appears in your own
   command line — it matches the shell running it. `pkill` that way killed the shell instead of
   the server. Check the **port** (`ss -ltnp | grep 8799`) or the log.
+- **A green suite proves nothing about an environment it was not run in — twice over.** P27's commit
+  was green here and red on CI, because two tests of the second model's retry logic reached
+  `resolved_device()`, which imports `torch`; both of us had the `timing` extra installed for the
+  user's manual test, so neither of us was checking the base install any more. The rule (R-067) was
+  already written: `uv run pytest` must be green with **no** extra installed. The proof is one
+  command, and it belongs before every push that touches an optional path:
+  `uv venv /tmp/base && VIRTUAL_ENV=/tmp/base uv pip install -e . pytest && /tmp/base/bin/python -m pytest -q`.
+  The same run exposed the other half: CI was reporting "404 passed, 190 skipped" and nobody read the
+  second number. **187 of those skips were ffmpeg**, which the workflow deliberately did not install —
+  reproduced exactly by running the suite with a PATH that has no ffmpeg (406 passed, 190 skipped
+  locally). A third of the suite had been skipping itself on every run since the workflow was written.
+  Read the skip count, not just the colour.
 - **Silence you designed in is not a stall, and an estimate needs the start time first.** A
   measurement script of mine printed one row per track and nothing in between, because it passed no
   log callback; when the log stopped growing I read it as a stalled track, reached for `ps` elapsed

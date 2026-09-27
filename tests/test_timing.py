@@ -35,6 +35,7 @@ from ytalbum.timing import (
     plain_lines,
     provider,
 )
+from ytalbum.timing_local import LocalTiming
 
 
 class FakeTiming:
@@ -349,6 +350,28 @@ def test_the_config_carries_the_verification_settings(tmp_path):
     assert load(tmp_path / "none.toml").timing_verify is None  # unset means "whenever it is there"
 
 
+def whisper_without_torch(monkeypatch, loaded: list[str], device: str = "cuda"):
+    """Everything the second model needs, faked — and **nothing imported**.
+
+    This file must pass in a venv with neither optional extra (the R-067 rule), so a test of the
+    retry logic may not reach `torch`: `resolved_device` imports it to ask about the card, and
+    `_free_vram` imports it to empty the cache. Patching both is what keeps these tests about the
+    logic they are testing. CI caught the version that did not.
+    """
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setattr(LocalTiming, "resolved_device", lambda self: device)
+    monkeypatch.setattr(LocalTiming, "_free_vram", lambda self: None)
+    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(
+        load_faster_whisper=lambda name, device, compute_type: loaded.append(device) or Loaded(device)))
+
+
+class Loaded:
+    """Stands in for a loaded Whisper model: it knows only which device it was put on."""
+
+    def __init__(self, device: str) -> None:
+        self.device = device
+
+
 def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
     """ctranslate2 loads the model happily and only then finds no libcublas (§9.38).
 
@@ -357,26 +380,16 @@ def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
     """
     from ytalbum.timing_local import LocalTiming
 
-    engine, said = LocalTiming(device="cuda"), []
+    engine, said, loaded = LocalTiming(device="cuda"), [], []
     engine.log = said.append
-    loaded: list[str] = []
+    whisper_without_torch(monkeypatch, loaded)
 
-    class Model:
-        def __init__(self, device: str) -> None:
-            self.device = device
+    def run(model):
+        if model.device == "cuda":
+            raise RuntimeError("Library libcublas.so.12 is not found or cannot be loaded")
+        return "placed"
 
-        def run(self) -> str:
-            if self.device == "cuda":
-                raise RuntimeError("Library libcublas.so.12 is not found or cannot be loaded")
-            return "placed"
-
-    def load(name, device, compute_type):
-        loaded.append(device)
-        return Model(device)
-
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
-    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(load_faster_whisper=load))
-    assert engine._whisper_run(lambda model: model.run()) == "placed"
+    assert engine._whisper_run(run) == "placed"
     assert loaded == ["cuda", "cpu"]                     # one retry, on the processor
     assert engine._whisper_device == "cpu"
     assert any("libcublas" in line for line in said)     # and it says why it got slower
@@ -385,15 +398,8 @@ def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
 def test_a_failure_that_is_not_the_trap_is_not_retried(monkeypatch):
     from ytalbum.timing_local import LocalTiming
 
-    engine = LocalTiming(device="cuda")
-    tries: list[int] = []
-
-    def load(name, device, compute_type):
-        tries.append(1)
-        return object()
-
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
-    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(load_faster_whisper=load))
+    engine, tries = LocalTiming(device="cuda"), []
+    whisper_without_torch(monkeypatch, tries)
     with pytest.raises(RuntimeError, match="no kernel image"):
         engine._whisper_run(lambda model: (_ for _ in ()).throw(
             RuntimeError("no kernel image is available for execution on the device")))
@@ -406,14 +412,10 @@ def test_a_full_graphics_card_moves_the_check_and_keeps_going(monkeypatch):
 
     engine, said, loaded = LocalTiming(device="cuda"), [], []
     engine.log = said.append
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
-    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(
-        load_faster_whisper=lambda name, device, compute_type: loaded.append(device) or device))
-    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
-        cuda=types.SimpleNamespace(is_available=lambda: True, empty_cache=lambda: None)))
+    whisper_without_torch(monkeypatch, loaded)
 
     def run(model):
-        if model == "cuda":
+        if model.device == "cuda":
             raise RuntimeError("CUDA failed with error out of memory")
         return "placed"
 

@@ -19,7 +19,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # the suite answers from recorded fixtures: no network, no credentials, no ffmpeg
+      # the suite answers from recorded fixtures: no network and no credentials. ffmpeg it does need —
+      # without it 187 of 593 tests skip themselves, a third of the suite, and CI was reporting green
+      # on 404 of them (found 2026-09-27, catalog evidence-methods entry 9)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: uv sync --locked --dev
       - run: uv run pytest -q
       - run: node --check src/ytalbum/webui/app.js
