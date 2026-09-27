@@ -1,0 +1,205 @@
+{
+ "_source": "The spike (docs/spikes/2026-09-alignment.md): median absolute error per line for each aligner on the mixed track and on the separated voice, twenty tracks.",
+ "rows": [
+  {
+   "id": "00",
+   "class": "harsh",
+   "lang": "en",
+   "track": "DOMINUM — Die for the Devil",
+   "whisper_raw": 0.85,
+   "whisper_vocals": 0.74,
+   "ctc_raw": 18.88,
+   "ctc_vocals": 0.19
+  },
+  {
+   "id": "01",
+   "class": "harsh",
+   "lang": "en",
+   "track": "DOMINUM — Killed by Life",
+   "whisper_raw": 0.36,
+   "whisper_vocals": 0.36,
+   "ctc_raw": 38.23,
+   "ctc_vocals": 0.13
+  },
+  {
+   "id": "02",
+   "class": "harsh",
+   "lang": "en",
+   "track": "DOMINUM — Can't Kill a Dead Man",
+   "whisper_raw": 0.7,
+   "whisper_vocals": 0.75,
+   "ctc_raw": 17.24,
+   "ctc_vocals": 0.41
+  },
+  {
+   "id": "03",
+   "class": "harsh",
+   "lang": "en",
+   "track": "Lord of the Lost — Argent",
+   "whisper_raw": 122.31,
+   "whisper_vocals": 125.47,
+   "ctc_raw": 34.58,
+   "ctc_vocals": 0.31
+  },
+  {
+   "id": "04",
+   "class": "harsh",
+   "lang": "en",
+   "track": "Lord of the Lost — 2000 Years a Pyre",
+   "whisper_raw": 0.9,
+   "whisper_vocals": 0.21,
+   "ctc_raw": 9.42,
+   "ctc_vocals": 0.61
+  },
+  {
+   "id": "05",
+   "class": "harsh",
+   "lang": "en",
+   "track": "Lord of the Lost — A War Within",
+   "whisper_raw": 0.55,
+   "whisper_vocals": 0.23,
+   "ctc_raw": 0.45,
+   "ctc_vocals": 0.24
+  },
+  {
+   "id": "06",
+   "class": "harsh",
+   "lang": "de",
+   "track": "Feuerschwanz — Berzerkermode",
+   "whisper_raw": 6.17,
+   "whisper_vocals": 6.19,
+   "ctc_raw": 6.08,
+   "ctc_vocals": 6.38
+  },
+  {
+   "id": "07",
+   "class": "harsh",
+   "lang": "de",
+   "track": "Feuerschwanz — Bastard of Asgard",
+   "whisper_raw": 0.6,
+   "whisper_vocals": 0.63,
+   "ctc_raw": 59.4,
+   "ctc_vocals": 18.2
+  },
+  {
+   "id": "08",
+   "class": "harsh",
+   "lang": "de",
+   "track": "Kupfergold — Zombie Malone",
+   "whisper_raw": 0.45,
+   "whisper_vocals": 0.22,
+   "ctc_raw": 0.24,
+   "ctc_vocals": 0.24
+  },
+  {
+   "id": "09",
+   "class": "harsh",
+   "lang": "de",
+   "track": "Die Legende von Nord — Bösewicht",
+   "whisper_raw": 0.46,
+   "whisper_vocals": 0.29,
+   "ctc_raw": 0.28,
+   "ctc_vocals": 0.29
+  },
+  {
+   "id": "10",
+   "class": "clean",
+   "lang": "en",
+   "track": "Sabaton — A Lifetime of War",
+   "whisper_raw": 93.7,
+   "whisper_vocals": 76.87,
+   "ctc_raw": 57.4,
+   "ctc_vocals": 0.94
+  },
+  {
+   "id": "11",
+   "class": "clean",
+   "lang": "en",
+   "track": "Powerwolf — Armata Strigoi",
+   "whisper_raw": 54.82,
+   "whisper_vocals": 0.42,
+   "ctc_raw": 6.06,
+   "ctc_vocals": 0.13
+  },
+  {
+   "id": "12",
+   "class": "clean",
+   "lang": "en",
+   "track": "Mono Inc. — A Love That Never Dies",
+   "whisper_raw": 28.26,
+   "whisper_vocals": 14.4,
+   "ctc_raw": 14.39,
+   "ctc_vocals": 0.38
+  },
+  {
+   "id": "13",
+   "class": "clean",
+   "lang": "en",
+   "track": "Michael Jackson — Ben",
+   "whisper_raw": 1.36,
+   "whisper_vocals": 1.29,
+   "ctc_raw": 0.67,
+   "ctc_vocals": 0.67
+  },
+  {
+   "id": "14",
+   "class": "clean",
+   "lang": "en",
+   "track": "Warkings — Azrael",
+   "whisper_raw": 59.75,
+   "whisper_vocals": 0.63,
+   "ctc_raw": 28.94,
+   "ctc_vocals": 0.12
+  },
+  {
+   "id": "15",
+   "class": "clean",
+   "lang": "en",
+   "track": "Visions of Atlantis — Clocks",
+   "whisper_raw": 6.27,
+   "whisper_vocals": 6.27,
+   "ctc_raw": 6.2,
+   "ctc_vocals": 6.52
+  },
+  {
+   "id": "16",
+   "class": "clean",
+   "lang": "de",
+   "track": "Saltatio Mortis — Brunhild",
+   "whisper_raw": 0.27,
+   "whisper_vocals": 0.3,
+   "ctc_raw": 0.43,
+   "ctc_vocals": 0.42
+  },
+  {
+   "id": "17",
+   "class": "clean",
+   "lang": "de",
+   "track": "Schandmaul — Anderswelt",
+   "whisper_raw": null,
+   "whisper_vocals": null,
+   "ctc_raw": 0.25,
+   "ctc_vocals": 0.23
+  },
+  {
+   "id": "18",
+   "class": "clean",
+   "lang": "de",
+   "track": "Versengold — Butter bei die Fische",
+   "whisper_raw": 0.38,
+   "whisper_vocals": 0.3,
+   "ctc_raw": 22.51,
+   "ctc_vocals": 0.17
+  },
+  {
+   "id": "19",
+   "class": "clean",
+   "lang": "de",
+   "track": "dArtagnan — Alles aus Liebe",
+   "whisper_raw": 0.6,
+   "whisper_vocals": 0.48,
+   "ctc_raw": 30.64,
+   "ctc_vocals": 0.15
+  }
+ ]
+}

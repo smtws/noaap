@@ -1,0 +1,165 @@
+{
+ "_source": "P27's run (docs/qa-catalog.md, Y): sixteen real tracks aligned twice and what the check did with each.",
+ "rows": [
+  {
+   "id": "00",
+   "track": "DOMINUM — Killed by Life (en)",
+   "lines": 42,
+   "median_apart": 0.46,
+   "max_apart": 1.77,
+   "unplaced_at_2s": 0,
+   "lost_at_5s": 0,
+   "verdict": "42 placed"
+  },
+  {
+   "id": "01",
+   "track": "DOMINUM — Die for the Devil (en)",
+   "lines": 45,
+   "median_apart": 0.73,
+   "max_apart": 18.27,
+   "unplaced_at_2s": 16,
+   "lost_at_5s": 13,
+   "verdict": "29 placed"
+  },
+  {
+   "id": "02",
+   "track": "DOMINUM — Can’t Kill a Dead Man (en)",
+   "lines": 49,
+   "median_apart": 0.33,
+   "max_apart": 9.77,
+   "unplaced_at_2s": 2,
+   "lost_at_5s": 2,
+   "verdict": "47 placed"
+  },
+  {
+   "id": "03",
+   "track": "Die Legende von Nord — Bösewicht (de)",
+   "lines": 39,
+   "median_apart": 0.78,
+   "max_apart": 2.77,
+   "unplaced_at_2s": 1,
+   "lost_at_5s": 0,
+   "verdict": "38 placed"
+  },
+  {
+   "id": "04",
+   "track": "Feuerschwanz — Bastard of Asgard (de)",
+   "lines": 61,
+   "median_apart": 1.39,
+   "max_apart": 5.17,
+   "unplaced_at_2s": 22,
+   "lost_at_5s": 1,
+   "verdict": "39 placed"
+  },
+  {
+   "id": "05",
+   "track": "Kupfergold — Zombie Malone (de)",
+   "lines": 51,
+   "median_apart": 0.64,
+   "max_apart": 17.24,
+   "unplaced_at_2s": 10,
+   "lost_at_5s": 9,
+   "verdict": "41 placed"
+  },
+  {
+   "id": "06",
+   "track": "Lord of the Lost — 2000 Years a Pyre (en)",
+   "lines": 37,
+   "median_apart": 1.41,
+   "max_apart": 33.95,
+   "unplaced_at_2s": 17,
+   "lost_at_5s": 7,
+   "verdict": "20 placed"
+  },
+  {
+   "id": "07",
+   "track": "Lord of the Lost — Argent (en)",
+   "lines": 46,
+   "median_apart": 120.21,
+   "max_apart": 171.75,
+   "unplaced_at_2s": 45,
+   "lost_at_5s": 45,
+   "verdict": "all 46 kept, flagged"
+  },
+  {
+   "id": "08",
+   "track": "Lord of the Lost — A War Within (en)",
+   "lines": 40,
+   "median_apart": 0.86,
+   "max_apart": 23.23,
+   "unplaced_at_2s": 6,
+   "lost_at_5s": 1,
+   "verdict": "34 placed"
+  },
+  {
+   "id": "09",
+   "track": "Michael Jackson — Ben (en)",
+   "lines": 28,
+   "median_apart": 0.83,
+   "max_apart": 2.13,
+   "unplaced_at_2s": 2,
+   "lost_at_5s": 0,
+   "verdict": "26 placed"
+  },
+  {
+   "id": "10",
+   "track": "Mono Inc. — A Love That Never Dies (en)",
+   "lines": 43,
+   "median_apart": 28.62,
+   "max_apart": 87.0,
+   "unplaced_at_2s": 27,
+   "lost_at_5s": 25,
+   "verdict": "all 43 kept, flagged"
+  },
+  {
+   "id": "11",
+   "track": "Powerwolf — Armata Strigoi (en)",
+   "lines": 31,
+   "median_apart": 54.83,
+   "max_apart": 139.19,
+   "unplaced_at_2s": 31,
+   "lost_at_5s": 31,
+   "verdict": "all 31 kept, flagged"
+  },
+  {
+   "id": "12",
+   "track": "Sabaton — A Lifetime of War (en)",
+   "lines": 69,
+   "median_apart": 94.53,
+   "max_apart": 147.33,
+   "unplaced_at_2s": 69,
+   "lost_at_5s": 69,
+   "verdict": "all 69 kept, flagged"
+  },
+  {
+   "id": "13",
+   "track": "Saltatio Mortis — Brunhild (de)",
+   "lines": 52,
+   "median_apart": 0.47,
+   "max_apart": 24.0,
+   "unplaced_at_2s": 1,
+   "lost_at_5s": 1,
+   "verdict": "51 placed"
+  },
+  {
+   "id": "14",
+   "track": "Warkings — Azrael (en)",
+   "lines": 55,
+   "median_apart": 59.71,
+   "max_apart": 80.31,
+   "unplaced_at_2s": 55,
+   "lost_at_5s": 54,
+   "verdict": "all 55 kept, flagged"
+  },
+  {
+   "id": "15",
+   "track": "dArtagnan — Alles aus Liebe (de)",
+   "lines": 43,
+   "median_apart": 0.48,
+   "max_apart": 6.79,
+   "unplaced_at_2s": 1,
+   "lost_at_5s": 1,
+   "verdict": "42 placed"
+  }
+ ]
+}

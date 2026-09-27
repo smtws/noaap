@@ -1,0 +1,149 @@
+{
+ "_source": "P33's deciding measurement (docs/qa-catalog.md, AE): how much of the sung part of each track a method's stamps cover, both methods, eighteen tracks. The last two were held out and measured after the thresholds were fixed.",
+ "rows": [
+  {
+   "track": "DOMINUM — Killed by Life",
+   "ctc_span": 0.87,
+   "whisper_span": 0.86,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "DOMINUM — Die for the Devil",
+   "ctc_span": 0.99,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.11,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "DOMINUM — Can't Kill a Dead Man",
+   "ctc_span": 0.98,
+   "whisper_span": 0.95,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Die Legende von Nord — Bösewicht",
+   "ctc_span": 0.93,
+   "whisper_span": 0.93,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Feuerschwanz — Bastard of Asgard",
+   "ctc_span": 1.12,
+   "whisper_span": 1.12,
+   "whisper_piled": 0.03,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Kupfergold — Zombie Malone",
+   "ctc_span": 0.98,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.04,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Lord of the Lost — 2000 Years a Pyre",
+   "ctc_span": 0.97,
+   "whisper_span": 0.93,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Lord of the Lost — Argent",
+   "ctc_span": 0.99,
+   "whisper_span": 0.41,
+   "whisper_piled": 0.26,
+   "verdict": "Whisper lost",
+   "held_out": false
+  },
+  {
+   "track": "Lord of the Lost — A War Within",
+   "ctc_span": 0.98,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Michael Jackson — Ben",
+   "ctc_span": 0.98,
+   "whisper_span": 0.96,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Mono Inc. — A Love That Never Dies",
+   "ctc_span": 0.95,
+   "whisper_span": 0.67,
+   "whisper_piled": 0.21,
+   "verdict": "Whisper lost",
+   "held_out": false
+  },
+  {
+   "track": "Powerwolf — Armata Strigoi",
+   "ctc_span": 0.98,
+   "whisper_span": 0.52,
+   "whisper_piled": 0.06,
+   "verdict": "Whisper lost",
+   "held_out": false
+  },
+  {
+   "track": "Sabaton — A Lifetime of War",
+   "ctc_span": 1.0,
+   "whisper_span": 0.45,
+   "whisper_piled": 0.36,
+   "verdict": "Whisper lost",
+   "held_out": false
+  },
+  {
+   "track": "Saltatio Mortis — Brunhild",
+   "ctc_span": 0.99,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Warkings — Azrael",
+   "ctc_span": 1.09,
+   "whisper_span": 0.7,
+   "whisper_piled": 0.24,
+   "verdict": "Whisper lost",
+   "held_out": false
+  },
+  {
+   "track": "dArtagnan — Alles aus Liebe",
+   "ctc_span": 0.97,
+   "whisper_span": 0.97,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": false
+  },
+  {
+   "track": "Mono Inc. — Princess of the Night",
+   "ctc_span": 0.98,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": true
+  },
+  {
+   "track": "Saltatio Mortis — Seitdem du weg bist",
+   "ctc_span": 0.99,
+   "whisper_span": 0.98,
+   "whisper_piled": 0.0,
+   "verdict": "cannot tell",
+   "held_out": true
+  }
+ ]
+}

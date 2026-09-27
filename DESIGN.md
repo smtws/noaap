@@ -1249,6 +1249,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    It belongs to a pass, never to an interactive lookup, and the panel offers it per track for
    somebody who wants one answer now.
 
+47. ✅ A corpus that keeps the measurements (2026-09-28, P37). P27, P33 and P35 each ended with
+   numbers in prose and raw material in a scratch directory, and one of those directories has already
+   been deleted. So the measurements become tests: a **fast** half from the recordings that runs in
+   every `uv run pytest`, and a **slow** half, opt-in, that does the work again on real audio and can
+   catch what the recordings cannot — a model version, a resampling change, a device default. Every
+   case asserts a **semantic outcome** rather than a number, and where a threshold decides it also
+   asserts the range the threshold may move within, so a retune inside the measured gap passes and one
+   outside it fails naming the gap. The other half is the **counterexamples**: the four heuristics
+   that were proposed and disproved each have a case that must keep failing them, which makes the
+   rule explicit — a new signal has to beat every counterexample before it can decide anything
+   (`docs/regression.md`, `docs/qa-catalog.md` AH).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

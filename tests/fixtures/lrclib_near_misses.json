@@ -1,6 +1,6 @@
 {
  "_source": "203 candidates measured against this library on 2026-09-27 (docs/qa-catalog.md, AG): every track with no words whose lrclib entry was more than 3 s from the file, aligned to the file to see whether the words and the timings belong to it.",
- "_note": "span is how much of the singing the entry's stamps cover, unplaced the share of lines the aligner would not place. These two numbers are the whole of the decision, so the recorded measurements are the fixture: no model runs in the tests.",
+ "_note": "span is how much of the singing the entry's stamps cover, unplaced the share of lines the aligner would not place. These two numbers are the whole of the decision, so the recorded measurements are the fixture: no model runs in the tests. Each row also carries the album and the lrclib entry id, so a slow end-to-end run can find the track in a library by artist, title and album. No filesystem path is recorded here on purpose: this repository is public.",
  "candidates": [
   {
    "artist": "Dämmerland & Mr. Hurley & Die Pulveraffen",
@@ -13,7 +13,10 @@
    "unplaced": 0.0,
    "lines": 26,
    "placed": 26,
-   "group": "near"
+   "group": "near",
+   "album": "Dämmerland",
+   "lrclib_id": 36187748,
+   "piled": 0
   },
   {
    "artist": "Dämmerland & Versengold",
@@ -26,7 +29,10 @@
    "unplaced": 0.0,
    "lines": 23,
    "placed": 23,
-   "group": "near"
+   "group": "near",
+   "album": "Dämmerland",
+   "lrclib_id": 23417062,
+   "piled": 0
   },
   {
    "artist": "Dämmerland & Versengold",
@@ -39,7 +45,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "near"
+   "group": "near",
+   "album": "Dämmerland 2",
+   "lrclib_id": 37456125,
+   "piled": 0
   },
   {
    "artist": "Dämmerland, Jennifer Haben, Eklipse & Beyond The Black",
@@ -52,7 +61,10 @@
    "unplaced": 0.0,
    "lines": 33,
    "placed": 33,
-   "group": "near"
+   "group": "near",
+   "album": "Dämmerland 2",
+   "lrclib_id": 35231264,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -65,7 +77,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 21647820,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -78,7 +93,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 29091016,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -91,7 +109,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "near"
+   "group": "near",
+   "album": "Das Elfte Gebot",
+   "lrclib_id": 22164563,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -104,7 +125,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "near"
+   "group": "near",
+   "album": "Das Elfte Gebot",
+   "lrclib_id": 22164563,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -117,7 +141,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "near"
+   "group": "near",
+   "album": "Das Elfte Gebot (Bonus)",
+   "lrclib_id": 25360675,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -130,7 +157,10 @@
    "unplaced": 0.0,
    "lines": 41,
    "placed": 41,
-   "group": "near"
+   "group": "near",
+   "album": "Knightclub",
+   "lrclib_id": 27840443,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -143,7 +173,10 @@
    "unplaced": 0.709,
    "lines": 55,
    "placed": 16,
-   "group": "near"
+   "group": "near",
+   "album": "Knightclub",
+   "lrclib_id": 25044257,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -156,7 +189,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 29091016,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -169,7 +205,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 29091016,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -182,7 +221,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 21647820,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus",
@@ -195,7 +237,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "near"
+   "group": "near",
+   "album": "Das Album - Rock'n'Rarrr Music",
+   "lrclib_id": 24089270,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus",
@@ -208,7 +253,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "near"
+   "group": "near",
+   "album": "Pommesgabel",
+   "lrclib_id": 30728178,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus",
@@ -221,7 +269,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "near"
+   "group": "near",
+   "album": "Pommesgabel",
+   "lrclib_id": 30728178,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -234,7 +285,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "near"
+   "group": "near",
+   "album": "Thornstar",
+   "lrclib_id": 25768088,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -247,7 +301,10 @@
    "unplaced": 0.0,
    "lines": 71,
    "placed": 71,
-   "group": "near"
+   "group": "near",
+   "album": "Weapons of Mass Seduction",
+   "lrclib_id": 25041523,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -260,7 +317,10 @@
    "unplaced": 0.0,
    "lines": 26,
    "placed": 26,
-   "group": "near"
+   "group": "near",
+   "album": "Darkness",
+   "lrclib_id": 36499984,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -273,7 +333,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "near"
+   "group": "near",
+   "album": "Darkness",
+   "lrclib_id": 25115309,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -286,7 +349,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "near"
+   "group": "near",
+   "album": "Melodies in Black",
+   "lrclib_id": 2114208,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -299,7 +365,10 @@
    "unplaced": 0.0,
    "lines": 55,
    "placed": 55,
-   "group": "near"
+   "group": "near",
+   "album": "Nimmermehr",
+   "lrclib_id": 34206955,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -312,7 +381,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "near"
+   "group": "near",
+   "album": "Nimmermehr",
+   "lrclib_id": 30410635,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -325,7 +397,10 @@
    "unplaced": 0.0,
    "lines": 78,
    "placed": 78,
-   "group": "near"
+   "group": "near",
+   "album": "Ravenblack",
+   "lrclib_id": 2114325,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -338,7 +413,10 @@
    "unplaced": 0.0,
    "lines": 82,
    "placed": 82,
-   "group": "near"
+   "group": "near",
+   "album": "Symphonic Live - The Second Chapter",
+   "lrclib_id": 35752832,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -351,7 +429,10 @@
    "unplaced": 0.0,
    "lines": 60,
    "placed": 60,
-   "group": "near"
+   "group": "near",
+   "album": "The Book Of Fire",
+   "lrclib_id": 20994973,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -364,7 +445,10 @@
    "unplaced": 0.0,
    "lines": 55,
    "placed": 55,
-   "group": "near"
+   "group": "near",
+   "album": "The Clock Ticks On CD2",
+   "lrclib_id": 34206955,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -377,7 +461,10 @@
    "unplaced": 0.0,
    "lines": 57,
    "placed": 57,
-   "group": "near"
+   "group": "near",
+   "album": "Voices of Doom",
+   "lrclib_id": 30672175,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -390,7 +477,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "near"
+   "group": "near",
+   "album": "S.O.S.",
+   "lrclib_id": 24423598,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -403,7 +493,10 @@
    "unplaced": 0.0,
    "lines": 48,
    "placed": 48,
-   "group": "near"
+   "group": "near",
+   "album": "Tortuga",
+   "lrclib_id": 16303123,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -416,7 +509,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "near"
+   "group": "near",
+   "album": "S.O.S.",
+   "lrclib_id": 24423598,
+   "piled": 0
   },
   {
    "artist": "Sylvaine",
@@ -429,7 +525,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 13 - Mirrored Dreams",
+   "lrclib_id": 4337166,
+   "piled": 0
   },
   {
    "artist": "Staind",
@@ -442,7 +541,10 @@
    "unplaced": 0.0,
    "lines": 29,
    "placed": 29,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 15 - Sleep Distortion",
+   "lrclib_id": 20919159,
+   "piled": 0
   },
   {
    "artist": "Dämmerland & Versengold",
@@ -455,7 +557,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "near"
+   "group": "near",
+   "album": "Dämmerland 2",
+   "lrclib_id": 37456125,
+   "piled": 0
   },
   {
    "artist": "Universum25",
@@ -468,7 +573,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 36530016,
+   "piled": 0
   },
   {
    "artist": "Nightwish",
@@ -481,7 +589,10 @@
    "unplaced": 0.0,
    "lines": 32,
    "placed": 32,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 19 - Hearts Aflame",
+   "lrclib_id": 22811443,
+   "piled": 0
   },
   {
    "artist": "Blutengel",
@@ -494,7 +605,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 2 - Synthetic Dreams",
+   "lrclib_id": 17680659,
+   "piled": 0
   },
   {
    "artist": "The Frozen Autumn",
@@ -507,7 +621,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 2 - Synthetic Dreams",
+   "lrclib_id": 10550715,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -520,7 +637,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "near"
+   "group": "near",
+   "album": "Best Of",
+   "lrclib_id": 21647820,
+   "piled": 0
   },
   {
    "artist": "Deine Lakaien",
@@ -533,7 +653,10 @@
    "unplaced": 0.0,
    "lines": 53,
    "placed": 53,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 5 - Nocturnal Whispers",
+   "lrclib_id": 18261486,
+   "piled": 0
   },
   {
    "artist": "Agnes Obel",
@@ -546,7 +669,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 6 - Woodborn Slumber",
+   "lrclib_id": 34661955,
+   "piled": 0
   },
   {
    "artist": "Crematory",
@@ -559,7 +685,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 8 - Rest Well, Prince of Darkness",
+   "lrclib_id": 24142093,
+   "piled": 0
   },
   {
    "artist": "Diary of Dreams",
@@ -572,7 +701,10 @@
    "unplaced": 0.0,
    "lines": 28,
    "placed": 28,
-   "group": "near"
+   "group": "near",
+   "album": "Vol. 8 - Rest Well, Prince of Darkness",
+   "lrclib_id": 28107756,
+   "piled": 0
   },
   {
    "artist": "Powerwolf",
@@ -585,7 +717,10 @@
    "unplaced": 0.0,
    "lines": 68,
    "placed": 68,
-   "group": "near"
+   "group": "near",
+   "album": "The Monumental Mass: A Cinematic Metal Event",
+   "lrclib_id": 33994573,
+   "piled": 0
   },
   {
    "artist": "Powerwolf",
@@ -598,7 +733,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "near"
+   "group": "near",
+   "album": "The Monumental Mass: A Cinematic Metal Event",
+   "lrclib_id": 20232090,
+   "piled": 0
   },
   {
    "artist": "Sabaton",
@@ -611,7 +749,10 @@
    "unplaced": 0.0,
    "lines": 51,
    "placed": 51,
-   "group": "near"
+   "group": "near",
+   "album": "The Last Stand (10th Anniversary Edition)",
+   "lrclib_id": 21128706,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -624,7 +765,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 15843091,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -637,7 +781,10 @@
    "unplaced": 0.0,
    "lines": 57,
    "placed": 57,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 19120624,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -650,7 +797,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 19120630,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -663,7 +813,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 15843091,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -676,7 +829,10 @@
    "unplaced": 0.0,
    "lines": 57,
    "placed": 57,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 19120624,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -689,7 +845,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 19120630,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -702,7 +861,10 @@
    "unplaced": 0.0,
    "lines": 37,
    "placed": 37,
-   "group": "near"
+   "group": "near",
+   "album": "Zirkus Zeitgeist - Ohne Strom und Stecker",
+   "lrclib_id": 2455370,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -715,7 +877,10 @@
    "unplaced": 0.0,
    "lines": 73,
    "placed": 73,
-   "group": "near"
+   "group": "near",
+   "album": "Artus",
+   "lrclib_id": 35703796,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -728,7 +893,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "near"
+   "group": "near",
+   "album": "Sinnfonie",
+   "lrclib_id": 14386350,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -741,7 +909,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 36644864,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -754,7 +925,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 36644850,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -767,7 +941,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 38707715,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -780,7 +957,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 38707715,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -793,7 +973,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 36644864,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -806,7 +989,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "near"
+   "group": "near",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 36644850,
+   "piled": 0
   },
   {
    "artist": "UNIVERSUM25",
@@ -819,7 +1005,10 @@
    "unplaced": 0.0,
    "lines": 40,
    "placed": 40,
-   "group": "near"
+   "group": "near",
+   "album": "Universum25",
+   "lrclib_id": 36530016,
+   "piled": 0
   },
   {
    "artist": "UNIVERSUM25",
@@ -832,7 +1021,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "near"
+   "group": "near",
+   "album": "Universum25",
+   "lrclib_id": 23548132,
+   "piled": 0
   },
   {
    "artist": "UNIVERSUM25",
@@ -845,7 +1037,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "near"
+   "group": "near",
+   "album": "Universum25",
+   "lrclib_id": 23448720,
+   "piled": 0
   },
   {
    "artist": "Versengold",
@@ -858,7 +1053,10 @@
    "unplaced": 0.0,
    "lines": 47,
    "placed": 47,
-   "group": "near"
+   "group": "near",
+   "album": "Was kost die Welt",
+   "lrclib_id": 8334999,
+   "piled": 2
   },
   {
    "artist": "Visions of Atlantis",
@@ -871,7 +1069,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "near"
+   "group": "near",
+   "album": "Pirates II - Armada",
+   "lrclib_id": 26382852,
+   "piled": 0
   },
   {
    "artist": "Visions of Atlantis",
@@ -884,7 +1085,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "near"
+   "group": "near",
+   "album": "The Deep & The Dark",
+   "lrclib_id": 13218659,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -897,7 +1101,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "near"
+   "group": "near",
+   "album": "Revenge",
+   "lrclib_id": 2986467,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -910,7 +1117,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "near"
+   "group": "near",
+   "album": "Revolution",
+   "lrclib_id": 36324723,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -923,7 +1133,10 @@
    "unplaced": 0.0,
    "lines": 54,
    "placed": 54,
-   "group": "near"
+   "group": "near",
+   "album": "Felsenfest",
+   "lrclib_id": 5890183,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -936,7 +1149,10 @@
    "unplaced": 0.0,
    "lines": 57,
    "placed": 57,
-   "group": "near"
+   "group": "near",
+   "album": "Feuer & Flamme",
+   "lrclib_id": 17398852,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -949,7 +1165,10 @@
    "unplaced": 0.0,
    "lines": 42,
    "placed": 42,
-   "group": "near"
+   "group": "near",
+   "album": "Herzblut",
+   "lrclib_id": 27089891,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -962,7 +1181,10 @@
    "unplaced": 0.0,
    "lines": 42,
    "placed": 42,
-   "group": "near"
+   "group": "near",
+   "album": "Herzblut",
+   "lrclib_id": 27089891,
+   "piled": 0
   },
   {
    "artist": "DOMINUM",
@@ -975,7 +1197,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "The Dead Don’t Die",
+   "lrclib_id": 16496766,
+   "piled": 0
   },
   {
    "artist": "Dämmerland & Eisbrecher",
@@ -988,7 +1213,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Dämmerland 2",
+   "lrclib_id": 38004964,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1001,7 +1229,10 @@
    "unplaced": 0.0,
    "lines": 30,
    "placed": 30,
-   "group": "far"
+   "group": "far",
+   "album": "Auf's Leben!",
+   "lrclib_id": 12244086,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1014,7 +1245,10 @@
    "unplaced": 0.0,
    "lines": 30,
    "placed": 30,
-   "group": "far"
+   "group": "far",
+   "album": "Auf's Leben!",
+   "lrclib_id": 12244086,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1027,7 +1261,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Das Elfte Gebot",
+   "lrclib_id": 19878879,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1040,7 +1277,10 @@
    "unplaced": 0.0,
    "lines": 42,
    "placed": 42,
-   "group": "far"
+   "group": "far",
+   "album": "Das Elfte Gebot",
+   "lrclib_id": 21275445,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1053,7 +1293,10 @@
    "unplaced": 0.0,
    "lines": 53,
    "placed": 53,
-   "group": "far"
+   "group": "far",
+   "album": "Das Elfte Gebot (Bonus)",
+   "lrclib_id": 36878942,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1066,7 +1309,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Das Elfte Gebot",
+   "lrclib_id": 19878879,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1079,7 +1325,10 @@
    "unplaced": 0.0,
    "lines": 27,
    "placed": 27,
-   "group": "far"
+   "group": "far",
+   "album": "Fegefeuer",
+   "lrclib_id": 20675812,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1092,7 +1341,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "far"
+   "group": "far",
+   "album": "Fegefeuer",
+   "lrclib_id": 21504881,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1105,7 +1357,10 @@
    "unplaced": 0.0,
    "lines": 59,
    "placed": 59,
-   "group": "far"
+   "group": "far",
+   "album": "Knightclub",
+   "lrclib_id": 32773692,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1118,7 +1373,10 @@
    "unplaced": 0.0,
    "lines": 57,
    "placed": 57,
-   "group": "far"
+   "group": "far",
+   "album": "Memento Mori",
+   "lrclib_id": 20643980,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1131,7 +1389,10 @@
    "unplaced": 0.0,
    "lines": 63,
    "placed": 63,
-   "group": "far"
+   "group": "far",
+   "album": "Memento Mori",
+   "lrclib_id": 16286674,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1144,7 +1405,10 @@
    "unplaced": 0.0,
    "lines": 47,
    "placed": 47,
-   "group": "far"
+   "group": "far",
+   "album": "Sex Is Muss",
+   "lrclib_id": 22279529,
+   "piled": 4
   },
   {
    "artist": "Feuerschwanz",
@@ -1157,7 +1421,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "far"
+   "group": "far",
+   "album": "Sex Is Muss",
+   "lrclib_id": 1948442,
+   "piled": 0
   },
   {
    "artist": "Feuerschwanz",
@@ -1170,7 +1437,10 @@
    "unplaced": 0.0,
    "lines": 61,
    "placed": 61,
-   "group": "far"
+   "group": "far",
+   "album": "Sex Is Muss",
+   "lrclib_id": 1949242,
+   "piled": 2
   },
   {
    "artist": "Heavysaurus & Saltatio Mortis",
@@ -1183,7 +1453,10 @@
    "unplaced": 0.0,
    "lines": 32,
    "placed": 32,
-   "group": "far"
+   "group": "far",
+   "album": "Pommesgabel",
+   "lrclib_id": 26515301,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus",
@@ -1196,7 +1469,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Pommesgabel",
+   "lrclib_id": 35612689,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus & Saltatio Mortis",
@@ -1209,7 +1485,10 @@
    "unplaced": 0.0,
    "lines": 32,
    "placed": 32,
-   "group": "far"
+   "group": "far",
+   "album": "Pommesgabel",
+   "lrclib_id": 26515301,
+   "piled": 0
   },
   {
    "artist": "Heavysaurus",
@@ -1222,7 +1501,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Pommesgabel",
+   "lrclib_id": 35612689,
+   "piled": 0
   },
   {
    "artist": "Kupfergold",
@@ -1235,7 +1517,10 @@
    "unplaced": 0.079,
    "lines": 38,
    "placed": 35,
-   "group": "far"
+   "group": "far",
+   "album": "Fasan Alarm",
+   "lrclib_id": 22287381,
+   "piled": 0
   },
   {
    "artist": "Kupfergold",
@@ -1248,7 +1533,10 @@
    "unplaced": 0.0,
    "lines": 53,
    "placed": 53,
-   "group": "far"
+   "group": "far",
+   "album": "Fasan Alarm",
+   "lrclib_id": 21633729,
+   "piled": 1
   },
   {
    "artist": "Lord of the Lost",
@@ -1261,7 +1549,10 @@
    "unplaced": 0.0,
    "lines": 63,
    "placed": 63,
-   "group": "far"
+   "group": "far",
+   "album": "Antagony",
+   "lrclib_id": 33759042,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1274,7 +1565,10 @@
    "unplaced": 0.0,
    "lines": 42,
    "placed": 42,
-   "group": "far"
+   "group": "far",
+   "album": "Antagony",
+   "lrclib_id": 26561570,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1287,7 +1581,10 @@
    "unplaced": 0.0,
    "lines": 65,
    "placed": 65,
-   "group": "far"
+   "group": "far",
+   "album": "Die Tomorrow (Bonus Track Version)",
+   "lrclib_id": 35893720,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1300,7 +1597,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "far"
+   "group": "far",
+   "album": "Empyrean (2026 Deluxe Edition)",
+   "lrclib_id": 25446663,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1313,7 +1613,10 @@
    "unplaced": 0.0,
    "lines": 37,
    "placed": 37,
-   "group": "far"
+   "group": "far",
+   "album": "Empyrean (2026 Deluxe Edition)",
+   "lrclib_id": 25182649,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1326,7 +1629,10 @@
    "unplaced": 0.0,
    "lines": 29,
    "placed": 29,
-   "group": "far"
+   "group": "far",
+   "album": "Fears",
+   "lrclib_id": 20161103,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1339,7 +1645,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "far"
+   "group": "far",
+   "album": "Fears",
+   "lrclib_id": 21619849,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1352,7 +1661,10 @@
    "unplaced": 0.0,
    "lines": 37,
    "placed": 37,
-   "group": "far"
+   "group": "far",
+   "album": "Fears",
+   "lrclib_id": 36151568,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1365,7 +1677,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "far"
+   "group": "far",
+   "album": "Swan Songs III",
+   "lrclib_id": 34674914,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1378,7 +1693,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Swan Songs III",
+   "lrclib_id": 32452193,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1391,7 +1709,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "Swan Songs III",
+   "lrclib_id": 2974412,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1404,7 +1725,10 @@
    "unplaced": 0.0,
    "lines": 67,
    "placed": 67,
-   "group": "far"
+   "group": "far",
+   "album": "Thornstar",
+   "lrclib_id": 24376817,
+   "piled": 1
   },
   {
    "artist": "Lord of the Lost",
@@ -1417,7 +1741,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "far"
+   "group": "far",
+   "album": "Thornstar",
+   "lrclib_id": 21570025,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1430,7 +1757,10 @@
    "unplaced": 0.0,
    "lines": 85,
    "placed": 85,
-   "group": "far"
+   "group": "far",
+   "album": "Weapons of Mass Seduction",
+   "lrclib_id": 32913499,
+   "piled": 0
   },
   {
    "artist": "Michael Jackson with Akon",
@@ -1443,7 +1773,10 @@
    "unplaced": 0.0,
    "lines": 68,
    "placed": 68,
-   "group": "far"
+   "group": "far",
+   "album": "Michael",
+   "lrclib_id": 26134816,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1456,7 +1789,10 @@
    "unplaced": 0.0,
    "lines": 56,
    "placed": 56,
-   "group": "far"
+   "group": "far",
+   "album": "Darkness",
+   "lrclib_id": 25086950,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1469,7 +1805,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Darkness",
+   "lrclib_id": 28129630,
+   "piled": 0
   },
   {
    "artist": "Mono Inc. & Eric Fish",
@@ -1482,7 +1821,10 @@
    "unplaced": 0.0,
    "lines": 51,
    "placed": 51,
-   "group": "far"
+   "group": "far",
+   "album": "Melodies in Black",
+   "lrclib_id": 32497490,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1495,7 +1837,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "far"
+   "group": "far",
+   "album": "Melodies in Black",
+   "lrclib_id": 16887220,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1508,7 +1853,10 @@
    "unplaced": 0.0,
    "lines": 16,
    "placed": 16,
-   "group": "far"
+   "group": "far",
+   "album": "Melodies in Black",
+   "lrclib_id": 19849036,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1521,7 +1869,10 @@
    "unplaced": 0.0,
    "lines": 27,
    "placed": 27,
-   "group": "far"
+   "group": "far",
+   "album": "Pain, Love & Poetry (Collector’s Cut)",
+   "lrclib_id": 20977398,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1534,7 +1885,10 @@
    "unplaced": 0.0,
    "lines": 48,
    "placed": 48,
-   "group": "far"
+   "group": "far",
+   "album": "Terlingua",
+   "lrclib_id": 22731895,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1547,7 +1901,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Terlingua",
+   "lrclib_id": 2115359,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1560,7 +1917,10 @@
    "unplaced": 0.0,
    "lines": 67,
    "placed": 67,
-   "group": "far"
+   "group": "far",
+   "album": "The Book Of Fire",
+   "lrclib_id": 22829774,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1573,7 +1933,10 @@
    "unplaced": 0.0,
    "lines": 87,
    "placed": 87,
-   "group": "far"
+   "group": "far",
+   "album": "The Book Of Fire",
+   "lrclib_id": 21539316,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1586,7 +1949,10 @@
    "unplaced": 0.0,
    "lines": 47,
    "placed": 47,
-   "group": "far"
+   "group": "far",
+   "album": "The Book Of Fire",
+   "lrclib_id": 34666116,
+   "piled": 0
   },
   {
    "artist": "Mono Inc.",
@@ -1599,7 +1965,9 @@
    "unplaced": null,
    "lines": null,
    "placed": null,
-   "group": "far"
+   "group": "far",
+   "album": "Together Till The End",
+   "lrclib_id": 18848730
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1612,7 +1980,10 @@
    "unplaced": 0.0,
    "lines": 65,
    "placed": 65,
-   "group": "far"
+   "group": "far",
+   "album": "Grog'n'Roll",
+   "lrclib_id": 2454332,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1625,7 +1996,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Grog'n'Roll",
+   "lrclib_id": 15705184,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1638,7 +2012,10 @@
    "unplaced": 0.0,
    "lines": 65,
    "placed": 65,
-   "group": "far"
+   "group": "far",
+   "album": "Grog'n'Roll",
+   "lrclib_id": 2454332,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1651,7 +2028,10 @@
    "unplaced": 0.0,
    "lines": 73,
    "placed": 73,
-   "group": "far"
+   "group": "far",
+   "album": "Seemannsgrab",
+   "lrclib_id": 10898560,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1664,7 +2044,10 @@
    "unplaced": 0.0,
    "lines": 51,
    "placed": 51,
-   "group": "far"
+   "group": "far",
+   "album": "Seemannsgrab",
+   "lrclib_id": 36366754,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1677,7 +2060,10 @@
    "unplaced": 0.0,
    "lines": 56,
    "placed": 56,
-   "group": "far"
+   "group": "far",
+   "album": "Seemannsgrab",
+   "lrclib_id": 2455490,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & Die Pulveraffen",
@@ -1690,7 +2076,10 @@
    "unplaced": 0.0,
    "lines": 33,
    "placed": 33,
-   "group": "far"
+   "group": "far",
+   "album": "Tortuga",
+   "lrclib_id": 18927087,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & die Pulveraffen",
@@ -1703,7 +2092,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Tortuga",
+   "lrclib_id": 18609145,
+   "piled": 0
   },
   {
    "artist": "Enemy Inside",
@@ -1716,7 +2108,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 1 - Heavy Sleeping",
+   "lrclib_id": 9393618,
+   "piled": 0
   },
   {
    "artist": "DOMINUM",
@@ -1729,7 +2124,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 1 - Heavy Sleeping",
+   "lrclib_id": 16496766,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1742,7 +2140,10 @@
    "unplaced": 0.0,
    "lines": 65,
    "placed": 65,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 1 - Heavy Sleeping",
+   "lrclib_id": 19051207,
+   "piled": 0
   },
   {
    "artist": "October Tide",
@@ -1755,7 +2156,10 @@
    "unplaced": 0.0,
    "lines": 30,
    "placed": 30,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 10 - Fallen's Embrace",
+   "lrclib_id": 5642031,
+   "piled": 0
   },
   {
    "artist": "Imelda May",
@@ -1768,7 +2172,10 @@
    "unplaced": 0.0,
    "lines": 48,
    "placed": 48,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 12 - Motel Nocturne",
+   "lrclib_id": 36687940,
+   "piled": 0
   },
   {
    "artist": "Ásgeir",
@@ -1781,7 +2188,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 16 - Midnight Gloss",
+   "lrclib_id": 35022133,
+   "piled": 0
   },
   {
    "artist": "Joachim Witt",
@@ -1794,7 +2204,10 @@
    "unplaced": 0.0,
    "lines": 27,
    "placed": 27,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 27028707,
+   "piled": 0
   },
   {
    "artist": "‡ ORDO M'ERA LUNA ‡",
@@ -1807,7 +2220,10 @@
    "unplaced": 0.0,
    "lines": 56,
    "placed": 56,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 25877185,
+   "piled": 0
   },
   {
    "artist": "In Strict Confidence",
@@ -1820,7 +2236,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 19744272,
+   "piled": 0
   },
   {
    "artist": "Lord of the Lost",
@@ -1833,7 +2252,10 @@
    "unplaced": 0.0,
    "lines": 65,
    "placed": 65,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 1 - Heavy Sleeping",
+   "lrclib_id": 19051207,
+   "piled": 0
   },
   {
    "artist": "Faun",
@@ -1846,7 +2268,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 20243198,
+   "piled": 0
   },
   {
    "artist": "The Birthday Massacre",
@@ -1859,7 +2284,10 @@
    "unplaced": 0.0,
    "lines": 30,
    "placed": 30,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 19 - Hearts Aflame",
+   "lrclib_id": 1892166,
+   "piled": 0
   },
   {
    "artist": "Paradise Lost",
@@ -1872,7 +2300,10 @@
    "unplaced": 0.0,
    "lines": 27,
    "placed": 27,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 19 - Hearts Aflame",
+   "lrclib_id": 19034963,
+   "piled": 0
   },
   {
    "artist": "Assemblage 23",
@@ -1885,7 +2316,10 @@
    "unplaced": 0.0,
    "lines": 30,
    "placed": 30,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 2 - Synthetic Dreams",
+   "lrclib_id": 3535699,
+   "piled": 0
   },
   {
    "artist": "‡ ORDO M'ERA LUNA ‡",
@@ -1898,7 +2332,10 @@
    "unplaced": 0.0,
    "lines": 56,
    "placed": 56,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 17 - 25 Shadows Later",
+   "lrclib_id": 25877185,
+   "piled": 0
   },
   {
    "artist": "Mr. Hurley & die Pulveraffen",
@@ -1911,7 +2348,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Tortuga",
+   "lrclib_id": 18609145,
+   "piled": 0
   },
   {
    "artist": "ASP",
@@ -1924,7 +2364,10 @@
    "unplaced": 0.0,
    "lines": 25,
    "placed": 25,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 20 - Glasses Empty",
+   "lrclib_id": 5162559,
+   "piled": 0
   },
   {
    "artist": "Corvus Corax",
@@ -1937,7 +2380,10 @@
    "unplaced": 0.0,
    "lines": 14,
    "placed": 14,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 4 - Haunted Nursery",
+   "lrclib_id": 20219397,
+   "piled": 0
   },
   {
    "artist": "Darkher",
@@ -1950,7 +2396,10 @@
    "unplaced": 0.0,
    "lines": 16,
    "placed": 16,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 4 - Haunted Nursery",
+   "lrclib_id": 3195735,
+   "piled": 0
   },
   {
    "artist": "Sowulo",
@@ -1963,7 +2412,10 @@
    "unplaced": 0.0,
    "lines": 20,
    "placed": 20,
-   "group": "far"
+   "group": "far",
+   "album": "Vol. 7 - Dreams of Njǫrð",
+   "lrclib_id": 32778159,
+   "piled": 0
   },
   {
    "artist": "Powerwolf",
@@ -1976,7 +2428,10 @@
    "unplaced": 0.0,
    "lines": 31,
    "placed": 31,
-   "group": "far"
+   "group": "far",
+   "album": "Missa Cantorem II",
+   "lrclib_id": 24985314,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -1989,7 +2444,10 @@
    "unplaced": 0.0,
    "lines": 33,
    "placed": 33,
-   "group": "far"
+   "group": "far",
+   "album": "Brot und Spiele - Klassik & Krawall (Deluxe)",
+   "lrclib_id": 9944883,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2002,7 +2460,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "far"
+   "group": "far",
+   "album": "Finsterwacht",
+   "lrclib_id": 36319370,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2015,7 +2476,10 @@
    "unplaced": 0.0,
    "lines": 12,
    "placed": 12,
-   "group": "far"
+   "group": "far",
+   "album": "Finsterwacht",
+   "lrclib_id": 10480462,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2028,7 +2492,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 17291030,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2041,7 +2508,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "Für immer frei (Unsere Zeit Edition)",
+   "lrclib_id": 17291030,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2054,7 +2524,10 @@
    "unplaced": 0.0,
    "lines": 61,
    "placed": 61,
-   "group": "far"
+   "group": "far",
+   "album": "Licht Und Schatten - Best of 2000 Bis 2014",
+   "lrclib_id": 2454611,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2067,7 +2540,10 @@
    "unplaced": 0.0,
    "lines": 61,
    "placed": 61,
-   "group": "far"
+   "group": "far",
+   "album": "Licht Und Schatten - Best of 2000 Bis 2014",
+   "lrclib_id": 2454611,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2080,7 +2556,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "far"
+   "group": "far",
+   "album": "WELTENWANDERER - Von Träumen & Krawall",
+   "lrclib_id": 23602239,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2093,7 +2572,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "far"
+   "group": "far",
+   "album": "WELTENWANDERER - Von Träumen & Krawall",
+   "lrclib_id": 23547248,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2106,7 +2588,10 @@
    "unplaced": 0.0,
    "lines": 24,
    "placed": 24,
-   "group": "far"
+   "group": "far",
+   "album": "Finsterwacht",
+   "lrclib_id": 36319370,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2119,7 +2604,10 @@
    "unplaced": 0.0,
    "lines": 61,
    "placed": 61,
-   "group": "far"
+   "group": "far",
+   "album": "Licht Und Schatten - Best of 2000 Bis 2014",
+   "lrclib_id": 2454611,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2132,7 +2620,10 @@
    "unplaced": 0.0,
    "lines": 60,
    "placed": 60,
-   "group": "far"
+   "group": "far",
+   "album": "WELTENWANDERER - Von Träumen & Krawall",
+   "lrclib_id": 37037196,
+   "piled": 0
   },
   {
    "artist": "Saltatio Mortis",
@@ -2145,7 +2636,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Zirkus Zeitgeist (Live aus der Grossen Freiheit)",
+   "lrclib_id": 32564673,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2158,7 +2652,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Knüppel aus dem Sack",
+   "lrclib_id": 28018023,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2171,7 +2668,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Knüppel aus dem Sack",
+   "lrclib_id": 19151376,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2184,7 +2684,10 @@
    "unplaced": 0.0,
    "lines": 46,
    "placed": 46,
-   "group": "far"
+   "group": "far",
+   "album": "Knüppel aus dem Sack",
+   "lrclib_id": 28032578,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2197,7 +2700,10 @@
    "unplaced": 0.0,
    "lines": 20,
    "placed": 20,
-   "group": "far"
+   "group": "far",
+   "album": "Sinnfonie",
+   "lrclib_id": 14385615,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2210,7 +2716,10 @@
    "unplaced": 0.0,
    "lines": 28,
    "placed": 28,
-   "group": "far"
+   "group": "far",
+   "album": "Sinnfonie",
+   "lrclib_id": 14385858,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2223,7 +2732,10 @@
    "unplaced": 0.0,
    "lines": 28,
    "placed": 28,
-   "group": "far"
+   "group": "far",
+   "album": "Sinnfonie",
+   "lrclib_id": 19507806,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2236,7 +2748,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 38674016,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2249,7 +2764,10 @@
    "unplaced": 0.0,
    "lines": 47,
    "placed": 47,
-   "group": "far"
+   "group": "far",
+   "album": "Unendlich",
+   "lrclib_id": 12325970,
+   "piled": 0
   },
   {
    "artist": "Schandmaul",
@@ -2262,7 +2780,10 @@
    "unplaced": 0.0,
    "lines": 52,
    "placed": 52,
-   "group": "far"
+   "group": "far",
+   "album": "Sternensegler (Deluxe Version)",
+   "lrclib_id": 38674016,
+   "piled": 0
   },
   {
    "artist": "UNIVERSUM25",
@@ -2275,7 +2796,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "far"
+   "group": "far",
+   "album": "Universum25",
+   "lrclib_id": 23177286,
+   "piled": 0
   },
   {
    "artist": "Versengold",
@@ -2288,7 +2812,10 @@
    "unplaced": 0.0,
    "lines": 41,
    "placed": 41,
-   "group": "far"
+   "group": "far",
+   "album": "Eingenordet",
+   "lrclib_id": 23344849,
+   "piled": 0
   },
   {
    "artist": "Versengold & Madsen",
@@ -2301,7 +2828,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Eingenordet",
+   "lrclib_id": 32703947,
+   "piled": 0
   },
   {
    "artist": "Versengold",
@@ -2314,7 +2844,10 @@
    "unplaced": 0.0,
    "lines": 49,
    "placed": 49,
-   "group": "far"
+   "group": "far",
+   "album": "Lautes Gedenken",
+   "lrclib_id": 32336221,
+   "piled": 0
   },
   {
    "artist": "Versengold",
@@ -2327,7 +2860,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "far"
+   "group": "far",
+   "album": "Lautes Gedenken",
+   "lrclib_id": 20607238,
+   "piled": 0
   },
   {
    "artist": "Versengold",
@@ -2340,7 +2876,10 @@
    "unplaced": 0.0,
    "lines": 60,
    "placed": 60,
-   "group": "far"
+   "group": "far",
+   "album": "Was kost die Welt",
+   "lrclib_id": 10900415,
+   "piled": 0
   },
   {
    "artist": "Visions of Atlantis",
@@ -2353,7 +2892,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Pirates II - Armada",
+   "lrclib_id": 12885413,
+   "piled": 0
   },
   {
    "artist": "Visions of Atlantis",
@@ -2366,7 +2908,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "far"
+   "group": "far",
+   "album": "The Deep & The Dark",
+   "lrclib_id": 13219717,
+   "piled": 0
   },
   {
    "artist": "Visions of Atlantis",
@@ -2379,7 +2924,10 @@
    "unplaced": 0.0,
    "lines": 38,
    "placed": 38,
-   "group": "far"
+   "group": "far",
+   "album": "The Deep & The Dark",
+   "lrclib_id": 19663721,
+   "piled": 0
   },
   {
    "artist": "Visions of Atlantis",
@@ -2392,7 +2940,10 @@
    "unplaced": 0.0,
    "lines": 41,
    "placed": 41,
-   "group": "far"
+   "group": "far",
+   "album": "Wanderers",
+   "lrclib_id": 23161466,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2405,7 +2956,10 @@
    "unplaced": 0.0,
    "lines": 45,
    "placed": 45,
-   "group": "far"
+   "group": "far",
+   "album": "Armageddon",
+   "lrclib_id": 26749190,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2418,7 +2972,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Morgana",
+   "lrclib_id": 36301591,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2431,7 +2988,10 @@
    "unplaced": 0.0,
    "lines": 50,
    "placed": 50,
-   "group": "far"
+   "group": "far",
+   "album": "Morgana",
+   "lrclib_id": 36308977,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2444,7 +3004,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "far"
+   "group": "far",
+   "album": "Morgana",
+   "lrclib_id": 2986339,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2457,7 +3020,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "far"
+   "group": "far",
+   "album": "Reborn",
+   "lrclib_id": 2986334,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2470,7 +3036,10 @@
    "unplaced": 0.0,
    "lines": 44,
    "placed": 44,
-   "group": "far"
+   "group": "far",
+   "album": "Reborn",
+   "lrclib_id": 10899876,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2483,7 +3052,10 @@
    "unplaced": 0.0,
    "lines": 16,
    "placed": 16,
-   "group": "far"
+   "group": "far",
+   "album": "Revenge",
+   "lrclib_id": 5345381,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2496,7 +3068,10 @@
    "unplaced": 0.0,
    "lines": 53,
    "placed": 53,
-   "group": "far"
+   "group": "far",
+   "album": "Revenge",
+   "lrclib_id": 5346447,
+   "piled": 0
   },
   {
    "artist": "Warkings",
@@ -2509,7 +3084,10 @@
    "unplaced": 0.0,
    "lines": 62,
    "placed": 62,
-   "group": "far"
+   "group": "far",
+   "album": "Revolution",
+   "lrclib_id": 2986396,
+   "piled": 0
   },
   {
    "artist": "Wind Rose",
@@ -2522,7 +3100,10 @@
    "unplaced": 0.0,
    "lines": 100,
    "placed": 100,
-   "group": "far"
+   "group": "far",
+   "album": "Warfront",
+   "lrclib_id": 21417247,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2535,7 +3116,10 @@
    "unplaced": 0.0,
    "lines": 61,
    "placed": 61,
-   "group": "far"
+   "group": "far",
+   "album": "Feuer & Flamme",
+   "lrclib_id": 16861641,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2548,7 +3132,10 @@
    "unplaced": 0.0,
    "lines": 39,
    "placed": 39,
-   "group": "far"
+   "group": "far",
+   "album": "Feuer & Flamme",
+   "lrclib_id": 2454124,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2561,7 +3148,10 @@
    "unplaced": 0.0,
    "lines": 36,
    "placed": 36,
-   "group": "far"
+   "group": "far",
+   "album": "Helden X Hymnen",
+   "lrclib_id": 37557134,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2574,7 +3164,10 @@
    "unplaced": 0.0,
    "lines": 29,
    "placed": 29,
-   "group": "far"
+   "group": "far",
+   "album": "Helden X Hymnen",
+   "lrclib_id": 38041082,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2587,7 +3180,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Herzblut",
+   "lrclib_id": 27195679,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2600,7 +3196,10 @@
    "unplaced": 0.0,
    "lines": 34,
    "placed": 34,
-   "group": "far"
+   "group": "far",
+   "album": "Herzblut",
+   "lrclib_id": 12161831,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2613,7 +3212,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "far"
+   "group": "far",
+   "album": "Herzblut",
+   "lrclib_id": 16657162,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2626,7 +3228,10 @@
    "unplaced": 0.0,
    "lines": 43,
    "placed": 43,
-   "group": "far"
+   "group": "far",
+   "album": "Herzblut",
+   "lrclib_id": 27195679,
+   "piled": 0
   },
   {
    "artist": "dArtagnan",
@@ -2639,7 +3244,10 @@
    "unplaced": 0.0,
    "lines": 35,
    "placed": 35,
-   "group": "far"
+   "group": "far",
+   "album": "Herzblut",
+   "lrclib_id": 16657162,
+   "piled": 0
   }
  ]
 }

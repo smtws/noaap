@@ -1,0 +1,47 @@
+{
+ "_source": "P27 again (docs/qa-catalog.md, Y): each method against the library's own human sidecar, for the seven tracks where the two methods disagreed. This is the table that proved the whole-track rule was backwards.",
+ "rows": [
+  {
+   "track": "Feuerschwanz — Bastard of Asgard",
+   "primary_vs_sidecar": 1.35,
+   "second_vs_sidecar": 0.6,
+   "what_9_38_did": "39 placed, 22 dropped"
+  },
+  {
+   "track": "Lord of the Lost — 2000 Years a Pyre",
+   "primary_vs_sidecar": 0.86,
+   "second_vs_sidecar": 0.9,
+   "what_9_38_did": "20 placed, 17 dropped"
+  },
+  {
+   "track": "Lord of the Lost — Argent",
+   "primary_vs_sidecar": 0.31,
+   "second_vs_sidecar": 120.21,
+   "what_9_38_did": "all kept, flagged"
+  },
+  {
+   "track": "Mono Inc. — A Love That Never Dies",
+   "primary_vs_sidecar": 0.36,
+   "second_vs_sidecar": 28.26,
+   "what_9_38_did": "all kept, flagged"
+  },
+  {
+   "track": "Powerwolf — Armata Strigoi",
+   "primary_vs_sidecar": 0.13,
+   "second_vs_sidecar": 54.82,
+   "what_9_38_did": "all kept, flagged"
+  },
+  {
+   "track": "Sabaton — A Lifetime of War",
+   "primary_vs_sidecar": 0.95,
+   "second_vs_sidecar": 93.7,
+   "what_9_38_did": "all kept, flagged"
+  },
+  {
+   "track": "Warkings — Azrael",
+   "primary_vs_sidecar": 0.1,
+   "second_vs_sidecar": 59.75,
+   "what_9_38_did": "all kept, flagged"
+  }
+ ]
+}
