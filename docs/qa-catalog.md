@@ -1556,6 +1556,20 @@ running a gateway.
     own list again
   - **result:** pass, and the class of bug is closed rather than the instance
 
+- [x] **X8 · R** — one live request, because the user provided a free-tier key
+  - the key lives in `~/.config/ytalbum/deepgram.env` (mode 600), was read into the environment of a
+    single command and of nothing else, and is not in this repository, the app's config, any log or
+    any transcript
+  - **one** request, a 211-second German track: **7.1 s** end to end (about 30× real time, upload
+    included), `test_deepgram_for_real` passed
+  - the documented shape held: `metadata` + `results` at the top, `words[]` with `word`,
+    `punctuated_word`, `start`, `end`, `confidence`, starts in **seconds** (the first at 37.25),
+    and `paragraphs.paragraphs[].sentences[]` present — 107 words became 16 lines, `grouped_by=sentences`
+  - **two fields the documentation does not list**: `languages` on the alternative and `language` on
+    every word, both from asking for multi-language recognition. ytalbum ignores them; the fixture
+    now carries them so the next reader is not surprised. No client change was needed
+  - **result:** pass — and the fixtures were right about everything the client reads
+
 ### Where the documentation is not certain
 
 Written down rather than guessed at, per the task:
@@ -1563,7 +1577,9 @@ Written down rather than guessed at, per the task:
 - **Deepgram's `paragraphs`** is only present when `paragraphs`/`smart_format` are requested, and the
   documentation does not promise it for every model. The client asks for it, uses its sentences when
   they are there, and groups the words itself when they are not — both paths are tested
-  (`deepgram_listen.json` and `deepgram_listen_no_paragraphs.json`).
+  (`deepgram_listen.json` and `deepgram_listen_no_paragraphs.json`). **Answered on 2026-09-27** by
+  the one live request (X8): for `nova-3` with those parameters it *was* returned, 16 sentences for a
+  211-second track.
 - **ElevenLabs' `start`/`end` are documented as nullable** on speech-to-text words. A word without a
   time does not take its line's stamp with it; the line simply starts at the first word that has one.
 - **ElevenLabs' forced alignment returns its own word list**, which need not match the words sent

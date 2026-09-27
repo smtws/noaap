@@ -6,10 +6,12 @@ client is pointed at a local `http.server`. A live test per vendor exists and is
 key is in the environment, which it will not be unless someone puts a free-tier key there.
 """
 
+import contextlib
 import json
 import os
 import shutil
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -308,6 +310,47 @@ def test_elevenlabs_for_real(audio):
 
 @pytest.mark.skipif(not os.environ.get("YTALBUM_DEEPGRAM_KEY"),
                     reason="set YTALBUM_DEEPGRAM_KEY to run one real (billed) Deepgram request")
-def test_deepgram_for_real(audio):
-    timed = DeepgramTiming(os.environ["YTALBUM_DEEPGRAM_KEY"]).transcribe(audio)
+def test_deepgram_for_real(audio, capsys):
+    """One request, deliberately. `YTALBUM_LIVE_AUDIO` points it at something with words in it.
+
+    The default fixture is a one-second sine tone, which proves the key and the auth header and
+    nothing about the response's shape; a real track answers whether the documented fields hold.
+    What is printed is the *shape* — field names and counts — never the transcript.
+    """
+    import httpx
+
+    path = Path(os.environ.get("YTALBUM_LIVE_AUDIO") or audio)
+    client = DeepgramTiming(os.environ["YTALBUM_DEEPGRAM_KEY"])
+    raw: dict = {}
+    original = httpx.post
+
+    def watching(*args, **kwargs):  # the one request, kept so its shape can be reported
+        response = original(*args, **kwargs)
+        with contextlib.suppress(ValueError):
+            raw.update(response.json())
+        return response
+
+    httpx.post = watching
+    try:
+        started = time.perf_counter()
+        timed = client.transcribe(path)
+        seconds = time.perf_counter() - started
+    finally:
+        httpx.post = original
+
     assert timed.provider == "deepgram"
+    alt = (((raw.get("results") or {}).get("channels") or [{}])[0].get("alternatives") or [{}])[0]
+    words = alt.get("words") or []
+    paragraphs = (alt.get("paragraphs") or {}).get("paragraphs")
+    with capsys.disabled():
+        print(f"\n  live Deepgram: {seconds:.1f}s for {path.name}")
+        print(f"  top-level keys: {sorted(raw)}")
+        print(f"  alternative keys: {sorted(alt)}")
+        print(f"  words: {len(words)}; first word keys: {sorted(words[0]) if words else '—'}")
+        print(f"  paragraphs present: {paragraphs is not None}; sentences: "
+              f"{sum(len(p.get('sentences') or []) for p in (paragraphs or []))}")
+        print(f"  lines built: {len(timed.lines)}; grouped_by={timed.parameters.get('grouped_by')}")
+        if words:
+            w = words[0]
+            print(f"  first word start/end: {w.get('start')} / {w.get('end')} "
+                  f"(seconds: {isinstance(w.get('start'), (int, float))})")
