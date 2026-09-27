@@ -1,0 +1,7 @@
+{
+  "_source": "the error bodies the two vendors document for these statuses, read 2026-09-27",
+  "elevenlabs_401": {"detail": {"status": "invalid_api_key", "message": "Invalid API key provided."}},
+  "elevenlabs_422": {"detail": [{"loc": ["body", "file"], "msg": "field required", "type": "value_error.missing"}]},
+  "deepgram_401": {"err_code": "INVALID_AUTH", "err_msg": "Invalid credentials.", "request_id": "x"},
+  "deepgram_429": {"err_code": "TOO_MANY_REQUESTS", "err_msg": "Rate limit exceeded.", "request_id": "y"}
+}

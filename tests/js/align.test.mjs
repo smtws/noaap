@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { alignNotice, applyStamps } from "../../src/ytalbum/webui/logic.mjs";
+import { alignNotice, applyStamps, draftNotice, draftText } from "../../src/ytalbum/webui/logic.mjs";
 
 const timed = (...starts) => ({
   provider: "local", model: "wav2vec2", version: "2.11.0",
@@ -77,4 +77,27 @@ test("with everything placed the notice does not invent a complaint", () => {
   const result = applyStamps("one\ntwo", timed(12.3, 24.8));
   assert.doesNotMatch(alignNotice(timed(12.3, 24.8), result), /could not be placed/);
   assert.equal(alignNotice(null, null), null);
+});
+
+// -- a draft, which is a different thing and says so ------------------------------------------
+
+test("a draft becomes editor text, with a stamp only where the provider gave one", () => {
+  const drafted = { provider: "deepgram", model: "nova-3", lines: [
+    { text: "One two three.", start: 0.5, end: 1.8 },
+    { text: "Four five.", start: null, end: null },
+  ] };
+  assert.equal(draftText(drafted), "[00:00.5] One two three.\nFour five.");
+  assert.equal(draftText(null), "");
+});
+
+test("the draft notice never claims more than a guess", () => {
+  const drafted = { provider: "deepgram", model: "nova-3", lines: [
+    { text: "one", start: 1 }, { text: "two", start: null }] };
+  const text = draftNotice(drafted);
+  assert.match(text, /drafted by deepgram\/nova-3/);
+  assert.match(text, /a machine's guess/);
+  assert.match(text, /half a song for some tracks/);
+  assert.match(text, /1 of 2 lines came with a time/);
+  assert.doesNotMatch(text, /yours/);
+  assert.equal(draftNotice(null), null);
 });

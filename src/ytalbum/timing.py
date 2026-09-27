@@ -21,7 +21,16 @@ from typing import Any, Protocol, runtime_checkable
 
 ALIGN = "align"
 TRANSCRIBE = "transcribe"
-PROVIDERS = ("none", "local", "http")
+PROVIDERS = ("none", "local", "http", "elevenlabs", "deepgram")
+VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the audio away
+
+# List prices from the vendors' own pricing pages, read on the date beside them. They are here so
+# the settings panel can say what a pass would cost without asking anyone at runtime; nothing in
+# ytalbum ever queries a price, and a stale number is better than a request nobody asked for.
+PRICES = {
+    "elevenlabs": ("$0.22 per audio hour (alignment and transcription alike)", "2026-09-27"),
+    "deepgram": ("$0.0043 per audio minute, i.e. $0.26 per hour (Nova-3, pay as you go)", "2026-09-27"),
+}
 
 
 class TimingUnavailable(RuntimeError):
@@ -142,6 +151,71 @@ def plain_lines(text: str) -> list[str]:
     return [STAMP.sub("", line).strip() for line in (text or "").splitlines() if STAMP.sub("", line).strip()]
 
 
+# -- words back into lines -------------------------------------------------------------------
+
+def _key(word: str) -> str:
+    """A word stripped to what two systems can be expected to agree on."""
+    return re.sub(r"[^\w']", "", (word or "").lower())
+
+
+LOOKAHEAD = 4  # how far out of step a returned word list may be before a line is given up on
+
+
+def line_starts(owners: list[int], wanted: list[str], got: list[dict[str, Any]]) -> dict[int, float]:
+    """Which second each line starts at, from a provider's word list.
+
+    `owners[i]` is the line word `i` belongs to. Vendors do not return exactly the words they were
+    given — one splits "don't", another drops a bracketed aside — so this walks both lists together
+    and allows a few words of slippage rather than assuming they line up. A word that cannot be
+    found within the window is skipped, and a line whose words were all skipped simply has no start,
+    which is what `unplaced` is for.
+    """
+    starts: dict[int, float] = {}
+    j = 0
+    for i, want in enumerate(wanted):
+        key = _key(want)
+        k = j
+        while k < min(len(got), j + LOOKAHEAD) and _key(str(got[k].get("text") or got[k].get("word") or "")) != key:
+            k += 1
+        if k >= min(len(got), j + LOOKAHEAD):
+            continue
+        start = got[k].get("start")
+        if start is not None:
+            starts.setdefault(owners[i], float(start))
+        j = k + 1
+    return starts
+
+
+SENTENCE_END = re.compile(r"[.!?…]$")
+
+
+def lines_from_words(words: list[dict[str, Any]], per_line: int = 9) -> list[TimedLine]:
+    """A transcript's words grouped into lines a lyric editor can hold.
+
+    Vendors return words, not verses. Breaking at sentence punctuation and otherwise every few
+    words gives something a person can read and re-break by hand; it is a draft, and it says so.
+    """
+    lines: list[TimedLine] = []
+    current: list[str] = []
+    start: float | None = None
+    end: float | None = None
+    for w in words:
+        text = str(w.get("punctuated_word") or w.get("text") or w.get("word") or "").strip()
+        if not text:
+            continue
+        if start is None:
+            start = None if w.get("start") is None else float(w["start"])
+        if w.get("end") is not None:
+            end = float(w["end"])
+        current.append(text)
+        if SENTENCE_END.search(text) or len(current) >= per_line:
+            lines.append(TimedLine(text=" ".join(current), start=start, end=end))
+            current, start, end = [], None, None
+    if current:
+        lines.append(TimedLine(text=" ".join(current), start=start, end=end))
+    return lines
+
+
 # -- a provider on another machine ------------------------------------------------------------
 
 
@@ -210,6 +284,10 @@ def provider(cfg: Any) -> Timing:
         from .timing_local import LocalTiming
 
         return LocalTiming(device=getattr(cfg, "timing_device", "auto") or "auto")
+    if kind in VENDORS:
+        from .timing_cloud import cloud_provider
+
+        return cloud_provider(kind, cfg)
     if kind == "http":
         endpoint = (getattr(cfg, "timing_endpoint", "") or "").strip()
         if not endpoint:
@@ -226,5 +304,6 @@ def capabilities_of(cfg: Any) -> frozenset[str]:
         return frozenset()
 
 
-__all__ = ["ALIGN", "PROVIDERS", "TRANSCRIBE", "HttpTiming", "NoTiming", "Timed", "TimedLine",
-           "Timing", "TimingUnavailable", "capabilities_of", "language_of", "plain_lines", "provider"]
+__all__ = ["ALIGN", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "HttpTiming", "NoTiming", "Timed",
+           "TimedLine", "Timing", "TimingUnavailable", "capabilities_of", "language_of", "line_starts",
+           "lines_from_words", "plain_lines", "provider"]

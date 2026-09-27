@@ -1,7 +1,7 @@
-import { LENGTH, alignNotice, applyStamps, asTime, effectiveId, fmt, fold, foldMap, hits, lengthBand, lineAt,
-         lineStart, lyricsPanelState, maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo, ourLength,
-         refLength, resetKind, roundMark, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock,
-         trimOffset, trimTarget }
+import { LENGTH, alignNotice, applyStamps, asTime, draftNotice, draftText, effectiveId, fmt, fold, foldMap, hits,
+         lengthBand, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo,
+         ourLength, refLength, resetKind, roundMark, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
+         toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -110,16 +110,16 @@ function renderActivity() {
 // -- polling -------------------------------------------------------------------
 
 // A job in the read lane changes nothing on disk, so the album panel must NOT be rebuilt when one
-// finishes: the alignment's whole purpose is to put text into the open editor, and a rebuild would
-// throw that text away before the user could look at it (§9.36).
-const READ_LANE = new Set(["align", "preview", "search", "channel"]);
+// finishes: an alignment's or a draft's whole purpose is to put text into the open editor, and a
+// rebuild would throw that text away before the user could look at it (§9.36). The lane comes from
+// the server with every job, so this cannot drift from the list the server actually uses.
 let ranWrite = false;
 
 async function poll() {
   try {
     const prevBusy = state.busy;
     state = await api("/api/state");
-    if (state.jobs?.some((j) => ["queued", "running"].includes(j.state) && !READ_LANE.has(j.kind))) ranWrite = true;
+    if (state.jobs?.some((j) => ["queued", "running"].includes(j.state) && j.lane !== "read")) ranWrite = true;
     if (state.tracks_version && state.tracks_version !== trackIndex.version) loadTracks();
     renderLibrary();
     renderJobs();
@@ -666,8 +666,11 @@ async function reopenLyrics() {
   }
 }
 
-async function lyricsRow(p, t, editing = false) {
+async function lyricsRow(p, t, editing = false, draft = null) {
   const d = await api(`/api/lyrics?id=${encodeURIComponent(p.source_id)}&v=${encodeURIComponent(t.video_id)}`);
+  // a draft is not on the disk and must not look as if it were: it opens the editor over whatever
+  // the server has, and only a Save puts it anywhere (§9.37)
+  if (draft) Object.assign(d, { text: draft.text, words_by: draft.by, draft: draft.notice });
   return h("tr", { class: "lyrics", "data-id": t.video_id }, h("td", { colspan: "8" }, lyricsPanel(p, t, d, editing)));
 }
 
@@ -676,6 +679,8 @@ async function lyricsRow(p, t, editing = false) {
 function lyricsPanel(p, t, d, editing) {
   const { where, actions } = lyricsPanelState(d);
   const head = h("div", { class: "muted" }, `${t.artist} — ${t.title} · ${where}`,
+    d.words_by ? h("span", { class: "badge warn", title: `These words were drafted by ${d.words_by} and are a machine's guess.` },
+      `words by ${d.words_by.split("/")[0]}`) : null,
     d.timed_by ? h("span", { class: "badge", title: `The words are yours; these timestamps were placed by ${d.timed_by}.` },
       `timed by ${d.timed_by.split("/")[0]}`) : null,
     d.owner === "user"
@@ -696,6 +701,12 @@ function lyricsPanel(p, t, d, editing) {
     h("div", { class: "lyrics-actions" },
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, true) },
         actions[0]),
+      // only where there is nothing to lose: a draft would otherwise overwrite words somebody has
+      canDraft(t) ? h("button", { class: "quiet small", type: "button",
+        title: `Ask ${vendorName()} what it hears and put that in the editor as a draft.\n`
+          + "It is a machine's guess — half a song for some tracks — and nothing is saved until you save it."
+          + (sendsAudio() ? `\nThe audio of this track is sent to ${vendorName()}.` : ""),
+        onclick: (e) => draftWords(e.currentTarget, p, t) }, `\u270e draft the words`) : null,
       // not offered for words of the user's: those are not lrclib's to replace, and the editor's
       // Delete is the way to let it answer again
       !actions.includes("Look up again") ? null : h("button", { class: "quiet small", type: "button",
@@ -720,9 +731,10 @@ function lyricsEditor(p, t, d) {
     rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)),
     onkeydown: (e) => editorKey(e, p, t, area) });
   area.value = d.text;
-  // what a provider proposed, carried to the Save so the plan can record whose clock this is
-  const timing = { by: d.timed_by || "" };
-  const proposal = h("div", { class: "timing-note", hidden: true });
+  // what a provider proposed, carried to the Save so the plan can record whose clock — and whose
+  // words — these are
+  const timing = { by: d.timed_by || "", words: d.words_by || "" };
+  const proposal = h("div", { class: "timing-note", hidden: !d.draft }, d.draft ? `\u26a0 ${d.draft}` : "");
   const by = h("input", { type: "text", class: "shift-by", value: "-0.5", size: 5, "aria-label": "seconds to move every stamp by",
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); shiftStamps(area, by); } } });
   const nudge = (delta, label) => h("button", { class: "quiet small", type: "button",
@@ -749,7 +761,7 @@ function lyricsEditor(p, t, d) {
         title: "Move every timestamped line by that many seconds. Nothing is saved until you press Save.",
         onclick: () => shiftStamps(area, by) }, "shift all")),
     h("div", { class: "lyrics-actions" },
-      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by) }, "Save"),
+      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by, timing.words) }, "Save"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, false) }, "Cancel"),
       d.text ? h("button", { class: "quiet small danger", type: "button",
         title: "Remove the .lrc beside this track. Its tag goes with it, and a later “look up all again” may fetch LRCLIB's words.",
@@ -812,8 +824,43 @@ function shiftStamps(area, by) {
 // Only offered where a provider says it can do it; with the default provider (`none`) there is no
 // button at all and the page is what it was before any of this existed (§9.36).
 const canAlign = () => (state.settings?.timing?.capabilities || []).includes("align");
+const canTranscribe = () => (state.settings?.timing?.capabilities || []).includes("transcribe");
+// a draft is only for a track with nothing to lose: no words, or only the note that LRCLIB has none
+const canDraft = (t) => canTranscribe() && !HAS_WORDS(t);
+const vendorName = () => state.settings?.timing?.provider || "the provider";
+const sendsAudio = () => Boolean(state.settings?.timing?.sends_audio);
+
+// Asked once per provider per session, before the first request that leaves the machine. Not a
+// setting to be forgotten: the user is told what is about to happen, in the moment it happens.
+const told = new Set();
+
+function mayLeave(what) {
+  if (!sendsAudio() || told.has(vendorName())) return true;
+  const name = vendorName();
+  if (!confirm([`The audio of this track is sent to ${name} to ${what}.`, "",
+    "It leaves this machine and this network. Local providers (`local`, `http`) never do that.",
+    `${name} charges for it — the settings panel shows their list price — and ytalbum never retries,`,
+    "so one press is one request.", "", "OK: send it. Cancel: nothing is sent."].join("\n"))) return false;
+  told.add(name);
+  return true;
+}
+
+async function draftWords(button, p, t) {
+  if (!mayLeave("write down what it hears")) return;
+  const id = await submit("draft", { id: p.source_id, video_id: t.video_id }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 4800);
+  if (!job || job.state !== "done") return;
+  const timed = job.result?.timed;
+  if (!timed) return toast("the provider answered with nothing", "failed");
+  const row = button.closest("tr.lyrics");
+  openLyrics.add(t.video_id);
+  row.replaceWith(await lyricsRow(p, t, true,
+    { text: draftText(timed), by: job.result.by || "", notice: draftNotice(timed) }));
+}
 
 async function alignWords(button, p, t, area, notice, timing) {
+  if (!mayLeave("place these words on its clock")) return;
   const id = await submit("align", { id: p.source_id, video_id: t.video_id, text: area.value }, button);
   if (id == null) return;
   notice.hidden = false;
@@ -879,8 +926,9 @@ async function editLyrics(button, p, t, editing) {
   }
 }
 
-async function saveLyrics(button, p, t, text, timedBy = "") {
-  const id = await submit("save_lyrics", { id: p.source_id, video_id: t.video_id, text, timed_by: timedBy }, button);
+async function saveLyrics(button, p, t, text, timedBy = "", wordsBy = "") {
+  const id = await submit("save_lyrics",
+    { id: p.source_id, video_id: t.video_id, text, timed_by: timedBy, words_by: wordsBy }, button);
   if (id == null) return;
   const job = await jobSettled(id);
   if (!job || job.state !== "done") return; // submit() already showed why
@@ -1384,6 +1432,17 @@ const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromiu
 
 function renderSettings() {} // the panel is built when opened, so polling never overwrites what you type
 
+// What the provider row says under its label: what each choice means for the audio, and — for the
+// ones that charge — their list price with the date it was read (§9.37).
+function timingHelp(st) {
+  const base = "who may place timestamps on words: nobody, a model on this machine (the ytalbum[timing] "
+    + "extra), another machine running `ytalbum timing-serve`, or a paid service";
+  if (!st.timing?.sends_audio) return `${base}. Local and http never send anything off this network.`;
+  const [price, checked] = st.timing.price || ["", ""];
+  return `${base}. ⚠ ${st.timing.provider} receives the audio of every track you use it on.`
+    + (price ? ` Their list price was ${price} (checked ${checked}).` : "");
+}
+
 function openSettings() {
   const panel = $("#settings");
   if (!panel.hidden) { panel.hidden = true; return; }
@@ -1407,12 +1466,16 @@ function openSettings() {
         h("input", { type: "number", name: "pot_idle_minutes", min: 1, max: 120, value: st.pot_idle_minutes })),
       row("Parallel YouTube requests", "1–4; more is faster but trips YouTube's bot check sooner",
         h("input", { type: "number", name: "concurrency", min: 1, max: 4, value: st.concurrency })),
-      row("Lyric timing", "who may place timestamps on words: nobody, a model on this machine (the "
-        + "ytalbum[timing] extra), or another machine running `ytalbum timing-serve`",
-        h("select", { name: "timing_provider" }, ["none", "local", "http"].map((m) =>
+      row("Lyric timing", timingHelp(st),
+        h("select", { name: "timing_provider" }, ["none", "local", "http", ...(st.timing?.vendors || [])].map((m) =>
           h("option", { value: m, selected: m === (st.timing?.provider || "none") }, m)))),
       row("Timing endpoint", "for `http`: http://thatmachine:8770 — the audio never leaves your network",
         h("input", { type: "text", name: "timing_endpoint", value: st.timing?.endpoint || "", placeholder: "http://host:8770" })),
+      ...(st.timing?.vendors || []).map((v) => row(`${v} API key`,
+        st.timing.keys?.[v] ? "a key is set; type a new one to replace it, or a single space to remove it"
+          : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
+        h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
+          placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
   panel.hidden = false;
@@ -1429,6 +1492,10 @@ async function saveSettings(ev) {
       library: f.library.value, cookies_from_browser: f.cookies_from_browser.value, musicbrainz: f.musicbrainz.checked,
       pot_mode: f.pot_mode.value, pot_idle_minutes: Number(f.pot_idle_minutes.value), concurrency: Number(f.concurrency.value),
       timing_provider: f.timing_provider.value, timing_endpoint: f.timing_endpoint.value.trim(),
+      // only sent when something was typed: an empty field means "leave the key as it is"
+      ...Object.fromEntries((state.settings.timing?.vendors || [])
+        .filter((v) => f[`timing_${v}_key`]?.value)
+        .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;

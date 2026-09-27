@@ -951,6 +951,35 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    backlog 16. One aligner plus the user's ear is the safety valve, and P23's ▶ is what makes the
    ear cheap.
 
+37. ✅ Paid providers, and a draft that says it is one (2026-09-27, P26, backlog item 15). The user
+   decided the question §9.36 left open — *the audio comes from YouTube anyway, so it may leave the
+   house* — with two conditions that shaped the package: **no money is spent building it, and no key
+   is needed to finish it.** So it was written against the vendors' documentation and verified
+   against a server of my own speaking their shapes; not one request in this repository has been
+   billed, and the live test per vendor is skipped unless somebody puts a key in the environment.
+   **Two vendors, because two capabilities.** ElevenLabs sells forced alignment of supplied text —
+   the only mainstream vendor that does, and the capability ytalbum wants most — and transcription
+   beside it. Deepgram sells transcription and `capabilities()` says exactly that: it never claims
+   `align`, so the page never offers one. A provider that overstates itself is worse than one that
+   cannot do the job.
+   **A draft is not lyrics.** Where a track has no words at all, a transcribing provider can propose
+   some; the editor takes them labelled *"a machine's guess, half a song for some tracks"*, because
+   that is what P24 measured. It is never offered where words exist — LRCLIB's entry or the user's
+   own are both better than a guess — and the server refuses it there too. `lyrics_words_by` records
+   whose words they were, beside §9.36's `lyrics_timed_by` for whose clock, and the panel shows
+   "words by elevenlabs" next to "yours" rather than letting one claim swallow the other.
+   **The audio leaves the machine, and it is said three times**: in the README's provider section, in
+   the settings row beside the choice (with the vendor's list price and the date it was read), and in
+   a confirm before the first request of a session — *"The audio of this track is sent to X… ytalbum
+   never retries, so one press is one request."*
+   **Money shapes the error handling.** There are no retries: a retry on a metered endpoint is a
+   second invoice for the same answer. A refusal, a rate limit and an unreachable host all come back
+   as `TimingUnavailable` carrying the vendor's own message, and the job log names the minutes of
+   audio a request is about to send *before* it sends them.
+   **What is sent is the file on disk** — the cut one — because that is the file the stamps belong
+   to (§9.35). `YTALBUM_TIMING_BASE_<VENDOR>` redirects a client at another host: a gateway, a proxy,
+   or the fake that made this package testable without a bill.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1082,3 +1111,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   spike did, rather than from a configuration key or a language-detection dependency.
 - **No transcription and no library-wide pass in this package.** Both are decisions of their own
   (backlog 15 and 16), and the measurements do not support making them quietly.
+
+### Decisions of 2026-09-27 (paid providers, §9.37)
+
+- **The user decided that audio may leave the house**, having weighed that it came from YouTube in
+  the first place. The code's job is to say so every time, not to relitigate it: three notices and a
+  confirm, and local providers that never do it.
+- **Built without spending anything.** Fixtures are the vendors' documented shapes, the clients were
+  exercised against a local server, and a live test exists behind an environment variable for
+  whoever has a free-tier key. A package that needs a credit card to be finished would have been the
+  wrong shape for this project.
+- **Never retry a metered request.** One press, one request, one possible invoice.
+- **A transcribe-only vendor must say so.** Deepgram's `capabilities()` is the mechanism that keeps
+  the page honest, and it is the reason the boundary has `capabilities()` at all.
+- **A draft is labelled everywhere it appears** and is offered only where there is nothing to lose.

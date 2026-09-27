@@ -293,6 +293,26 @@ export function alignNotice(timed, result) {
       : "");
 }
 
+// A draft is a transcript: lines the provider heard, with a stamp where it gave one. It goes into
+// the editor as text like any other, because the editor is where a draft is turned into words
+// somebody meant (\u00a79.37).
+export function draftText(timed) {
+  return ((timed && timed.lines) || [])
+    .map((line) => (line.start == null ? line.text : withStamp(line.text, line.start)))
+    .join("\n");
+}
+
+// Said over a draft, and it never says "yours". Half a song is a realistic outcome for some tracks,
+// which the spike measured, so the label says that rather than pretending to a transcript.
+export function draftNotice(timed) {
+  if (!timed) return null;
+  const by = timed.provider ? `${timed.provider}/${timed.model}` : "a provider";
+  const stamped = ((timed.lines) || []).filter((l) => l.start != null).length;
+  const total = ((timed.lines) || []).length;
+  return `drafted by ${by} \u2014 a machine's guess, half a song for some tracks: read it before you save it`
+    + (stamped ? `. ${stamped} of ${total} lines came with a time.` : ".");
+}
+
 // -- what a panel offers --------------------------------------------------------------------
 
 // The lyrics panel, from what /api/lyrics answered: what the header says, whose the words are,

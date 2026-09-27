@@ -1,0 +1,19 @@
+{
+  "_source": "https://elevenlabs.io/docs/api-reference/speech-to-text/convert, read 2026-09-27",
+  "_note": "words[] carries type word|spacing|audio_event; only `word` entries are lyrics. start/end are seconds and are documented as nullable.",
+  "language_code": "deu",
+  "language_probability": 0.98,
+  "text": "Eins zwei drei. Vier fünf.",
+  "audio_duration_secs": 12.3,
+  "words": [
+    {"text": "Eins", "type": "word", "logprob": -0.1, "start": 0.5, "end": 0.9},
+    {"text": " ", "type": "spacing", "logprob": 0.0, "start": 0.9, "end": 0.95},
+    {"text": "zwei", "type": "word", "logprob": -0.2, "start": 0.95, "end": 1.3},
+    {"text": " ", "type": "spacing", "logprob": 0.0, "start": 1.3, "end": 1.35},
+    {"text": "drei.", "type": "word", "logprob": -0.1, "start": 1.35, "end": 1.8},
+    {"text": "(applause)", "type": "audio_event", "logprob": -0.5, "start": 1.8, "end": 2.4},
+    {"text": "Vier", "type": "word", "logprob": -0.1, "start": 2.4, "end": 2.8},
+    {"text": " ", "type": "spacing", "logprob": 0.0, "start": 2.8, "end": 2.85},
+    {"text": "fünf.", "type": "word", "logprob": -0.3, "start": 2.85, "end": 3.2}
+  ]
+}

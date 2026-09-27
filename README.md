@@ -282,6 +282,7 @@ network.
 | `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
 | `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
 | `/api/prune` | `{id}` | Delete tracks that left the playlist. |
+| `/api/draft` | `{id, video_id}` | Ask a transcribing provider what it hears on a track that has **no** words. Read-lane, writes nothing, refused for a track that has words. |
 | `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
 | `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
 | `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
@@ -301,13 +302,20 @@ Entirely optional, and **nothing below is installed or imported unless you ask f
 provider configured — the default — ytalbum has no machine-learning dependency, the editor shows no
 alignment action, and everything else works exactly as it does now.
 
-Two providers, and the choice is mostly about which machine does the arithmetic:
+Four providers, and the first choice is whether the audio may leave the machine:
 
-| `timing_provider` | what it needs | where the audio goes | how long one track takes |
-|---|---|---|---|
-| `none` (default) | nothing | nowhere | — |
-| `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | ~12 s with a GPU, ~2 minutes without |
-| `http` | nothing on this machine | to the machine you name, and no further | the same, plus a second |
+| `timing_provider` | what it needs | where the audio goes | can it | what it costs |
+|---|---|---|---|---|
+| `none` (default) | nothing | nowhere | — | — |
+| `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | align | ~12 s a track with a GPU, ~2 min without |
+| `http` | nothing on this machine | to the machine you name, and no further | align | the same, plus a second |
+| `elevenlabs` | an API key | **to ElevenLabs** | align **and** draft words | $0.22 per audio hour¹ |
+| `deepgram` | an API key | **to Deepgram** | draft words only | $0.0043 per audio minute¹ |
+
+¹ the vendors' list prices, read on 2026-09-27 — check them before relying on them; ytalbum never
+looks a price up. For scale: this library holds 262 hours of audio, so a pass over every track that
+has words but no timings (39 hours) costs about **$8.60** at ElevenLabs' rate, and one track from the
+editor costs about **1.5 cents**.
 
 ```sh
 # on the machine that will do the work (it may be this one)
@@ -337,8 +345,38 @@ have. It cannot promise every line: one it will not place keeps its words and ge
 panel says how many. And it is a proposal, not an answer — press ▶ on the first line and you will
 know in a second whether it found the song.
 
-**Privacy.** `local` and `http` never send anything outside your own machine or network. There is no
-commercial provider in ytalbum, and there will not be one unless you ask for it.
+### The paid ones
+
+```toml
+timing_provider = "elevenlabs"        # or "deepgram"
+timing_elevenlabs_key = "…"           # https://elevenlabs.io → Profile → API keys
+timing_deepgram_key = "…"             # https://console.deepgram.com → API keys
+```
+
+Both take a key, which stays in your config file: it is never sent to the page, never written to a
+log, and the settings panel's field only ever writes it. **Both send the track's audio to the
+vendor** — the cut file, the one the timestamps belong to — and ytalbum says so in three places: here,
+in the settings row beside the choice, and in a confirm before the first request of each session.
+Neither is retried: one press is one request, so one press is at most one charge.
+
+- **ElevenLabs** does both jobs. Its
+  [Forced Alignment API](https://elevenlabs.io/docs/overview/capabilities/forced-alignment) places
+  words you already have (29 languages, German among them), and Scribe transcribes.
+- **Deepgram** transcribes only, and ytalbum will not pretend otherwise: with Deepgram configured the
+  editor shows no alignment action at all.
+
+### Drafting the words of a track that has none
+
+Where a provider can transcribe and a track has **no words at all**, its lyrics panel offers
+**“✎ draft the words”**. The transcript lands in the editor labelled as what it is — *a machine's
+guess, half a song for some tracks* — with a stamp on each line the vendor timed. Nothing is saved
+until you save it, and what is saved remembers that the words were drafted (the panel then says
+“words by …” beside “yours”). It is never offered for a track that already has words: LRCLIB's entry,
+or yours, is better than a guess.
+
+**Privacy.** `none`, `local` and `http` never send anything outside your own machine or network.
+`elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
+them.
 
 ## Configuration
 
@@ -359,6 +397,7 @@ commercial provider in ytalbum, and there will not be one unless you ask for it.
 | `timing_provider` | `"none"` | Who may place lyric timestamps: `none`, `local` (the `ytalbum[timing]` extra) or `http`. |
 | `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `ytalbum timing-serve` runs. |
 | `timing_device` | `"auto"` | `cpu` or `cuda` to force the local provider's device. |
+| `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |
 
 ## Limits
 

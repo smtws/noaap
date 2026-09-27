@@ -35,7 +35,8 @@ from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .search import SearchResult, search_artist
-from .timing import ALIGN, TimingUnavailable, plain_lines
+from .tag import audio_length
+from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, plain_lines
 from .timing import provider as timing_provider
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
@@ -496,7 +497,8 @@ class Service:
         self.log("lyrics: " + (", ".join(f"{n} {what}" for what, n in counts.most_common()) or "no tracks"))
         return outcomes
 
-    def save_lyrics(self, source_id: str, video_id: str, text: str, timed_by: str = "") -> Outcome:
+    def save_lyrics(self, source_id: str, video_id: str, text: str, timed_by: str = "",
+                    words_by: str = "") -> Outcome:
         """Write the words a user typed beside one track — or clear them — and retag it.
 
         This is the one door into the ownership contract from the UI side: it does by hand what
@@ -516,16 +518,19 @@ class Service:
             write_sidecar(album_dir, track, body)  # records lyrics_sha as the bytes it wrote
             track.lyrics = status_of(body)
             track.provenance["lyrics"] = Provenance.USER
-            # the words stay the user's; the *clock* may be a machine's, and says so (§9.36)
+            # the words stay the user's; the *clock* may be a machine's, and says so (§9.36), and
+            # so does a draft nobody has rewritten yet (§9.37)
             track.lyrics_timed_by = timed_by or None
+            track.lyrics_words_by = words_by or None
             self.log(f"wrote your lyrics for {track.title} ({track.lyrics})"
+                     + (f", drafted by {words_by}" if words_by else "")
                      + (f", timed by {timed_by}" if timed_by else ""))
         else:
             # empty is a clear, not an empty file — and it gives the mark up with the words, so
             # `--refetch` may bring lrclib's back, exactly as deleting the file by hand does
             remove_sidecar(album_dir, track.filename)
             track.lyrics, track.lyrics_sha = "none", None
-            track.lyrics_timed_by = None
+            track.lyrics_timed_by = track.lyrics_words_by = None
             track.provenance.pop("lyrics", None)
             self.log(f"removed the lyrics of {track.title}")
         save_plan(plan, album_dir)
@@ -556,17 +561,54 @@ class Service:
         if not lines:
             raise ValueError("there are no words to place")
 
-        engine = timing_provider(self.cfg)
-        if ALIGN not in engine.capabilities():
-            raise TimingUnavailable(f"the {engine.name} timing provider cannot align words")
-        if hasattr(engine, "log"):
-            engine.log = self.log
-        self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} …")
-        timed = engine.align(album_dir / track.filename, lines, check=self.check)
+        engine = self._timing(ALIGN, "align words")
+        audio = album_dir / track.filename
+        self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
+                 f"· {_minutes(audio)} of audio")
+        timed = engine.align(audio, lines, check=self.check)
         placed = len(lines) - len(timed.unplaced)
         self.log(f"placed {placed}/{len(lines)} lines · {timed.by}"
                  + (f" · {len(timed.unplaced)} left unplaced" if timed.unplaced else ""))
         return {"timed": timed.to_dict(), "by": timed.by, "placed": placed, "lines": len(lines)}
+
+    def draft_lyrics(self, source_id: str, video_id: str) -> dict[str, Any]:
+        """Ask a provider what it hears, for a track that has no words at all. **Writes nothing.**
+
+        A draft, and labelled as one everywhere it appears: the spike measured transcription as the
+        weaker half of the job — three quarters of a clean song's lines, half of a harsh one's — so
+        this is a starting point for someone who would otherwise face an empty editor (§9.37).
+        """
+        found = self.find_album(source_id)
+        if not found:
+            raise ValueError(f"unknown album {source_id}")
+        album_dir, plan = found
+        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        if not track:
+            raise ValueError("no such track in this album")
+        if track.state != "done":
+            raise ValueError(f"{track.title}: there is no file to listen to yet")
+        if track.lyrics in ("synced", "plain"):
+            # never offered on words that exist, and refused if asked anyway: a draft would
+            # overwrite somebody's work, and LRCLIB's entry is better than a guess
+            raise ValueError(f"{track.title} already has words — a draft is only for a track that has none")
+
+        engine = self._timing(TRANSCRIBE, "derive words")
+        audio = album_dir / track.filename
+        self.log(f"asking {engine.name} to draft the words of {track.title} · {_minutes(audio)} of audio")
+        timed = engine.transcribe(audio, check=self.check)
+        text = "\n".join(line.text for line in timed.lines)
+        self.log(f"drafted {len(timed.lines)} lines · {timed.by} — a machine's guess, check it")
+        return {"timed": timed.to_dict(), "by": timed.by, "lines": len(timed.lines),
+                "placed": len(timed.lines) - len(timed.unplaced), "text": text}
+
+    def _timing(self, capability: str, what: str):
+        """The configured provider, if it can do the thing being asked of it."""
+        engine = timing_provider(self.cfg)
+        if capability not in engine.capabilities():
+            raise TimingUnavailable(f"the {engine.name} timing provider cannot {what}")
+        if hasattr(engine, "log"):
+            engine.log = self.log
+        return engine
 
     def sync_lyrics(self, source_id: str) -> Outcome:
         """Make the plan agree with the `.lrc` files beside the tracks, and the tags with the plan.
@@ -795,6 +837,15 @@ class Service:
                 self.log(f"{t.title}: audio now from {t.effective_id} (was {took})")
         album_dir = relocate(album_dir, plan, self.library)
         return self.execute(plan, album_dir)
+
+
+def _minutes(audio: Path) -> str:
+    """How much audio a request is about to send, because a per-minute bill is the user's (§9.37)."""
+    try:
+        seconds = audio_length(audio) or 0
+    except Exception:
+        return "unknown length"
+    return f"{seconds / 60:.1f} min"
 
 
 def _inside(album_dir: Path, filename: str) -> Path | None:

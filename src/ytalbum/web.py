@@ -40,7 +40,7 @@ from .models import AlbumPlan
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
 from .tag import image_mime
-from .timing import ALIGN, PROVIDERS, capabilities_of
+from .timing import ALIGN, PRICES, PROVIDERS, TRANSCRIBE, VENDORS, capabilities_of
 from .titles import natural_key
 from .trim import original_path
 from .youtube import Cancelled, YouTube
@@ -92,7 +92,7 @@ class Job:
 class Jobs:
     # jobs that change the library run one at a time; reading jobs (search, preview,
     # channel listing) get their own lane so a search never waits for a download
-    READ_ONLY = ("search", "preview", "channel", "align")  # `align` only reads: its answer goes to the page
+    READ_ONLY = ("search", "preview", "channel", "align", "draft")  # they only read: the answer goes to the page
 
     def __init__(self, make_service: Callable[[Job], Service]) -> None:
         self.make_service = make_service
@@ -351,7 +351,7 @@ class App:
         return {"status": track.lyrics, "lrclib_id": track.lyrics_id, "text": read_sidecar(album_dir, track) or "",
                 "owner": track.provenance.get("lyrics"), "state": track.state,
                 # who put the stamps there, when it was not a person (§9.36)
-                "timed_by": track.lyrics_timed_by,
+                "timed_by": track.lyrics_timed_by, "words_by": track.lyrics_words_by,
                 # timestamps written for another file point at the wrong seconds; the panel says so
                 # until the words are saved again, and never re-times anything itself (§9.34)
                 "timings": timings_stale(track)}
@@ -407,7 +407,12 @@ class App:
                        "endpoint": self.cfg.timing_endpoint or "",
                        # asked of the provider, not of the config: an endpoint that is down, or an
                        # extra that is not installed, offers nothing and the page shows nothing
-                       "capabilities": sorted(capabilities_of(self.cfg))},
+                       "capabilities": sorted(capabilities_of(self.cfg)),
+                       # whether a key is set, never the key itself (§9.37)
+                       "keys": {v: bool(getattr(self.cfg, f"timing_{v}_key", "")) for v in VENDORS},
+                       "vendors": list(VENDORS),
+                       "price": list(PRICES.get(self.cfg.timing_provider, ("", ""))),
+                       "sends_audio": self.cfg.timing_provider in VENDORS},
             "pot_mode": self.cfg.pot_mode,
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,
@@ -447,6 +452,11 @@ class App:
             if body["timing_provider"] not in PROVIDERS:
                 raise ValueError(f"the timing provider must be one of {', '.join(PROVIDERS)}")
             changes["timing_provider"] = body["timing_provider"]
+        for vendor in VENDORS:
+            field = f"timing_{vendor}_key"
+            if field in body:
+                # write-only: the page sends a key or an empty string, and never gets one back
+                changes[field] = str(body[field]).strip()
         if "timing_endpoint" in body:
             endpoint = str(body["timing_endpoint"]).strip()
             if endpoint and not endpoint.startswith(("http://", "https://")):
@@ -454,6 +464,9 @@ class App:
             changes["timing_endpoint"] = endpoint or None
         if changes.get("timing_provider") == "http" and not (changes.get("timing_endpoint") or self.cfg.timing_endpoint):
             raise ValueError("choose an endpoint for the `http` timing provider")
+        chosen = changes.get("timing_provider", self.cfg.timing_provider)
+        if chosen in VENDORS and not (changes.get(f"timing_{chosen}_key") or getattr(self.cfg, f"timing_{chosen}_key", "")):
+            raise ValueError(f"{chosen} needs an API key — it is sent to them with the audio, and stays on this machine otherwise")
         library = None
         if "library" in body and str(body["library"]).strip() != str(self.library):
             library = Path(str(body["library"]).strip()).expanduser()
@@ -579,9 +592,23 @@ class App:
                     raise ValueError(f"“{running.label}” is working on this album — wait for it, then save again")
                 text = str(body.get("text", ""))
                 timed_by = str(body.get("timed_by", ""))[:120]
+                words_by = str(body.get("words_by", ""))[:120]
                 what = "Clear the lyrics of" if not text.strip() else "Save your lyrics for"
                 return self.jobs.submit("lyrics", f"{what} {track.title}",
-                                        lambda s: s.save_lyrics(source_id, video_id, text, timed_by), target=source_id)
+                                        lambda s: s.save_lyrics(source_id, video_id, text, timed_by, words_by),
+                                        target=source_id)
+            case "draft":
+                source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
+                found = self.album(source_id)
+                if not found or not video_id:
+                    raise ValueError("unknown album or track")
+                track = next((t for t in found[1].tracks if t.video_id == video_id), None)
+                if not track:
+                    raise ValueError("no such track in this album")
+                if TRANSCRIBE not in capabilities_of(self.cfg):
+                    raise ValueError("no timing provider can derive words — see `timing_provider` in the config")
+                return self.jobs.submit("draft", f"Draft the words of {track.title}",
+                                        lambda s: s.draft_lyrics(source_id, video_id), target=source_id)
             case "align":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
                 found = self.album(source_id)

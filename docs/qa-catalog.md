@@ -1488,10 +1488,96 @@ muted for the run.
     look at is named instead of left to be discovered
   - **result:** pass
 
+## X. Providers that are somebody else's computer (P26, DESIGN §9.37)
+
+Run 2026-09-27 against **a server of my own speaking the two vendors' documented shapes**, on a
+scratch library (one album copied out of the real one, read-only), with each web server given its
+own `XDG_CONFIG_HOME`. **No request in this package has ever been billed**: there is no key for
+either vendor, the fixtures come from the documentation, and the clients were pointed at the fake
+with `YTALBUM_TIMING_BASE_ELEVENLABS` / `_DEEPGRAM`, which exists for exactly this and for anyone
+running a gateway.
+
+- [x] **X1 · R** — each vendor claims only what it sells
+  - ElevenLabs, with a key: `capabilities` = `["align", "transcribe"]`. Deepgram, with a key:
+    `["transcribe"]` — and asking it to align raises *"Deepgram does not align words you give it"*
+  - either vendor **without** a key offers nothing at all, so the page shows nothing rather than a
+    button that fails
+  - with Deepgram configured, the editor of a track that has words shows P23's six tools, **no
+    "align these words"**; the read panel of a track without words shows **"✎ draft the words"**
+  - **result:** pass
+
+- [x] **X2 · M** — alignment through ElevenLabs' documented shape
+  - the confirm came first: *"The audio of this track is sent to elevenlabs to place these words on
+    its clock. It leaves this machine and this network… ytalbum never retries, so one press is one
+    request."*
+  - the fake answered with one word per second from 5 s, and the editor filled with `[00:05.0]`,
+    `[00:07.0]`, `[00:11.0]` — the fake's own arithmetic mapped back onto the *lines*, which is the
+    word-to-line walk doing its job against the documented `words[]` array
+  - job log: `aligning 65 lines of Berzerkermode with elevenlabs · 3.7 min of audio` — the minutes a
+    per-minute bill is about to be charged for, before the request
+  - **result:** pass
+
+- [x] **X3 · M** — a draft, through both vendors
+  - ElevenLabs: the editor opened with `[00:01.0] Erfundene Worte eins.` / `[00:12.0] Erfundene Worte
+    zwei.` — its `words[]` grouped into sentences, with `spacing` and `(Applaus)` (`audio_event`)
+    left out, because those are not lyrics
+  - Deepgram: `[00:01.0] Made up words one.` / `[00:12.0] Made up words two.` — taken from its
+    `paragraphs.sentences`, which is what that field is for
+  - the notice never claims more than it is: *"drafted by deepgram/nova-3 — a machine's guess, half a
+    song for some tracks: read it before you save it. 2 of 2 lines came with a time."*
+  - **result:** pass
+
+- [x] **X4 · M** — what a saved draft records
+  - after Save: `lyrics_words_by = "elevenlabs/scribe_v2"`, `provenance.lyrics = user`, and the panel
+    carries **"words by elevenlabs"** beside **"yours"** — the words were a machine's, the file is
+    the user's, and neither claim is hidden behind the other
+  - a later save of hand-written words clears the mark (asserted in `tests/test_timing_cloud.py`)
+  - **result:** pass
+
+- [x] **X5 · R** — the key stays here
+  - `/api/state` carries `keys: {elevenlabs: true, deepgram: false}` and **not the key**; searching
+    the whole payload for the configured value finds nothing. The settings field is a password input
+    that is never filled from the server — it shows `•••••••• (set)` as a placeholder and an empty
+    value, so a save that leaves it alone leaves the key alone
+  - the job log for a request contains the file name and the minutes, never the key
+  - **result:** pass
+
+- [x] **X6 · R** — the price, where the choice is made
+  - the provider row reads: *"…or a paid service. ⚠ deepgram receives the audio of every track you
+    use it on. Their list price was $0.0043 per audio minute, i.e. $0.26 per hour (Nova-3, pay as you
+    go) (checked 2026-09-27)."* The number is a constant with its date, and nothing looks a price up
+    at runtime
+  - **result:** pass
+
+- [x] **X7 · R** — a defect of my own, the sibling of W7
+  - the finished **draft** job rebuilt the album panel and threw the draft away, because the page's
+    read-lane list was a hard-coded set of job kinds that I had not added `draft` to. It now asks the
+    job for its `lane`, which the server already sends, so the page cannot drift from the server's
+    own list again
+  - **result:** pass, and the class of bug is closed rather than the instance
+
+### Where the documentation is not certain
+
+Written down rather than guessed at, per the task:
+
+- **Deepgram's `paragraphs`** is only present when `paragraphs`/`smart_format` are requested, and the
+  documentation does not promise it for every model. The client asks for it, uses its sentences when
+  they are there, and groups the words itself when they are not — both paths are tested
+  (`deepgram_listen.json` and `deepgram_listen_no_paragraphs.json`).
+- **ElevenLabs' `start`/`end` are documented as nullable** on speech-to-text words. A word without a
+  time does not take its line's stamp with it; the line simply starts at the first word that has one.
+- **ElevenLabs' forced alignment returns its own word list**, which need not match the words sent
+  (one splits a contraction, another drops an aside). The walk allows four words of slippage and
+  leaves a line unplaced rather than shifting every later stamp by one word.
+- **No vendor's error body is promised in detail.** The client reads `detail`, `message`, `error` and
+  `err_msg`, and falls back to the first 200 characters of the body, so a shape nobody documented
+  still reaches the user as the vendor's own words.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the X cases (P26: paid providers) | 7 | 0 in the design; 1 defect of my own (a finished draft discarded the editor), fixed | Against a server speaking the vendors' documented shapes — **nothing was ever billed**. Both vendors' capabilities, the confirm, the draft, the key redaction and the dated price all verified through the real page. 581 pytest + 56 node. |
 | 2026-09-27 | the W cases (P25: a timing provider) | 8 | 0 in the design; 2 defects of my own (the editor discarded when a read job finished, a missing import), both fixed before the commit | Scratch library with the spike's two mis-timed specimens. Local provider 12.2 s (GPU) and 108.4 s (CPU) for the same track, agreeing on 64 of 65 lines; the HTTP provider 19.3 s from an app with no torch installed. Both `.lrc` files corrected by about 6.4 s. 567 pytest + 52 node. |
 | 2026-09-27 | the V cases (P23: stamping to the file's clock) | 7 | 0 in the package; 1 blemish of my own (the shift field's width), fixed before the commit | A track trimmed to 1:30–5:20, so the player's clock and the file's differ by 90 s. The tap wrote `[00:24.9]` from a player time of 114.870, which is the arithmetic the case asks for. 554 pytest + 45 node. |
 | 2026-09-27 | the U cases (P22: audio from another video) | 8 | 0 in the package; 1 blemish of my own (the field took the whole line), fixed before the commit | S1 pointed at S10 on a scratch library, through the real page: the confirm named the trim, the uploader followed the audio both ways, the ⏱ chip went +4:01 → 0:00 → +4:01, the user's words were never touched. 554 pytest + 32 node. |

@@ -63,6 +63,10 @@ class Config:
     timing_provider: str = "none"
     timing_endpoint: str | None = None
     timing_device: str = "auto"  # "auto" | "cpu" | "cuda", for the local provider
+    # keys for the providers that are somebody else's computer (§9.37). They are never sent to the
+    # page, never logged, and only needed by the provider that is actually configured.
+    timing_elevenlabs_key: str = ""
+    timing_deepgram_key: str = ""
 
     def resolved_node(self) -> str | None:
         runtime = self.resolved_js_runtime()
@@ -112,6 +116,8 @@ def load(path: Path | None = None) -> Config:
     cfg.timing_provider = str(data.get("timing_provider") or timing.get("provider") or "none")
     cfg.timing_endpoint = (data.get("timing_endpoint") or timing.get("endpoint") or None) or None
     cfg.timing_device = str(data.get("timing_device") or timing.get("device") or "auto")
+    cfg.timing_elevenlabs_key = str(data.get("timing_elevenlabs_key") or timing.get("elevenlabs_key") or "")
+    cfg.timing_deepgram_key = str(data.get("timing_deepgram_key") or timing.get("deepgram_key") or "")
     return cfg
 
 

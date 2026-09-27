@@ -1,0 +1,12 @@
+{
+  "_source": "the same endpoint without `paragraphs`, which the docs do not promise for every model",
+  "metadata": {"duration": 12.3},
+  "results": {"channels": [{"alternatives": [{"transcript": "one two three four five",
+    "words": [
+      {"word": "one", "start": 0.5, "end": 0.9, "confidence": 0.99},
+      {"word": "two", "start": 0.95, "end": 1.3, "confidence": 0.98},
+      {"word": "three", "start": 1.35, "end": 1.8, "confidence": 0.97, "punctuated_word": "three."},
+      {"word": "four", "start": 2.4, "end": 2.8, "confidence": 0.99},
+      {"word": "five", "start": 2.85, "end": 3.2, "confidence": 0.99}
+    ]}]}]}
+}

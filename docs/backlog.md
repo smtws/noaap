@@ -334,7 +334,7 @@ Measured in catalog W: 12.2 s per track with a GPU, 108.4 s without, and both of
 the spike found to be six seconds early were corrected. Transcription, a library-wide pass and the
 automatic two-aligner cross-check were deliberately left out — items 15 and 16.
 
-## 15. A commercial timing provider — OPEN, the user's call
+## 15. A commercial timing provider — DONE (P26, DESIGN §9.37)
 
 Added 2026-09-27 out of P25. The boundary (§9.36) makes this a small piece of code: an
 `ElevenLabsTiming` with the same three methods, a key in the config, and the audio posted to their
@@ -350,6 +350,21 @@ trade-off the code can weigh, so nothing is built until they say so.
 
 Worth having anyway if they do: it needs no GPU, no 1.5 GB of models, no install at all, and it is
 the answer for a machine that cannot run inference and has no other machine to ask.
+
+**Decided and done 2026-09-27 (P26).** The user's answer: the audio comes from YouTube in the first
+place, so it may leave the house — with two conditions, that **no money is spent building this** and
+that **no key is needed to finish it**. Both held: the clients were written against the vendors'
+documentation, verified against a server of my own speaking their shapes, and the live test per
+vendor is skipped unless someone puts a key in the environment. Not one request has been billed.
+
+Two vendors, because the two capabilities have two markets: **ElevenLabs** (align *and* transcribe)
+and **Deepgram** (transcribe only, and it says so — with Deepgram configured the editor shows no
+alignment action). Beside them the package added the **draft**: where a track has no words at all, a
+transcribing provider can propose some, labelled *a machine's guess, half a song for some tracks*,
+never offered where words exist, and remembered on save as `lyrics_words_by` so the panel can say
+"words by elevenlabs" beside "yours". The audio leaving the machine is stated in the README, in the
+settings row with the vendor's dated list price, and in a confirm before the first request of a
+session; nothing is ever retried, because a retry on a metered endpoint is a second invoice.
 
 ## 16. A second aligner, for an automatic cross-check — OPEN, the user's call
 
