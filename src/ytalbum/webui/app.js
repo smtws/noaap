@@ -1,7 +1,7 @@
 import { LENGTH, alignNotice, applyStamps, asTime, draftNotice, draftText, effectiveId, fmt, fold, foldMap, hits,
          lengthBand, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo,
-         ourLength, refLength, resetKind, roundMark, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
-         toFileClock, trimOffset, trimTarget }
+         ourLength, publishConfirm, publishState, refLength, resetKind, roundMark, shifted, sourceChange, stampOf,
+         tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -707,6 +707,9 @@ function lyricsPanel(p, t, d, editing) {
           + "It is a machine's guess — half a song for some tracks — and nothing is saved until you save it."
           + (sendsAudio("transcribe") ? `\nThe audio of this track is sent to ${providerFor("transcribe")}.` : ""),
         onclick: (e) => draftWords(e.currentTarget, p, t) }, `\u270e draft the words`) : null,
+      // the other direction: words of the user's that lrclib has no equal of can be given back
+      // (\u00a79.42). Public and irrevocable, so the button says so and the confirm says more.
+      publishButton(p, t, d),
       // not offered for words of the user's: those are not lrclib's to replace, and the editor's
       // Delete is the way to let it answer again
       !actions.includes("Look up again") ? null : h("button", { class: "quiet small", type: "button",
@@ -715,6 +718,25 @@ function lyricsPanel(p, t, d, editing) {
       !actions.includes("Not these words") ? null : h("button", { class: "quiet small", type: "button",
         title: `Wrong song: LRCLIB #${d.lrclib_id} is not this recording. It is never offered for this track again, and the next best match is taken if one fits.`,
         onclick: (e) => lyricsTrack(e.currentTarget, p, t, true) }, "Not these words")));
+}
+
+function publishButton(p, t, d) {
+  const state = publishState(d);
+  if (!state.show) return null;
+  return h("button", { class: "quiet small", type: "button", title: state.title, disabled: !state.can,
+    onclick: (e) => publishLyrics(e.currentTarget, p, t, d) }, state.label);
+}
+
+async function publishLyrics(button, p, t, d) {
+  const text = publishConfirm(d);
+  if (!text || !confirm(text)) return;
+  const id = await submit("publish_lyrics", { id: p.source_id, video_id: t.video_id }, button);
+  if (id == null) return;
+  const job = await jobSettled(id);
+  if (!job || job.state !== "done") return;  // submit() and the job log have already said why
+  toast("\u2713 published to lrclib \u2014 thank you", "done");
+  openLyrics.add(t.video_id);
+  await refreshAlbumPanel();  // the panel comes back with the button saying "published"
 }
 
 async function lyricsTrack(button, p, t, reject) {

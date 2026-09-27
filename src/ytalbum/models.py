@@ -135,6 +135,9 @@ class PlanTrack:
     lyrics_for_length: float | None = None  # and the length of the file at that moment
     lyrics_timed_by: str | None = None  # "local/WAV2VEC2…" when a provider placed the stamps (§9.36)
     lyrics_words_by: str | None = None  # and when a provider *drafted the words* themselves (§9.37)
+    # what was given back to lrclib, and when: {"at": ISO, "sha": of the bytes sent} (§9.42). Kept so
+    # the same words are never offered for publishing twice — a publish cannot be taken back.
+    lyrics_published: dict[str, str] | None = None
 
     @property
     def effective_id(self) -> str:

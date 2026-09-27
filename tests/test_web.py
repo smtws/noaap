@@ -526,9 +526,12 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
     track = app.album(album_id)[1].tracks[0]
 
     got = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()
+    publish = got.pop("publish")
     assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
                    "timed_by": None, "words_by": None,  # nobody's clock and nobody's words but LRCLIB's
                    "timings": None}  # and they were written for the file that is there
+    # and lrclib's own words are never offered back to it (§9.42)
+    assert publish["can"] is False and publish["why"] == "these are lrclib's own words, not yours"
 
     # point the track at another video and the same panel says the timings are for the old file
     from ytalbum.download import save_plan

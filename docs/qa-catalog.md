@@ -1755,6 +1755,68 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AC. Giving the words back to LRCLIB (P31, DESIGN §9.42, backlog 19)
+
+Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, against **a server of my own
+speaking LRCLIB's documented publish flow** (`YTALBUM_LRCLIB_BASE`). **Nothing in this section
+reached lrclib.net**: their database is public and permanent, and test words do not belong in it.
+The one live request made anywhere in this package was a single `POST /api/request-challenge` — it
+publishes nothing — to learn the real difficulty, which turned out to be exactly the `000000FF…`
+their documentation prints.
+
+- [x] **AC1 · R** — LRCLIB's own words are never offered back to LRCLIB
+  - *Berzerkermode* with its LRCLIB sidecar: the panel has **no publish button at all**, and the
+    payload says why: `"these are lrclib's own words, not yours"`
+  - *Uruk-Hai*, whose sidecar is plain text: also refused, with `"only timed lyrics are worth giving
+    back — these have no timestamps"`
+  - **result:** pass
+
+- [x] **AC2 · M** — once the words are the user's, the button appears and says everything first
+  - the same track, shifted by −0.5 s in the editor and saved: the head reads *"with timestamps ·
+    yours"* and **"↑ publish to lrclib"** is there
+  - the confirm: *"These words are about to be published to LRCLIB, for everyone. / Feuerschwanz —
+    Berzerkermode / album: Fegefeuer / length: 219 s (the file's own, which is what the timestamps
+    follow) / 66 lines, with their timestamps, and the same words without them / LRCLIB is a public
+    database and takes no account. A publish cannot be taken back… / OK: publish them. Cancel:
+    nothing leaves this machine."*
+  - **result:** pass
+
+- [x] **AC3 · M** — what actually goes, and what comes back
+  - the fake received `trackName: Berzerkermode`, `artistName: Feuerschwanz`, `albumName: Fegefeuer`,
+    `duration: 219.14` — **the file's length, not the video's** — 66 synced lines and the same words
+    with the stamps taken off, under a token `qaPrefixForTheCatalog:56997` whose SHA-256 it verified
+    against the target itself
+  - the job log, in full: *"publishing Feuerschwanz — Berzerkermode to lrclib (66 lines, 219 s) —
+    this is public and cannot be undone"*, *"solving lrclib's challenge (target 0000ffff…)"*,
+    *"solved in 0.0 s"*, *"published Berzerkermode — thank you: the next person looking for this song
+    finds it"*
+  - the panel comes back with **"✓ published to lrclib"**, disabled, titled *"These words were
+    published on 2026-09-27T13:07:36+00:00…"*, and the plan holds
+    `lyrics_published = {"at": …, "sha": "1cc3adfbd63bc387"}` — a fingerprint, with none of the words
+    in it
+  - **result:** pass
+
+- [x] **AC4 · M** — the same words are never sent twice, edited ones may go again
+  - asked again: `failed — Berzerkermode: already published`, and the fake saw **no second request**
+  - a line added to the sidecar and asked again: accepted, because "I changed it" is the only
+    sensible reading of new bytes
+  - **result:** pass
+
+- [x] **AC5 · M** — a refusal changes nothing on disk
+  - the fake set to refuse with *"This track already has these lyrics"*: the job is `failed`, the
+    message is **LRCLIB's own**, `lyrics_published` on disk is still `None`, and the button is still
+    there to try again
+  - **result:** pass
+
+### The evidence method that nearly lied here
+
+`/api/state` shows only the **last three lines** of each job's log (`Job.summary(full=False)`), and I
+read the publish job from there: the first line — the one that says a publish is about to happen and
+cannot be undone — was simply outside the window, and for several minutes I believed it was missing
+and was hunting a bug in my own logging. `/api/job?id=N` returns the whole log and showed all four
+lines. **A truncated view is not evidence of absence**; ask for the full record before reporting that
+something did not happen.
+
 ## AB. Giving the graphics card back (P30, DESIGN §9.41, backlog 18)
 
 Run 2026-09-27 on this laptop's RTX 4060 (8 GB), with `nvidia-smi
@@ -1932,6 +1994,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AC cases (P31: publishing to LRCLIB) | 5 | 0 | Against a server speaking LRCLIB's documented publish flow — **nothing reached lrclib.net**, and the only live request in the package was one `request-challenge`, which publishes nothing. The gate, the confirm, the payload (with the file's length), the fingerprint, the never-twice rule and a refusal that changes nothing on disk. 621 pytest + 70 node. |
 | 2026-09-27 | the AB cases (P30: giving the card back) | 4 | 0 in the design; 1 defect of my own (the idle timer released the models out of a running request), found live and fixed | 3314 MiB held after an alignment before the fix; 180 MiB after it, which is the CUDA context. `timing-serve` let go 30–35 s into a 30 s idle window and said so in its log; the next request reloaded in 11.2 s against 11.8 s. 609 pytest + 67 node. |
 | 2026-09-27 | the Z cases (P28: two slots) | 4 | 0 | `local` aligning and `deepgram` drafting on one album: the capability union, the panel offering no Deepgram for aligning, an 8 s local alignment with no confirm, and a draft confirm naming Deepgram that was cancelled — nothing was sent, and the key used was deliberately fake. 601 pytest + 67 node. |
 | 2026-09-27 | the AA cases (P29: the editor's own clock) | 6 | 0 in the design; 1 blemish of my own (the list had no name and read as the saved words shown twice), fixed before the commit | Scratch copy of *Fegefeuer* through the real page. The editor's list showed the alignment's `19.6` while the file still said `12.52`, and at player time 80.1 s the highlight marked the proposal's line where the file would have marked a different one. Cancel gave the file back; Save wrote the proposal with `lyrics_timed_by`. 593 pytest + 67 node. |

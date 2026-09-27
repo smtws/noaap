@@ -22,7 +22,7 @@ import sqlite3
 import threading
 import time
 from collections import Counter
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
@@ -36,7 +36,10 @@ from .titles import key as text_key
 
 log = logging.getLogger(__name__)
 
-BASE = "https://lrclib.net/api"
+# `YTALBUM_LRCLIB_BASE=http://127.0.0.1:8794/api` points this at another host: a mirror, or — which
+# is what it exists for — a server that speaks lrclib's documented shapes, so that publishing can be
+# exercised end to end without putting test words into a public database (§9.42).
+BASE = (os.environ.get("YTALBUM_LRCLIB_BASE") or "https://lrclib.net/api").rstrip("/")
 USER_AGENT = "ytalbum/0.1 ( https://github.com/smtws/ytalbum )"
 HIT_TTL = 30 * 24 * 3600
 MISS_TTL = 7 * 24 * 3600
@@ -85,6 +88,58 @@ def consensus_length(durations: list[float]) -> float | None:
 
 class LyricsError(Exception):
     pass
+
+
+PUBLISH_TIMEOUT = 60.0  # their end does real work on a publish; this is not a lookup
+# Their live target is `000000FF000…` (asked on 2026-09-27, and the same one their docs print),
+# so a solution needs three zero bytes: about 16.7 million tries on average, and the tail is long.
+# 200 million is a minute or two of this machine and makes giving up mean something is wrong.
+SOLVE_LIMIT = 200_000_000
+
+
+def solve_challenge(prefix: str, target: str, limit: int = SOLVE_LIMIT) -> str:
+    """The nonce that makes `prefix + nonce` hash low enough (their proof of work).
+
+    Their own client (LRCGET's `challenge_solver.rs`) counts up from zero and compares the SHA-256
+    digest with the target byte by byte: above it at any byte fails, below it at any byte succeeds,
+    equal all the way through succeeds. This is the same walk, and it is pure so that a test can
+    hand it a target of `ff…` and get `0` back without a network in sight.
+    """
+    goal = bytes.fromhex(target)
+    head = prefix.encode()
+    digest = hashlib.sha256
+    # `digest <= goal` **is** their byte-by-byte rule: comparing two byte strings of the same length
+    # in Python is lexicographic and big-endian, which is what "above it at any byte fails, below it
+    # at any byte succeeds" means. Written as a loop it was four times slower, and this runs about
+    # seventeen million times for one publish.
+    for nonce in range(limit):
+        if digest(head + b"%d" % nonce).digest() <= goal:
+            return str(nonce)
+    raise LyricsError(f"could not solve lrclib's challenge in {limit} tries")
+
+
+def _not_above(digest: bytes, target: bytes) -> bool:
+    """The rule as their client spells it out, kept for the test that proves the fast form equals it."""
+    for mine, theirs in zip(digest, target, strict=False):
+        if mine > theirs:
+            return False
+        if mine < theirs:
+            return True
+    return True
+
+
+def _publish_error(response: Any) -> str:
+    """Their own words about the refusal, mapped to something a person can act on."""
+    try:
+        body = response.json()
+        said = str(body.get("message") or body.get("name") or "")
+    except Exception:
+        said = (response.text or "")[:200].strip()
+    if response.status_code == 400:
+        return f"lrclib refused the words: {said or 'the publish token was not accepted'}"
+    if response.status_code in (429, 503):
+        return "lrclib is busy or rate-limiting; nothing was published — try again in a few minutes"
+    return f"lrclib refused the words (HTTP {response.status_code}){': ' + said if said else ''}"
 
 
 @dataclass
@@ -199,6 +254,17 @@ class Lrclib:
         found = self._request(f"get/{lrclib_id}", {})
         return _lyrics(found) if isinstance(found, dict) else None
 
+    def cached_by_id(self, lrclib_id: int) -> Lyrics | None:
+        """What we already hold for an entry, **without asking** (§9.42).
+
+        The publish button needs to know whether lrclib's words and the user's are the same text,
+        and that question is asked for every track of an album as a panel opens. A lookup each time
+        would be a lot of traffic for a button nobody has pressed, so an unknown entry simply means
+        "cannot tell", and the answer is then the user's own in the confirm.
+        """
+        row = self._cached_row(lrclib_id)
+        return _lyrics(row) if row else None
+
     def _cached_row(self, lrclib_id: int) -> dict[str, Any] | None:
         if self._db is None:
             return None
@@ -243,6 +309,63 @@ class Lrclib:
             self._cache_put(key, body, MISS_TTL if not body else HIT_TTL)
             return body
         return None
+
+    # -- giving words back (§9.42) -------------------------------------------------------
+
+    def publish(self, *, track_name: str, artist_name: str, album_name: str, duration: float,
+                plain: str, synced: str, log_to: Callable[[str], None] | None = None) -> None:
+        """Publish one set of words to LRCLIB, anonymously (their `POST /api/publish`).
+
+        The flow is their proof-of-work one, documented on 2026-09-27 at <https://lrclib.net/docs>:
+        ask `POST /api/request-challenge` for a `prefix` and a `target`, find a `nonce` whose
+        SHA-256 of `prefix + nonce` does not exceed the target, and send the two as
+        `X-Publish-Token: prefix:nonce`. No account, no key, and each token works once.
+
+        **The publish request is never retried.** Asking for a challenge again is free — it changes
+        nothing — but a second POST could be a second copy of the same words in a public database,
+        which is not a thing anybody can take back. A failure is reported and that is the end of it.
+        """
+        say = log_to or (lambda _: None)
+        challenge = self._challenge()
+        say(f"solving lrclib's challenge (target {challenge['target'][:8]}…)")
+        started = time.monotonic()
+        nonce = solve_challenge(challenge["prefix"], challenge["target"])
+        say(f"solved in {time.monotonic() - started:.1f} s")
+        body = {"trackName": track_name, "artistName": artist_name, "albumName": album_name,
+                "duration": round(float(duration), 2), "plainLyrics": plain, "syncedLyrics": synced}
+        self._wait_turn()
+        try:
+            r = self.client.post(f"{BASE}/publish", json=body,
+                                 headers={"X-Publish-Token": f"{challenge['prefix']}:{nonce}"},
+                                 timeout=PUBLISH_TIMEOUT)
+        except httpx.HTTPError as e:
+            # it may or may not have arrived; either way this code will not send it twice
+            raise LyricsError(f"lrclib could not be reached: {e}") from e
+        if r.status_code in (200, 201):
+            return
+        raise LyricsError(_publish_error(r))
+
+    def _challenge(self) -> dict[str, str]:
+        """A fresh prefix and target. Retried, because asking costs nothing and changes nothing."""
+        for attempt in range(self.retries + 1):
+            self._wait_turn()
+            try:
+                r = self.client.post(f"{BASE}/request-challenge", timeout=20)
+            except httpx.HTTPError as e:
+                if attempt == self.retries:
+                    raise LyricsError(f"lrclib could not be reached: {e}") from e
+                time.sleep(2**attempt)
+                continue
+            if r.status_code in (429, 503) and attempt < self.retries:
+                time.sleep(2**attempt)
+                continue
+            if r.status_code not in (200, 201):
+                raise LyricsError(f"lrclib would not set a challenge (HTTP {r.status_code})")
+            got = r.json()
+            if not (got.get("prefix") and got.get("target")):
+                raise LyricsError("lrclib's challenge was missing its prefix or target")
+            return {"prefix": str(got["prefix"]), "target": str(got["target"])}
+        raise LyricsError("lrclib would not set a challenge")
 
     def _wait_turn(self) -> None:
         with self._lock:
@@ -426,6 +549,47 @@ def reconcile(album_dir: Path, track: PlanTrack, audio: Path) -> tuple[str | Non
 
 
 # -- one track ---------------------------------------------------------------------------
+
+
+STAMPS = re.compile(r"^\s*(?:\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)+")
+
+
+def plain_text(synced: str) -> str:
+    """The same words with their timestamps taken off: lrclib stores both forms of an entry.
+
+    A line that was nothing but a stamp — the `[03:05.66]` that marks where the singing stops —
+    becomes an empty line, which is what it always was: a gap, not a word.
+    """
+    lines = [STAMPS.sub("", line).strip() for line in (synced or "").splitlines()]
+    return "\n".join(lines).strip()
+
+
+def sent_sha(text: str) -> str:
+    """The fingerprint of what was published: the same shape as `lyrics_sha`, and never the words."""
+    return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:16]
+
+
+def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
+    """Empty when these words may be given to lrclib; otherwise the reason they may not (§9.42).
+
+    The rules are all one idea: **only offer what is the user's own work and would be new to them.**
+    A publish cannot be taken back, so every doubt resolves to "no".
+    """
+    if track.state != "done":
+        return "there is no file beside these words yet"
+    if (track.lyrics or "") == "instrumental":
+        return "this track is marked instrumental"
+    if status_of(text) != "synced":
+        return "only timed lyrics are worth giving back — these have no timestamps"
+    if track.provenance.get("lyrics") != Provenance.USER:
+        return "these are lrclib's own words, not yours"
+    if track.lyrics_words_by:
+        return f"these words are a draft by {track.lyrics_words_by} — write them yourself first"
+    if theirs is not None and text.strip() == theirs.strip():
+        return "lrclib already has exactly these words"
+    if (track.lyrics_published or {}).get("sha") == sent_sha(text):
+        return "already published"
+    return ""
 
 
 def status_of(text: str) -> str:

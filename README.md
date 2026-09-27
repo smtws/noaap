@@ -430,11 +430,32 @@ or yours, is better than a guess.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
-**Two environment variables, not config keys**, both for people testing rather than listening:
+**Three environment variables, not config keys**, all for people testing rather than listening:
+`YTALBUM_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
 `YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
 host — a gateway, a proxy, or a server of your own speaking their shapes, which is how this feature
 was verified without spending anything — and `YTALBUM_LIVE_AUDIO` tells the opt-in live test which
 file to spend its one request on.
+
+## Giving the words back
+
+Lyrics in ytalbum come from [LRCLIB](https://lrclib.net)'s contributors. When you have timed a song
+yourself — by tapping, by nudging, or by checking what a model proposed — the lyrics panel offers
+**“↑ publish to lrclib”**, which gives it back. No account and no key: their API sets a small
+cryptographic puzzle, ytalbum solves it on your machine (a few seconds) and sends the words with the
+answer.
+
+It is offered only for **your own timed words that LRCLIB has no equal of**: not their entry read
+back to them, not a draft a model wrote that you have not rewritten, not an instrumental, not plain
+text, and never the same words twice. Where it is not offered the panel says which of those it was.
+
+Before anything is sent, a confirm names exactly what leaves: the artist, the title, the album, the
+**file's** length, how many lines, and that both the timed and the untimed form go. **LRCLIB is a
+public database and a publish cannot be taken back, edited or deleted by you afterwards** — so one
+press is one request, ytalbum never retries, and a refusal leaves everything here as it was.
+
+`YTALBUM_LRCLIB_BASE` points ytalbum at another LRCLIB — a mirror, or a server of your own, which is
+how this was tested without putting test words into the public one.
 
 ## Configuration
 

@@ -431,7 +431,7 @@ torch — it is a `sys.modules` lookup where no model was loaded. One defect of 
 by running it against a real server with a deliberately short timer: the watcher took the models out
 of a request that was still being served (catalog AB).
 
-## 19. Publish lyrics to LRCLIB — OPEN (P31, queued)
+## 19. Publish lyrics to LRCLIB — DONE (P31, DESIGN §9.42)
 
 Decided by the user 2026-09-27. Timing lyrics by hand or checking a machine's proposal is work, and
 LRCLIB is where this project takes its lyrics from; giving corrected ones back costs one request. A
@@ -442,6 +442,13 @@ the public publish API with its proof-of-work challenge, so no account and no ke
 **file's** duration, because the stamps belong to the cut file (§9.35). One press is one publish, with
 a confirm naming everything that leaves the machine and saying that it is public and irrevocable, and
 `lyrics_published` recorded so the same bytes are never offered twice.
+
+**Done 2026-09-27 (P31).** Their proof-of-work flow, solved locally (about 17 million SHA-256 tries
+for their live `000000FF…` target, six to ten seconds here), and the publish POST is never retried
+because a retry is a second copy in a public database. Every refusal says which rule it was, since a
+missing button explains nothing. Verified end to end through the page against a server speaking their
+documented shapes (catalog AC) — nothing reached lrclib.net, and the only live request in the package
+was a single `request-challenge`, which publishes nothing.
 
 ## 20. Seed MusicBrainz — OPEN (P32, queued)
 

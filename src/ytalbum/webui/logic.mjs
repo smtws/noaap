@@ -371,6 +371,38 @@ export function lyricsPanelState(d) {
   };
 }
 
+// Giving the words back to LRCLIB (\u00a79.42). Publishing is public and cannot be undone, so the page
+// says exactly what leaves this machine, and says it before anything is sent — the same sentence the
+// job log then writes. The server decides *whether* it may be offered; this is only how it is said.
+export function publishConfirm(d) {
+  const p = (d && d.publish) || {};
+  if (!p.can) return null;
+  return [
+    "These words are about to be published to LRCLIB, for everyone.",
+    "",
+    `    ${p.artist} \u2014 ${p.title}`,
+    `    album: ${p.album || "\u2014"}`,
+    `    length: ${Math.round(p.length)} s (the file's own, which is what the timestamps follow)`,
+    `    ${p.lines} lines, with their timestamps, and the same words without them`,
+    "",
+    "LRCLIB is a public database and takes no account. A publish cannot be taken back,",
+    "edited or deleted by you afterwards, and ytalbum never sends it twice.",
+    "",
+    "OK: publish them. Cancel: nothing leaves this machine.",
+  ].join("\n");
+}
+
+// What the button says, and why it is not there.
+export function publishState(d) {
+  const p = (d && d.publish) || {};
+  if (p.published) return { show: true, label: "\u2713 published to lrclib", can: false, title:
+    `These words were published on ${p.published}. A publish cannot be undone, and the same words are never sent twice.` };
+  if (p.can) return { show: true, label: "\u2191 publish to lrclib", can: true, title:
+    "Give these words back: LRCLIB has no entry like them, and somebody else looking for this song would find yours.\nIt is public and cannot be undone." };
+  if (p.why) return { show: false, label: "", can: false, title: p.why };
+  return { show: false, label: "", can: false, title: "" };
+}
+
 // The badge on a field: a button back to what ytalbum derived, a plain badge, or nothing.
 // Nothing is offered where nothing was derived — an album from before `auto` was recorded has
 // no value to go back to (§9.29).

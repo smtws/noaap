@@ -13,6 +13,7 @@ import threading
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +23,13 @@ from .enrich import enrich
 from .lyrics import (
     Lrclib,
     LyricsAPI,
+    LyricsError,
+    plain_text,
+    publishable,
+    read_sidecar,
     reconcile,
     remove_sidecar,
+    sent_sha,
     sidecar_lost,
     status_of,
     update_track,
@@ -539,6 +545,62 @@ class Service:
         run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
+
+    def publish_lyrics(self, source_id: str, video_id: str) -> Outcome:
+        """Give one track's words back to LRCLIB (§9.42, backlog 19).
+
+        The one thing in ytalbum that makes something **public and irrevocable**, so it is the one
+        thing that asks the most before doing it: the words must be the user's own (not lrclib's,
+        not a machine's draft), timed, and different from whatever lrclib already holds for this
+        track. The page asks a second time, in a confirm that names everything that leaves.
+
+        What is sent is the track as it is *here*: the titles the user sees and the **file's** own
+        length, because that is what the timestamps belong to (§9.35).
+        """
+        api = self.lrclib
+        if api is None or not hasattr(api, "publish"):
+            return Outcome("failed", message="lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        if not track:
+            return Outcome("failed", message="no such track in this album")
+        text = (read_sidecar(album_dir, track) or "").strip()
+        if not text:
+            return Outcome("failed", message=f"{track.title}: there are no words beside this track")
+        if refused := publishable(track, text, self.their_words(track)):
+            return Outcome("failed", message=f"{track.title}: {refused}")
+        length = track.file_length or track.duration or 0.0
+        if not length:
+            return Outcome("failed", message=f"{track.title}: the length of the file is not known yet")
+        self.log(f"publishing {track.artist} — {track.title} to lrclib "
+                 f"({len(text.splitlines())} lines, {length:.0f} s) — this is public and cannot be undone")
+        try:
+            api.publish(track_name=track.title, artist_name=track.artist,
+                        album_name=plan.album or "", duration=length,
+                        plain=plain_text(text), synced=text, log_to=self.log)
+        except LyricsError as e:
+            # nothing on disk changes: the plan is not written, so the button is still there
+            return Outcome("failed", message=str(e))
+        track.lyrics_published = {"at": datetime.now(UTC).isoformat(timespec="seconds"),
+                                  "sha": sent_sha(text)}
+        save_plan(plan, album_dir)
+        self.log(f"published {track.title} — thank you: the next person looking for this song finds it")
+        return Outcome("ok", message=f"{track.title}: published to lrclib", album_dir=album_dir, plan=plan)
+
+    def their_words(self, track: PlanTrack) -> str | None:
+        """What lrclib already holds for this track, if we know which entry it is.
+
+        Only from the cache: this is asked to decide whether a *button* is offered, and a lookup
+        per track per page would be a lot of traffic for a question nobody asked yet.
+        """
+        api = self.lrclib
+        if not (track.lyrics_id and api and hasattr(api, "cached_by_id")):
+            return None
+        held = api.cached_by_id(track.lyrics_id)
+        return held.text if held else None
 
     def align_lyrics(self, source_id: str, video_id: str, text: str) -> dict[str, Any]:
         """Put the words the editor is holding onto this track's clock. **Writes nothing** (§9.36).

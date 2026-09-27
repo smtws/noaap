@@ -35,8 +35,8 @@ import httpx
 from . import config as config_mod
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
-from .lyrics import read_sidecar, reconcile, timings_stale
-from .models import AlbumPlan
+from .lyrics import publishable, read_sidecar, reconcile, timings_stale
+from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
 from .tag import image_mime
@@ -264,8 +264,19 @@ class App:
         self.jobs = Jobs(self._service_factory)
         self.details = Details(lambda: YouTube(self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
+        # a service with no job behind it, for the questions the page asks while nothing is running
+        # (today: what lrclib already holds for a track, §9.42). Built once, because its lyrics cache
+        # is a sqlite connection and an album panel asks this per track.
+        self._reader: Service | None = None
+        self._reader_for: Path | None = None
 
     # read side
+
+    @property
+    def reader(self) -> Service:
+        if self._reader is None or self._reader_for != self.library:
+            self._reader, self._reader_for = Service(self.cfg, self.library), self.library
+        return self._reader
 
     def library_version(self) -> str:
         """Changes whenever any plan file does — cheap enough to compute on every poll."""
@@ -370,7 +381,22 @@ class App:
                 "timed_by": track.lyrics_timed_by, "words_by": track.lyrics_words_by,
                 # timestamps written for another file point at the wrong seconds; the panel says so
                 # until the words are saved again, and never re-times anything itself (§9.34)
-                "timings": timings_stale(track)}
+                "timings": timings_stale(track),
+                # whether these words may be given back to lrclib, and why not when they may not
+                # (§9.42). The reason is shown, because "no button" is a worse answer than "no,
+                # because these are lrclib's own words".
+                "publish": self._publish_state(album_dir, plan, track)}
+
+    def _publish_state(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack) -> dict[str, Any]:
+        text = (read_sidecar(album_dir, track) or "").strip()
+        published = track.lyrics_published or {}
+        if not text:
+            return {"can": False, "why": "", "published": published.get("at", "")}
+        why = publishable(track, text, self.reader.their_words(track))
+        return {"can": not why, "why": why, "published": published.get("at", ""),
+                "lines": len(text.splitlines()),
+                "length": round(track.file_length or track.duration or 0.0, 1),
+                "album": plan.album or "", "artist": track.artist, "title": track.title}
 
     def audio_path(self, source_id: str, video_id: str, original: bool = False) -> Path | None:
         """The finished track's file — looked up in the plan, never taken from the request.
@@ -520,6 +546,7 @@ class App:
             config_mod.save_setting(name, value)
         if library is not None:
             self.library = library
+            self._reader = None  # it holds the old library, and its lyrics cache with it
         return self.settings()
 
     def state(self) -> dict[str, Any]:
@@ -646,6 +673,21 @@ class App:
                     raise ValueError("no timing provider can derive words — see `timing_provider` in the config")
                 return self.jobs.submit("draft", f"Draft the words of {track.title}",
                                         lambda s: s.draft_lyrics(source_id, video_id), target=source_id)
+            case "publish_lyrics":
+                source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
+                found = self.album(source_id)
+                if not found or not video_id:
+                    raise ValueError("unknown album or track")
+                track = next((t for t in found[1].tracks if t.video_id == video_id), None)
+                if not track:
+                    raise ValueError("no such track in this album")
+                # the same gate the page uses, asked again here: a button is a suggestion, and this
+                # one cannot be taken back (§9.42)
+                text = (read_sidecar(found[0], track) or "").strip()
+                if why := publishable(track, text, self.reader.their_words(track)):
+                    raise ValueError(f"these words cannot be published: {why}")
+                return self.jobs.submit("publish_lyrics", f"Publish the words of {track.title} to lrclib",
+                                        lambda s: s.publish_lyrics(source_id, video_id), target=source_id)
             case "align":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
                 found = self.album(source_id)

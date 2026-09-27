@@ -1101,6 +1101,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    process until it exits. The next request reloads from a warm disk and costs nothing anybody can
    measure: 11.8 s before the release, 11.2 s after it.
 
+42. ✅ Giving the words back (2026-09-27, P31, backlog 19). ytalbum takes its lyrics from LRCLIB's
+   contributors; timing a song by hand, or checking what a model proposed, is work, and the way to
+   repay it costs one request. **"↑ publish to lrclib"** in the lyrics panel, using their public
+   publish API — no account, no key, a proof-of-work challenge instead (documented at
+   <https://lrclib.net/docs>, read 2026-09-27).
+   **Only your own work, and only what would be new to them.** The button appears for a sidecar that
+   is the user's (`provenance.lyrics = user`), timed, not instrumental, not a machine's draft nobody
+   has rewritten, not byte-identical to the LRCLIB entry whose id the track holds, and not already
+   published with these same bytes. Every one of those is one idea — *a publish cannot be taken
+   back, so every doubt resolves to "no"* — and each refusal says which it was, because a missing
+   button explains nothing.
+   **Said before it happens, in full.** The confirm names the artist, the title, the album, the
+   **file's** length (the clock the stamps belong to, §9.35), how many lines, that both the timed and
+   the plain form go, and that LRCLIB is public and takes no account. The job log writes the same
+   sentence before the request, so a log read later says what left this machine.
+   **One press is one request.** The challenge may be asked for again — asking changes nothing — but
+   the publish POST is never retried, because a retry could be a second copy of the same words in a
+   public database. A refusal comes back as LRCLIB's own message, and nothing on disk changes, so the
+   button is still there.
+   **What is recorded is a fingerprint, not the words**: `lyrics_published = {"at": …, "sha": …}`.
+   The same bytes are then never offered again; words edited since may go again, which is the only
+   sensible reading of "I changed it".
+   `YTALBUM_LRCLIB_BASE` points the client at another host — a mirror, or the fake that let this be
+   verified end to end without putting test words into a public database.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1295,3 +1320,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-27 (giving the words back, §9.42)
+
+- **A publish is public and permanent, so the page says everything before it happens** — and says
+  why, whenever it will not offer to.
+- **Never send LRCLIB its own words back.** Saving their entry unchanged makes it yours by
+  provenance; it does not make it new to them.
+- **One press, one request, one possible copy.** The publish POST is never retried.
+- **Record a fingerprint, not the text.** It answers "these again?" and nothing else.
