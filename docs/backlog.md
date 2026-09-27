@@ -290,3 +290,35 @@ stamp and **Alt+←/→** move it by a tenth (with Shift, half a second) and pla
 is done by ear; and a readout shows the position **in the file**, beside the player's own time
 whenever the two differ. Nothing is saved until Save, and a stamp written this way is byte-for-byte
 what a hand-typed one would be. Catalog section V.
+
+## 14. Automatic lyric timing — OPEN, the user's call (P24, `docs/spikes/2026-09-alignment.md`)
+
+Added 2026-09-27 out of the P24 spike, which measured it on twenty tracks of the real library rather
+than arguing about it. The short of it: **forced alignment works**. wav2vec2 CTC alignment on a
+separated vocal stem placed the lines of 17 of 20 tracks within a median of **0.94 s**, twelve of
+them under half a second, with **no penalty for growled vocals** (0.37 s against 0.34 s for clean
+singing) and none for German. It needs **442 MB of models and no GPU** — 2.7× real time for the
+separation, 8–11× for the alignment, about two minutes for a four-minute track on an ordinary
+processor. It also found two `.lrc` files in the library whose stamps are six seconds early.
+
+Three things the spike says any such feature must do, all of them measured rather than assumed:
+
+- **Run two aligners and compare.** Neither is safe alone — the Whisper-based one is half a song out
+  on 5 of 20, the CTC one on a different 1 of 20 — but where they agree within a second they are
+  right, including where LRCLIB is wrong. Where they disagree, say so and place nothing.
+- **Separate first.** CTC alignment on the raw mix is unusable (median 13 s); on the vocal stem it
+  is the best arm there is. The same separation does *not* reliably help transcription.
+- **Write into the editor, not to the disk.** P23's editor already holds the text, plays a stamp,
+  nudges it and saves it; an align action that fills the textarea needs no new write path and leaves
+  the ownership contract (§9.21) exactly as it is — the words stay the user's, the user presses Save.
+
+**Transcription is the weaker half** and is a separate decision: three quarters of a clean song's
+lines, half of a harsh one's, seven times the cost, always needing a human afterwards.
+
+**The question for the user is not really "shall we do this", it is "where does the inference
+live".** The spike's fifth section evaluates that: a `Timing` provider boundary with `none` as the
+default, `local` as an optional extra, a self-hosted HTTP endpoint on another machine, and
+commercial APIs — of which only ElevenLabs sells alignment of supplied text, at $0.22 per audio
+hour, i.e. **$8.60** to time every track in this library that has words but no timings. The core
+product keeps working with none of it installed, and the recommendation is to define the boundary
+before building anything behind it.

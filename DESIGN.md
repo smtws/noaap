@@ -1018,3 +1018,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **No automatic alignment.** Still true after P23: everything here is the user pointing at a
   moment. Whether a model could place the lines is a separate question, and a measurement rather
   than an opinion — P24.
+
+### Decisions of 2026-09-27 (what the alignment spike is for, P24)
+
+- **Automatic lyric timing is measured, not adopted** (`docs/spikes/2026-09-alignment.md`, backlog
+  item 14). Forced alignment reaches a median of 0.94 s per line on 17 of 20 real tracks with 442 MB
+  of models and no GPU, and needs two independent aligners compared against each other to be safe.
+  Nothing was added to `src/`; the spike's environment lived outside the repository and was removed.
+- **If it is ever built, it goes behind a provider boundary, not into the core.** ytalbum must not
+  acquire a baseline of "modern GPU plus gigabytes of CUDA and model weights": the default provider
+  is `none`, the app is exactly what it is today without one, and local inference is one optional
+  implementation beside a self-hosted endpoint and commercial APIs. The spike's §5 carries the
+  interface sketch and the costs of each.
