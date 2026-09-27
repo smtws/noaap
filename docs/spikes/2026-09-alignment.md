@@ -28,7 +28,8 @@ The questions, from the task:
   about the audio. Agreement between two independent methods is the safety valve this feature needs;
   the library's own "failed to align" count is a weaker signal that both over- and under-reports.
 - **Separation is not optional.** CTC alignment on the raw mix is unusable (median 13–18 s); on the
-  vocal stem it is the best arm there is. Demucs costs ~11 s per track on this GPU.
+  vocal stem it is the best arm there is. Demucs costs ~11 s per track on this notebook's GPU
+  and ~61 s on its CPU.
 - **The ground truth is not always right either.** On two tracks all four arms agree with each other
   and sit ~6.3 s from LRCLIB — the `.lrc` in the library is early, not the model. An align button
   would *correct* those files rather than break them.
@@ -39,9 +40,21 @@ The questions, from the task:
 - **The cost is a machine, not an amount — but the useful half of it is small.** Everything
   together is 13 GB and a CUDA version trap. Alignment alone, which is the part that works, is
   **442 MB of weights and no Whisper**, and it runs at 8–11× real time on a CPU. That distinction is
-  what the architecture section is about.
+  what the architecture section is about. Note what this machine is: a high-end notebook with an
+  RTX 4060: **the GPU numbers here are the favourable case, not the baseline.**
 
 ## Method
+
+### The machine, and why it flatters the result
+
+Everything below ran on a **Dell XPS 16 9640**: an **RTX 4060 Laptop GPU with 8 GB of VRAM**, an
+Intel Core Ultra 9 185H (22 threads), 30 GB of RAM and a fast NVMe. That is a high-end notebook of
+last year, near the top of what a ytalbum user is likely to own — **not a baseline**. Every GPU
+figure in this report is therefore the *favourable* case, and should be read as "on a strong
+notebook GPU". The CPU figures, taken on the same machine's processor, are the ones closer to a
+typical install; on an older desktop they will be worse again, and the user's own older desktop may
+not be a sensible inference machine at all. Where this report says "fifteen seconds", read "fifteen
+seconds here, minutes elsewhere".
 
 ### The twenty tracks
 
@@ -173,8 +186,8 @@ The p95 columns carry the two broken tracks and say nothing about the class.
 **Separation is what makes CTC alignment work.** On the raw mix it is the worst arm by a distance
 (median 11.9 s); on the vocal stem it is the best (0.30 s). CTC segmentation over a sparse word
 sequence has nothing to hold on to during an instrumental passage and drifts; separation turns those
-passages into silence. Demucs `htdemucs` cost a median of **10.9 s per track** on the RTX 4060 —
-about a fifth of the alignment budget, and it changes the answer completely.
+passages into silence. Demucs `htdemucs` cost a median of **10.9 s per track** on this notebook's GPU (61 s on its
+CPU) — about a fifth of the alignment budget, and it changes the answer completely.
 
 For Whisper-based alignment separation is a smaller, mixed effect: two of its five catastrophes were
 fixed (Powerwolf 54.8 s → 0.42 s, Warkings 59.8 s → 0.63 s), one improved, two unchanged.
@@ -282,10 +295,12 @@ Anything that offers local inference inherits that class of problem on every mac
 
 ### Per track
 
-Median over the twenty tracks (mean length 3.98 minutes), RTX 4060 Laptop (8 GB) against this
-laptop's CPU. The CPU runs used `int8` for Whisper and the same torch build with `device=cpu`.
+Median over the twenty tracks (mean length 3.98 minutes): a **strong notebook GPU** (RTX 4060
+Laptop, 8 GB) against the same notebook's **CPU** (Core Ultra 9 185H). The CPU runs used `int8` for
+Whisper and the same torch build with `device=cpu`. Read the GPU column as the best case a user
+might have and the CPU column as the one nearer to a normal install.
 
-| step | GPU | CPU | of real time |
+| step | strong notebook GPU | CPU | of real time |
 |---|---|---|---|
 | Demucs separation | 10.9 s | 61.3 s (a 2:45 track) | 20× / **2.7×** |
 | wav2vec2 CTC alignment | 4.2 s | 14.7 s (2:45), 43.4 s (5:50) | 40× / **8–11×** |
@@ -293,10 +308,11 @@ laptop's CPU. The CPU runs used `int8` for Whisper and the same torch build with
 | Whisper transcription | 22–28 s | 84.0 s (2:45) | 8–10× / **2.0×** |
 | model load, cold | 2–120 s | — | (the 120 s was the first load, with the download) |
 
-So the whole recommended pipeline — separate, then align — is **≈ 15 s per track on the GPU and
-≈ 2 minutes on the CPU**. For the 589 tracks in the library that have words but no timings that is
-about 2.5 hours on the GPU or a night on the CPU; for one track in the editor it is fifteen seconds
-or two minutes.
+So the whole recommended pipeline — separate, then align — is **≈ 15 s per track on this strong
+notebook GPU and ≈ 2 minutes on its CPU**, and slower again on an older machine. For the 589 tracks
+in the library that have words but no timings that is about 2.5 hours with the GPU or a night
+without one; for one track in the editor, fifteen seconds here and a couple of minutes on a machine
+that has no GPU to lend it.
 
 ### Determinism
 
@@ -404,8 +420,10 @@ the interface exists mainly to make it trivial: `capabilities()` returns an empt
 button that needs one is not rendered.
 
 **local**, an optional extra (`pip install ytalbum[timing]`), imported only when configured, weights
-fetched on first use. The measurements above are its cost, and there are two very different versions
-of it:
+fetched on first use. The measurements above are its cost — **measured on a high-end notebook with
+an RTX 4060, which is the favourable case and not what most installations will have**. What takes
+fifteen seconds here takes minutes on a machine without that GPU, and on an older desktop longer
+still. There are two very different versions of it:
 
 | | alignment only (the recommended shape) | everything (alignment + cross-check + transcription) |
 |---|---|---|
@@ -485,7 +503,8 @@ The measurements say so three times over:
 1. The capability that matters (align) is small, cheap and mostly solved — 0.30 s median error, no
    penalty for growled vocals or for German — and it is *not* the capability that needs a 3 GB
    model or a GPU. Without a boundary, the obvious implementation is "add whisper", which is the
-   expensive, worse one.
+   expensive, worse one — and it is expensive in a way this machine hides, because every quick
+   number above was taken on a strong notebook GPU that a typical installation will not have.
 2. No single method is safe alone. The rule the evidence supports is **run two and compare**: where
    a Whisper-based aligner and a CTC aligner agree within a second they are right, including where
    the `.lrc` in the library is wrong; where they disagree, one of them is half a song out and the
@@ -495,14 +514,17 @@ The measurements say so three times over:
    `unplaced` and not for a model name.
 3. The costs are not comparable between implementations — 13 GB and a GPU, 1.5 GB and patience, or
    $8.60 for every untimed track in the library — and a user on an older desktop should be able to
-   pick the third without the first being installed.
+   pick the third without the first being installed. The measurements were taken on the best machine
+   in this house; the design has to be right for the worst one.
 
 **What to build first, if the user wants the feature at all:** the interface, the `none` default,
 and **one** provider — `local`, in its *alignment-only* shape (wav2vec2 + Demucs, ~1.5 GB, no
 Whisper), as an optional extra. It is measured, free, private, and — this is the part the CPU
 numbers settled — it does **not** need a GPU: 2.7× real time for separation and 8–11× for the
-alignment itself, about two minutes for a four-minute track on an ordinary processor. The GPU turns
-that into fifteen seconds; it does not turn the feature on. The HTTP provider is then perhaps fifty
+alignment itself, about two minutes for a four-minute track on this notebook's processor, and more
+on an older one. The GPU turns that into fifteen seconds; it does not turn the feature on. That is
+the whole argument for this shape — **what works here in seconds must still work elsewhere in
+minutes**, and a 442 MB CPU pipeline does, while a 13 GB CUDA one simply will not be installed. The HTTP provider is then perhaps fifty
 lines around the same code and gives the household its "run it on the box with the hardware" option,
 and a commercial provider is a `httpx` call whose main design question is whether the user wants
 their audio to leave the house — a question for them, not for the code.
