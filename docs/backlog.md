@@ -470,7 +470,7 @@ both numbers — so the chip itself became the button rather than gaining a neig
 Verified against a stand-in; nothing touched musicbrainz.org, because an edit form opened for real is
 a real edit waiting to be submitted.
 
-## 21. Verify mode cannot tell which method is lost — OPEN (from P27's own evidence)
+## 21. Verify mode cannot tell which method is lost — DONE (P33, DESIGN §9.44)
 
 Added 2026-09-27 out of catalog Y. When two aligners place a track 30–120 s apart, one of them has
 lost the song and ytalbum has no way to say which, so §9.38 trusts the primary **by policy**. That
@@ -493,4 +493,13 @@ reported 11 of 42 on the run where it was lost); stamps that fall outside the tr
 breaks in monotonicity. With any of them the whole-track case could drop the method that is actually
 lost instead of the one policy distrusts — and the same signals would let the per-line rule say which
 of the two a dropped line should have believed.
+
+**Done 2026-09-27 (P33).** None of the four signals this item proposed is the one that worked. What
+works is **coverage of the singing**: a lyric's stamps should span the sung part of the track, and a
+method that lost the song covers a fraction of it — 0.41–0.70 against 0.86–1.12, five right, none
+wrong, none missed over sixteen tracks, with two held-out tracks answering correctly after the
+thresholds were fixed (catalog AE). The signal this item put first — stamps where nobody sings —
+cannot work at all on material that is 55–86% singing, and the numbers that show it are recorded so
+nobody proposes it again. Every saved alignment now carries both methods' figures, so the thresholds
+can be widened from the library rather than from another sixteen copies.
 

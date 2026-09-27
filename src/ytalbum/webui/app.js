@@ -819,7 +819,7 @@ function lyricsEditor(p, t, d) {
   });
   // what a provider proposed, carried to the Save so the plan can record whose clock — and whose
   // words — these are
-  const timing = { by: d.timed_by || "", words: d.words_by || "" };
+  const timing = { by: d.timed_by || "", words: d.words_by || "", checked: null };
   const proposal = h("div", { class: "timing-note", hidden: !d.draft }, d.draft ? `\u26a0 ${d.draft}` : "");
   const by = h("input", { type: "text", class: "shift-by", value: "-0.5", size: 5, "aria-label": "seconds to move every stamp by",
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); shiftStamps(area, by); } } });
@@ -848,7 +848,7 @@ function lyricsEditor(p, t, d) {
         title: "Move every timestamped line by that many seconds. Nothing is saved until you press Save.",
         onclick: () => shiftStamps(area, by) }, "shift all")),
     h("div", { class: "lyrics-actions" },
-      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by, timing.words) }, "Save"),
+      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by, timing.words, timing.checked) }, "Save"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, false) }, "Cancel"),
       d.text ? h("button", { class: "quiet small danger", type: "button",
         title: "Remove the .lrc beside this track. Its tag goes with it, and a later “look up all again” may fetch LRCLIB's words.",
@@ -970,6 +970,9 @@ async function alignWords(button, p, t, area, notice, timing) {
   const got = applyStamps(area.value, timed);
   editorText(area, got.text);
   timing.by = job.result.by || "";
+  // what the two methods said about themselves, carried to the Save so the library keeps the
+  // evidence and not only the verdict (§9.44)
+  timing.checked = timed.parameters || null;
   notice.textContent = `⚠ ${alignNotice(timed, got)}`;
   area.focus();
   area.setSelectionRange(0, 0);
@@ -1018,9 +1021,10 @@ async function editLyrics(button, p, t, editing) {
   }
 }
 
-async function saveLyrics(button, p, t, text, timedBy = "", wordsBy = "") {
+async function saveLyrics(button, p, t, text, timedBy = "", wordsBy = "", checked = null) {
   const id = await submit("save_lyrics",
-    { id: p.source_id, video_id: t.video_id, text, timed_by: timedBy, words_by: wordsBy }, button);
+    { id: p.source_id, video_id: t.video_id, text, timed_by: timedBy, words_by: wordsBy,
+      checked: checked || undefined }, button);
   if (id == null) return;
   const job = await jobSettled(id);
   if (!job || job.state !== "done") return; // submit() already showed why

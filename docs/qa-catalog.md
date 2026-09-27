@@ -1755,6 +1755,78 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AE. Telling which method lost the song (P33, DESIGN §9.44, backlog 21)
+
+Run 2026-09-27 on the sixteen P27 tracks (copied read-only out of the real library again) plus two
+**held out**: Mono Inc. — *Princess of the Night* and Saltatio Mortis — *Seitdem du weg bist*, which
+were measured only after the thresholds below were written down. Each track was separated once, then
+aligned by both methods, and every candidate signal was computed from the recorded stamps — the run
+writes the raw stamps, the sung stretches and both methods' own confidences, so a signal can be
+designed and re-designed without asking the models again.
+
+- [x] **AE1 · M** — what the two methods' answers look like, and what decides between them
+
+  `span` is how much of the sung part of the track a method's stamps cover; `piled` is the share of
+  its stamps within a third of a second of the one before.
+
+| track | CTC span | Whisper span | Whisper piled | verdict |
+|---|---|---|---|---|
+| DOMINUM — Killed by Life | 0.87 | 0.86 | 0.00 | cannot tell |
+| DOMINUM — Die for the Devil | 0.99 | 0.98 | 0.11 | cannot tell |
+| DOMINUM — Can't Kill a Dead Man | 0.98 | 0.95 | 0.00 | cannot tell |
+| Die Legende von Nord — Bösewicht | 0.93 | 0.93 | 0.00 | cannot tell |
+| Feuerschwanz — Bastard of Asgard | 1.12 | 1.12 | 0.03 | cannot tell |
+| Kupfergold — Zombie Malone | 0.98 | 0.98 | 0.04 | cannot tell |
+| Lord of the Lost — 2000 Years a Pyre | 0.97 | 0.93 | 0.00 | cannot tell |
+| **Lord of the Lost — Argent** | 0.99 | **0.41** | 0.26 | **Whisper lost** |
+| Lord of the Lost — A War Within | 0.98 | 0.98 | 0.00 | cannot tell |
+| Michael Jackson — Ben | 0.98 | 0.96 | 0.00 | cannot tell |
+| **Mono Inc. — A Love That Never Dies** | 0.95 | **0.67** | 0.21 | **Whisper lost** |
+| **Powerwolf — Armata Strigoi** | 0.98 | **0.52** | 0.06 | **Whisper lost** |
+| **Sabaton — A Lifetime of War** | 1.00 | **0.45** | 0.36 | **Whisper lost** |
+| Saltatio Mortis — Brunhild | 0.99 | 0.98 | 0.00 | cannot tell |
+| **Warkings — Azrael** | 1.09 | **0.70** | 0.24 | **Whisper lost** |
+| dArtagnan — Alles aus Liebe | 0.97 | 0.97 | 0.00 | cannot tell |
+| *held out:* Mono Inc. — Princess of the Night | 0.98 | 0.98 | 0.00 | cannot tell |
+| *held out:* Saltatio Mortis — Seitdem du weg bist | 0.99 | 0.98 | 0.00 | cannot tell |
+
+  - **five right, none wrong, none missed.** The five methods that lost the song span **0.41–0.70**
+    of the singing; all twenty-seven answers that followed it span **0.86–1.12**
+  - *Bastard of Asgard*, the one track where the CTC pass was the worse of the two, comes out
+    **cannot tell** — which the task allowed, and which falls back to the policy of §9.38
+  - the thresholds are **0.75** of the singing and **12%** piled. Any floor from **0.70 to 0.85**
+    gives these eighteen verdicts unchanged, so the number is not load-bearing; the piling rule alone
+    gets four of the five, and is kept because it catches a different shape of failure
+  - **the held-out pair was measured after the thresholds were fixed** and answered correctly
+  - **result:** pass
+
+### Two signals that do not work, with the numbers that killed them
+
+Both are still **recorded on every alignment and never judged**, so that nobody has to take this on
+trust — and so nobody proposes them again.
+
+- **"Its stamps fall where nobody sings"** (the first idea, and the obvious one). These tracks are
+  **55–86% singing**, so a method that is somewhere else entirely still lands *inside* singing nearly
+  every time. A human's own stamps shifted by a full minute — the cleanest synthetic "lost" there is,
+  and it touches none of the judged tracks — put only **12–30%** of themselves in silence. On *Argent*,
+  where the second method is **120 s** out, **0 of its 46 stamps** fell in silence. The sharper form,
+  "is a phrase starting here", is no better: on a good track the **human's own** sidecar has 26 of 42
+  stamps away from any detected onset, because lines begin inside sung stretches, not at their edges.
+- **"Each method's own confidence"**, which looked decisive for an hour and is not. The CTC pass and
+  the decoder do not report the same quantity (0.13–0.41 against 0.77–0.98 for the same quality of
+  work), so no shared threshold is honest — and the per-method version fails on its own terms:
+  Whisper **lost** *A Love That Never Dies* at **0.60**, higher than the CTC pass's **0.36** on
+  *Argent* where it was right, and on *Armata Strigoi* both collapse at once (0.07 and 0.03) so it
+  names nobody.
+
+### And one evidence method that lied, again
+
+A patch that adds a field to a measurement script was checked by grepping for the word `stamps` —
+which the script already contained six times, in `lines_and_stamps` and elsewhere. The patch had
+never applied (a self-matching `pkill` had killed the shell before the heredoc ran), the grep said
+otherwise, and a forty-minute run produced a file with no raw stamps in it. **Verify a patch by
+something new and unique to it** — here `"raw_stamps"` — never by a word the file could already have.
+
 ## AD. Offering an album to MusicBrainz (P32, DESIGN §9.43, backlog 20)
 
 Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, with `YTALBUM_MUSICBRAINZ_WEB`
@@ -2049,6 +2121,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AE cases (P33: which method lost the song) | 1 | 0 | Eighteen tracks, both methods, every candidate signal. Coverage of the singing separates cleanly (lost 0.41–0.70, good 0.86–1.12): five right, none wrong, none missed, and the held-out pair correct after the thresholds were fixed. Two signals measured and discarded, including the one the task specified. 646 pytest + 77 node. |
 | 2026-09-27 | the AD cases (P32: offering an album to MusicBrainz) | 3 | 0 in the design; 1 of my own (a second badge printing the length chip's own numbers with the opposite implication), fixed by making the chip the button | Against a stand-in for their release editor — **nothing touched musicbrainz.org**. 41 seeded fields including eleven tracks with millisecond lengths measured from the files, the refusal for compilations shown where the button would be, and the recording deep link the seeding format cannot replace. 636 pytest + 75 node. |
 | 2026-09-27 | the AC cases (P31: publishing to LRCLIB) | 5 | 0 | Against a server speaking LRCLIB's documented publish flow — **nothing reached lrclib.net**, and the only live request in the package was one `request-challenge`, which publishes nothing. The gate, the confirm, the payload (with the file's length), the fingerprint, the never-twice rule and a refusal that changes nothing on disk. 621 pytest + 70 node. |
 | 2026-09-27 | the AB cases (P30: giving the card back) | 4 | 0 in the design; 1 defect of my own (the idle timer released the models out of a running request), found live and fixed | 3314 MiB held after an alignment before the fix; 180 MiB after it, which is the CUDA context. `timing-serve` let go 30–35 s into a 30 s idle window and said so in its log; the next request reloaded in 11.2 s against 11.8 s. 609 pytest + 67 node. |

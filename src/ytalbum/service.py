@@ -504,7 +504,7 @@ class Service:
         return outcomes
 
     def save_lyrics(self, source_id: str, video_id: str, text: str, timed_by: str = "",
-                    words_by: str = "") -> Outcome:
+                    words_by: str = "", checked: dict[str, str] | None = None) -> Outcome:
         """Write the words a user typed beside one track — or clear them — and retag it.
 
         This is the one door into the ownership contract from the UI side: it does by hand what
@@ -528,6 +528,8 @@ class Service:
             # so does a draft nobody has rewritten yet (§9.37)
             track.lyrics_timed_by = timed_by or None
             track.lyrics_words_by = words_by or None
+            # kept beside the clock, not instead of it: this is the evidence, the clock is the claim
+            track.lyrics_checked = dict(checked) if checked else None
             self.log(f"wrote your lyrics for {track.title} ({track.lyrics})"
                      + (f", drafted by {words_by}" if words_by else "")
                      + (f", timed by {timed_by}" if timed_by else ""))

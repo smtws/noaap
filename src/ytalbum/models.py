@@ -138,6 +138,10 @@ class PlanTrack:
     # what was given back to lrclib, and when: {"at": ISO, "sha": of the bytes sent} (§9.42). Kept so
     # the same words are never offered for publishing twice — a publish cannot be taken back.
     lyrics_published: dict[str, str] | None = None
+    # what the two methods' own answers looked like when a cross-checked alignment was saved
+    # (§9.44): both spans, both piling figures, and which method lost the song if either did. The
+    # library then accumulates the evidence sixteen tracks cannot give, one saved alignment at a time.
+    lyrics_checked: dict[str, str] | None = None
 
     @property
     def effective_id(self) -> str:

@@ -143,3 +143,25 @@ test("when the check could not run at all, the notice says so rather than implyi
   assert.match(text, /one method's word/);
   assert.doesNotMatch(text, /agreed/);
 });
+
+test("when the evidence names the method that lost the song, the notice says which and why", () => {
+  const timed = checked({ lost_method: "large-v3", kept_method: "wav2vec2",
+    lost_why: "its stamps cover only 45% of the part of the track where somebody sings",
+    compared: "46", disagreed: "45", lost: "45", lost_beyond: "5" },
+    [{ text: "one", start: 1 }, { text: "two", start: 2 }]);
+  const got = applyStamps("one\ntwo", timed);
+  assert.equal(got.text, "[00:01.0] one\n[00:02.0] two");      // the kept method's stamps, entire
+  const text = alignNotice(timed, got);
+  assert.match(text, /large-v3 is the one that lost it/);
+  assert.match(text, /cover only 45% of the part of the track where somebody sings/);
+  assert.match(text, /These stamps are wav2vec2's/);
+});
+
+test("and when it cannot say which, it says that too", () => {
+  const timed = checked({ one_method: "a second method disagreed about the whole track",
+    compared: "20", disagreed: "16", lost: "14", lost_beyond: "5" },
+    [{ text: "one", start: 1 }, { text: "two", start: 2 }]);
+  const text = alignNotice(timed, applyStamps("one\ntwo", timed));
+  assert.match(text, /nothing here can say which of them is right/);
+  assert.doesNotMatch(text, /lost it:/);
+});

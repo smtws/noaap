@@ -22,7 +22,10 @@ a median of 12 seconds, because CTC has nothing to hold on to during an instrume
 from __future__ import annotations
 
 import logging
+import re
+import statistics
 import unicodedata
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -36,6 +39,7 @@ from .timing import (
     TimingUnavailable,
     language_of,
     release_gpu_memory,
+    signals_of,
     verified,
 )
 
@@ -160,16 +164,22 @@ class LocalTiming:
 
         starts: dict[int, float] = {}
         ends: dict[int, float] = {}
+        scored: dict[int, list[float]] = {}
         for w, token in enumerate(first_token):
             if token >= len(spans):
                 break
             starts.setdefault(owners[w], round(spans[token].start * seconds, 2))
             last = min(token + 1, len(spans) - 1)
             ends[owners[w]] = round(spans[last].end * seconds, 2)
+            # the aligner's own confidence in this word, which it has already computed (§9.44)
+            scored.setdefault(owners[w], []).append(float(spans[token].score))
         placed = [TimedLine(text=line, start=starts.get(i), end=ends.get(i)) for i, line in enumerate(lines)]
         timed = Timed(lines=placed, provider=self.name, model=f"{BUNDLES[lang]} + {SEPARATOR}",
                       version=torchaudio.__version__,
                       parameters={"device": device, "language": lang, "separated": "vocals"})
+        per_line = [statistics.median(v) for v in scored.values() if v]
+        if per_line:
+            timed.parameters["confidence"] = format(statistics.median(per_line), ".3f")
         if not self.verifying():
             return timed
         # The second opinion hears the **mixed** track, not the stem the CTC pass needs (§9.38).
@@ -194,7 +204,15 @@ class LocalTiming:
             # disk, and on the processor there is nothing to compete for, so it stays.
             if self._whisper_device == "cuda":
                 self._free_vram()
-        return verified(timed, second, self.threshold, self.lost)
+        # what the audio itself says about where anybody is singing, for judging either method
+        sung = sung_stretches(wave.cpu(), bundle.sample_rate)
+        length = wave.size(1) / bundle.sample_rate
+        evidence = (signals_of([line.start for line in timed.lines], length=length, sung=sung,
+                               failed=len(timed.unplaced), confidence=_number(timed.parameters.get("confidence"))),
+                    signals_of([line.start for line in second.lines], length=length, sung=sung,
+                               failed=int(second.parameters.get("failed", 0) or 0),
+                               confidence=_number(second.parameters.get("confidence"))))
+        return verified(timed, second, self.threshold, self.lost, evidence=evidence)
 
     def transcribe(self, audio: Path, *, language: str | None = None,
                    check: Callable[[], None] | None = None) -> Timed:
@@ -248,8 +266,16 @@ class LocalTiming:
     def _whisper_align(self, audio: Path, lines: list[str], lang: str) -> Timed:
         """The same words, placed by a Whisper decoder hearing the mixed track (§9.38)."""
         self.log(f"checking the alignment against {WHISPER} …")
-        result = self._whisper_run(
-            lambda model: model.align(str(audio), "\n".join(lines), language=lang, original_split=True))
+        # it reports the segments it could not place as a warning and nowhere else, so that is
+        # where the count has to come from (§9.44)
+        with warnings.catch_warnings(record=True) as said:
+            warnings.simplefilter("always")
+            result = self._whisper_run(
+                lambda model: model.align(str(audio), "\n".join(lines), language=lang, original_split=True))
+        failed = 0
+        for one in said:
+            if m := re.search(r"(\d+)/(\d+) segments? failed to align", str(one.message)):
+                failed = int(m[1])
         placed = [TimedLine(text=segment.text.strip(), start=round(segment.start, 2))
                   for segment in result.segments]
         if len(placed) != len(lines):
@@ -257,7 +283,13 @@ class LocalTiming:
             # rather than shifting everything by one (this happened on 1 of 20 tracks in the spike)
             self.log(f"the second method returned {len(placed)} lines for {len(lines)} — not comparing")
             placed = [TimedLine(text=line, start=None) for line in lines]
-        return Timed(lines=placed, provider=self.name, model=WHISPER, version=_whisper_version())
+        out = Timed(lines=placed, provider=self.name, model=WHISPER, version=_whisper_version(),
+                    parameters={"failed": str(failed)})
+        chances = [float(w.probability) for segment in result.segments
+                   for w in (getattr(segment, "words", None) or []) if getattr(w, "probability", None)]
+        if chances:
+            out.parameters["confidence"] = format(statistics.median(chances), ".3f")
+        return out
 
     _whisper_device = "cpu"
     _whisper_cpu_only = False
@@ -349,6 +381,48 @@ class LocalTiming:
         _, stems = separator.separate_audio_file(audio)  # type: ignore[attr-defined]
         vocals = stems["vocals"].mean(0, keepdim=True).cpu()
         return vocals, int(separator.samplerate)  # type: ignore[attr-defined]
+
+
+def sung_stretches(wave, rate: int, frame: float = 0.1, bridge: float = 0.4,
+                   floor: float = 0.06) -> list[tuple[float, float]]:
+    """When somebody is singing, from the separated vocal the aligner already made (§9.44).
+
+    The separation is the expensive part and it is already done, so this costs nothing: chop the
+    stem into tenths of a second, take each one's RMS, and call it singing where it rises above a
+    fraction of the track's own loud level (relative, because one track is mastered quieter than
+    another). Stretches less than `bridge` apart are joined, since a breath between two lines is not
+    the end of the singing.
+    """
+    import torch
+
+    audio = wave[0] if wave.dim() > 1 else wave
+    step = max(1, int(frame * rate))
+    if audio.numel() < step:
+        return []
+    frames = audio[: audio.numel() // step * step].reshape(-1, step)
+    rms = frames.float().pow(2).mean(dim=1).sqrt()
+    loud = torch.quantile(rms, 0.95)
+    if not float(loud):
+        return []
+    on = (rms > loud * floor).tolist()
+    out: list[tuple[float, float]] = []
+    for i, singing in enumerate(on):
+        if not singing:
+            continue
+        at = i * frame
+        if out and at - out[-1][1] <= bridge:
+            out[-1] = (out[-1][0], at + frame)
+        else:
+            out.append((at, at + frame))
+    return out
+
+
+def _number(text: str | None) -> float | None:
+    """A parameter that is a number, or nothing — parameters are strings, signals are not."""
+    try:
+        return float(text) if text else None
+    except ValueError:
+        return None
 
 
 def has_whisper() -> bool:

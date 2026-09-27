@@ -379,11 +379,14 @@ and with it two things:
   disagree about come back **without a stamp** and the editor says how many. But if the two are more
   than `timing_verify_lost` seconds apart on *most* lines — 5.0 by default — then one of them has lost
   the song rather than drifted, and in that case **you keep every stamp** and the editor tells you how
-  total the disagreement was: *"a second method disagreed about the whole track — 14 of 20 lines more
-  than 5 seconds apart — so this is one method's word: play the first line before you save it."* That
-  is the honest thing to do, because on the sixteen tracks this was measured on, whenever that
-  happened it was the **second** method that was lost and the first was right to within a second
-  (`docs/qa-catalog.md`, section Y). The check adds about **60%** to the time per track, measured over
+  total the disagreement was. Where it can, it now goes further and says **which** of the two lost the
+  song: a lyric's stamps should cover the part of the track where somebody is singing, and a method
+  that has lost it covers a fraction (measured over eighteen tracks: 0.41–0.70 against 0.86–1.12 for
+  the ones that followed the song, `docs/qa-catalog.md`, section AE). Then the *other* method's stamps
+  are the ones you keep, and the editor says so — *"the two methods placed the whole track differently,
+  and large-v3 is the one that lost it: its stamps cover only 41% of the part of the track where
+  somebody sings."* Where the evidence cannot tell them apart it says that instead, and keeps the
+  first method's stamps as it always did. The check adds about **60%** to the time per track, measured over
   sixteen tracks on both: 11 s → 18 s each with a GPU, 2:46 → 4:29 each without one. Turn it off with
   `timing_verify = false`, or widen what counts as agreement with `timing_verify_threshold` — seconds,
   **2.0** by default, and it

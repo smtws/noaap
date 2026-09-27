@@ -1154,6 +1154,36 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `YTALBUM_MUSICBRAINZ_WEB` points both at a stand-in, which is how this was verified without
    opening a real edit form.
 
+44. ✅ Which method lost the song (2026-09-27, P33, backlog 21). §9.38 could see that two aligners
+   had placed a whole track differently and had no way to say **which** of them was wrong, so it kept
+   the primary by policy. Now the answer comes from evidence where there is any, and the policy stays
+   where there is none.
+   **The signal is coverage of the singing.** A lyric's stamps should span the part of the track
+   where somebody is singing; a method that lost the song squeezes the whole lyric into a fraction of
+   it. Measured over eighteen real tracks (`docs/qa-catalog.md`, section AE): the five answers that
+   lost the song span **0.41–0.70** of the singing, the twenty-seven that followed it span
+   **0.86–1.12**. The rule is *under `LOST_SPAN` (0.75), or more than `LOST_PILED` (12%) of its
+   stamps piled within a third of a second* — five right, none wrong, none missed, and any floor from
+   0.70 to 0.85 gives the same verdicts, so the number is not load-bearing.
+   **The decision, in three branches.** Exactly one method looks lost → the **other one's** stamps
+   are kept whole and the notice names which lost and why, in the user's words: *"the two methods
+   placed the whole track differently, and large-v3 is the one that lost it: its stamps cover only
+   41% of the part of the track where somebody sings."* Both or neither look lost → exactly what
+   §9.38 did, keeping the primary and saying so. The per-line rule, where the two agree about the
+   track, is untouched.
+   **Two signals were measured and thrown away**, and both are still *recorded* so nobody has to take
+   that on trust: "stamps where nobody sings", which cannot work because these tracks are 55–86%
+   singing (a human's own stamps shifted by a minute land in silence only 12–30% of the time, and the
+   method that was 120 s out on *Argent* put 0 of 46 stamps there); and each method's own confidence,
+   which is not the same quantity on both sides and fails on its own terms — Whisper lost a track at
+   0.60 and was right elsewhere at 0.07.
+   **The library collects what sixteen tracks cannot.** Every cross-checked alignment a user saves
+   records both methods' spans and piling figures in `lyrics_checked` beside the clock. Widening the
+   thresholds is then done from real cases rather than from more of my copying: a read-only walk over
+   the plans (`for _, plan in iter_plans(library): for t in plan.tracks: t.lyrics_checked`) collects
+   every saved verdict, and a track a user reports as wrongly judged is a recorded case with its two
+   spans already in it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1366,3 +1396,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   the refusal says so where the button would have been.
 - **One place for one fact.** The length chip became the way to a recording's page rather than
   gaining a neighbour that printed its numbers again.
+
+### Decisions of 2026-09-27 (which method lost the song, §9.44)
+
+- **Evidence where there is any, policy where there is none.** The rule speaks only when exactly one
+  method looks lost; otherwise it says so and falls back to what it did before.
+- **A signal about the shape of a lyric, not a model's opinion of itself.** Coverage of the singing
+  is checkable by a person with the track in front of them; a confidence number is not.
+- **Record what was measured, judge only what works.** Silence and confidence stay in the
+  provenance as numbers; neither decides anything.
+- **Collect the cases the measurement could not have.** Saved alignments carry both methods' figures,
+  so the thresholds can be widened from the library instead of from another sixteen copies.

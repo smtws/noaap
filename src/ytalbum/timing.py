@@ -14,6 +14,7 @@ another machine (`http`), and `docs/spikes/2026-09-alignment.md` is why it is sh
 from __future__ import annotations
 
 import gc
+import itertools
 import logging
 import re
 import sys
@@ -179,8 +180,137 @@ VERIFY_LOST = 5.0
 MOSTLY = 0.5  # more than half the lines LOST means the two are not disagreeing, they are elsewhere
 
 
+# -- how much a method's own output believes itself (§9.44) -----------------------------------
+#
+# When two aligners place a track 30-120 s apart, one of them has lost the song and §9.38 had no way
+# to say which, so it kept the primary by policy. These are the signals that decide it by evidence.
+# Three of them are method-independent arithmetic on the stamps; two are what each method already
+# says about itself; the strongest is the one that asks the audio.
+
+# **The signal that works is coverage**, and it was not the one this was started with: a lyric's
+# stamps should span the part of the track where somebody is singing. A method that has lost the
+# song squeezes the whole lyric into a fraction of it. Measured over sixteen real tracks (catalog
+# AE): the five where a method was 28-120 s out span 0.41-0.70 of the singing, the twenty-seven
+# answers that followed the song span 0.86-1.12, and any floor from 0.70 to 0.85 separates them
+# with nothing wrong on either side.
+LOST_SPAN = 0.75
+# Lines stacked within a third of a second of each other are a method that gave up and piled the
+# rest of the lyric where it stopped. It catches four of the same five on its own; it is kept as a
+# second reason because it catches a different shape of failure, not because these five need it.
+LOST_PILED = 0.12
+PILED_WITHIN = 0.35    # seconds between two stamps for them to count as piled
+LOST_BACKWARDS = 0.25  # a quarter of its stamps going backwards is not a song
+LOST_PAST_END = 0.1    # a tenth of its stamps beyond the end of the file
+# What was tried first and does not work, kept as a measured number and never as a rule: these
+# tracks are 55-86% singing, so a method that is elsewhere still lands *inside* singing nearly every
+# time. A human's own stamps shifted by a full minute put only 12-30% into silence, and on Argent —
+# where the second method is 120 s out — 0 of its 46 stamps fell in silence.
+SUNG_WITHIN = 1.5      # seconds: how late a stamp may be and still be "while somebody sings"
+
+
+# A correct stamp sits at the *start* of a sung phrase, because that is where a line begins. This is
+# the same measurement as "in silence" asked more sharply, and the sweep in catalog AE is why: a
+# track is 55-85% singing, so a method that is elsewhere in the song still lands *inside* singing
+# most of the time (12-30% of deliberately shifted stamps fell in silence, never the half a rule
+# could use), while it lands at a phrase *start* much less often.
+ONSET_WITHIN = 1.5     # seconds after a phrase starts
+
+
+@dataclass
+class Signals:
+    """What one method's answer says about whether it followed the song.
+
+    Every field is a count of that method's own stamps, so the two methods' signals mean the same
+    thing and can be compared. `confidence` is the exception and is recorded, never thresholded: a
+    CTC score and a decoder's word probability are not the same quantity, and pretending they are
+    would be the kind of number that looks like evidence without being any.
+    """
+
+    placed: int = 0
+    total: int = 0
+    failed: int = 0             # lines or segments the method itself would not place
+    past_end: int = 0           # stamps beyond the end of the file
+    backwards: int = 0          # stamps earlier than the stamp before them
+    piled: int = 0              # stamps within PILED_WITHIN of the one before
+    in_silence: int = 0         # stamps where the separated vocal is silent (recorded, not judged)
+    off_onset: int = 0          # stamps that are not at the start of a sung phrase (likewise)
+    silence_checked: int = 0    # how many stamps could be checked that way at all
+    span: float | None = None   # of the sung part of the track, how much the stamps cover
+    confidence: float | None = None
+
+    def to_parameters(self, prefix: str) -> dict[str, str]:
+        return {f"{prefix}_{name}": f"{value:g}" if isinstance(value, float) else str(value)
+                for name, value in asdict(self).items() if value is not None}
+
+
+def signals_of(starts: list[float | None], length: float | None = None,
+               sung: list[tuple[float, float]] | None = None, failed: int = 0,
+               confidence: float | None = None) -> Signals:
+    """The arithmetic signals, from one method's stamps and the audio they claim to describe."""
+    placed = [t for t in starts if t is not None]
+    got = Signals(placed=len(placed), total=len(starts), failed=failed, confidence=confidence)
+    if length:
+        got.past_end = sum(1 for t in placed if t > length)
+    got.backwards = sum(1 for before, after in itertools.pairwise(placed) if after < before)
+    got.piled = sum(1 for before, after in itertools.pairwise(sorted(placed))
+                    if after - before < PILED_WITHIN)
+    if sung:
+        got.silence_checked = len(placed)
+        got.in_silence = sum(1 for t in placed if not _sung_at(t, sung))
+        got.off_onset = sum(1 for t in placed if not _at_onset(t, sung))
+        singing = sung[-1][1] - sung[0][0]
+        if len(placed) > 1 and singing > 0:
+            got.span = round((max(placed) - min(placed)) / singing, 3)
+    return got
+
+
+def _sung_at(at: float, sung: list[tuple[float, float]], within: float = SUNG_WITHIN) -> bool:
+    """Is anybody singing at this moment, or about to be? Neither method is exact to the syllable."""
+    return any(start - within <= at <= end for start, end in sung)
+
+
+def _at_onset(at: float, sung: list[tuple[float, float]], within: float = ONSET_WITHIN) -> bool:
+    """Is a phrase starting here? A line begins when the singing begins, not in the middle of it."""
+    return any(start - within <= at <= start + within for start, _ in sung)
+
+
+def lost(signals: Signals) -> str:
+    """Why this method looks like it lost the song, or empty if it does not (§9.44).
+
+    Deliberately not a score: each rule is a sentence a person can check against the track, and the
+    first one that fires is the one the notice says.
+    """
+    placed = signals.placed
+    if not placed:
+        return ""
+    if signals.span is not None and signals.span < LOST_SPAN:
+        return f"its stamps cover only {signals.span:.0%} of the part of the track where somebody sings"
+    if signals.piled > placed * LOST_PILED:
+        return f"{signals.piled} of its {placed} stamps are piled on top of each other"
+    if signals.backwards > placed * LOST_BACKWARDS:
+        return f"{signals.backwards} of its {placed} stamps go backwards"
+    if signals.past_end > placed * LOST_PAST_END:
+        return f"{signals.past_end} of its {placed} stamps are past the end of the track"
+    return ""
+
+
+def which_lost(first: Signals, second: Signals) -> tuple[str, str]:
+    """Which of the two lost the song: ("first"|"second"|"", reason).
+
+    **Only when exactly one of them looks lost.** If both do, or neither, there is no evidence here
+    to prefer one over the other and the caller falls back to the policy it had before (§9.38) —
+    which is the whole discipline of this: a signal that cannot tell says so.
+    """
+    why_first, why_second = lost(first), lost(second)
+    if why_first and not why_second:
+        return "first", why_first
+    if why_second and not why_first:
+        return "second", why_second
+    return "", ""
+
+
 def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
-             lost: float = VERIFY_LOST) -> Timed:
+             lost_beyond: float = VERIFY_LOST, evidence: tuple[Signals, Signals] | None = None) -> Timed:
     """Keep the stamps two independent aligners agree about — and say so when they do not.
 
     Two regimes, and which one applies is decided by `lost`, not by `threshold`:
@@ -190,7 +320,11 @@ def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
     rather than guessed at, and everywhere else the *primary* supplies the number.
 
     **One of them has lost the song** (more than half the lines that far apart). Then the per-line
-    rule is switched off and **every** primary stamp is kept, with the disagreement stated loudly.
+    rule is switched off and one method's stamps are kept whole. *Which* one is decided by
+    `evidence` when it can decide (§9.44): each method's own answer carries signals — stamps where
+    nobody sings, stamps going backwards, stamps past the end of the file — and when exactly one
+    method looks lost by them, **the other one's stamps are kept** and the notice says which lost
+    and why. When the signals cannot tell, or there are none, the primary is kept as before.
     This inverts the rule this function shipped with, and the reason is a measurement rather than an
     opinion (`docs/qa-catalog.md`, section Y): on all five of sixteen real tracks where the condition
     fired, the primary was the accurate one — twice to within a tenth of a second of a hand-checked
@@ -211,24 +345,45 @@ def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
         apart = abs(line.start - other)
         if apart > threshold:
             disagreed += 1
-        if apart > lost:
+        if apart > lost_beyond:
             gone += 1
     elsewhere = comparable > 0 and gone > comparable * MOSTLY
+    # which of them lost it, when the evidence can say (§9.44)
+    loser, why = which_lost(*evidence) if (elsewhere and evidence) else ("", "")
+    winner = second if loser == "first" else primary
+    source = list(winner.lines)
     out = []
     for i, line in enumerate(lines):
         other = checked.get(i)
         apart = None if (line.start is None or other is None) else abs(line.start - other)
-        keep = elsewhere or apart is None or apart <= threshold
+        if elsewhere:
+            # the whole-track case keeps one method's stamps entire: the per-line rule would strip
+            # most of them anyway and make the choice hollow
+            kept = source[i] if i < len(source) else TimedLine(text=line.text)
+            out.append(TimedLine(text=line.text, start=kept.start, end=kept.end))
+            continue
+        keep = apart is None or apart <= threshold
         out.append(TimedLine(text=line.text, start=line.start if keep else None,
                              end=line.end if keep else None))
     parameters = dict(primary.parameters)
     parameters.update({"verified_against": second.model if second else "",
-                       "threshold": f"{threshold:g}", "lost_beyond": f"{lost:g}",
+                       "threshold": f"{threshold:g}", "lost_beyond": f"{lost_beyond:g}",
                        "compared": str(comparable), "disagreed": str(disagreed), "lost": str(gone)})
-    if elsewhere:
+    if evidence:
+        parameters.update(evidence[0].to_parameters("first"))
+        parameters.update(evidence[1].to_parameters("second"))
+    if elsewhere and loser:
+        parameters["lost_method"] = second.model if loser == "second" else primary.model
+        parameters["lost_why"] = why
+        parameters["kept_method"] = winner.model
+    elif elsewhere:
         parameters["one_method"] = "a second method disagreed about the whole track"
-    return Timed(lines=out, provider=primary.provider,
-                 model=f"{primary.model} + {second.model}" if second else primary.model,
+    # the stamps are the kept method's, so the record of whose clock this is says that method —
+    # otherwise a sidecar would claim a clock it does not carry (§9.44)
+    model = f"{primary.model} + {second.model}" if second else primary.model
+    if elsewhere and loser:
+        model = f"{winner.model} (the other method lost the song)"
+    return Timed(lines=out, provider=primary.provider, model=model,
                  version=primary.version, parameters=parameters)
 
 

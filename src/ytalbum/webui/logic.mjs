@@ -308,10 +308,15 @@ export function alignNotice(timed, result) {
   const p = (timed && timed.parameters) || {};
   // two methods ran and one of them lost the song: the stamps are the primary's, all of them, and
   // the notice says how total the disagreement was (\u00a79.38, measured in catalog Y)
-  const whole = p.one_method
+  // Two shapes of whole-track disagreement (\u00a79.44): one where the evidence can say which method
+  // lost the song, and one where it cannot and the first method is kept by policy as before.
+  const whole = p.lost_method
+    ? ` The two methods placed the whole track differently, and ${p.lost_method} is the one that lost `
+      + `it: ${p.lost_why}. These stamps are ${p.kept_method}'s \u2014 play the first line before you save them.`
+    : p.one_method
     ? ` A second method disagreed about the whole track \u2014 ${p.lost} of ${p.compared} lines more than `
-      + `${p.lost_beyond || 5} seconds apart \u2014 so this is one method's word: play the first line before `
-      + "you save it."
+      + `${p.lost_beyond || 5} seconds apart, and nothing here can say which of them is right \u2014 so this is `
+      + "one method's word: play the first line before you save it."
     : "";
   const left = result.unplaced.length;
   const kept = result.kept || 0;

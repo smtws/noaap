@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import types
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -635,3 +636,153 @@ def test_the_idle_minutes_are_configurable(tmp_path):
     path.write_text("timing_idle_minutes = 0\n")
     assert load(path).timing_idle_minutes == 0.0          # 0 = keep them for ever
     assert load(tmp_path / "none.toml").timing_idle_minutes == 5.0
+
+
+# -- telling which method lost the song (§9.44) -------------------------------------------------
+
+
+def a_song(lines: int = 40, every: float = 5.0) -> list[float]:
+    """Stamps of a method that followed the song: one line every few seconds, in order."""
+    return [10.0 + i * every for i in range(lines)]
+
+
+SUNG = [(9.0, 215.0)]          # one long sung stretch, as most songs are
+
+
+def test_a_method_that_followed_the_song_looks_like_one():
+    from ytalbum.timing import lost, signals_of
+
+    got = signals_of(a_song(), length=220.0, sung=SUNG)
+    assert got.placed == 40 and got.in_silence == 0 and got.backwards == 0 and got.past_end == 0
+    assert lost(got) == ""
+
+
+def test_stamps_that_do_not_cover_the_singing_are_what_lost_looks_like():
+    """The signal the sixteen tracks chose (§9.44): a lyric spans the singing, or it is elsewhere."""
+    from ytalbum.timing import lost, signals_of
+
+    # the whole lyric squeezed into a minute of a three-and-a-half minute song
+    got = signals_of([100.0 + i * 1.2 for i in range(40)], length=260.0, sung=SUNG)
+    assert got.span is not None and got.span < 0.3
+    assert "cover only 23% of the part of the track where somebody sings" in lost(got)
+
+
+def test_stamps_piled_on_each_other_are_the_other_shape_of_lost():
+    from ytalbum.timing import lost, signals_of
+
+    piled = a_song(30) + [200.0 + i * 0.05 for i in range(10)]
+    got = signals_of(piled, length=260.0, sung=SUNG)
+    assert got.piled == 9
+    assert "piled on top of each other" in lost(got)
+
+
+def test_silence_is_recorded_and_never_judged():
+    """Measured and dropped as a rule: these tracks are 55-86% singing, so a method that is
+    somewhere else entirely still lands inside singing (catalog AE)."""
+    from ytalbum.timing import lost, signals_of
+
+    got = signals_of([216.0 + i * 0.4 for i in range(40)], length=260.0, sung=SUNG)
+    assert got.in_silence == 40        # all of them, and it is still not what decides
+    assert "nobody sings" not in lost(got)
+
+
+def test_stamps_going_backwards_are_not_a_song():
+    from ytalbum.timing import lost, signals_of
+
+    # a song whose stamps do span the singing, so that only the ordering is odd
+    order = a_song(40)
+    shuffled = order[20:] + order[:20]          # the second half placed before the first
+    got = signals_of(shuffled, length=220.0, sung=SUNG)
+    assert got.backwards == 1  # one break, at the seam — and one is not a quarter of forty
+    assert lost(got) == ""
+    zigzag = [v for pair in zip(order[:20], reversed(order[20:]), strict=False) for v in pair]
+    assert "stamps go backwards" in lost(signals_of(zigzag, length=220.0, sung=SUNG))
+
+
+def test_stamps_past_the_end_of_the_track_are_impossible():
+    from ytalbum.timing import lost, signals_of
+
+    got = signals_of([100.0, 101.0, 300.0, 310.0, 320.0], length=220.0, sung=SUNG)
+    assert got.past_end == 3
+    assert "past the end of the track" in lost(got)
+
+
+def test_a_single_stamp_is_not_evidence_of_anything():
+    from ytalbum.timing import lost, signals_of
+
+    got = signals_of([216.0], length=260.0, sung=SUNG)
+    assert got.span is None and lost(got) == ""      # nothing spans anything on its own
+    assert lost(signals_of([], length=260.0, sung=SUNG)) == ""
+
+
+def test_which_lost_only_answers_when_exactly_one_of_them_did():
+    from ytalbum.timing import signals_of, which_lost
+
+    good = signals_of(a_song(), length=220.0, sung=SUNG)
+    bad = signals_of([100.0 + i * 1.2 for i in range(40)], length=260.0, sung=SUNG)
+    assert which_lost(good, bad)[0] == "second"
+    assert "cover only" in which_lost(good, bad)[1]
+    assert which_lost(bad, good)[0] == "first"
+    assert which_lost(good, good) == ("", "")   # neither: no evidence to prefer one
+    assert which_lost(bad, bad) == ("", "")     # both: no evidence to prefer one
+
+
+def test_the_whole_track_case_keeps_the_method_the_evidence_favours():
+    from ytalbum.timing import signals_of, verified
+
+    ours = Timed(lines=[TimedLine(f"line {i}", 10.0 + i * 5) for i in range(40)],
+                 provider="local", model="wav2vec2")
+    theirs = Timed(lines=[TimedLine(f"line {i}", 100.0 + i * 1.2) for i in range(40)],
+                   provider="local", model="large-v3")
+    good = signals_of([line.start for line in ours.lines], length=220.0, sung=SUNG)
+    bad = signals_of([line.start for line in theirs.lines], length=260.0, sung=SUNG)
+
+    # the second method lost it: the first one's stamps are kept, and the notice can say which
+    got = verified(ours, theirs, evidence=(good, bad))
+    assert [line.start for line in got.lines] == [line.start for line in ours.lines]
+    assert got.parameters["lost_method"] == "large-v3"
+    assert "cover only" in got.parameters["lost_why"]
+    assert got.parameters["kept_method"] == "wav2vec2"
+    assert "one_method" not in got.parameters
+
+    # and when the *primary* is the lost one, the second method's stamps are kept instead —
+    # which is the whole point of P33: no more trusting the primary by policy
+    other = verified(theirs, ours, evidence=(bad, good))
+    assert [line.start for line in other.lines] == [line.start for line in ours.lines]
+    assert other.parameters["lost_method"] == "large-v3"
+    assert other.parameters["kept_method"] == "wav2vec2"
+
+
+def test_without_evidence_the_old_policy_stands():
+    from ytalbum.timing import verified
+
+    ours = Timed(lines=[TimedLine(f"line {i}", 10.0 + i * 5) for i in range(6)], provider="local", model="wav2vec2")
+    theirs = Timed(lines=[TimedLine(f"line {i}", 200.0 + i) for i in range(6)], provider="local", model="large-v3")
+    got = verified(ours, theirs)
+    assert [line.start for line in got.lines] == [line.start for line in ours.lines]
+    assert got.parameters["one_method"] == "a second method disagreed about the whole track"
+    assert "lost_method" not in got.parameters
+
+
+def test_a_saved_alignment_keeps_both_methods_figures(album, tmp_path, monkeypatch):
+    """The library accumulates the evidence sixteen tracks cannot give (§9.44)."""
+    from ytalbum.web import App
+
+    album_dir, plan, yt = album
+    app = App(Config(), tmp_path, service_factory=lambda job: Service(Config(), tmp_path, yt=yt, log=job.log.append))
+    track = plan.tracks[0]
+    job = app.submit("save_lyrics", {"id": plan.source_id, "video_id": track.video_id,
+                                     "text": "[00:01.0] a line", "timed_by": "local/wav2vec2",
+                                     "checked": {"first_span": "0.98", "second_span": "0.41",
+                                                 "second_piled": "12", "lost_method": "large-v3",
+                                                 "kept_method": "wav2vec2",
+                                                 "colour": "not one of ours"}})
+    for _ in range(100):
+        if job.state not in ("queued", "running"):
+            break
+        time.sleep(0.05)
+    assert job.state == "done", job.log
+    saved = load_plan(album_dir).tracks[0]
+    assert saved.lyrics_checked == {"first_span": "0.98", "second_span": "0.41", "second_piled": "12",
+                                    "lost_method": "large-v3", "kept_method": "wav2vec2"}
+    assert saved.lyrics_timed_by == "local/wav2vec2"

@@ -70,6 +70,9 @@ STATIC = {
     "/icon.svg": ("icon.svg", "image/svg+xml"),
 }
 MAX_LOG = 400
+# what a saved alignment may record about the two methods that produced it (§9.44)
+CHECKED_KEYS = frozenset({"first_span", "second_span", "first_piled", "second_piled", "first_placed",
+                          "second_placed", "lost_method", "kept_method", "lost_why", "verified_against"})
 MAX_BODY = 1 << 20
 # thumbnails are fetched by us, so the page never talks to Google and the CSP stays strict
 THUMB_HOSTS = ("ytimg.com", "ggpht.com", "googleusercontent.com", "coverartarchive.org", "archive.org")
@@ -661,9 +664,13 @@ class App:
                 text = str(body.get("text", ""))
                 timed_by = str(body.get("timed_by", ""))[:120]
                 words_by = str(body.get("words_by", ""))[:120]
+                # the two methods' own figures, if this alignment was cross-checked (§9.44): only
+                # the handful that are evidence, only as short strings, and only from our own keys
+                sent = body.get("checked") if isinstance(body.get("checked"), dict) else {}
+                checked = {k: str(v)[:40] for k, v in sent.items() if k in CHECKED_KEYS}
                 what = "Clear the lyrics of" if not text.strip() else "Save your lyrics for"
                 return self.jobs.submit("lyrics", f"{what} {track.title}",
-                                        lambda s: s.save_lyrics(source_id, video_id, text, timed_by, words_by),
+                                        lambda s: s.save_lyrics(source_id, video_id, text, timed_by, words_by, checked),
                                         target=source_id)
             case "draft":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
