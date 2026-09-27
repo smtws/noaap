@@ -390,7 +390,11 @@ class App:
                 # whether these words may be given back to lrclib, and why not when they may not
                 # (§9.42). The reason is shown, because "no button" is a worse answer than "no,
                 # because these are lrclib's own words".
-                "publish": self._publish_state(album_dir, plan, track)}
+                "publish": self._publish_state(album_dir, plan, track),
+                # an entry that is nearly this recording, and what was made of it (§9.46)
+                "fit": track.lyrics_fit,
+                "can_check": bool(track.state == "done" and track.file_length
+                                  and (track.lyrics or "none") == "none" and ALIGN in capabilities_of(self.cfg))}
 
     def _publish_state(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack) -> dict[str, Any]:
         text = (read_sidecar(album_dir, track) or "").strip()
@@ -684,6 +688,31 @@ class App:
                     raise ValueError("no timing provider can derive words — see `timing_provider` in the config")
                 return self.jobs.submit("draft", f"Draft the words of {track.title}",
                                         lambda s: s.draft_lyrics(source_id, video_id), target=source_id)
+            case "check_lyrics":
+                source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
+                found = self.album(source_id)
+                if not found or not video_id:
+                    raise ValueError("unknown album or track")
+                track = next((t for t in found[1].tracks if t.video_id == video_id), None)
+                if not track:
+                    raise ValueError("no such track in this album")
+                if ALIGN not in capabilities_of(self.cfg):
+                    raise ValueError("checking a near miss needs a timing provider that can align — "
+                                     "see `timing_align_provider` in the config")
+                return self.jobs.submit("lyrics", f"Check lrclib's near miss for {track.title}",
+                                        lambda s: s.check_near_lyrics(source_id, video_id), target=source_id)
+            case "take_plain_lyrics":
+                source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
+                found = self.album(source_id)
+                if not found or not video_id or not str(body.get("entry", "")).isdigit():
+                    raise ValueError("unknown album, track or entry")
+                track = next((t for t in found[1].tracks if t.video_id == video_id), None)
+                if not track:
+                    raise ValueError("no such track in this album")
+                entry = int(body["entry"])
+                return self.jobs.submit("lyrics", f"Take lrclib's words for {track.title}",
+                                        lambda s: s.take_plain_lyrics(source_id, video_id, entry),
+                                        target=source_id)
             case "publish_lyrics":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
                 found = self.album(source_id)

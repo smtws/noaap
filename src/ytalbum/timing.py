@@ -155,6 +155,14 @@ def language_of(lines: list[str], default: str = "en") -> str:
 STAMP = re.compile(r"^\s*\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]\s?")
 
 
+def stamped(text: str, at: float | None) -> str:
+    """One line of a `.lrc`, in the shape a hand-typed one has: `[01:23.4] the words`."""
+    if at is None:
+        return text
+    tenths = max(0, round(at * 10))
+    return f"[{tenths // 600:02d}:{(tenths % 600) / 10:04.1f}] {text}".rstrip()
+
+
 def plain_lines(text: str) -> list[str]:
     """The words an aligner should be given: no blank lines, no stamps already on them.
 
@@ -698,6 +706,7 @@ def verifies_with(cfg: Any) -> bool:
         return False
 
 
-__all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "HttpTiming",
-           "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of", "kind_for",
-           "language_of", "line_starts", "lines_from_words", "plain_lines", "provider", "release_gpu_memory", "verified", "verifies_with"]
+__all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD",
+           "HttpTiming", "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of",
+           "kind_for", "language_of", "line_starts", "lines_from_words", "plain_lines", "provider",
+           "release_gpu_memory", "stamped", "verified", "verifies_with"]

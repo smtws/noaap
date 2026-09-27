@@ -243,6 +243,18 @@ class Lrclib:
         agreed = consensus_length([row["duration"] for row in same])
         return Lyrics(length=agreed) if agreed is not None else None
 
+    def candidates(self, artist: str, title: str) -> list[Lyrics]:
+        """Every same-artist entry with words for this title, however far its length is (§9.46).
+
+        `get` answers "is there a match"; this answers "what is there at all", which is the question
+        the near-miss check asks before deciding with an alignment rather than with a length.
+        """
+        rows = self._request("search", {"artist_name": artist, "track_name": query_title(title)}) or []
+        return [_lyrics(row) for row in rows
+                if isinstance(row.get("duration"), int | float)
+                and _same_artist(artist, row.get("artistName") or "")
+                and (row.get("syncedLyrics") or row.get("plainLyrics"))]
+
     def by_id(self, lrclib_id: int) -> Lyrics | None:
         """One known entry, for deciding whether a sidecar is still the one we wrote.
 
@@ -567,6 +579,55 @@ def plain_text(synced: str) -> str:
 def sent_sha(text: str) -> str:
     """The fingerprint of what was published: the same shape as `lyrics_sha`, and never the words."""
     return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:16]
+
+
+# -- an entry that is nearly this recording (§9.46) -------------------------------------------
+#
+# `get` accepts a candidate within TOLERANCE and nothing else, and it is right to: the length is all
+# it has to tell a recording from its cover. But a measurement over this library's 203 near-misses
+# found that the length gap says much less than it looks. 71% of the entries *beyond* 3% of the
+# file's length were still this recording's words (`docs/qa-catalog.md`, section AG). What settles
+# it is an alignment, which answers two questions at once: whether these are the song's words (how
+# many lines it can place) and whether the entry's timings belong to *this* cut (how much of the
+# singing they span).
+
+NOMINATE_SHARE = 0.25   # beyond a quarter of the file's length, no alignment is spent on a candidate
+FIT_SPAN = 0.85         # of the singing: a lyric that covers this much of it belongs to this cut
+FIT_WIDE = 1.15         # and one wider than the singing does not — an 83 s file, a 222 s lyric
+FIT_UNPLACED = 0.10     # lines the aligner could not place, where the words really are the song's
+NOFIT_UNPLACED = 0.25   # and past this, they are not this song at all
+
+
+def nominated(ours: float, theirs: float) -> bool:
+    """Is this candidate worth an alignment? Cheap arithmetic before an expensive test."""
+    return bool(ours) and abs(ours - theirs) <= NOMINATE_SHARE * ours
+
+
+def fit_verdict(span: float | None, unplaced: float) -> str:
+    """What an alignment of a candidate's words against our file says to do with it.
+
+    `words+stamps` — take the entry whole, as a within-tolerance match. `words` — the words are this
+    song's but the timings are another cut's, so keep the words and our own stamps. `reject` — the
+    aligner could not find these words in this audio, so it is not this song. `unclear` — the
+    instrument does not know, and nobody pretends otherwise: the panel shows the numbers and a person
+    decides.
+    """
+    if unplaced > NOFIT_UNPLACED:
+        return "reject"
+    if span is None:
+        return "unclear"
+    if span > FIT_WIDE:
+        return "words"          # the lyric is wider than the singing: right words, wrong recording
+    if span >= FIT_SPAN and unplaced <= FIT_UNPLACED:
+        return "words+stamps"
+    if span < 0.75:
+        return "words"
+    return "unclear"
+
+
+def fit_reason(ours: float, theirs: float) -> str:
+    """Why an entry's timings do not transfer, in the two shapes the measurement found."""
+    return "a clip" if ours < theirs * (1 - NOMINATE_SHARE) else "another cut"
 
 
 def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:

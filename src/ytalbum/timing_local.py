@@ -180,6 +180,14 @@ class LocalTiming:
         per_line = [statistics.median(v) for v in scored.values() if v]
         if per_line:
             timed.parameters["confidence"] = format(statistics.median(per_line), ".3f")
+        # What this answer says about itself, always — not only when a second method is checking it
+        # (§9.44). It costs one pass over a waveform that is already in hand, and it is what decides
+        # whether an lrclib entry's words belong to this recording (§9.46).
+        sung = sung_stretches(wave.cpu(), bundle.sample_rate)
+        length = wave.size(1) / bundle.sample_rate
+        mine = signals_of([line.start for line in timed.lines], length=length, sung=sung,
+                          failed=len(timed.unplaced), confidence=_number(timed.parameters.get("confidence")))
+        timed.parameters.update(mine.to_parameters("own"))
         if not self.verifying():
             return timed
         # The second opinion hears the **mixed** track, not the stem the CTC pass needs (§9.38).
@@ -204,11 +212,8 @@ class LocalTiming:
             # disk, and on the processor there is nothing to compete for, so it stays.
             if self._whisper_device == "cuda":
                 self._free_vram()
-        # what the audio itself says about where anybody is singing, for judging either method
-        sung = sung_stretches(wave.cpu(), bundle.sample_rate)
-        length = wave.size(1) / bundle.sample_rate
-        evidence = (signals_of([line.start for line in timed.lines], length=length, sung=sung,
-                               failed=len(timed.unplaced), confidence=_number(timed.parameters.get("confidence"))),
+        # the primary's own signals are already measured above; the second method's are not
+        evidence = (mine,
                     signals_of([line.start for line in second.lines], length=length, sung=sung,
                                failed=int(second.parameters.get("failed", 0) or 0),
                                confidence=_number(second.parameters.get("confidence"))))

@@ -527,6 +527,7 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
 
     got = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()
     publish = got.pop("publish")
+    assert got.pop("fit") is None and got.pop("can_check") is False   # it has words already (§9.46)
     assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
                    "timed_by": None, "words_by": None,  # nobody's clock and nobody's words but LRCLIB's
                    "timings": None}  # and they were written for the file that is there

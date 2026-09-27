@@ -455,6 +455,31 @@ host — a gateway, a proxy, or a server of your own speaking their shapes, whic
 was verified without spending anything — and `YTALBUM_LIVE_AUDIO` tells the opt-in live test which
 file to spend its one request on.
 
+## When LRCLIB nearly has your recording
+
+LRCLIB matches by length, and ytalbum will not take an entry whose length is more than three seconds
+from your file: a cover, a live version and a radio edit all share a title, and the length is the only
+thing that tells them apart. But a 2% difference on a four-minute song is ordinary, and measuring this
+library found **74 tracks with no words whose entry was only seconds away** — and that **71% of the
+entries further away than that were still the right words** (`docs/qa-catalog.md`, section AG).
+
+So where a timing provider is configured, ytalbum can settle it by listening instead of by arithmetic:
+**⚖ check them** aligns the entry's words to your file and reads two things off the result — how many
+lines it can place, which says whether these are the song's words, and how much of the singing they
+cover, which says whether the entry's timestamps belong to *your* cut. Then:
+
+- **the words and the timings fit** → both are taken, exactly as a three-second match would be
+- **the words are the song's, the timings are another cut's** (a live version, a longer edit) → the
+  words are kept and timed to *your* file by the aligner, and the panel says so
+- **the aligner cannot find the words in your audio** → it is a different song, and it is never
+  offered for that track again
+- **anything in between** → nothing is taken; the panel shows you both numbers and you decide
+
+Without a timing provider nothing changes and nothing is taken — but the panel now tells you the words
+exist and how far off they are, with a button to take them as plain text if you want them untimed.
+Either way the words stay LRCLIB's, and where ytalbum's own aligner placed the stamps it says whose
+clock they are.
+
 ## Giving the words back
 
 Lyrics in ytalbum come from [LRCLIB](https://lrclib.net)'s contributors. When you have timed a song

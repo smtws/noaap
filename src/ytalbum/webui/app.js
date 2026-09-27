@@ -1,6 +1,7 @@
 import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLength, resetKind, roundMark,
+         nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLength,
+         resetKind, roundMark,
          seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
@@ -735,6 +736,7 @@ function lyricsPanel(p, t, d, editing) {
     d.text ? lyricsLines(p, t, d.text) : h("pre", {}, t.lyrics === "instrumental"
       ? "LRCLIB has no words for this recording. You can write them yourself."
       : "No .lrc beside this track. Write the words here, or let a lyrics run look them up."),
+    nearMissLine(p, t, d),
     h("div", { class: "lyrics-actions" },
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, true) },
         actions[0]),
@@ -774,6 +776,54 @@ async function publishLyrics(button, p, t, d) {
   toast("\u2713 published to lrclib \u2014 thank you", "done");
   openLyrics.add(t.video_id);
   await refreshAlbumPanel();  // the panel comes back with the button saying "published"
+}
+
+// An lrclib entry that is nearly this recording (\u00a79.46): what is known about it, and the one
+// thing the user can do that ytalbum would not do for them.
+function nearMissLine(p, t, d) {
+  const got = nearMiss(d);
+  if (!got) return null;
+  return h("div", { class: "muted near-miss" }, got.say,
+    got.action === "check"
+      ? h("button", { class: "quiet small", type: "button",
+          title: "Align lrclib's words to this file and see whether they belong to it.\n"
+            + "Nothing is written unless they do.",
+          onclick: (e) => checkNearLyrics(e.currentTarget, p, t) }, "\u2696 check them")
+      : got.action === "plain"
+      ? h("button", { class: "quiet small", type: "button",
+          title: "Put lrclib's words beside this track without their timings. They are lrclib's words,"
+            + " and the timestamps would be for another recording.",
+          onclick: (e) => takePlainWords(e.currentTarget, p, t, d) }, "take the words as plain text")
+      : null);
+}
+
+async function checkNearLyrics(button, p, t) {
+  const id = await submit("check_lyrics", { id: p.source_id, video_id: t.video_id }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 2400);
+  if (!job || job.state !== "done") return;
+  openLyrics.add(t.video_id);
+  await refreshAlbumPanel();
+}
+
+async function takePlainWords(button, p, t, d) {
+  const entry = d.fit && d.fit.entry;
+  if (!entry) return;
+  if (!confirm([
+    "lrclib's words for this title go beside this track, without their timings.",
+    "",
+    "They are lrclib's words, not yours, and the panel will say so. The timestamps are left out"
+      + " because they belong to a recording of a different length; you can time them yourself,"
+      + " or with the ⚖ button if a provider is configured.",
+    "",
+    "OK: take the words. Cancel: nothing changes.",
+  ].join("\n"))) return;
+  const id = await submit("take_plain_lyrics", { id: p.source_id, video_id: t.video_id, entry }, button);
+  if (id == null) return;
+  const job = await jobSettled(id);
+  if (!job || job.state !== "done") return;
+  openLyrics.add(t.video_id);
+  await refreshAlbumPanel();
 }
 
 async function lyricsTrack(button, p, t, reject) {

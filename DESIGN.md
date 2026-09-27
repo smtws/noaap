@@ -1212,6 +1212,43 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    reference's, writing words over the instrumental passages; on the voice it wrote 54 — almost
    exactly the reference's 52 — and found 38.
 
+46. ✅ An entry that is nearly this recording (2026-09-27, P35, out of the user's own draft). A draft
+   was offered for a song whose words LRCLIB had all along: the file is 218.06 s, the entry says
+   213.68 s, and `TOLERANCE` is 3.0. The measurement that followed found **74 such tracks in this
+   library** — and something larger: **71% of the entries *beyond* 3% of the file's length are still
+   this recording's words** (`docs/qa-catalog.md`, section AG). The length gap is a poor proxy for
+   "the same recording". The alignment is a direct measurement of it, and it answers two different
+   questions at once: **how many lines it can place** says whether these are the song's words, and
+   **how much of the singing they span** says whether the entry's clock belongs to this cut.
+   **So length nominates and the alignment decides.** A candidate is nominated as today (same artist,
+   same title, has words) with one cheap guard: within **±25%** of the file's length, so that an 83 s
+   file never pays for an alignment against a 222 s lyric. Then one alignment sorts it:
+   *span 0.85–1.15 with ≤10% unplaced* → take the words **and** the entry's timings, exactly as a
+   within-tolerance match; *all the words placed but the span outside that band* → take the **words**
+   and use **our** stamps, which that very alignment has already produced; *more than 25% unplaced* →
+   reject, and remember it so no later pass proposes it again. Anything else is **unclear**: the panel
+   shows both numbers and a person decides. Over this library: 143 taken whole, 16 with our clock,
+   1 rejected, 29 shown, 14 never aligned.
+   **What the tolerance does not become is wider.** `TOLERANCE` stays 3.0 and the exact endpoint is
+   untouched: with no aligning provider nothing new is taken at all, and the panel says instead
+   *"lrclib has words for this title, 4.4 s longer than this file — configure a timing provider to
+   check them, or take them as plain text"*. A person without a GPU learns the words exist, which is
+   the difference between "no words" and "no words yet".
+   **Two paths to one sentence.** Beyond ±25% no alignment is spent and the panel says *probably* a
+   clip or another cut, from the two lengths alone; within the guard, a span outside the band says the
+   same thing with the measurement behind it. They are different paths and the words differ by that
+   one "probably".
+   **Ownership does not move.** Words taken this way are lrclib's — `lyrics_id` set, `provenance.lyrics`
+   untouched — however they were taken, including by hand. Where our alignment replaced the entry's
+   clock, `lyrics_timed_by` says so and the stamps carry the same caution as the align button's,
+   because they are one method's word unless the check extra ran on them. `lyrics_fit` records the
+   entry, both lengths, both numbers and the verdict, so a pass never asks twice and a user who
+   disagrees has the evidence in the plan.
+   **Cost, measured:** one alignment is 11.1 s on this laptop's GPU and 166 s on a processor, so a
+   full pass over this library's 203 candidates is 38 minutes with a card and 9.4 hours without one.
+   It belongs to a pass, never to an interactive lookup, and the panel offers it per track for
+   somebody who wants one answer now.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1444,3 +1481,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   sentence that cannot be false.
 - **Give the transcriber the voice.** It doubles what a vendor hears on real material, and it sends
   less of the recording away.
+
+### Decisions of 2026-09-27 (an entry that is nearly this recording, §9.46)
+
+- **Measure the thing you care about.** "Is this the same recording" is answered by aligning the
+  words to the audio, not by comparing two durations.
+- **One instrument, two questions.** Unplaced lines say whether the words are the song's; the span
+  says whether the clock is this cut's. Keeping them apart is what makes three outcomes possible.
+- **A guard before an expensive test.** ±25% costs nothing and saves an alignment that could only
+  have said "no".
+- **Where the instrument does not exist, say so.** Without an aligner nothing new is taken and the
+  panel tells the user the words exist anyway.

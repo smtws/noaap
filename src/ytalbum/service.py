@@ -25,6 +25,9 @@ from .lyrics import (
     Lrclib,
     LyricsAPI,
     LyricsError,
+    fit_reason,
+    fit_verdict,
+    nominated,
     plain_text,
     publishable,
     read_sidecar,
@@ -43,7 +46,7 @@ from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .search import SearchResult, search_artist
 from .tag import audio_length
-from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, coverage, plain_lines, with_gaps
+from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, coverage, plain_lines, stamped, with_gaps
 from .timing import provider as timing_provider
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
@@ -719,6 +722,139 @@ class Service:
         run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
+
+    def check_near_lyrics(self, source_id: str, video_id: str) -> Outcome:
+        """An lrclib entry that is nearly this recording: is it this song's, and is its clock ours?
+
+        `get` takes a candidate within three seconds and nothing else, which is right as far as the
+        length can tell (§9.27). This asks the only question the length cannot answer, by aligning
+        the candidate's words to the file: how many of them the aligner can place says whether these
+        are the song's words, and how much of the singing they span says whether the entry's timings
+        belong to *this* cut (§9.46). Measured over this library's 203 near-misses: 143 are taken
+        whole, 16 are the song's words on another cut, one is a different song.
+        """
+        api = self.lrclib
+        if api is None:
+            return Outcome("failed", message="lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        if not track:
+            return Outcome("failed", message="no such track in this album")
+        if track.state != "done" or not track.file_length:
+            return Outcome("failed", message=f"{track.title}: there is no finished file to check against")
+        if (track.lyrics or "none") != "none":
+            return Outcome("failed", message=f"{track.title} already has words")
+
+        entry, apart = self._nearest_entry(api, track)
+        if not entry:
+            self.log(f"{track.title}: lrclib has nothing else for this title")
+            return Outcome("ok", plan, album_dir)
+        theirs = float(entry.length or 0.0)
+        if not nominated(track.file_length, theirs):
+            track.lyrics_fit = {"entry": str(entry.lrclib_id or ""), "ours": f"{track.file_length:.1f}",
+                                "theirs": f"{theirs:.1f}", "decided": "shown", "why": fit_reason(track.file_length, theirs)}
+            save_plan(plan, album_dir)
+            self.log(f"{track.title}: lrclib's entry is {apart:.0f} s away — too far to be worth an alignment; "
+                     f"the panel says what it looks like ({track.lyrics_fit['why']})")
+            return Outcome("ok", plan, album_dir)
+
+        words = plain_lines(entry.text or "")
+        if not words:
+            return Outcome("ok", plan, album_dir)
+        engine = self._timing(ALIGN, "align words")
+        self.log(f"{track.title}: lrclib's entry is {apart:.0f} s from this file — asking the aligner "
+                 f"whether its {len(words)} lines belong to it")
+        timed = engine.align(album_dir / track.filename, words, check=self.check)
+        span = self._fit_number(timed.parameters.get("own_span"))
+        unplaced = len(timed.unplaced) / max(1, len(words))
+        say = fit_verdict(span, unplaced)
+        track.lyrics_fit = {"entry": str(entry.lrclib_id or ""), "ours": f"{track.file_length:.1f}",
+                            "theirs": f"{theirs:.1f}", "span": "" if span is None else f"{span:.3f}",
+                            "unplaced": f"{unplaced:.3f}", "decided": say}
+        if say == "reject":
+            if entry.lrclib_id and entry.lrclib_id not in track.lyrics_rejected:
+                track.lyrics_rejected.append(entry.lrclib_id)
+            self.log(f"{track.title}: not this song — the aligner could not place {unplaced:.0%} of those words")
+        elif say == "unclear":
+            self.log(f"{track.title}: the aligner cannot tell (it placed {1 - unplaced:.0%} of the lines "
+                     f"across {span:.0%} of the singing); the panel shows the numbers")
+        elif say == "words+stamps":
+            write_sidecar(album_dir, track, (entry.text or "").strip())
+            track.lyrics, track.lyrics_id = status_of(entry.text or ""), entry.lrclib_id
+            track.lyrics_length = theirs
+            track.provenance.pop("lyrics", None)   # lrclib's words are lrclib's (§9.21)
+            track.lyrics_timed_by = None
+            self.log(f"{track.title}: lrclib's words and timings fit this file ({span:.0%} of the singing)")
+        else:  # the song's words on another cut: keep the words, use our own clock
+            ours = "\n".join(stamped(line.text, line.start) for line in timed.lines)
+            write_sidecar(album_dir, track, ours)
+            track.lyrics, track.lyrics_id = "synced", entry.lrclib_id
+            track.lyrics_length = theirs
+            track.provenance.pop("lyrics", None)   # their words, our clock
+            track.lyrics_timed_by = timed.by
+            track.lyrics_fit["why"] = fit_reason(track.file_length, theirs)
+            self.log(f"{track.title}: lrclib's words are this song's, its timings are {track.lyrics_fit['why']}'s — "
+                     f"kept the words and timed them to this file with {timed.by}")
+        save_plan(plan, album_dir)
+        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        save_plan(plan, album_dir)
+        return Outcome("ok", plan, album_dir)
+
+    @staticmethod
+    def _fit_number(text: str | None) -> float | None:
+        try:
+            return float(text) if text else None
+        except ValueError:
+            return None
+
+    def take_plain_lyrics(self, source_id: str, video_id: str, entry_id: int) -> Outcome:
+        """Put an entry's words beside a track **without** its timings, on the user's own decision.
+
+        For the cases nothing could decide (§9.46): the words are probably this song's, the
+        timestamps are for a recording of another length, and a person has looked at the two numbers
+        and said take them. They stay lrclib's words — the ownership contract does not change
+        because a human pressed the button (§9.21).
+        """
+        api = self.lrclib
+        if api is None:
+            return Outcome("failed", message="lyrics are switched off")
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        if not track or track.state != "done":
+            return Outcome("failed", message="no such finished track in this album")
+        entry = api.by_id(int(entry_id))
+        if not entry or not entry.text:
+            return Outcome("failed", message=f"lrclib entry {entry_id} has no words")
+        words = "\n".join(plain_lines(entry.text))
+        if not words.strip():
+            return Outcome("failed", message=f"lrclib entry {entry_id} has no words")
+        write_sidecar(album_dir, track, words)
+        track.lyrics, track.lyrics_id, track.lyrics_length = "plain", entry.lrclib_id, entry.length
+        track.provenance.pop("lyrics", None)   # lrclib's words, taken by hand but still theirs
+        track.lyrics_timed_by = None
+        track.lyrics_fit = {**(track.lyrics_fit or {}), "decided": "words by hand"}
+        save_plan(plan, album_dir)
+        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        save_plan(plan, album_dir)
+        self.log(f"{track.title}: took lrclib's words without their timings, on your say-so")
+        return Outcome("ok", plan, album_dir)
+
+    def _nearest_entry(self, api: LyricsAPI, track: PlanTrack):
+        """The candidate with words whose length is closest to this file's, and how far that is."""
+        best, apart = None, None
+        for row in api.candidates(track.artist, track.title) if hasattr(api, "candidates") else []:
+            if row.lrclib_id in track.lyrics_rejected or not row.text or not row.length:
+                continue
+            gap = abs(float(row.length) - (track.file_length or 0.0))
+            if apart is None or gap < apart:
+                best, apart = row, gap
+        return best, (apart or 0.0)
 
     def lookup_track(self, source_id: str, video_id: str, reject: bool = False) -> Outcome:
         """Ask lrclib about one track — or reject what it gave and ask again (DESIGN.md §9.27).

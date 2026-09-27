@@ -1755,6 +1755,102 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AG. An entry that is nearly this recording (P35, DESIGN §9.46)
+
+**The current gate has never refused something it could have matched.** Over this library's 1089
+tracks with no words at all, the number whose cached lrclib entry sits within the 3 s tolerance is
+**zero**. Everything below is about the boundary, not about a bug.
+
+Measured 2026-09-27, read-only, on the real library: every wordless track was asked about (the pass
+made **no new requests** — a lyrics run had already cached each one), and every candidate with the
+same artist and title was measured against the file it claims to describe.
+
+    wordless tracks                                              1089
+      a same-artist, same-title candidate with words exists       203
+        within 3 s — the gate takes it today                        0
+        over 3 s but within 3% of the file's length                74
+        beyond 3%                                                 129
+      no candidate with words at all                              886
+
+- [x] **AG1 · M** — do the words of a near miss belong to this recording?
+
+  The instrument is the aligner, and the criterion was written down **before** the run and not moved:
+  *fits* = the entry's stamps span ≥ 0.85 of the singing with ≤ 10% of lines unplaced; *does not fit*
+  = span < 0.75, span > 1.15, or > 25% unplaced; anything else is inconclusive and counted as neither.
+  The reference, measured before the criterion was fixed: LRCLIB's 52 lines against the user's own
+  *Blackbeard* — the 4.4 s miss that started this — span **0.968**, 52 of 52 lines placed.
+
+| population | fits | inconclusive | does not fit | uncheckable |
+|---|---|---|---|---|
+| near misses, 3 s to 3% (74) | **62** | 10 | 2 | — |
+| beyond 3%, the "control" (129) | **91** | 19 | 18 | 1 |
+
+  - the control is not a control: **71% of the entries beyond 3% are still this recording's words.**
+    The length gap is a poor proxy for "the same recording"; the alignment is a direct measurement
+  - fits are not marginal: span median 0.96 among the near misses, lowest 0.87
+  - **the span needed a ceiling, and I had not written one.** Four control candidates passed as fits
+    with the lyric spanning *more* than the singing — the worst an 83 s file against a 222 s entry at
+    span 1.60. A span over **1.15** is now a non-fit. The verdict is a pure function of two recorded
+    numbers, so both populations were recounted from the recordings rather than re-aligned
+  - **result:** pass
+
+- [x] **AG2 · M** — what the non-fits are, one by one
+
+  Every one of the 18 has **0% of its lines unplaced**: the aligner found all the words, in order, in
+  our audio. They are not wrong songs. What they are is a different *cut*:
+
+| track | our file | their entry | span | what it is |
+|---|---|---|---|---|
+| Schandmaul — Willst du (Live) | 305 s | 289 s | 0.45 | a live recording |
+| Schandmaul — Dein Anblick (Live) | 368 s | 313 s | 0.64 | a live recording |
+| ASP — Schneefall in der Hölle (Plakat…) | 342 s | 407 s | 0.65 | a marked variant |
+| Feuerschwanz — Ringelpietz (mit Anfassen) | 83 s | 222 s | 1.60 | a marked variant |
+| Faun — Wenn wir uns wiedersehen | 78 s | 199 s | 1.17 | a clip: our file is much shorter |
+| Lord of the Lost — Last Words | 344 s | 264 s | 0.66 | a longer cut |
+| Lord of the Lost — Prison | 346 s | 302 s | 0.66 | a longer cut |
+| Lord of the Lost — Sex on Legs | 268 s | 238 s | 0.72 | a longer cut |
+| Lord of the Lost — Dry the Rain | 277 s | 293 s | 0.57 | a shorter cut |
+| Darkher — Ghost Tears | 243 s | 254 s | 0.58 | a shorter cut |
+| Joachim Witt — Gloria | 286 s | 317 s | 0.68 | a shorter cut |
+| Assemblage 23 — Lullaby | 335 s | 324 s | 0.72 | a longer cut |
+| Saltatio Mortis — Wir sind Papst | 233 s | 222 s | 0.73 | a longer cut |
+| Feuerschwanz — Metfest (×2 in the library) | 253 s | 243 s | 0.73 | a longer cut |
+| Schandmaul — Knüppel aus dem Sack | 291 s | 270 s | 0.75 | a longer cut |
+| Warkings — Stahl auf Stahl | 226 s | 216 s | 1.23 | a longer cut |
+| Kupfergold — Met Kasalla Uss Valhalla | 239 s | 177 s | 1.29 | a longer cut |
+
+  - **the only wrong song in 203 candidates** is *Feuerschwanz — Gangnam Style* among the near
+    misses, at **71% of its lines unplaced** — a title collision, and the one case the aligner
+    rejects outright
+  - so the alignment answers two questions at once, and they are different questions: *how many
+    lines it can place* says whether these are the song's words, *how much of the singing they span*
+    says whether the entry's clock is this recording's
+  - **result:** pass — and this is what the three outcomes in §9.46 are built on
+
+- [x] **AG3 · M** — the outcomes, through the page, against a stand-in lrclib
+
+  A scratch copy of *Fegefeuer* with its words removed, and a server of my own answering with
+  deliberate near misses. Nothing touched lrclib.net.
+  - a 5.6 s near miss: the panel offered *"⚖ check them against the audio"*, the check aligned the
+    entry's words (**span 0.976, nothing unplaced**) and took **words and timings**; the sidecar was
+    written, the track retagged, and `lyrics_fit` recorded the two numbers
+  - an entry 124 s away: **no alignment was spent**, and the panel says *"lrclib has words for this
+    title, for a 1:35 recording; this file is 3:39.1 — probably another cut. Nothing was taken; you
+    can take the words as plain text."*
+  - taking them by hand: status `plain`, `lyrics_id` set, **owner unchanged** — lrclib's words stay
+    lrclib's however they were taken — and the sidecar holds the words without stamps
+  - **result:** pass. The *another cut* and *reject* outcomes are covered by the service tests with
+    fakes rather than here: a stand-in's synthetic words align to anything, so the page could not
+    have shown those two honestly
+
+### The defect the panel showed and no test had
+
+A track that already had words was still being offered *"take the words as plain text"*, because a
+verdict recorded earlier stayed in the plan and the panel read it without asking whether the words
+question was still open. Found by preparing a scratch album carelessly — the plan said "no words"
+while the `.lrc` files were still on disk, so `reconcile` made them the user's own words and the
+stale verdict kept offering more. Now the panel says only *where words came from* once there are any.
+
 ## AF. A draft that reads like a song (P34, DESIGN §9.45)
 
 From the user's own test: **“draft the words” on Mr. Hurley & Die Pulveraffen — *Blackbeard*** (3:38)
@@ -2175,6 +2271,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AG cases (P35: an entry that is nearly this recording) | 3 | 0 in the design; 1 of my own (a criterion with no ceiling, declared and fixed before the design), 1 in the page (a stale verdict offering words to a track that had them) | 203 real candidates aligned against the files they claim to describe. 71% of the entries *beyond* 3% are still the recording's words, so length is a poor proxy and the alignment is the measurement. The only wrong song in 203 is one title collision. 683 pytest + 87 node. |
 | 2026-09-27 | the AF cases (P34: a draft that reads like a song) | 2 | 0 | The user's own draft, re-read: 11 lines → 17, longest a whole verse → 6.5 s, four gap markers, and a notice that counts seconds instead of lines. Four arms scored against LRCLIB's lyric for the recording: separating the voice doubles what Deepgram hears (16 → 32 of 52) and gains the local decoder a third (28 → 38). 665 pytest + 78 node. |
 | 2026-09-27 | the AE cases (P33: which method lost the song) | 1 | 0 | Eighteen tracks, both methods, every candidate signal. Coverage of the singing separates cleanly (lost 0.41–0.70, good 0.86–1.12): five right, none wrong, none missed, and the held-out pair correct after the thresholds were fixed. Two signals measured and discarded, including the one the task specified. 646 pytest + 77 node. |
 | 2026-09-27 | the AD cases (P32: offering an album to MusicBrainz) | 3 | 0 in the design; 1 of my own (a second badge printing the length chip's own numbers with the opposite implication), fixed by making the chip the button | Against a stand-in for their release editor — **nothing touched musicbrainz.org**. 41 seeded fields including eleven tracks with millisecond lengths measured from the files, the refusal for compilations shown where the button would be, and the recording deep link the seeding format cannot replace. 636 pytest + 75 node. |

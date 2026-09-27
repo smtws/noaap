@@ -418,6 +418,51 @@ export function publishState(d) {
   return { show: false, label: "", can: false, title: "" };
 }
 
+// An lrclib entry that is nearly this recording (\u00a79.46). The panel's job here is to say what is
+// known and what is not, in the user's terms: the words exist, whether they belong to this file, and
+// whose clock the stamps are. Nothing here decides anything — the server did that, or said it could
+// not, and this only puts it into words.
+export function nearMiss(d) {
+  const fit = d && d.fit;
+  // A track that has words is past all of this: the only thing left worth saying is where they came
+  // from, and never an offer to take some. (Found on the scratch library, where a sidecar the plan
+  // did not know about became the user's own words while a stale verdict still sat in the plan.)
+  const has = Boolean(d && d.text);
+  if (has && fit && (fit.decided === "shown" || fit.decided === "unclear")) return null;
+  if (!fit) {
+    return d && d.can_check && !has
+      ? { say: "lrclib may have words for this title that are a few seconds off this file. "
+             + "\u2696 check them against the audio.", action: "check" }
+      : null;
+  }
+  const apart = Math.abs(Number(fit.ours || 0) - Number(fit.theirs || 0));
+  const gap = `${apart.toFixed(0)} s`;
+  switch (fit.decided) {
+    case "words+stamps":
+      return { say: `lrclib's entry is ${gap} from this file, and its words and timings fit it `
+        + `(they cover ${Math.round(Number(fit.span || 0) * 100)}% of the singing).`, action: null };
+    case "words":
+      return { say: `These are the song's words, but lrclib's entry is ${fit.why === "a clip" ? "of the whole song and this file is a clip of it" : "another cut of it"}`
+        + ` \u2014 ${gap} apart. The words are kept; the timings are this file's own, placed by the aligner.`,
+        action: null };
+    case "reject":
+      return { say: `lrclib's nearest entry is not this song: the aligner could not place `
+        + `${Math.round(Number(fit.unplaced || 0) * 100)}% of its words in this audio. It will not be offered again.`,
+        action: null };
+    case "shown":
+      return { say: `lrclib has words for this title, for a ${asTime(Number(fit.theirs || 0))} recording; `
+        + `this file is ${asTime(Number(fit.ours || 0))} \u2014 probably ${fit.why === "a clip" ? "a clip of the song" : "another cut"}. `
+        + "Nothing was taken; you can take the words as plain text.", action: "plain" };
+    case "words by hand":
+      return { say: "These are lrclib's words, taken without their timings on your say-so.", action: null };
+    default:  // unclear: the instrument does not know, so the person is given the numbers
+      return { say: `lrclib's entry is ${gap} from this file. The aligner placed `
+        + `${Math.round((1 - Number(fit.unplaced || 0)) * 100)}% of its lines across `
+        + `${Math.round(Number(fit.span || 0) * 100)}% of the singing, which is neither a fit nor a miss. `
+        + "Nothing was taken; you can take the words as plain text, or listen and decide.", action: "plain" };
+  }
+}
+
 // Offering an album to MusicBrainz (\u00a79.43). ytalbum never submits anything: the button opens
 // *their* release editor with the boxes filled in, and the person reviews it signed in as
 // themselves. So this half is only about when to offer, and what to say first.

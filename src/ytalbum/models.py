@@ -142,6 +142,10 @@ class PlanTrack:
     # (§9.44): both spans, both piling figures, and which method lost the song if either did. The
     # library then accumulates the evidence sixteen tracks cannot give, one saved alignment at a time.
     lyrics_checked: dict[str, str] | None = None
+    # an lrclib entry that is nearly this recording, and what an alignment made of it (§9.46):
+    # {entry, ours, theirs, span, unplaced, decided, why}. Kept so a pass never asks twice and a
+    # user who disagrees with a verdict has the numbers in front of them.
+    lyrics_fit: dict[str, str] | None = None
 
     @property
     def effective_id(self) -> str:
