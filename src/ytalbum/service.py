@@ -46,7 +46,17 @@ from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .search import SearchResult, search_artist
 from .tag import audio_length
-from .timing import ALIGN, TRANSCRIBE, TimingUnavailable, coverage, plain_lines, stamped, with_gaps
+from .timing import (
+    ALIGN,
+    TRANSCRIBE,
+    TimingUnavailable,
+    capabilities_of,
+    coverage,
+    plain_lines,
+    release_gpu_memory,
+    stamped,
+    with_gaps,
+)
 from .timing import provider as timing_provider
 from .titles import key as text_key
 from .titles import move_feat, strip_self_feat
@@ -802,6 +812,96 @@ class Service:
         run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
+
+    # a fit that decided nothing is worth asking again when the user asks for a re-check; one that
+    # took the words is not, and a rejected entry is excluded by `_nearest_entry` whatever we do here
+    RECHECKABLE = ("shown", "unclear", "reject")
+
+    def check_near_lyrics_all(self, refetch: bool = False, artist: str | None = None,
+                              dry_run: bool = False) -> list[Outcome]:
+        """Every track with no words whose lrclib entry was refused for its length (§9.46).
+
+        The per-track check exists behind a button; this is the pass. Nothing new is decided here —
+        each track goes through `check_near_lyrics`, so the verdict is the same one the panel gives.
+
+        `dry_run` does the lookups and none of the alignments: it says which tracks have a candidate,
+        how far it is, and how many alignments the real pass would spend. That matters because an
+        alignment is about 11 s on a GPU and 166 s on a processor, so the count is the price.
+        """
+        api = self.lrclib
+        if api is None:
+            self.log("lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            return []
+        if not dry_run and ALIGN not in capabilities_of(self.cfg):
+            message = ("checking a near miss needs a timing provider that can align — "
+                       "see `timing_align_provider` in the config")
+            self.log(message)
+            return [Outcome("failed", message=message)]
+
+        albums = list(iter_plans(self.library)) if self.library and self.library.exists() else []
+        if artist:
+            albums = [(d, p) for d, p in albums if p.albumartist.casefold() == artist.casefold()]
+
+        wanted: list[tuple[AlbumPlan, PlanTrack]] = []
+        for _, plan in albums:
+            for track in plan.tracks:
+                if track.state != "done" or (track.lyrics or "none") != "none" or not track.file_length:
+                    continue
+                decided = (track.lyrics_fit or {}).get("decided")
+                if decided is None or (refetch and decided in self.RECHECKABLE):
+                    wanted.append((plan, track))
+        if not wanted:
+            self.log("near misses: nothing to check")
+            return []
+
+        self.log(f"near misses: {len(wanted)} track(s) with no words to look at"
+                 + (" — dry run, nothing is aligned and nothing is written" if dry_run else ""))
+        if dry_run:
+            return [self._near_dry_run(api, wanted)]
+
+        outcomes, counts = [], Counter()
+        try:
+            for i, (plan, track) in enumerate(wanted, 1):
+                self.check()
+                self.log(f"=== [{i}/{len(wanted)}] {track.artist} — {track.title}")
+                outcome = self._guarded(lambda: self.check_near_lyrics(plan.source_id, track.video_id))
+                outcomes.append(outcome)
+                # the verdict is on the plan `check_near_lyrics` loaded, not on our copy of it
+                after = next((t for t in (outcome.plan.tracks if outcome.plan else [])
+                              if t.video_id == track.video_id), None)
+                counts[(after.lyrics_fit or {}).get("decided") if after and after.lyrics_fit
+                       else "no candidate"] += 1
+        finally:
+            # the card goes back whether the pass finished, was cancelled or failed (§9.41)
+            release_gpu_memory()
+        self.log("near misses: " + (", ".join(f"{n} {what}" for what, n in counts.most_common())
+                                    or "nothing decided"))
+        return outcomes
+
+    def _near_dry_run(self, api: LyricsAPI, wanted: list[tuple[AlbumPlan, PlanTrack]]) -> Outcome:
+        """Lookups only: what is there, how far away, and how many alignments it would cost."""
+        counts = Counter()
+        for plan, track in wanted:
+            self.check()
+            entry, apart = self._nearest_entry(api, track)
+            if not entry:
+                counts["no candidate"] += 1
+                self.log(f"{track.artist} — {track.title}: lrclib has nothing else for this title")
+                continue
+            theirs = float(entry.length or 0.0)
+            if nominated(track.file_length or 0.0, theirs):
+                counts["would align"] += 1
+                self.log(f"{track.artist} — {track.title}: entry {entry.lrclib_id} is {apart:.0f} s away "
+                         f"({track.file_length:.0f} s vs {theirs:.0f} s) — would align")
+            else:
+                counts["too far to align"] += 1
+                self.log(f"{track.artist} — {track.title}: entry {entry.lrclib_id} is {apart:.0f} s away "
+                         f"({track.file_length:.0f} s vs {theirs:.0f} s) — {fit_reason(track.file_length or 0.0, theirs)}, "
+                         "no alignment")
+        self.log("near misses (dry run): "
+                 + ", ".join(f"{n} {what}" for what, n in counts.most_common()))
+        self.log(f"near misses (dry run): {counts['would align']} alignment(s) would run")
+        return Outcome("ok", message=f"{counts['would align']} alignment(s) would run")
 
     @staticmethod
     def _fit_number(text: str | None) -> float | None:

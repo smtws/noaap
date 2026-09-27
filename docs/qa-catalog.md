@@ -2377,10 +2377,56 @@ title and its click handler were all correct, and it was drawn in the page backg
   or `transparent` must also set `color`. Verified by removing the fix and watching it fail.
   - **result:** pass
 
+## AJ. A library-wide near-miss pass (P39)
+
+`check_near_lyrics` existed only behind one button. The library it was measured on had **1089**
+finished tracks with no words and **0** with a verdict, so the measurement of §9.46 had never been
+applied to anything.
+
+- [x] **AJ1 · R** — what a dry run says the pass would cost, on the real library
+
+  `ytalbum lyrics --near --dry-run`, read-only: lookups, no alignment, no write.
+
+  | | tracks |
+  |---|---|
+  | no candidate at all | 878 |
+  | **would align** | **196** |
+  | too far to be worth an alignment | 15 |
+  | looked at | 1089 |
+
+  At the measured 11.1 s per alignment on this laptop's GPU that is about **36 minutes**; on a
+  processor, at 166 s, about **9 hours**. The 15 too-far tracks cost nothing and still gain a panel
+  line saying what the entry looks like.
+  - **result:** pass, and the plan files were byte-identical afterwards
+
+- [x] **AJ2 · R** — selection, against a stand-in lrclib and a fake provider
+
+  Taken: `state == done`, no words, a `file_length`, no verdict yet. Not taken: a track with words, a
+  track with no length, a track already decided. `--refetch` additionally takes the ones that decided
+  nothing (`shown`, `unclear`, `reject`) and still not the ones that took the words; a rejected entry
+  stays excluded, because `_nearest_entry` skips `lyrics_rejected` whatever the pass asks for.
+  - **result:** pass
+
+- [x] **AJ3 · R** — the refusals and the summary
+
+  Without an align-capable slot the pass refuses before doing anything, with web.py's own wording. A
+  **dry run needs no provider**, because it aligns nothing. The summary counts by verdict, read from
+  the plan `check_near_lyrics` reloaded rather than from the pass's own stale copy — which is what
+  the first version counted, and it reported thirteen "no candidate" for thirteen tracks it had just
+  written words to.
+  - **result:** pass
+
+- [x] **AJ4 · R** — the card goes back
+
+  `release_gpu_memory()` in a `finally`, so a cancelled or exploding pass releases too (§9.41).
+  Tested with an aligner that raises.
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AJ cases (P39: a library-wide near-miss pass) | 4 | 0 in the design; 1 of my own (the summary counted from a stale copy of the plan and reported 13 "no candidate" for 13 tracks it had just written words to) | `ytalbum lyrics --near`, and `--dry-run` on the real library read-only: 1089 tracks looked at, **196 would align**, 878 have no candidate, 15 are too far. ~36 min on this GPU, ~9 h on a processor. Plans byte-identical after the dry run. 719 pytest + 88 node. |
 | 2026-09-28 | the AI cases (P38: a chip nobody could see) | 4 | 0 | `color: inherit` on `button.len.fix`. 1.00:1 → 17.04:1 light, 1.10:1 → 14.05:1 dark; 103 of 2977 tracks were in the invisible 10–20 s window. A CSS guard now forbids a button rule that drops its background without setting a colour — the P12 class, twice. album.jpg retaken. 712 pytest + 88 node. |
 | 2026-09-28 | the AH cases (P37: a corpus that keeps the measurements) | 4 | 0 in the design; 3 of my own in the corpus's own cases (two invented API names, the wrong lrclib entry and then no span, and a skip message that was my error rather than a fact about the library) | 27 fast cases over six fixtures, no model and no audio, 0.04 s. The slow half against the real library: 3 passed, 1 skipped (no `timing-check` extra), 89 s. Four dead heuristics each have a case that must keep failing them. 710 pytest + 88 node. |
 | 2026-09-27 | the AG cases (P35: an entry that is nearly this recording) | 3 | 0 in the design; 1 of my own (a criterion with no ceiling, declared and fixed before the design), 1 in the page (a stale verdict offering words to a track that had them) | 203 real candidates aligned against the files they claim to describe. 71% of the entries *beyond* 3% are still the recording's words, so length is a poor proxy and the alignment is the measurement. The only wrong song in 203 is one title collision. 683 pytest + 87 node. |

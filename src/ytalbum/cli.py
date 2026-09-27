@@ -60,6 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     ly.add_argument("--library", type=Path)
     ly.add_argument("--artist", help="only this album artist")
     ly.add_argument("--refetch", action="store_true", help="look every track up again (keeps lyrics you wrote yourself)")
+    ly.add_argument("--near", action="store_true",
+                    help="afterwards, align lrclib's near misses to decide whether they are this recording's words")
+    ly.add_argument("--dry-run", action="store_true", help="with --near: look up only, align nothing, write nothing")
 
     dl = sub.add_parser("delete", help="delete an album (or one track) — files are removed")
     dl.add_argument("album_dir", type=Path)
@@ -147,7 +150,12 @@ def main(argv: list[str] | None = None) -> int:
                 library = _library(args, cfg, required=True)
                 if library is None:
                     return 2
-                return exit_code(_service(cfg, library).fetch_lyrics(refetch=args.refetch, artist=args.artist))
+                service = _service(cfg, library)
+                outcomes = service.fetch_lyrics(refetch=args.refetch, artist=args.artist)
+                if args.near:
+                    outcomes += service.check_near_lyrics_all(refetch=args.refetch, artist=args.artist,
+                                                              dry_run=args.dry_run)
+                return exit_code(outcomes)
     except NotSupported as e:
         print(f"not supported: {e}", file=sys.stderr)
         return 2

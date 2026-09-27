@@ -232,3 +232,113 @@ def test_taking_the_words_by_hand_leaves_them_lrclibs(album, tmp_path, monkeypat
     assert saved.provenance.get("lyrics") is None            # a human pressing a button changes nothing
     written = (album_dir / plan.tracks[0].filename).with_suffix(".lrc").read_text(encoding="utf-8")
     assert "[00:10.0]" not in written and "first line" in written
+
+
+# -- the library-wide pass (P39) -------------------------------------------------------------------
+
+
+def pass_service(tmp_path, yt, api, aligner, monkeypatch, can_align=True):
+    service = service_for(tmp_path, yt, api, aligner, monkeypatch)
+    monkeypatch.setattr(service_mod, "capabilities_of",
+                        lambda _cfg: frozenset({"align"} if can_align else set()))
+    return service
+
+
+def logged(service):
+    lines: list[str] = []
+    service.log = lines.append
+    return lines
+
+
+def test_the_pass_takes_only_tracks_with_no_words_a_length_and_no_verdict(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    plan.tracks[0].lyrics = "synced"                       # has words already
+    plan.tracks[1].file_length = None                      # nothing to measure against
+    plan.tracks[2].lyrics_fit = {"decided": "words+stamps"}  # already settled
+    plan.tracks[3].lyrics_fit = {"decided": "unclear"}     # settled, but only just
+    save_plan(plan, album_dir)
+    eligible = len(plan.tracks) - 4
+
+    # a dry run so that selection is all that is under test: a real pass would write words and
+    # change what the second half is allowed to see
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all(dry_run=True)
+    assert f"{eligible} track(s) with no words" in lines[0]
+
+    # --refetch reaches the one that decided nothing, and still not the one that took the words
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all(refetch=True, dry_run=True)
+    assert f"{eligible + 1} track(s) with no words" in lines[0]
+
+
+def test_a_dry_run_looks_up_counts_and_writes_nothing(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    before = (album_dir / ".ytalbum.json").read_bytes()
+    aligner = FakeAligner(0.95)
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), aligner, monkeypatch)
+    lines = logged(service)
+
+    service.check_near_lyrics_all(dry_run=True)
+
+    assert (album_dir / ".ytalbum.json").read_bytes() == before, "a dry run wrote to the plan"
+    assert not any((album_dir / f).suffix == ".lrc" for f in [p.name for p in album_dir.iterdir()])
+    said = "\n".join(lines)
+    assert "nothing is aligned and nothing is written" in said
+    assert "alignment(s) would run" in said
+    assert "would align" in said
+
+
+def test_a_dry_run_separates_the_ones_too_far_to_be_worth_an_alignment(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    # a 200 s file against a 600 s entry: outside the nomination guard, so no alignment is spent
+    service = pass_service(tmp_path, yt, FakeLrclib(600.0), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all(dry_run=True)
+    said = "\n".join(lines)
+    assert "no alignment" in said
+    assert "0 alignment(s) would run" in said
+
+
+def test_the_pass_refuses_when_the_align_slot_cannot_align(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch, can_align=False)
+    lines = logged(service)
+    outcomes = service.check_near_lyrics_all()
+    assert [o.status for o in outcomes] == ["failed"]
+    assert "needs a timing provider that can align" in outcomes[0].message
+    assert any("timing_align_provider" in line for line in lines)
+
+
+def test_a_dry_run_needs_no_provider_at_all(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch, can_align=False)
+    lines = logged(service)
+    service.check_near_lyrics_all(dry_run=True)
+    assert any("alignment(s) would run" in line for line in lines), "a dry run aligns nothing, so it may run"
+
+
+def test_the_summary_counts_by_verdict(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all()
+    summary = next(line for line in lines if line.startswith("near misses: ") and "track(s)" not in line)
+    assert "words+stamps" in summary
+    assert str(len(plan.tracks)) in summary
+
+
+def test_the_pass_gives_the_card_back_even_when_a_track_fails(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    released = []
+    monkeypatch.setattr(service_mod, "release_gpu_memory", lambda: released.append(True))
+
+    class Exploding(FakeAligner):
+        def align(self, audio, lines, **kw):
+            raise RuntimeError("the card fell out")
+
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), Exploding(0.95), monkeypatch)
+    logged(service)
+    service.check_near_lyrics_all()
+    assert released, "the models are released whatever the pass ran into"
