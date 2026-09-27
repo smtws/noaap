@@ -410,12 +410,16 @@ export function publishConfirm(d) {
 // What the button says, and why it is not there.
 export function publishState(d) {
   const p = (d && d.publish) || {};
-  if (p.published) return { show: true, label: "\u2713 published to lrclib", can: false, title:
+  if (p.published) return { show: true, why: "", label: "\u2713 published to lrclib", can: false, title:
     `These words were published on ${p.published}. A publish cannot be undone, and the same words are never sent twice.` };
-  if (p.can) return { show: true, label: "\u2191 publish to lrclib", can: true, title:
+  if (p.can) return { show: true, why: "", label: "\u2191 publish to lrclib", can: true, title:
     "Give these words back: LRCLIB has no entry like them, and somebody else looking for this song would find yours.\nIt is public and cannot be undone." };
-  if (p.why) return { show: false, label: "", can: false, title: p.why };
-  return { show: false, label: "", can: false, title: "" };
+  // Not offered, but there is a reason: the panel shows it, exactly as a refused MusicBrainz seed
+  // does. A button that is simply absent teaches nobody why, and "no, because these are lrclib's
+  // own words" is a different answer from "no".
+  if (p.why) return { show: false, why: p.why, label: "", can: false, title: p.why };
+  // Nothing to say: a track with no words needs no explanation of why they cannot be given back.
+  return { show: false, why: "", label: "", can: false, title: "" };
 }
 
 // An lrclib entry that is nearly this recording (\u00a79.46). The panel's job here is to say what is

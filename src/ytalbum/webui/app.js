@@ -761,7 +761,10 @@ function lyricsPanel(p, t, d, editing) {
 
 function publishButton(p, t, d) {
   const state = publishState(d);
-  if (!state.show) return null;
+  // Where the words may not be given back, say so in the panel rather than showing nothing: the
+  // reason is the useful part, and it was previously only a tooltip on a button that was never
+  // rendered, so nobody could ever read it. The seed button beside it has always worked this way.
+  if (!state.show) return state.why ? h("span", { class: "muted publish-why", title: state.why }, state.why) : null;
   return h("button", { class: "quiet small", type: "button", title: state.title, disabled: !state.can,
     onclick: (e) => publishLyrics(e.currentTarget, p, t, d) }, state.label);
 }
