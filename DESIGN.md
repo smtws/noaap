@@ -1057,6 +1057,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    so it would mean replacing it with a contenteditable, and the list beside it already answers the
    question.
 
+40. ✅ Two slots, because the two jobs are bought in different places (2026-09-27, P28, backlog 17).
+   `timing_provider` was one setting for two capabilities, and the two are not bought together: the
+   machine that aligns best is `local` — free, needs 1.5 GB of models — while the one that writes
+   down words nobody has is a vendor, metered, needing nothing installed. Choosing Deepgram for
+   drafts therefore gave up local alignment, and choosing `local` gave up drafting unless the 3 GB
+   second extra was installed.
+   **`timing_align_provider` and `timing_draft_provider`,** each falling back to `timing_provider`
+   when empty — so every config file written before today still says what it said, and one setting
+   still means both. `kind_for(cfg, capability)` is the only place that decides, and `provider()`
+   takes the capability it is being asked for.
+   **Everything that follows from *which* provider is now answered per slot**: `capabilities_of` is
+   the union of the two (with `local` aligning and a vendor drafting, both are true at once and
+   neither provider could have said so alone), `sends_audio` and the dated list price are maps keyed
+   by capability, and the page's confirm names the provider of the slot it is about to use — *"the
+   audio of this track is sent to deepgram to write down what it hears"* while an alignment on the
+   same track leaves nothing.
+   **The panel offers only what a slot could use.** `OFFERS` says what a *kind* of provider can ever
+   be asked for — Deepgram transcribes and nothing else, so it is not in the aligning list; `local`
+   and `http` can do either, since what they can do today depends on what is installed and on the
+   machine at the other end, which `capabilities()` answers at runtime.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1234,3 +1255,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   therefore has to be told. `editorText()` exists so that no tool can quietly stop being seen.
 - **A second copy of the words needs a name.** Found by looking at a screenshot, which is where the
   page's unlabelled things are always found.
+
+### Decisions of 2026-09-27 (two slots, §9.40)
+
+- **One setting per decision, not per subsystem.** Aligning and drafting are two decisions with
+  different economics; they got two settings, and the old one still reads as both.
+- **A union of capabilities is a real answer.** What the page may offer is not what one provider can
+  do — it is what each slot's provider can do for its own job.
+- **A list of choices should not contain a choice that cannot work.** Deepgram is absent from the
+  aligning slot, because it transcribes and says so.

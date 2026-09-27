@@ -27,6 +27,13 @@ VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the au
 # List prices from the vendors' own pricing pages, read on the date beside them. They are here so
 # the settings panel can say what a pass would cost without asking anyone at runtime; nothing in
 # ytalbum ever queries a price, and a stale number is better than a request nobody asked for.
+# What a kind of provider can ever be asked for, which is not the same as what it can do today: the
+# two local ones depend on what is installed or on the machine at the other end, and `capabilities()`
+# answers that at runtime. This is for the settings panel, so that the slot for drafting words does
+# not offer a provider that only aligns, and the slot for aligning does not offer Deepgram (§9.40).
+OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE), "http": (ALIGN, TRANSCRIBE),
+          "elevenlabs": (ALIGN, TRANSCRIBE), "deepgram": (TRANSCRIBE,)}
+
 PRICES = {
     "elevenlabs": ("$0.22 per audio hour (alignment and transcription alike)", "2026-09-27"),
     "deepgram": ("$0.0043 per audio minute, i.e. $0.26 per hour (Nova-3, pay as you go)", "2026-09-27"),
@@ -352,9 +359,23 @@ class HttpTiming:
 # -- choosing one ------------------------------------------------------------------------------
 
 
-def provider(cfg: Any) -> Timing:
-    """The configured provider. Importing the heavy one happens here and nowhere else."""
-    kind = getattr(cfg, "timing_provider", "none") or "none"
+def kind_for(cfg: Any, what: str = "") -> str:
+    """Which provider is configured for a capability (§9.40).
+
+    Two slots — `timing_align_provider` and `timing_draft_provider` — because the two capabilities
+    are bought in different places: the machine that aligns best (`local`, free, needs the models) is
+    rarely the one that transcribes best (a vendor, metered, needs nothing installed). An empty slot
+    falls back to `timing_provider`, which is what every config written before this said and still
+    means both, so nothing anyone has configured breaks.
+    """
+    slot = {ALIGN: "timing_align_provider", TRANSCRIBE: "timing_draft_provider"}.get(what, "")
+    chosen = (getattr(cfg, slot, "") or "").strip() if slot else ""
+    return chosen or (getattr(cfg, "timing_provider", "none") or "none")
+
+
+def provider(cfg: Any, what: str = "") -> Timing:
+    """The provider configured for this capability. The heavy import happens here and nowhere else."""
+    kind = kind_for(cfg, what)
     if kind == "local":
         from .timing_local import LocalTiming
 
@@ -374,12 +395,21 @@ def provider(cfg: Any) -> Timing:
     return NoTiming()
 
 
-def capabilities_of(cfg: Any) -> frozenset[str]:
-    """What the UI asks. A provider that cannot be reached or installed offers nothing."""
+def can(cfg: Any, what: str) -> bool:
+    """Whether the provider in *that* slot can do *that* job — the question the page really asks."""
     try:
-        return provider(cfg).capabilities()
+        return what in provider(cfg, what).capabilities()
     except (TimingUnavailable, ImportError, OSError):
-        return frozenset()
+        return False
+
+
+def capabilities_of(cfg: Any) -> frozenset[str]:
+    """What the UI may offer at all: each capability asked of the slot that would serve it.
+
+    A union of two providers, and deliberately so — with `local` aligning and a vendor drafting, both
+    are true at once and neither provider alone could say so.
+    """
+    return frozenset(what for what in (ALIGN, TRANSCRIBE) if can(cfg, what))
 
 
 def verifies_with(cfg: Any) -> bool:
@@ -390,11 +420,11 @@ def verifies_with(cfg: Any) -> bool:
     has no such thing. The settings panel shows it, because it costs the user time.
     """
     try:
-        return bool(getattr(provider(cfg), "verifying", bool)())
+        return bool(getattr(provider(cfg, ALIGN), "verifying", bool)())
     except (TimingUnavailable, ImportError, OSError):
         return False
 
 
-__all__ = ["ALIGN", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "HttpTiming",
-           "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "capabilities_of", "language_of",
-           "line_starts", "lines_from_words", "plain_lines", "provider", "verified", "verifies_with"]
+__all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "HttpTiming",
+           "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of", "kind_for",
+           "language_of", "line_starts", "lines_from_words", "plain_lines", "provider", "verified", "verifies_with"]

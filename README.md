@@ -308,9 +308,15 @@ Entirely optional, and **nothing below is installed or imported unless you ask f
 provider configured — the default — ytalbum has no machine-learning dependency, the editor shows no
 alignment action, and everything else works exactly as it does now.
 
+**Two jobs, two settings.** Placing your words on the clock (`timing_align_provider`) and writing
+down the words of a track that has none (`timing_draft_provider`) are bought in different places, so
+they are chosen separately — the usual pairing is `local` for aligning, which is free and stays on
+your machine, and a vendor for the occasional draft, which needs nothing installed. `timing_provider`
+still works and means both, so nothing you have configured has to change.
+
 Four providers, and the first choice is whether the audio may leave the machine:
 
-| `timing_provider` | what it needs | where the audio goes | can it | what it costs |
+| provider | what it needs | where the audio goes | can it | what it costs |
 |---|---|---|---|---|
 | `none` (default) | nothing | nowhere | — | — |
 | `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | align | ~12 s a track with a GPU, ~2 min without |
@@ -336,7 +342,7 @@ ytalbum timing-serve --port 8770          # ... if it is a different machine
 and in `~/.config/ytalbum/config.toml` (or from the settings panel):
 
 ```toml
-timing_provider = "local"                        # or "http"
+timing_align_provider = "local"                  # or "http"; `timing_provider` still means both
 timing_endpoint = "http://thatmachine:8770"      # for "http"
 timing_device   = "auto"                         # "cpu" or "cuda" to force it
 ```
@@ -388,7 +394,7 @@ without a GPU none of this applies — it is simply slower.
 ### The paid ones
 
 ```toml
-timing_provider = "elevenlabs"        # or "deepgram"
+timing_draft_provider = "deepgram"    # or "elevenlabs", which also aligns
 timing_elevenlabs_key = "…"           # https://elevenlabs.io → Profile → API keys
 timing_deepgram_key = "…"             # https://console.deepgram.com → API keys
 ```
@@ -440,7 +446,9 @@ file to spend its one request on.
 | `pot_port`, `pot_idle` | `4416`, `300` | Token server port and idle timeout in seconds. |
 | `pot_provider_home` | `.pot-provider/server` | Where the token generator is built. |
 | `js_runtime`, `js_runtime_path` | autodetect | deno, node, bun or quickjs for yt-dlp. |
-| `timing_provider` | `"none"` | Who may place lyric timestamps: `none`, `local` (the `ytalbum[timing]` extra) or `http`. |
+| `timing_provider` | `"none"` | Who may do both jobs: `none`, `local` (the `ytalbum[timing]` extra), `http`, or a vendor. Read as the fallback for both slots below. |
+| `timing_align_provider` | – | Who places your words on the clock. Empty = whatever `timing_provider` says. |
+| `timing_draft_provider` | – | Who writes down the words of a track that has none. Empty = the same. |
 | `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `ytalbum timing-serve` runs. |
 | `timing_device` | `"auto"` | `cpu` or `cuda` to force the local provider's device. |
 | `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |

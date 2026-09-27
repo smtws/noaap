@@ -222,7 +222,7 @@ def album(tmp_path, opus_template):
 def service_with(tmp_path, yt, engine, monkeypatch, cfg=None):
     import ytalbum.service as service_mod
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg: engine)
+    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": engine)
     lines: list[str] = []
     service = Service(cfg or Config(), tmp_path, yt=yt, log=lines.append)
     return service, lines
@@ -290,8 +290,10 @@ def test_a_key_never_reaches_the_page_or_the_log(album, tmp_path, monkeypatch):
     settings = app.settings()
     assert settings["timing"]["keys"] == {"elevenlabs": True, "deepgram": False}
     assert "super-secret" not in json.dumps(settings)
-    assert settings["timing"]["price"][0].startswith("$")  # the list price, with its date beside it
-    assert settings["timing"]["sends_audio"] is True
+    # per capability now (§9.40): one provider in both slots answers for both
+    assert settings["timing"]["price"]["align"][0].startswith("$")  # the list price, with its date
+    assert settings["timing"]["price"]["transcribe"][0].startswith("$")
+    assert settings["timing"]["sends_audio"] == {"align": True, "transcribe": True}
 
     service, log = service_with(tmp_path, yt, FakeVendor(), monkeypatch, cfg)
     service.draft_lyrics(plan.source_id, plan.tracks[0].video_id)
@@ -354,3 +356,30 @@ def test_deepgram_for_real(audio, capsys):
             w = words[0]
             print(f"  first word start/end: {w.get('start')} / {w.get('end')} "
                   f"(seconds: {isinstance(w.get('start'), (int, float))})")
+
+
+def test_the_settings_answer_per_slot(tmp_path):
+    """With one provider aligning and another drafting, every answer has to name the right one."""
+    from ytalbum.web import App
+
+    cfg = Config(timing_align_provider="local", timing_draft_provider="deepgram",
+                 timing_deepgram_key="secret-two")
+    settings = App(cfg, tmp_path).settings()["timing"]
+    assert settings["align_provider"] == "local" and settings["draft_provider"] == "deepgram"
+    # the audio leaves the machine for a draft and never for an alignment
+    assert settings["sends_audio"] == {"align": False, "transcribe": True}
+    assert settings["price"]["align"] == ["", ""]
+    assert settings["price"]["transcribe"][0].startswith("$")
+    assert "secret-two" not in json.dumps(settings)
+    # and the panel is told which kinds may fill which slot
+    assert "align" not in settings["offers"]["deepgram"]
+
+
+def test_a_slot_that_needs_a_key_is_refused_without_one(tmp_path):
+    from ytalbum.web import App
+
+    app = App(Config(), tmp_path)
+    with pytest.raises(ValueError, match="needs an API key"):
+        app.save_settings({"timing_draft_provider": "deepgram"})
+    with pytest.raises(ValueError, match="endpoint"):
+        app.save_settings({"timing_align_provider": "http"})

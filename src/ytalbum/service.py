@@ -602,8 +602,8 @@ class Service:
                 "placed": len(timed.lines) - len(timed.unplaced), "text": text}
 
     def _timing(self, capability: str, what: str):
-        """The configured provider, if it can do the thing being asked of it."""
-        engine = timing_provider(self.cfg)
+        """The provider configured for *this* capability, if it can do the thing being asked (§9.40)."""
+        engine = timing_provider(self.cfg, capability)
         if capability not in engine.capabilities():
             raise TimingUnavailable(f"the {engine.name} timing provider cannot {what}")
         if hasattr(engine, "log"):

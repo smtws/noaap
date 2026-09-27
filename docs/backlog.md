@@ -394,7 +394,7 @@ agree within `timing_verify_threshold`, drops it where they do not, and places n
 they disagree about most of a track. The same extra makes transcription local, so a draft no longer
 needs a vendor.
 
-## 17. One provider for two jobs — OPEN (P28, queued)
+## 17. One provider for two jobs — DONE (P28, DESIGN §9.40)
 
 Added 2026-09-27 out of P26/P27. `timing_provider` is a single setting, but the two capabilities are
 bought in different places: the machine that aligns best (`local`, free, needs the models) is rarely
@@ -402,6 +402,15 @@ the one that transcribes best (a vendor, metered, needs nothing). Today choosing
 gives up local alignment, and choosing `local` gives up drafting unless the 3 GB extra is installed.
 Split it into `timing_align_provider` and `timing_draft_provider`, keep `timing_provider` readable as
 both, and show only the providers that can do each job in each slot.
+
+**Done 2026-09-27 (P28).** Both keys exist and fall back to `timing_provider`, so no config file that
+was written before today changes meaning. `kind_for(cfg, capability)` is the single place that
+decides; everything that depends on *which* provider — what the page may offer, whether the audio
+leaves the machine, the dated list price, the name in the confirm — is answered per slot. Verified
+through the page with `local` aligning and `deepgram` drafting (catalog Z): the settings panel offers
+no Deepgram in the aligning list, an alignment ran locally in 8 s with no confirm at all, and the
+draft button on the same album warned that the audio goes to Deepgram. Nothing was sent: the confirm
+was cancelled, which is also what the case is for.
 
 ## 18. The service parks 3 GB of VRAM after one alignment — OPEN (P30, queued)
 

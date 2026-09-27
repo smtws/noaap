@@ -60,7 +60,12 @@ class Config:
     # who may put words on a clock (DESIGN.md §9.36). "none" is the default and the app is exactly
     # what it was without it; "local" needs the `ytalbum[timing]` extra; "http" is another machine
     # running `ytalbum timing-serve`. Nothing is imported until one of the other two is chosen.
+    # Two slots, because the two capabilities are bought in different places (§9.40): the machine
+    # that aligns best is rarely the one that transcribes best. `timing_provider` is still read and
+    # still means both, so nobody's config file breaks.
     timing_provider: str = "none"
+    timing_align_provider: str = ""   # empty = whatever `timing_provider` says
+    timing_draft_provider: str = ""
     timing_endpoint: str | None = None
     timing_device: str = "auto"  # "auto" | "cpu" | "cuda", for the local provider
     # keys for the providers that are somebody else's computer (§9.37). They are never sent to the
@@ -119,6 +124,8 @@ def load(path: Path | None = None) -> Config:
     # flat keys like the rest of this file, and a `[timing]` table for whoever prefers to group them
     timing = data.get("timing") if isinstance(data.get("timing"), dict) else {}
     cfg.timing_provider = str(data.get("timing_provider") or timing.get("provider") or "none")
+    cfg.timing_align_provider = str(data.get("timing_align_provider") or timing.get("align_provider") or "")
+    cfg.timing_draft_provider = str(data.get("timing_draft_provider") or timing.get("draft_provider") or "")
     cfg.timing_endpoint = (data.get("timing_endpoint") or timing.get("endpoint") or None) or None
     cfg.timing_device = str(data.get("timing_device") or timing.get("device") or "auto")
     cfg.timing_elevenlabs_key = str(data.get("timing_elevenlabs_key") or timing.get("elevenlabs_key") or "")

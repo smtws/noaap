@@ -40,7 +40,17 @@ from .models import AlbumPlan
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
 from .tag import image_mime
-from .timing import ALIGN, PRICES, PROVIDERS, TRANSCRIBE, VENDORS, capabilities_of, verifies_with
+from .timing import (
+    ALIGN,
+    OFFERS,
+    PRICES,
+    PROVIDERS,
+    TRANSCRIBE,
+    VENDORS,
+    capabilities_of,
+    kind_for,
+    verifies_with,
+)
 from .titles import natural_key
 from .trim import original_path
 from .youtube import Cancelled, YouTube
@@ -403,7 +413,11 @@ class App:
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
             "musicbrainz": self.cfg.musicbrainz,
+            # Two slots, one per capability (§9.40), and everything that depends on *which* provider
+            # is answered per slot: what it can do, whether it sends the audio away, what it charges.
             "timing": {"provider": self.cfg.timing_provider,
+                       "align_provider": kind_for(self.cfg, ALIGN),
+                       "draft_provider": kind_for(self.cfg, TRANSCRIBE),
                        "endpoint": self.cfg.timing_endpoint or "",
                        # asked of the provider, not of the config: an endpoint that is down, or an
                        # extra that is not installed, offers nothing and the page shows nothing
@@ -411,8 +425,13 @@ class App:
                        # whether a key is set, never the key itself (§9.37)
                        "keys": {v: bool(getattr(self.cfg, f"timing_{v}_key", "")) for v in VENDORS},
                        "vendors": list(VENDORS),
-                       "price": list(PRICES.get(self.cfg.timing_provider, ("", ""))),
-                       "sends_audio": self.cfg.timing_provider in VENDORS,
+                       # which kinds may be chosen for which slot, so the panel offers no
+                       # provider that could never do that job (§9.40)
+                       "offers": {kind: list(what) for kind, what in OFFERS.items()},
+                       "price": {what: list(PRICES.get(kind_for(self.cfg, what), ("", "")))
+                                 for what in (ALIGN, TRANSCRIBE)},
+                       "sends_audio": {what: kind_for(self.cfg, what) in VENDORS
+                                       for what in (ALIGN, TRANSCRIBE)},
                        # whether every alignment is checked against a second method (§9.38): it is
                        # the provider's answer, and it costs the user time, so the panel says so
                        "verifies": verifies_with(self.cfg)},
@@ -451,10 +470,14 @@ class App:
             if not 1 <= n <= 4:
                 raise ValueError("parallel requests must be 1–4 (more trips YouTube's bot check)")
             changes["concurrency"] = n
-        if "timing_provider" in body:
-            if body["timing_provider"] not in PROVIDERS:
+        for slot in ("timing_provider", "timing_align_provider", "timing_draft_provider"):
+            if slot not in body:
+                continue
+            chosen = str(body[slot])
+            # an empty slot is legal and means "whatever timing_provider says" (§9.40)
+            if chosen not in PROVIDERS and not (chosen == "" and slot != "timing_provider"):
                 raise ValueError(f"the timing provider must be one of {', '.join(PROVIDERS)}")
-            changes["timing_provider"] = body["timing_provider"]
+            changes[slot] = chosen
         for vendor in VENDORS:
             field = f"timing_{vendor}_key"
             if field in body:
@@ -465,11 +488,16 @@ class App:
             if endpoint and not endpoint.startswith(("http://", "https://")):
                 raise ValueError("the timing endpoint must be an http(s) URL, e.g. http://host:8770")
             changes["timing_endpoint"] = endpoint or None
-        if changes.get("timing_provider") == "http" and not (changes.get("timing_endpoint") or self.cfg.timing_endpoint):
-            raise ValueError("choose an endpoint for the `http` timing provider")
-        chosen = changes.get("timing_provider", self.cfg.timing_provider)
-        if chosen in VENDORS and not (changes.get(f"timing_{chosen}_key") or getattr(self.cfg, f"timing_{chosen}_key", "")):
-            raise ValueError(f"{chosen} needs an API key — it is sent to them with the audio, and stays on this machine otherwise")
+        # whichever slot names `http` or a vendor, the thing it needs has to be there — checked for
+        # every slot being written, since either can now name either
+        for slot in ("timing_provider", "timing_align_provider", "timing_draft_provider"):
+            chosen = changes.get(slot, getattr(self.cfg, slot, ""))
+            if chosen == "http" and not (changes.get("timing_endpoint") or self.cfg.timing_endpoint):
+                raise ValueError("choose an endpoint for the `http` timing provider")
+            if chosen in VENDORS and not (changes.get(f"timing_{chosen}_key")
+                                          or getattr(self.cfg, f"timing_{chosen}_key", "")):
+                raise ValueError(f"{chosen} needs an API key — it is sent to them with the audio, "
+                                 "and stays on this machine otherwise")
         library = None
         if "library" in body and str(body["library"]).strip() != str(self.library):
             library = Path(str(body["library"]).strip()).expanduser()

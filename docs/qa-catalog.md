@@ -1716,6 +1716,45 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
     checking
   - **result:** pass
 
+## Z. Two slots, two providers (P28, DESIGN §9.40, backlog 17)
+
+Run 2026-09-27 through the real page on the same scratch copy of *Fegefeuer*, with the two slots
+holding **different** providers — `timing_align_provider = "local"`, `timing_draft_provider =
+"deepgram"` — and a deliberately fake Deepgram key, because nothing in this section is allowed to
+reach a vendor.
+
+- [x] **Z1 · R** — the two slots answer separately, and the page is told both
+  - `/api/state`: `align_provider: local`, `draft_provider: deepgram`, `capabilities: ["align",
+    "transcribe"]` — **a union neither provider could have reported alone**
+  - `sends_audio: {align: false, transcribe: true}` and `price: {align: ["", ""], transcribe:
+    ["$0.0043 per audio minute …", "2026-09-27"]}` — per capability, because the answer differs
+  - the key is set (`keys.deepgram: true`) and appears nowhere in the payload
+  - **result:** pass
+
+- [x] **Z2 · R** — a slot offers only what could ever fill it
+  - the aligning row's list is `none, local*, http, elevenlabs` — **no Deepgram**, which transcribes
+    and says so; the drafting row's list has all five with `deepgram` selected
+  - the two rows are named for the jobs, not for the machinery: *"Placing words on the clock"* and
+    *"Drafting words for a track that has none"*
+  - the aligning row's help says local and http send nothing off the network; the drafting row's says
+    *"⚠ deepgram receives the audio of every track you use it on"* with the dated price
+  - **result:** pass
+
+- [x] **Z3 · M** — the same album, one job local and the other a vendor
+  - *Berzerkermode* (has words): **⚖ align these words ran in 8 s with no confirm at all**, and the
+    notice read *"timed by local/VOXPOPULI_ASR_BASE_10K_DE + htdemucs"*. This is backlog 17's whole
+    point: choosing a vendor for drafts no longer gives up local alignment
+  - *SGFRD Dragonslayer* (no words): the panel offered **✎ draft the words**, its title naming
+    *deepgram* and saying the audio is sent there
+  - **result:** pass
+
+- [x] **Z4 · R** — the confirm names the slot's provider, and Cancel sends nothing
+  - pressing draft raised: *"The audio of this track is sent to **deepgram** to write down what it
+    hears… ytalbum never retries, so one press is one request."*
+  - the dialog was **dismissed**, and the server log shows no request at all — which is what the
+    confirm is for and why this case does not need a key that works
+  - **result:** pass
+
 ## AA. The words being edited are what plays (P29, DESIGN §9.39)
 
 Run 2026-09-27 through the real page (Playwright, a second server on `:8799` with its own
@@ -1837,6 +1876,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the Z cases (P28: two slots) | 4 | 0 | `local` aligning and `deepgram` drafting on one album: the capability union, the panel offering no Deepgram for aligning, an 8 s local alignment with no confirm, and a draft confirm naming Deepgram that was cancelled — nothing was sent, and the key used was deliberately fake. 601 pytest + 67 node. |
 | 2026-09-27 | the AA cases (P29: the editor's own clock) | 6 | 0 in the design; 1 blemish of my own (the list had no name and read as the saved words shown twice), fixed before the commit | Scratch copy of *Fegefeuer* through the real page. The editor's list showed the alignment's `19.6` while the file still said `12.52`, and at player time 80.1 s the highlight marked the proposal's line where the file would have marked a different one. Cancel gave the file back; Save wrote the proposal with `lyrics_timed_by`. 593 pytest + 67 node. |
 | 2026-09-27 | the Y cases (P27: a second opinion) | 4 | 0 in the design; 3 defects of my own (a CUDA guard in the wrong place, a full graphics card taking the whole job with it, a model squatting on the card between tracks) and **one rule of the design overturned by its own measurement** | Sixteen real tracks, 731 lines, aligned twice on a GPU and twice on a processor, plus both methods compared against the library's own sidecars. The check costs about +60% on either device. The whole-track rule that placed nothing was measured to be backwards — five for five it discarded a correct alignment — and now keeps every stamp and says so. 593 pytest + 60 node. |
 | 2026-09-27 | the X cases (P26: paid providers) | 7 | 0 in the design; 1 defect of my own (a finished draft discarded the editor), fixed | Against a server speaking the vendors' documented shapes — **nothing was ever billed**. Both vendors' capabilities, the confirm, the draft, the key redaction and the dated price all verified through the real page. 581 pytest + 56 node. |

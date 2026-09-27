@@ -125,7 +125,7 @@ def album(tmp_path, opus_template):
 def service_with(cfg, tmp_path, yt, fake, monkeypatch):
     import ytalbum.service as service_mod
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg: fake)
+    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": fake)
     return Service(cfg, tmp_path, yt=yt, log=lambda s: None)
 
 
@@ -433,3 +433,66 @@ def test_the_default_width_of_agreement_is_two_seconds():
     second = Timed(lines=[TimedLine("a", 11.4), TimedLine("b", 27.0)], provider="local", model="large-v3")
     # 1.4 s is Whisper being sloppy about a line the CTC pass had right; 7 s is one of them lost
     assert [line.start for line in verified(primary, second).lines] == [10.0, None]
+
+
+# -- two slots, because the two jobs are bought in different places (§9.40) --------------------
+
+
+def test_one_provider_in_the_old_key_still_means_both():
+    from ytalbum.timing import TRANSCRIBE, kind_for
+
+    cfg = Config(timing_provider="local")
+    assert kind_for(cfg, ALIGN) == "local" and kind_for(cfg, TRANSCRIBE) == "local"
+    assert kind_for(cfg) == "local"  # asked without a capability at all
+    assert kind_for(Config()) == "none"
+
+
+def test_each_slot_wins_for_its_own_capability():
+    from ytalbum.timing import TRANSCRIBE, kind_for
+
+    cfg = Config(timing_provider="none", timing_align_provider="local", timing_draft_provider="deepgram")
+    assert kind_for(cfg, ALIGN) == "local"
+    assert kind_for(cfg, TRANSCRIBE) == "deepgram"
+
+
+def test_an_empty_slot_falls_back_and_a_filled_one_overrides():
+    from ytalbum.timing import TRANSCRIBE, kind_for
+
+    # the shape a config takes on the way from one setting to two: one slot written, one not
+    cfg = Config(timing_provider="local", timing_draft_provider="deepgram")
+    assert kind_for(cfg, ALIGN) == "local"          # untouched, still the old key
+    assert kind_for(cfg, TRANSCRIBE) == "deepgram"  # the new slot
+
+
+def test_what_the_page_may_offer_is_the_union_of_both_slots(tmp_path, monkeypatch):
+    from ytalbum.timing import TRANSCRIBE, can, capabilities_of
+
+    cfg = Config(timing_align_provider="local", timing_draft_provider="deepgram",
+                 timing_deepgram_key="k")
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: False)
+    # local can align (the extra decides at runtime; here it is faked as installed but without
+    # the second one), deepgram can only transcribe — and both are true at once, which no single
+    # provider could have said
+    monkeypatch.setattr(LocalTiming, "capabilities", lambda self: frozenset({ALIGN}))
+    assert capabilities_of(cfg) == frozenset({ALIGN, TRANSCRIBE})
+    assert can(cfg, ALIGN) and can(cfg, TRANSCRIBE)
+    # and the drafting slot cannot align, whatever the aligning slot can do
+    assert "align" not in provider(cfg, TRANSCRIBE).capabilities()
+
+
+def test_the_config_reads_both_slots_from_a_table_too(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text('[timing]\nprovider = "none"\nalign_provider = "local"\ndraft_provider = "deepgram"\n')
+    cfg = load(path)
+    assert cfg.timing_align_provider == "local" and cfg.timing_draft_provider == "deepgram"
+    assert cfg.timing_provider == "none"
+
+
+def test_a_slot_offers_only_what_that_kind_could_ever_do():
+    from ytalbum.timing import OFFERS, TRANSCRIBE
+
+    assert ALIGN not in OFFERS["deepgram"]        # transcribes, and the panel must not offer it
+    assert TRANSCRIBE in OFFERS["deepgram"]
+    assert OFFERS["none"] == ()
+    for kind in ("local", "http", "elevenlabs"):  # these depend on what is installed, not on kind
+        assert ALIGN in OFFERS[kind] and TRANSCRIBE in OFFERS[kind]

@@ -703,9 +703,9 @@ function lyricsPanel(p, t, d, editing) {
         actions[0]),
       // only where there is nothing to lose: a draft would otherwise overwrite words somebody has
       canDraft(t) ? h("button", { class: "quiet small", type: "button",
-        title: `Ask ${vendorName()} what it hears and put that in the editor as a draft.\n`
+        title: `Ask ${providerFor("transcribe")} what it hears and put that in the editor as a draft.\n`
           + "It is a machine's guess — half a song for some tracks — and nothing is saved until you save it."
-          + (sendsAudio() ? `\nThe audio of this track is sent to ${vendorName()}.` : ""),
+          + (sendsAudio("transcribe") ? `\nThe audio of this track is sent to ${providerFor("transcribe")}.` : ""),
         onclick: (e) => draftWords(e.currentTarget, p, t) }, `\u270e draft the words`) : null,
       // not offered for words of the user's: those are not lrclib's to replace, and the editor's
       // Delete is the way to let it answer again
@@ -850,21 +850,26 @@ function shiftStamps(area, by) {
 }
 
 // Only offered where a provider says it can do it; with the default provider (`none`) there is no
-// button at all and the page is what it was before any of this existed (§9.36).
+// button at all and the page is what it was before any of this existed (§9.36). Each capability asks
+// its own slot (§9.40): aligning and drafting can be two different providers, and everything that
+// follows from *which* — the name in the confirm, whether the audio leaves, the price — follows the
+// slot, never "the provider".
 const canAlign = () => (state.settings?.timing?.capabilities || []).includes("align");
 const canTranscribe = () => (state.settings?.timing?.capabilities || []).includes("transcribe");
 // a draft is only for a track with nothing to lose: no words, or only the note that LRCLIB has none
 const canDraft = (t) => canTranscribe() && !HAS_WORDS(t);
-const vendorName = () => state.settings?.timing?.provider || "the provider";
-const sendsAudio = () => Boolean(state.settings?.timing?.sends_audio);
+const providerFor = (what) =>
+  state.settings?.timing?.[what === "align" ? "align_provider" : "draft_provider"]
+  || state.settings?.timing?.provider || "the provider";
+const sendsAudio = (what) => Boolean(state.settings?.timing?.sends_audio?.[what]);
 
 // Asked once per provider per session, before the first request that leaves the machine. Not a
 // setting to be forgotten: the user is told what is about to happen, in the moment it happens.
 const told = new Set();
 
-function mayLeave(what) {
-  if (!sendsAudio() || told.has(vendorName())) return true;
-  const name = vendorName();
+function mayLeave(what, capability) {
+  const name = providerFor(capability);
+  if (!sendsAudio(capability) || told.has(name)) return true;
   if (!confirm([`The audio of this track is sent to ${name} to ${what}.`, "",
     "It leaves this machine and this network. Local providers (`local`, `http`) never do that.",
     `${name} charges for it — the settings panel shows their list price — and ytalbum never retries,`,
@@ -874,7 +879,7 @@ function mayLeave(what) {
 }
 
 async function draftWords(button, p, t) {
-  if (!mayLeave("write down what it hears")) return;
+  if (!mayLeave("write down what it hears", "transcribe")) return;
   const id = await submit("draft", { id: p.source_id, video_id: t.video_id }, button);
   if (id == null) return;
   const job = await jobSettled(id, 4800);
@@ -888,7 +893,7 @@ async function draftWords(button, p, t) {
 }
 
 async function alignWords(button, p, t, area, notice, timing) {
-  if (!mayLeave("place these words on its clock")) return;
+  if (!mayLeave("place these words on its clock", "align")) return;
   const id = await submit("align", { id: p.source_id, video_id: t.video_id, text: area.value }, button);
   if (id == null) return;
   notice.hidden = false;
@@ -1460,22 +1465,32 @@ const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromiu
 
 function renderSettings() {} // the panel is built when opened, so polling never overwrites what you type
 
-// What the provider row says under its label: what each choice means for the audio, and — for the
-// ones that charge — their list price with the date it was read (§9.37).
-function timingHelp(st) {
-  const base = "who may place timestamps on words: nobody, a model on this machine (the ytalbum[timing] "
-    + "extra), another machine running `ytalbum timing-serve`, or a paid service";
+// What each provider row says under its label: what that choice means for the audio, and — for the
+// ones that charge — their list price with the date it was read (§9.37). One row per capability
+// (§9.40), because the two can be different providers and each has its own answer.
+function timingHelp(st, what) {
+  const base = what === "align"
+    ? "who may place timestamps on the words you have: nobody, a model on this machine (the "
+      + "ytalbum[timing] extra), another machine running `ytalbum timing-serve`, or a paid service"
+    : "who may write down the words of a track that has none — a guess, offered only where there is "
+      + "nothing to lose";
   // whether a second method checks every alignment is worth a sentence: it changes what the user
   // gets (fewer stamps, and only agreed ones) and how long they wait (§9.38)
-  const second = st.timing?.verifies
+  const second = what === "align" && st.timing?.verifies
     ? " Every alignment is checked against a second method here, which takes about half again as long;"
       + " lines the two disagree about come back without a stamp."
     : "";
-  if (!st.timing?.sends_audio) return `${base}. Local and http never send anything off this network.${second}`;
-  const [price, checked] = st.timing.price || ["", ""];
-  return `${base}. ⚠ ${st.timing.provider} receives the audio of every track you use it on.`
+  if (!sendsAudio(what)) return `${base}. Local and http never send anything off this network.${second}`;
+  const [price, checked] = st.timing?.price?.[what] || ["", ""];
+  return `${base}. ⚠ ${providerFor(what)} receives the audio of every track you use it on.`
     + (price ? ` Their list price was ${price} (checked ${checked}).` : "");
 }
+
+// A slot offers only the kinds that could ever do its job: the drafting slot never lists a provider
+// that merely aligns, and the aligning slot never lists Deepgram, which transcribes and says so.
+const providersFor = (st, what) =>
+  ["none", "local", "http", ...(st.timing?.vendors || [])]
+    .filter((kind) => kind === "none" || (st.timing?.offers?.[kind] || []).includes(what));
 
 function openSettings() {
   const panel = $("#settings");
@@ -1500,9 +1515,12 @@ function openSettings() {
         h("input", { type: "number", name: "pot_idle_minutes", min: 1, max: 120, value: st.pot_idle_minutes })),
       row("Parallel YouTube requests", "1–4; more is faster but trips YouTube's bot check sooner",
         h("input", { type: "number", name: "concurrency", min: 1, max: 4, value: st.concurrency })),
-      row("Lyric timing", timingHelp(st),
-        h("select", { name: "timing_provider" }, ["none", "local", "http", ...(st.timing?.vendors || [])].map((m) =>
-          h("option", { value: m, selected: m === (st.timing?.provider || "none") }, m)))),
+      row("Placing words on the clock", timingHelp(st, "align"),
+        h("select", { name: "timing_align_provider" }, providersFor(st, "align").map((m) =>
+          h("option", { value: m, selected: m === providerFor("align") }, m)))),
+      row("Drafting words for a track that has none", timingHelp(st, "transcribe"),
+        h("select", { name: "timing_draft_provider" }, providersFor(st, "transcribe").map((m) =>
+          h("option", { value: m, selected: m === providerFor("transcribe") }, m)))),
       row("Timing endpoint", "for `http`: http://thatmachine:8770 — the audio never leaves your network",
         h("input", { type: "text", name: "timing_endpoint", value: st.timing?.endpoint || "", placeholder: "http://host:8770" })),
       ...(st.timing?.vendors || []).map((v) => row(`${v} API key`,
@@ -1525,7 +1543,11 @@ async function saveSettings(ev) {
     state.settings = await api("/api/settings", {
       library: f.library.value, cookies_from_browser: f.cookies_from_browser.value, musicbrainz: f.musicbrainz.checked,
       pot_mode: f.pot_mode.value, pot_idle_minutes: Number(f.pot_idle_minutes.value), concurrency: Number(f.concurrency.value),
-      timing_provider: f.timing_provider.value, timing_endpoint: f.timing_endpoint.value.trim(),
+      // the two slots are what the page writes now; `timing_provider` stays in the config as the
+      // fallback for whatever was there before, and is not touched from here (§9.40)
+      timing_align_provider: f.timing_align_provider.value,
+      timing_draft_provider: f.timing_draft_provider.value,
+      timing_endpoint: f.timing_endpoint.value.trim(),
       // only sent when something was typed: an empty field means "leave the key as it is"
       ...Object.fromEntries((state.settings.timing?.vendors || [])
         .filter((v) => f[`timing_${v}_key`]?.value)
