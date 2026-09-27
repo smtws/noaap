@@ -40,7 +40,7 @@ from .models import AlbumPlan
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
 from .tag import image_mime
-from .timing import ALIGN, PRICES, PROVIDERS, TRANSCRIBE, VENDORS, capabilities_of
+from .timing import ALIGN, PRICES, PROVIDERS, TRANSCRIBE, VENDORS, capabilities_of, verifies_with
 from .titles import natural_key
 from .trim import original_path
 from .youtube import Cancelled, YouTube
@@ -412,7 +412,10 @@ class App:
                        "keys": {v: bool(getattr(self.cfg, f"timing_{v}_key", "")) for v in VENDORS},
                        "vendors": list(VENDORS),
                        "price": list(PRICES.get(self.cfg.timing_provider, ("", ""))),
-                       "sends_audio": self.cfg.timing_provider in VENDORS},
+                       "sends_audio": self.cfg.timing_provider in VENDORS,
+                       # whether every alignment is checked against a second method (§9.38): it is
+                       # the provider's answer, and it costs the user time, so the panel says so
+                       "verifies": verifies_with(self.cfg)},
             "pot_mode": self.cfg.pot_mode,
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,

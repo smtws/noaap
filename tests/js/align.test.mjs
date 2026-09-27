@@ -101,3 +101,45 @@ test("the draft notice never claims more than a guess", () => {
   assert.doesNotMatch(text, /yours/);
   assert.equal(draftNotice(null), null);
 });
+
+// -- a second opinion (§9.38) -----------------------------------------------------------------
+
+const checked = (p, lines) => ({ provider: "local", model: "wav2vec2 + large-v3", parameters: p, lines });
+
+test("when two methods agree the notice says so", () => {
+  const timed = checked({ verified_against: "large-v3", compared: "2", disagreed: "0" },
+    [{ text: "one", start: 1 }, { text: "two", start: 2 }]);
+  const text = alignNotice(timed, applyStamps("one\ntwo", timed));
+  assert.match(text, /A second method agreed with every line it could compare\./);
+});
+
+test("and when they disagree about a few lines, why those have no stamp", () => {
+  const timed = checked({ verified_against: "large-v3", compared: "3", disagreed: "1" },
+    [{ text: "one", start: 1 }, { text: "two", start: null }, { text: "three", start: 3 }]);
+  const got = applyStamps("one\ntwo\nthree", timed);
+  assert.deepEqual(got.unplaced, [1]);
+  assert.match(alignNotice(timed, got), /disagreed on 1 of 3 lines, which is why those have no stamp/);
+});
+
+test("a whole-track disagreement keeps every stamp and says how total it was", () => {
+  // Measured, not assumed (catalog Y): on all five real tracks where this fired, the primary was the
+  // accurate method and the second had lost the song. Placing nothing threw away good work.
+  const timed = checked({ one_method: "a second method disagreed about the whole track",
+    compared: "20", disagreed: "16", lost: "14", lost_beyond: "5" },
+    [{ text: "one", start: 1 }, { text: "two", start: 2 }]);
+  const got = applyStamps("one\ntwo", timed);
+  assert.equal(got.text, "[00:01.0] one\n[00:02.0] two");
+  const text = alignNotice(timed, got);
+  assert.match(text, /disagreed about the whole track — 14 of 20 lines more than 5 seconds apart/);
+  assert.match(text, /one method's word: play the first line before you save it/);
+  assert.doesNotMatch(text, /which is why those have no stamp/);   // the per-line rule is off here
+});
+
+test("when the check could not run at all, the notice says so rather than implying agreement", () => {
+  const timed = checked({ unchecked: "the graphics card has no room left" },
+    [{ text: "one", start: 1 }, { text: "two", start: 2 }]);
+  const text = alignNotice(timed, applyStamps("one\ntwo", timed));
+  assert.match(text, /could not be checked against a second method \(the graphics card has no room left\)/);
+  assert.match(text, /one method's word/);
+  assert.doesNotMatch(text, /agreed/);
+});

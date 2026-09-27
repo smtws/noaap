@@ -10,7 +10,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
+import types
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -249,3 +251,183 @@ def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
     shutil.copy(opus_template, audio)
     timed = engine.align(audio, ["hello"], language="en")
     assert len(timed.lines) == 1 and timed.provider == "local"
+
+
+# -- a second opinion on an alignment (§9.38) ------------------------------------------------
+
+
+def timed_at(*starts: float | None) -> Timed:
+    return Timed(lines=[TimedLine(text=f"line {i}", start=s) for i, s in enumerate(starts)],
+                 provider="local", model="wav2vec2")
+
+
+def test_where_two_methods_agree_the_first_ones_number_is_kept():
+    from ytalbum.timing import verified
+
+    primary = timed_at(10.0, 20.0, 30.0)
+    second = Timed(lines=[TimedLine("a", 10.4), TimedLine("b", 20.9), TimedLine("c", 31.5)],
+                   provider="local", model="large-v3")
+    got = verified(primary, second, threshold=1.0)
+    # 0.4 s and 0.9 s apart is agreement and keeps the first method's number; 1.5 s is not
+    assert [line.start for line in got.lines] == [10.0, 20.0, None]
+    assert got.parameters["disagreed"] == "1" and got.parameters["compared"] == "3"
+    assert got.parameters["verified_against"] == "large-v3"
+    assert got.model == "wav2vec2 + large-v3"
+
+
+def test_a_line_only_one_method_placed_is_not_a_disagreement():
+    from ytalbum.timing import verified
+
+    got = verified(timed_at(10.0, None), Timed(lines=[TimedLine("a", None), TimedLine("b", 50.0)],
+                                               provider="local", model="large-v3"))
+    assert [line.start for line in got.lines] == [10.0, None]
+    assert got.parameters["compared"] == "0" and got.parameters["disagreed"] == "0"
+
+
+def test_when_the_second_method_loses_the_song_the_primary_is_kept_whole():
+    """The rule this shipped with placed nothing here. Catalog Y measured what that cost: on five of
+    sixteen real tracks it fired, and on all five the primary was the accurate method."""
+    from ytalbum.timing import verified
+
+    primary = timed_at(10.0, 20.0, 30.0, 40.0)
+    second = Timed(lines=[TimedLine("a", 99.0), TimedLine("b", 98.0), TimedLine("c", 97.0), TimedLine("d", 40.2)],
+                   provider="local", model="large-v3")
+    got = verified(primary, second)
+    # every stamp kept, including the three the second method disagrees with: the per-line rule is
+    # switched off in this regime, or the inversion would be hollow
+    assert [line.start for line in got.lines] == [10.0, 20.0, 30.0, 40.0]
+    assert got.parameters["one_method"] == "a second method disagreed about the whole track"
+    assert got.parameters["lost"] == "3" and got.parameters["compared"] == "4"
+
+
+def test_jitter_on_most_lines_is_not_a_lost_track(monkeypatch):
+    """The two rules are separate constants on purpose (§9.38): being generous about jitter must not
+    make a broken track look salvageable, and being strict about it must not condemn a good one."""
+    from ytalbum.timing import verified
+
+    primary = timed_at(10.0, 20.0, 30.0, 40.0)
+    # three of four lines 3 s apart: past the 2 s agreement width, nowhere near losing the song
+    second = Timed(lines=[TimedLine("a", 13.0), TimedLine("b", 23.0), TimedLine("c", 33.0), TimedLine("d", 40.2)],
+                   provider="local", model="large-v3")
+    got = verified(primary, second)
+    assert "nothing_placed" not in got.parameters
+    assert [line.start for line in got.lines] == [None, None, None, 40.0]  # the one they agree on
+    assert got.parameters["disagreed"] == "3" and got.parameters["lost"] == "0"
+
+
+def test_the_lost_width_is_configurable(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("timing_verify_lost = 8.0\n")
+    assert load(path).timing_verify_lost == 8.0
+    assert load(tmp_path / "none.toml").timing_verify_lost == 5.0
+
+
+def test_the_threshold_is_configurable():
+    from ytalbum.timing import verified
+
+    primary, second = timed_at(10.0), Timed(lines=[TimedLine("a", 12.0)], provider="local", model="w")
+    assert verified(primary, second, threshold=1.0).lines[0].start is None
+    assert verified(primary, second, threshold=3.0).lines[0].start == 10.0
+
+
+def test_verification_is_off_when_the_second_extra_is_not_installed(monkeypatch):
+    from ytalbum.timing_local import LocalTiming
+
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: False)
+    assert LocalTiming().verifying() is False
+    assert LocalTiming(verify=True).verifying() is False  # asked for, but there is nothing to ask
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    assert LocalTiming().verifying() is True              # the default follows the install
+    assert LocalTiming(verify=False).verifying() is False  # and can be turned off
+
+
+def test_the_config_carries_the_verification_settings(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("timing_verify = false\ntiming_verify_threshold = 2.5\n")
+    cfg = load(path)
+    assert cfg.timing_verify is False and cfg.timing_verify_threshold == 2.5
+    assert load(tmp_path / "none.toml").timing_verify is None  # unset means "whenever it is there"
+
+
+def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
+    """ctranslate2 loads the model happily and only then finds no libcublas (§9.38).
+
+    Found by running the cross-check for real on this laptop: torch brought CUDA 13, ctranslate2
+    wanted 12, and the guard that sat around the *load* never saw it.
+    """
+    from ytalbum.timing_local import LocalTiming
+
+    engine, said = LocalTiming(device="cuda"), []
+    engine.log = said.append
+    loaded: list[str] = []
+
+    class Model:
+        def __init__(self, device: str) -> None:
+            self.device = device
+
+        def run(self) -> str:
+            if self.device == "cuda":
+                raise RuntimeError("Library libcublas.so.12 is not found or cannot be loaded")
+            return "placed"
+
+    def load(name, device, compute_type):
+        loaded.append(device)
+        return Model(device)
+
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(load_faster_whisper=load))
+    assert engine._whisper_run(lambda model: model.run()) == "placed"
+    assert loaded == ["cuda", "cpu"]                     # one retry, on the processor
+    assert engine._whisper_device == "cpu"
+    assert any("libcublas" in line for line in said)     # and it says why it got slower
+
+
+def test_a_failure_that_is_not_the_trap_is_not_retried(monkeypatch):
+    from ytalbum.timing_local import LocalTiming
+
+    engine = LocalTiming(device="cuda")
+    tries: list[int] = []
+
+    def load(name, device, compute_type):
+        tries.append(1)
+        return object()
+
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(load_faster_whisper=load))
+    with pytest.raises(RuntimeError, match="no kernel image"):
+        engine._whisper_run(lambda model: (_ for _ in ()).throw(
+            RuntimeError("no kernel image is available for execution on the device")))
+    assert len(tries) == 1
+
+
+def test_a_full_graphics_card_moves_the_check_and_keeps_going(monkeypatch):
+    """8 GB does not hold the aligner, the separator and 3 GB of Whisper at once (section Y)."""
+    from ytalbum.timing_local import LocalTiming
+
+    engine, said, loaded = LocalTiming(device="cuda"), [], []
+    engine.log = said.append
+    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(
+        load_faster_whisper=lambda name, device, compute_type: loaded.append(device) or device))
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: True, empty_cache=lambda: None)))
+
+    def run(model):
+        if model == "cuda":
+            raise RuntimeError("CUDA failed with error out of memory")
+        return "placed"
+
+    assert engine._whisper_run(run) == "placed"
+    assert loaded == ["cuda", "cpu"]
+    assert any("no room left" in line for line in said)
+
+
+def test_the_default_width_of_agreement_is_two_seconds():
+    """Measured, not chosen: catalog Y's distances are jitter under ~1.5 s or 5 to 18 s apart."""
+    from ytalbum.timing import VERIFY_THRESHOLD, verified
+
+    assert VERIFY_THRESHOLD == 2.0
+    primary = timed_at(10.0, 20.0)
+    second = Timed(lines=[TimedLine("a", 11.4), TimedLine("b", 27.0)], provider="local", model="large-v3")
+    # 1.4 s is Whisper being sloppy about a line the CTC pass had right; 7 s is one of them lost
+    assert [line.start for line in verified(primary, second).lines] == [10.0, None]

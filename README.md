@@ -308,6 +308,7 @@ Four providers, and the first choice is whether the audio may leave the machine:
 |---|---|---|---|---|
 | `none` (default) | nothing | nowhere | — | — |
 | `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | align | ~12 s a track with a GPU, ~2 min without |
+| `local` + `timing-check` | and the second extra, **+3.09 GB of model** | nowhere | align (checked against a second method) **and** draft words | about +60%: 11 s → 18 s a track with a GPU, 2:46 → 4:29 without |
 | `http` | nothing on this machine | to the machine you name, and no further | align | the same, plus a second |
 | `elevenlabs` | an API key | **to ElevenLabs** | align **and** draft words | $0.22 per audio hour¹ |
 | `deepgram` | an API key | **to Deepgram** | draft words only | $0.0043 per audio minute¹ |
@@ -345,6 +346,39 @@ have. It cannot promise every line: one it will not place keeps its words and ge
 panel says how many. And it is a proposal, not an answer — press ▶ on the first line and you will
 know in a second whether it found the song.
 
+### A second opinion, and words without a vendor
+
+```sh
+uv pip install "ytalbum[timing,timing-check]"
+```
+
+The second extra adds a Whisper decoder — **3.09 GB of model, downloaded the first time it is used** —
+and with it two things:
+
+- **Every alignment is checked against a second method.** The two are very different (a CTC aligner
+  and a Whisper decoder), and [the spike](docs/spikes/2026-09-alignment.md) found that where they
+  agree they are right, and where they disagree one of them is out by half a song. So lines they
+  disagree about come back **without a stamp** and the editor says how many. But if the two are more
+  than `timing_verify_lost` seconds apart on *most* lines — 5.0 by default — then one of them has lost
+  the song rather than drifted, and in that case **you keep every stamp** and the editor tells you how
+  total the disagreement was: *"a second method disagreed about the whole track — 14 of 20 lines more
+  than 5 seconds apart — so this is one method's word: play the first line before you save it."* That
+  is the honest thing to do, because on the sixteen tracks this was measured on, whenever that
+  happened it was the **second** method that was lost and the first was right to within a second
+  (`docs/qa-catalog.md`, section Y). The check adds about **60%** to the time per track, measured over
+  sixteen tracks on both: 11 s → 18 s each with a GPU, 2:46 → 4:29 each without one. Turn it off with
+  `timing_verify = false`, or widen what counts as agreement with `timing_verify_threshold` — seconds,
+  **2.0** by default, and it
+  is the width of *agreement*, not a claim about accuracy: it says how far apart two methods may be
+  before neither is trusted, not how close either is to the song.
+- **“✎ draft the words” without a paid provider**, for a track that has none. About 2× real time on
+  a processor, and the same draft labels as any other provider — it is a guess either way.
+
+On CUDA there is a packaging trap worth knowing about: `ctranslate2` wants CUDA 12's `libcublas`
+while the installed `torch` may bring a different one. ytalbum notices, says so, and falls back to
+the processor; `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` puts the GPU back. On a machine
+without a GPU none of this applies — it is simply slower.
+
 ### The paid ones
 
 ```toml
@@ -378,6 +412,12 @@ or yours, is better than a guess.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
+**Two environment variables, not config keys**, both for people testing rather than listening:
+`YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
+host — a gateway, a proxy, or a server of your own speaking their shapes, which is how this feature
+was verified without spending anything — and `YTALBUM_LIVE_AUDIO` tells the opt-in live test which
+file to spend its one request on.
+
 ## Configuration
 
 `~/.config/ytalbum/config.toml` (or `$XDG_CONFIG_HOME`), all keys optional:
@@ -398,6 +438,9 @@ them.
 | `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `ytalbum timing-serve` runs. |
 | `timing_device` | `"auto"` | `cpu` or `cuda` to force the local provider's device. |
 | `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |
+| `timing_verify` | unset | Check each alignment against a second method. Unset means "whenever the `timing-check` extra is installed". |
+| `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
+| `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
 
 ## Limits
 

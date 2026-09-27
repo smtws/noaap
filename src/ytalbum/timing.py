@@ -151,6 +151,75 @@ def plain_lines(text: str) -> list[str]:
     return [STAMP.sub("", line).strip() for line in (text or "").splitlines() if STAMP.sub("", line).strip()]
 
 
+# -- two methods, checked against each other (§9.38) -----------------------------------------
+
+# Seconds two methods may differ by and still count as agreeing. 2.0, from the 16-track run in
+# catalog Y and not from taste: the distances come in two shapes — jitter under ~1.5 s, where the CTC
+# pass is the better of the two, and a real parting of the ways at 5–18 s, which is the failure this
+# mode exists for. At 1.0 s the check took stamps away from lines the primary had placed within 0.1 s
+# of a hand-checked sidecar, and every unplaced line is a manual action for whoever asked.
+VERIFY_THRESHOLD = 2.0
+# Seconds past which a line is not "two methods differing" but one of them having lost the song. The
+# two rules measure different things and must not share a constant: widening what counts as agreement
+# would otherwise widen what counts as a salvageable track. 5.0 is where catalog Y's distances
+# separate — jitter tails off below 2 s, real divergence sits at 5–18 s.
+VERIFY_LOST = 5.0
+MOSTLY = 0.5  # more than half the lines LOST means the two are not disagreeing, they are elsewhere
+
+
+def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
+             lost: float = VERIFY_LOST) -> Timed:
+    """Keep the stamps two independent aligners agree about — and say so when they do not.
+
+    Two regimes, and which one applies is decided by `lost`, not by `threshold`:
+
+    **They agree about the track** (at most half the comparable lines more than `lost` apart). Then
+    the per-line rule runs: a line the two place more than `threshold` apart comes back unplaced
+    rather than guessed at, and everywhere else the *primary* supplies the number.
+
+    **One of them has lost the song** (more than half the lines that far apart). Then the per-line
+    rule is switched off and **every** primary stamp is kept, with the disagreement stated loudly.
+    This inverts the rule this function shipped with, and the reason is a measurement rather than an
+    opinion (`docs/qa-catalog.md`, section Y): on all five of sixteen real tracks where the condition
+    fired, the primary was the accurate one — twice to within a tenth of a second of a hand-checked
+    sidecar — and the Whisper pass was 28 to 120 seconds out. Placing nothing caught a bad primary
+    nought times out of five and threw away a good alignment five times. A rule that cannot tell
+    *which* method is lost must not discard the one the evidence favours; telling them apart is
+    backlog item 21. Letting the per-line rule run here too would strip most of the stamps anyway and
+    make the inversion hollow.
+    """
+    lines = list(primary.lines)
+    checked = {i: line.start for i, line in enumerate(second.lines)} if second else {}
+    comparable = disagreed = gone = 0
+    for i, line in enumerate(lines):
+        other = checked.get(i)
+        if line.start is None or other is None:
+            continue
+        comparable += 1
+        apart = abs(line.start - other)
+        if apart > threshold:
+            disagreed += 1
+        if apart > lost:
+            gone += 1
+    elsewhere = comparable > 0 and gone > comparable * MOSTLY
+    out = []
+    for i, line in enumerate(lines):
+        other = checked.get(i)
+        apart = None if (line.start is None or other is None) else abs(line.start - other)
+        keep = elsewhere or apart is None or apart <= threshold
+        out.append(TimedLine(text=line.text, start=line.start if keep else None,
+                             end=line.end if keep else None))
+    parameters = dict(primary.parameters)
+    parameters.update({"verified_against": second.model if second else "",
+                       "threshold": f"{threshold:g}", "lost_beyond": f"{lost:g}",
+                       "compared": str(comparable), "disagreed": str(disagreed), "lost": str(gone)})
+    if elsewhere:
+        parameters["one_method"] = "a second method disagreed about the whole track"
+    return Timed(lines=out, provider=primary.provider,
+                 model=f"{primary.model} + {second.model}" if second else primary.model,
+                 version=primary.version, parameters=parameters)
+
+
 # -- words back into lines -------------------------------------------------------------------
 
 def _key(word: str) -> str:
@@ -249,6 +318,10 @@ class HttpTiming:
 
     def align(self, audio: Path, lines: list[str], *, language: str | None = None,
               check: Callable[[], None] | None = None) -> Timed:
+        return self._send("align", audio, lines, language, check)
+
+    def _send(self, what: str, audio: Path, lines: list[str], language: str | None,
+              check: Callable[[], None] | None) -> Timed:
         import httpx
 
         if check:
@@ -256,7 +329,7 @@ class HttpTiming:
         data = {"lines": "\n".join(lines), "language": language or ""}
         try:
             with audio.open("rb") as fh:
-                r = httpx.post(f"{self.endpoint}/align", data=data,
+                r = httpx.post(f"{self.endpoint}/{what}", data=data,
                                files={"audio": (audio.name, fh, "application/octet-stream")},
                                timeout=self.timeout)
             r.raise_for_status()
@@ -271,7 +344,9 @@ class HttpTiming:
 
     def transcribe(self, audio: Path, *, language: str | None = None,
                    check: Callable[[], None] | None = None) -> Timed:
-        raise TimingUnavailable("this endpoint only aligns words it is given")
+        if TRANSCRIBE not in self.capabilities():
+            raise TimingUnavailable(f"{self.endpoint} only aligns words it is given")
+        return self._send("transcribe", audio, [], language, check)
 
 
 # -- choosing one ------------------------------------------------------------------------------
@@ -283,7 +358,10 @@ def provider(cfg: Any) -> Timing:
     if kind == "local":
         from .timing_local import LocalTiming
 
-        return LocalTiming(device=getattr(cfg, "timing_device", "auto") or "auto")
+        return LocalTiming(device=getattr(cfg, "timing_device", "auto") or "auto",
+                           verify=getattr(cfg, "timing_verify", None),
+                           threshold=float(getattr(cfg, "timing_verify_threshold", VERIFY_THRESHOLD)),
+                           lost=float(getattr(cfg, "timing_verify_lost", VERIFY_LOST)))
     if kind in VENDORS:
         from .timing_cloud import cloud_provider
 
@@ -304,6 +382,19 @@ def capabilities_of(cfg: Any) -> frozenset[str]:
         return frozenset()
 
 
-__all__ = ["ALIGN", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "HttpTiming", "NoTiming", "Timed",
-           "TimedLine", "Timing", "TimingUnavailable", "capabilities_of", "language_of", "line_starts",
-           "lines_from_words", "plain_lines", "provider"]
+def verifies_with(cfg: Any) -> bool:
+    """Whether an alignment from this provider is checked against a second method (§9.38).
+
+    Asked of the provider, because the answer belongs to the machine doing the work: `local` says yes
+    when the second extra is installed, `http` repeats what the serving machine reported, and a vendor
+    has no such thing. The settings panel shows it, because it costs the user time.
+    """
+    try:
+        return bool(getattr(provider(cfg), "verifying", bool)())
+    except (TimingUnavailable, ImportError, OSError):
+        return False
+
+
+__all__ = ["ALIGN", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "HttpTiming",
+           "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "capabilities_of", "language_of",
+           "line_starts", "lines_from_words", "plain_lines", "provider", "verified", "verifies_with"]

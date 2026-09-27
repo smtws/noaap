@@ -27,6 +27,20 @@ timing = [
     "torch>=2.4",
     "torchaudio>=2.4",
     "demucs>=4.0.1",
+    # demucs imports numpy at module level and does not declare it (demucs/transformer.py), so a
+    # clean `uv sync --extra timing` installed the extra and still could not load the provider
+    "numpy>=1.26",
+]
+# A second opinion on every alignment, and the ability to draft words for a track that has none.
+# It carries a Whisper decoder — **3.09 GB of model on first use** — and is worth it only if you
+# want alignments checked without listening to them, or transcription without a paid provider:
+#     uv pip install "ytalbum[timing,timing-check]"
+# On CUDA, ctranslate2 wants CUDA 12's libcublas while torch may bring a different one; ytalbum
+# falls back to the processor and says so, and `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`
+# puts the GPU back. On a machine without one it is simply slower (about 2x real time).
+timing-check = [
+    "faster-whisper>=1.1",
+    "stable-ts>=2.19",
 ]
 
 [project.scripts]

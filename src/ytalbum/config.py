@@ -67,6 +67,11 @@ class Config:
     # page, never logged, and only needed by the provider that is actually configured.
     timing_elevenlabs_key: str = ""
     timing_deepgram_key: str = ""
+    # check an alignment against a second method when the `timing-check` extra is installed
+    # (§9.38). None = do it whenever it is available; false = never; true = and complain if it is not.
+    timing_verify: bool | None = None
+    timing_verify_threshold: float = 2.0  # seconds two methods may differ by and still agree
+    timing_verify_lost: float = 5.0  # seconds past which one of them has lost the song, not drifted
 
     def resolved_node(self) -> str | None:
         runtime = self.resolved_js_runtime()
@@ -118,6 +123,12 @@ def load(path: Path | None = None) -> Config:
     cfg.timing_device = str(data.get("timing_device") or timing.get("device") or "auto")
     cfg.timing_elevenlabs_key = str(data.get("timing_elevenlabs_key") or timing.get("elevenlabs_key") or "")
     cfg.timing_deepgram_key = str(data.get("timing_deepgram_key") or timing.get("deepgram_key") or "")
+    verify = data.get("timing_verify", timing.get("verify"))
+    cfg.timing_verify = None if verify is None else bool(verify)
+    cfg.timing_verify_threshold = float(data.get("timing_verify_threshold")
+                                        or timing.get("verify_threshold") or 2.0)
+    cfg.timing_verify_lost = float(data.get("timing_verify_lost")
+                                   or timing.get("verify_lost") or 5.0)
     return cfg
 
 

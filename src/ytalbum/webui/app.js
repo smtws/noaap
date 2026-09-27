@@ -1437,7 +1437,13 @@ function renderSettings() {} // the panel is built when opened, so polling never
 function timingHelp(st) {
   const base = "who may place timestamps on words: nobody, a model on this machine (the ytalbum[timing] "
     + "extra), another machine running `ytalbum timing-serve`, or a paid service";
-  if (!st.timing?.sends_audio) return `${base}. Local and http never send anything off this network.`;
+  // whether a second method checks every alignment is worth a sentence: it changes what the user
+  // gets (fewer stamps, and only agreed ones) and how long they wait (§9.38)
+  const second = st.timing?.verifies
+    ? " Every alignment is checked against a second method here, which takes about half again as long;"
+      + " lines the two disagree about come back without a stamp."
+    : "";
+  if (!st.timing?.sends_audio) return `${base}. Local and http never send anything off this network.${second}`;
   const [price, checked] = st.timing.price || ["", ""];
   return `${base}. ⚠ ${st.timing.provider} receives the audio of every track you use it on.`
     + (price ? ` Their list price was ${price} (checked ${checked}).` : "");

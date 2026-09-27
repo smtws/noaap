@@ -980,6 +980,57 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    to (§9.35). `YTALBUM_TIMING_BASE_<VENDOR>` redirects a client at another host: a gateway, a proxy,
    or the fake that made this package testable without a bill.
 
+38. ✅ A second opinion, and words from this machine (2026-09-27, P27, backlog item 16). A second
+   optional extra, `ytalbum[timing-check]` (faster-whisper, stable-ts; **3.09 GB of model on first
+   use**), which buys two things the first extra cannot: an alignment checked against an independent
+   method, and a draft of the words without a paid vendor. It is a *second* extra precisely because
+   of that size — the architecture exists to keep it out of the baseline, and `timing` alone stays
+   ~1.5 GB with the CPU build of torch.
+   **Two methods, and only what they agree on.** The primary pass is unchanged (wav2vec2 CTC over a
+   separated vocal stem); the check is a Whisper decoder hearing **the mixed track**, and the mix is
+   not a shortcut but the measured requirement — on the stem the same model left 11 of 42 lines
+   unplaced and put the rest 20 s early, on the mix it landed within 0.7 s of a hand-checked
+   sidecar. Hearing something different is also what makes it a second opinion rather than a second
+   pass. `verified()` keeps the *first* method's number where the two are within
+   `timing_verify_threshold` (2.0 s) and drops the stamp where they are not. **Which regime applies is
+   decided by a second, larger constant** — `timing_verify_lost`, 5.0 s. At most half the comparable
+   lines that far apart means the two agree about the *track*, and the per-line rule runs. More than
+   half means one of them has lost the song, and then **every primary stamp is kept** and the notice
+   says how total the disagreement was: *"a second method disagreed about the whole track — 14 of 20
+   lines more than 5 seconds apart — so this is one method's word: play the first line before you save
+   it."*
+   **That inverts the rule this slice was built with, and the reason is a measurement.** The first
+   version placed nothing at all in the whole-track case. Catalog Y asked what that cost: the
+   condition fired on five of sixteen real tracks, and on all five the CTC pass was the accurate one —
+   twice to within a tenth of a second of a hand-checked sidecar — while the Whisper pass was 28 to
+   120 s out. Placing nothing caught a bad primary nought times out of five and discarded a good
+   alignment five times. A rule that cannot tell *which* method is lost must not throw away the one
+   the evidence favours; telling them apart is backlog 21. The per-line rule is switched off in that
+   regime for the same reason — it would strip most of the stamps anyway and make the inversion
+   hollow. Both constants come from the same distances, which fall into two shapes with nothing
+   between them: eleven tracks at a median under 1.5 s, five at 28–120 s.
+   **The check may never cost the alignment.** Any failure in the second pass — a missing library, a
+   full graphics card, a model that merges lines — leaves the primary result standing with
+   `unchecked` naming the reason. This was found by running it, not by reasoning: three separate
+   failures did take the whole job with them first (catalog Y).
+   **8 GB of VRAM does not hold three models.** The aligner, the separator and 3 GB of Whisper
+   together overflow this laptop's card, so the cache is emptied before the check, an out-of-memory
+   is retried on the processor with a message that says why, and — the one that actually mattered —
+   Whisper is *released after each track*, because keeping it resident is what killed track two.
+   ctranslate2's CUDA-12 `libcublas` trap is caught at the same place, since it fires on the first
+   inference and not on the load, where the guard originally sat.
+   **Transcription is local now too**, and labelled exactly as P26's drafts are: a guess, offered
+   only where a track has no words, `lyrics_words_by = "local/large-v3"` on save. `timing-serve`
+   advertises whatever the machine it runs on actually has, so the `http` provider inherits the
+   second opinion when the serving machine has the extra and nothing when it does not — which is the
+   whole point of asking a provider what it can do instead of assuming.
+   **What it costs, measured on sixteen tracks both ways:** about **+60%** on either device — 11 s → 18 s
+   a track with the laptop's GPU, 2:46 → 4:29 without one. Which tracks cost most is not predictable
+   from whether the methods agree (the four divergent ones added *less*, +41% against +61%), so there
+   is nothing to optimise by; what drives it is how much of the track Whisper re-decodes.
+   Default: `timing_verify` unset means *check whenever the extra is installed*, because someone who
+   paid 3 GB for a second opinion wants it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1125,3 +1176,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A transcribe-only vendor must say so.** Deepgram's `capabilities()` is the mechanism that keeps
   the page honest, and it is the reason the boundary has `capabilities()` at all.
 - **A draft is labelled everywhere it appears** and is offered only where there is nothing to lose.
+
+### Decisions of 2026-09-27 (a second opinion, §9.38)
+
+- **A cross-check that costs the alignment is worse than no cross-check.** Every failure in the
+  second pass degrades to "unchecked" and keeps the first answer. Three real failures proved the
+  rule before it was written.
+- **The two methods must hear different things.** Running the second model on the same separated
+  stem made it useless (11 of 42 lines nowhere) *and* would have made agreement mean less.
+- **Two rules, two constants.** Per line: past `timing_verify_threshold` the stamp is not placed. Per
+  track: `timing_verify_lost` decides which regime applies. Sharing one number made generosity about
+  jitter widen what counted as a salvageable track.
+- **A check may not discard the better method.** The whole-track case keeps every primary stamp and
+  says loudly that a second method disagreed, because the measurement (catalog Y, five tracks out of
+  sixteen) found the primary right every single time the condition fired. The rule that placed nothing
+  was written first, tried, and overturned by its own evidence — which is the most useful sentence in
+  that section.
+- **Refuse rather than place a doubtful line.** A line the two disagree about keeps its words and
+  loses its stamp; the user has P23's ▶ and ± for exactly that. It costs some stamps the primary had
+  right — measured in catalog Y — and that is the price of not needing a human on every line.
+- **Disagreement about most of a track places nothing.** The failure mode that occurs is half a song
+  out; a half-filled editor would look like success.
+- **Size decides where something lives.** 3 GB is its own extra, off unless installed, and the
+  README says what it downloads before anyone types the command.

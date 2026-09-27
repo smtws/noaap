@@ -366,7 +366,7 @@ never offered where words exist, and remembered on save as `lyrics_words_by` so 
 settings row with the vendor's dated list price, and in a confirm before the first request of a
 session; nothing is ever retried, because a retry on a metered endpoint is a second invoice.
 
-## 16. A second aligner, for an automatic cross-check — OPEN, the user's call
+## 16. A second aligner, for an automatic cross-check — DONE (P27, DESIGN §9.38)
 
 Added 2026-09-27 out of P25, deferred from P24's recommendation. The spike's strongest safety result
 was that **two independent aligners agree where they are right**: a Whisper-based aligner and the
@@ -384,4 +384,80 @@ listening to every track.
 What P25 ships instead is option 1 of the spike's three: one aligner, `unplaced` honoured, the
 stamps labelled as a machine's proposal, and P23's ▶ on the first line as the check — which takes a
 second and catches exactly the failure mode that occurs (out by half a song, never by half a second).
+
+**Done 2026-09-27 (P27)** as its own extra, `ytalbum[timing-check]`, off unless installed. The build
+corrected one assumption from the spike and paid for three defects that only running it could find
+(catalog Y): the second model has to hear the **mixed** track — on the separated stem it left 11 of 42
+lines unplaced and put the rest 20 s early — and a failure of the check must never take the alignment
+with it, which the first three runs all did. `verified()` keeps the first method's stamp where the two
+agree within `timing_verify_threshold`, drops it where they do not, and places nothing at all where
+they disagree about most of a track. The same extra makes transcription local, so a draft no longer
+needs a vendor.
+
+## 17. One provider for two jobs — OPEN (P28, queued)
+
+Added 2026-09-27 out of P26/P27. `timing_provider` is a single setting, but the two capabilities are
+bought in different places: the machine that aligns best (`local`, free, needs the models) is rarely
+the one that transcribes best (a vendor, metered, needs nothing). Today choosing Deepgram for drafts
+gives up local alignment, and choosing `local` gives up drafting unless the 3 GB extra is installed.
+Split it into `timing_align_provider` and `timing_draft_provider`, keep `timing_provider` readable as
+both, and show only the providers that can do each job in each slot.
+
+## 18. The service parks 3 GB of VRAM after one alignment — OPEN (P30, queued)
+
+Found 2026-09-27 while measuring P27: the installed service, having aligned one track for the user,
+was still holding **2.9 GB** of the laptop's 8 GB card minutes later with nothing queued — enough to
+make the next process's separation fail with an out-of-memory. The models are cached per provider
+instance for good reason (the next track is free), but an idle desktop app should not sit on a third
+of the graphics card. Release them when the job queue goes idle — the reload costs seconds off a warm
+disk, which is the right trade for a machine someone is also using for something else.
+
+## 19. Publish lyrics to LRCLIB — OPEN (P31, queued)
+
+Decided by the user 2026-09-27. Timing lyrics by hand or checking a machine's proposal is work, and
+LRCLIB is where this project takes its lyrics from; giving corrected ones back costs one request. A
+**"Publish to LRCLIB"** action, offered only for a sidecar that is the user's own (`provenance.lyrics
+= user`) and synced, whose text is not byte-identical to an LRCLIB entry already held — never send
+LRCLIB its own words back — and never for a draft nobody has edited or for an instrumental. It uses
+the public publish API with its proof-of-work challenge, so no account and no key; it sends the
+**file's** duration, because the stamps belong to the cut file (§9.35). One press is one publish, with
+a confirm naming everything that leaves the machine and saying that it is public and irrevocable, and
+`lyrics_published` recorded so the same bytes are never offered twice.
+
+## 20. Seed MusicBrainz — OPEN (P32, queued)
+
+Decided by the user 2026-09-27, the other half of giving back. Where an album has no release match at
+all, **"Add to MusicBrainz"** opens MusicBrainz's own release editor in the user's browser, pre-filled
+by the documented form-seeding mechanism: artist credit, title, type, a Digital Media medium, the
+tracklist with the lengths measured from the files, the playlist URL as a relationship, and an edit
+note naming ytalbum. **ytalbum submits nothing** — the user reviews and submits, logged in as
+themselves, and no credentials ever enter this program. Where a matched recording's length disagrees
+with the file's, a **"Correct on MusicBrainz"** deep link with the numbers in the confirm, because the
+seeding mechanism does not cover recording edits and pretending otherwise would be worse than saying
+so. Compilations and hand-made playlists never get the button: MusicBrainz wants releases that exist
+as releases.
+
+## 21. Verify mode cannot tell which method is lost — OPEN (from P27's own evidence)
+
+Added 2026-09-27 out of catalog Y. When two aligners place a track 30–120 s apart, one of them has
+lost the song and ytalbum has no way to say which, so §9.38 trusts the primary **by policy**. That
+policy is right on the evidence — the condition fired on five of sixteen tracks and the primary was
+the accurate one every time:
+
+| track | \|primary − sidecar\| | \|second − sidecar\| |
+|---|---|---|
+| Lord of the Lost — Argent | median 0.31 s | median 120.21 s |
+| Mono Inc. — A Love That Never Dies | median 0.36 s | median 28.26 s |
+| Powerwolf — Armata Strigoi | median 0.13 s | median 54.82 s |
+| Sabaton — A Lifetime of War | median 0.95 s | median 93.70 s |
+| Warkings — Azrael | median 0.10 s | median 59.75 s |
+
+But policy is not evidence about *this* track, and the one track where the second method was better
+(Feuerschwanz — *Bastard of Asgard*, 0.60 s against 1.35 s) shows the primary is not always the one to
+keep. Four signals are available and none is used yet: the CTC pass's per-line scores, which
+`forced_align` already returns; the Whisper pass's own count of segments it failed to align (it
+reported 11 of 42 on the run where it was lost); stamps that fall outside the track's length; and
+breaks in monotonicity. With any of them the whole-track case could drop the method that is actually
+lost instead of the one policy distrusts — and the same signals would let the per-line rule say which
+of the two a dropped line should have believed.
 

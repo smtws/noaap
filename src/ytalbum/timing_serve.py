@@ -20,6 +20,7 @@ from email.policy import default as email_policy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from .config import load
 from .timing import ALIGN, TimingUnavailable
 from .timing_local import LocalTiming
 
@@ -45,11 +46,14 @@ def handler_for(engine: LocalTiming) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             if self.path.rstrip("/") in ("/capabilities", ""):
                 return self._json(200, {"capabilities": sorted(engine.capabilities()),
-                                        "device": engine.resolved_device(), "provider": "local"})
+                                        "device": engine.resolved_device(), "provider": "local",
+                                        # what this machine can do, which is the point of the command
+                                        "verifies": bool(getattr(engine, "verifying", bool)())})
             return self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:
-            if self.path.rstrip("/") != "/align":
+            path = self.path.rstrip("/")
+            if path not in ("/align", "/transcribe"):
                 return self._json(404, {"error": "not found"})
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_AUDIO:
@@ -59,13 +63,14 @@ def handler_for(engine: LocalTiming) -> type[BaseHTTPRequestHandler]:
             language = parts.get("language", (b"", ""))[0].decode("utf-8", "replace").strip() or None
             lines = [line for line in text.decode("utf-8", "replace").splitlines() if line.strip()]
             audio, filename = parts.get("audio", (b"", ""))
-            if not lines or not audio:
-                return self._json(400, {"error": "need an audio file and some lines"})
+            if not audio or (path == "/align" and not lines):
+                return self._json(400, {"error": "need an audio file" + (" and some lines" if path == "/align" else "")})
             with tempfile.NamedTemporaryFile(suffix=Path(filename or "a.opus").suffix or ".opus") as tmp:
                 tmp.write(audio)
                 tmp.flush()
                 try:
-                    timed = engine.align(Path(tmp.name), lines, language=language)
+                    timed = (engine.align(Path(tmp.name), lines, language=language) if path == "/align"
+                             else engine.transcribe(Path(tmp.name), language=language))
                 except TimingUnavailable as e:
                     return self._json(400, {"error": str(e)})
                 except Exception as e:
@@ -93,7 +98,12 @@ def _multipart(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
 
 def serve(host: str = "0.0.0.0", port: int = 8770, device: str = "auto") -> int:
     """Run until interrupted. Binds to every interface by default: that is the point of it."""
-    engine = LocalTiming(device=device, log=lambda s: print(s, flush=True))
+    # the serving machine's own config decides its widths of agreement: it is the machine doing the
+    # checking, and the app on the other end cannot know what this one has installed
+    cfg = load()
+    engine = LocalTiming(device=device, log=lambda s: print(s, flush=True),
+                         verify=cfg.timing_verify,
+                         threshold=cfg.timing_verify_threshold, lost=cfg.timing_verify_lost)
     if ALIGN not in engine.capabilities():
         print("the timing extra is not installed here: uv pip install \"ytalbum[timing]\"")
         return 2

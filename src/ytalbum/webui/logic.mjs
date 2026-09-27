@@ -282,10 +282,26 @@ export function applyStamps(text, timed) {
 export function alignNotice(timed, result) {
   if (!result) return null;
   const by = (timed && timed.provider ? `${timed.provider}/${timed.model}` : "a provider");
+  const p = (timed && timed.parameters) || {};
+  // two methods ran and one of them lost the song: the stamps are the primary's, all of them, and
+  // the notice says how total the disagreement was (\u00a79.38, measured in catalog Y)
+  const whole = p.one_method
+    ? ` A second method disagreed about the whole track \u2014 ${p.lost} of ${p.compared} lines more than `
+      + `${p.lost_beyond || 5} seconds apart \u2014 so this is one method's word: play the first line before `
+      + "you save it."
+    : "";
   const left = result.unplaced.length;
   const kept = result.kept || 0;
+  // the check is an extra: when it could not run at all the alignment still stands, and saying so is
+  // the difference between "checked and agreed" and "nobody looked" (§9.38)
+  const checked = whole || (p.unchecked
+    ? ` It could not be checked against a second method (${p.unchecked}), so this is one method's word.`
+    : p.disagreed && Number(p.disagreed) > 0
+    ? ` Two methods were compared and disagreed on ${p.disagreed} of ${p.compared} lines, which is why those have no stamp.`
+    : p.verified_against ? " A second method agreed with every line it could compare." : "");
   return `timed by ${by} \u2014 a machine's proposal, nothing is saved yet: press \u25b6 on the first line`
     + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.` : ".")
+    + checked
     + (kept
       ? kept > 1
         ? ` ${kept} stamped lines without words were left as they were; check they are still in order.`

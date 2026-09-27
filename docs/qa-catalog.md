@@ -1589,10 +1589,200 @@ Written down rather than guessed at, per the task:
   `err_msg`, and falls back to the first 200 characters of the body, so a shape nobody documented
   still reaches the user as the vendor's own words.
 
+## Y. A second opinion on an alignment (P27, DESIGN §9.38)
+
+Run 2026-09-27 on **sixteen tracks copied read-only out of the real library** into the session's own
+cache: the four the P24 spike found the two methods far apart on (Feuerschwanz *Bastard of Asgard*,
+Lord of the Lost *Argent*, Mono Inc. *A Love That Never Dies*, Sabaton *A Lifetime of War*) and twelve
+it found them agreeing on, 731 stamped lines in all, English and German. Every track was aligned
+**twice** — once with the cross-check and once without — so the added time is measured rather than
+guessed, and a third pass recorded how far apart the two methods were per line, because the two
+constants in §9.38 should come from a distribution and not from a round number.
+
+Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB), which is the
+**favourable** case; the CPU column below is the figure closer to a typical install.
+
+- [x] **Y1 · M** — the sixteen tracks, and what the check costs on each
+
+| # | track | lines | alone | checked | +added | median apart | max apart | unplaced at 2 s | lost at 5 s | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 00 | DOMINUM — Killed by Life (en) | 42 | 12.7 s | 18.8 s | +6.1 s | 0.46 s | 1.77 s | 0 | 0 | 42 placed |
+| 01 | DOMINUM — Die for the Devil (en) | 45 | 10.5 s | 18.1 s | +7.6 s | 0.73 s | 18.27 s | 16 | 13 | 29 placed |
+| 02 | DOMINUM — Can’t Kill a Dead Man (en) | 49 | 9.9 s | 15.7 s | +5.8 s | 0.33 s | 9.77 s | 2 | 2 | 47 placed |
+| 03 | Die Legende von Nord — Bösewicht (de) | 39 | 11.4 s | 17.0 s | +5.6 s | 0.78 s | 2.77 s | 1 | 0 | 38 placed |
+| 04 | Feuerschwanz — Bastard of Asgard (de) | 61 | 10.7 s | 22.8 s | +12.1 s | 1.39 s | 5.17 s | 22 | 1 | 39 placed |
+| 05 | Kupfergold — Zombie Malone (de) | 51 | 10.2 s | 16.2 s | +6.0 s | 0.64 s | 17.24 s | 10 | 9 | 41 placed |
+| 06 | Lord of the Lost — 2000 Years a Pyre (en) | 37 | 12.1 s | 17.4 s | +5.3 s | 1.41 s | 33.95 s | 17 | 7 | 20 placed |
+| 07 | Lord of the Lost — Argent (en) | 46 | 14.9 s | 21.1 s | +6.2 s | 120.21 s | 171.75 s | 45 | 45 | **all 46 kept, flagged** |
+| 08 | Lord of the Lost — A War Within (en) | 40 | 14.1 s | 33.9 s | +19.8 s | 0.86 s | 23.23 s | 6 | 1 | 34 placed |
+| 09 | Michael Jackson — Ben (en) | 28 | 7.3 s | 11.4 s | +4.1 s | 0.83 s | 2.13 s | 2 | 0 | 26 placed |
+| 10 | Mono Inc. — A Love That Never Dies (en) | 43 | 13.2 s | 24.4 s | +11.2 s | 28.62 s | 87.00 s | 27 | 25 | **all 43 kept, flagged** |
+| 11 | Powerwolf — Armata Strigoi (en) | 31 | 10.5 s | 16.8 s | +6.3 s | 54.83 s | 139.19 s | 31 | 31 | **all 31 kept, flagged** |
+| 12 | Sabaton — A Lifetime of War (en) | 69 | 16.9 s | 27.9 s | +11.0 s | 94.53 s | 147.33 s | 69 | 69 | **all 69 kept, flagged** |
+| 13 | Saltatio Mortis — Brunhild (de) | 52 | 9.8 s | 15.0 s | +5.2 s | 0.47 s | 24.00 s | 1 | 1 | 51 placed |
+| 14 | Warkings — Azrael (en) | 55 | 11.6 s | 20.0 s | +8.4 s | 59.71 s | 80.31 s | 55 | 54 | **all 55 kept, flagged** |
+| 15 | dArtagnan — Alles aus Liebe (de) | 43 | 9.3 s | 18.7 s | +9.4 s | 0.48 s | 6.79 s | 1 | 1 | 42 placed |
+
+  The **alone** and **checked** columns are the same track aligned twice; **median/max apart** are the
+  per-line distances between the two methods; **unplaced at 2 s** and **lost at 5 s** are the two rules
+  of §9.38 counted separately. Every figure is on the GPU.
+  - **The distances come in two shapes**, which is what the two constants are for: eleven tracks sit
+    at a median under 1.5 s (jitter), five sit at 28–120 s (one method has lost the song). There is
+    nothing in between — no track has a median between 1.5 s and 28 s.
+  - **Cost of the per-line rule on a track where nothing is wrong:** a median of 1 line per track at
+    2.0 s across the twelve agreeing tracks, against 5–10 at 1.0 s. That is the measurement the
+    default came from.
+  - **result:** pass — the four tracks the spike flagged are all flagged here, and the check never
+    silently changed a stamp
+
+- [x] **Y2 · M** — and when the two part company, **which of them is wrong**
+
+  The question the rest of the section turns on, asked the same way the spike asked it: both methods
+  against the library's own `.lrc` (not ground truth — the spike found two sidecars 6.3 s out — but
+  independent of both aligners).
+
+| track | \|primary − sidecar\| | \|second − sidecar\| | what §9.38 did |
+|---|---|---|---|
+| Feuerschwanz — Bastard of Asgard | median 1.35 s, p90 3.94 | **median 0.60 s**, p90 2.66 | 39 placed, 22 dropped |
+| Lord of the Lost — 2000 Years a Pyre | median 0.86 s, p90 7.91 | median 0.90 s, p90 6.73 | 20 placed, 17 dropped |
+| Lord of the Lost — Argent | **median 0.31 s**, p90 1.47 | median 120.21 s | all kept, flagged |
+| Mono Inc. — A Love That Never Dies | **median 0.36 s**, p90 4.35 | median 28.26 s | all kept, flagged |
+| Powerwolf — Armata Strigoi | **median 0.13 s**, p90 0.36 | median 54.82 s | all kept, flagged |
+| Sabaton — A Lifetime of War | **median 0.95 s**, p90 1.11 | median 93.70 s | all kept, flagged |
+| Warkings — Azrael | **median 0.10 s**, p90 0.22 | median 59.75 s | all kept, flagged |
+
+  - **On all five tracks where the whole-track rule fires, the CTC pass was the accurate one** — twice
+    to within a tenth of a second — and the Whisper pass had lost the song. The rule as written has
+    caught a bad primary **nought times out of five** and discarded a good alignment five times.
+  - The two tracks it does *not* fire on are the only two where the second method is competitive: on
+    *Bastard of Asgard* it is the better of the two, which is also where the per-line rule earns its
+    keep (the 22 lines it drops are the primary's worst).
+  - The spike's own labels do not carry over: **Armata Strigoi** and **Azrael** were in its *agreeing*
+    twelve, because its second arm was whisperX and this extra's is stable-ts, and they lose different
+    songs.
+  - **result:** the rule was changed on this evidence — see *A rule tried and overturned* below
+
+  The verdict columns in both tables are what §9.38 does **now**. They are not what it did when the
+  run was made: at that point the whole-track case placed nothing, which is exactly what the run
+  disproved.
+
+- [x] **Y4 · M** — the same sixteen tracks without a graphics card
+
+  The GPU is the favourable case, so the whole set was aligned twice again on the processor alone
+  (`timing_device = "cpu"`), 11:25 to 13:32. **Timing only**: this arm ran with the code as it stood
+  before the rule was inverted, so its placement columns are not what ytalbum does now — the placement
+  figures in Y1 and Y2 are the ones that count.
+
+| # | track | GPU alone | GPU checked | CPU alone | CPU checked | the check costs |
+|---|---|---|---|---|---|---|
+| 00 | Killed by Life | 12.7 s | 18.8 s | 109.0 s | 186.4 s | +71% on the processor |
+| 01 | Die for the Devil | 10.5 s | 18.1 s | 141.1 s | 229.0 s | +62% on the processor |
+| 02 | Can’t Kill a Dead Man | 9.9 s | 15.7 s | 129.9 s | 200.7 s | +55% on the processor |
+| 03 | Bösewicht | 11.4 s | 17.0 s | 133.8 s | 213.2 s | +59% on the processor |
+| 04 | Bastard of Asgard | 10.7 s | 22.8 s | 165.2 s | 450.1 s | +172% on the processor |
+| 05 | Zombie Malone | 10.2 s | 16.2 s | 167.1 s | 273.4 s | +64% on the processor |
+| 06 | 2000 Years a Pyre | 12.1 s | 17.4 s | 209.5 s | 321.6 s | +54% on the processor |
+| 07 | Argent | 14.9 s | 21.1 s | 266.6 s | 335.3 s | +26% on the processor |
+| 08 | A War Within | 14.1 s | 33.9 s | 238.5 s | 639.1 s | +168% on the processor |
+| 09 | Ben | 7.3 s | 11.4 s | 116.8 s | 156.4 s | +34% on the processor |
+| 10 | A Love That Never Dies | 13.2 s | 24.4 s | 228.9 s | 357.6 s | +56% on the processor |
+| 11 | Armata Strigoi | 10.5 s | 16.8 s | 183.9 s | 264.4 s | +44% on the processor |
+| 12 | A Lifetime of War | 16.9 s | 27.9 s | 272.0 s | 330.3 s | +21% on the processor |
+| 13 | Brunhild | 9.8 s | 15.0 s | 148.2 s | 202.1 s | +36% on the processor |
+| 14 | Azrael | 11.6 s | 20.0 s | 179.8 s | 344.5 s | +92% on the processor |
+| 15 | Alles aus Liebe | 9.3 s | 18.7 s | 138.1 s | 225.1 s | +63% on the processor |
+
+  - **Medians: 11.1 s → 18.4 s on the card, 166 s → 269 s on the processor.** So the check costs about
+    **+60%** either way, and the whole job is roughly **15× slower** without a GPU: three minutes for
+    an alignment, four and a half with the second opinion, for a song of three to five minutes.
+  - **Divergence does not predict the cost**, which is what I expected before the table existed and
+    the table denies: the four tracks the methods argue about added a median of **+41%**, the twelve
+    agreeing ones **+61%**. The two expensive outliers (*Bastard of Asgard* +172%, *A War Within*
+    +168%) are one of each. What drives it is how much of the track Whisper re-decodes, not who is
+    right.
+  - **A library-wide pass is still a night's work on a processor** — 246 albums at four and a half
+    minutes a track — which is what the `http` provider and `timing-serve` exist for.
+  - **result:** pass
+
+- [x] **Y3 · R** — `timing-serve` advertises what its own machine has
+
+  Two servers side by side, from two different virtual environments:
+  - with both extras: `{"capabilities": ["align", "transcribe"], "device": "cuda", "provider":
+    "local", "verifies": true}`
+  - with `ytalbum[timing]` only: `{"capabilities": ["align"], …, "verifies": false}`
+  - the `http` provider in the app reports exactly what each answered — `['align', 'transcribe']` and
+    `['align']` — so a second opinion, like the models, can live on another machine
+  - `timing-serve` reads its *own* config for the two widths, since it is the machine doing the
+    checking
+  - **result:** pass
+
+### A rule tried and overturned by its own measurement
+
+The most useful thing this section did. §9.38 was built with the rule the spike's numbers suggested:
+where two aligners disagree about most of a track, place **nothing**, because a half-filled editor is
+worse than an empty one. The sixteen tracks say that rule is backwards.
+
+- It fired on **5 of 16** tracks. On **5 of 5** the primary was the accurate method (Y2), twice to
+  within a tenth of a second of the library's own sidecar, and the second method was 28–120 s out.
+- So it caught a bad primary **nought times out of five**, and threw away a correct alignment **five
+  times out of five** — on the longest tracks in the set, where hand-stamping 46 to 69 lines is the
+  work the feature exists to avoid.
+- The two tracks where it did *not* fire are the only two where the second method is competitive.
+  The check's per-line rule is genuinely useful there, and it is kept.
+
+What replaced it: in that regime **every primary stamp is kept** and the notice states the size of the
+disagreement — *"a second method disagreed about the whole track — 45 of 46 lines more than 5 seconds
+apart — so this is one method's word: play the first line before you save it."* The per-line rule is
+switched off there too, since applying it would strip most of the stamps and make the change hollow.
+Trusting the primary is a **policy**, not a measurement of *this* track; giving verify mode a way to
+tell which method is lost is backlog 21, and this run is its evidence.
+
+Two smaller lessons from the same run, both about believing a number:
+
+- **The second method must hear the mix, not the stem.** Feeding Whisper the separated vocal — the same
+  input the CTC pass needs — left 11 of 42 lines unplaced and the rest ~20 s early, which looked exactly
+  like "the primary is wrong" until both were compared against a sidecar. On the mixed track the same
+  model landed within 0.7 s. Two methods sharing a front end are not two opinions.
+- **A silent fallback invalidates a timing.** When the card is full, Whisper drops to the processor and
+  the work takes about **thirty times** as long. Nothing says so unless something logs it, and a
+  measurement that has quietly changed device is not the measurement anybody asked for. It cost twenty
+  minutes of a run before the progress bar gave it away.
+
+### Three defects of my own, every one found by running it
+
+Worth writing down because the green suite had no opinion on any of them: all three are about a
+second model on a real graphics card, and none is visible from the unit tests.
+
+1. **The CUDA-library guard sat where the error does not happen.** `ctranslate2` touches no CUDA
+   library until the *first inference*, so loading `large-v3` on the GPU succeeded and
+   `libcublas.so.12 is not found` arrived a minute later, killing the first run on track one. The
+   retry now wraps the inference. (The trap itself is known from the spike; the guard's placement was
+   the new mistake.)
+2. **8 GB does not hold the aligner, the separator and 3 GB of Whisper.** The cache is now emptied
+   before the check, an out-of-memory is retried on the processor with a message saying why, and — the
+   one that mattered — **a failure of the check never loses the alignment**: the primary result comes
+   back with `unchecked` naming the reason. Before that, three separate failures took the whole job
+   with them.
+3. **Whisper squatted on the card between tracks**, so track *two*'s separation died with "tried to
+   allocate 1.34 GiB". It is released after each check on a GPU, and kept on a processor where there
+   is nothing to compete for. A related trap, met twice: when the card is full the fallback to the
+   processor is *silent* unless something logs it, and the same work then takes **thirty times** as
+   long — the second time it cost me twenty minutes of a measurement run before I noticed the
+   progress bar.
+
+Beside them, one defect that was not mine: the `timing` extra installed **without numpy**, because
+`uv` resolves **demucs 4.1.0** on Linux and 4.1.0 declares no numpy at all (4.0.1 did, behind a darwin
+marker) while importing it at module level. So `ytalbum[timing]` installed cleanly and the provider
+then reported *"the local timing provider needs the optional extra"*. Found by the reviewer installing
+the extra into a clean project venv — not visible in a working tree that has numpy for other reasons.
+Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align']`, both extras →
+`['align', 'transcribe']`.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the Y cases (P27: a second opinion) | 4 | 0 in the design; 3 defects of my own (a CUDA guard in the wrong place, a full graphics card taking the whole job with it, a model squatting on the card between tracks) and **one rule of the design overturned by its own measurement** | Sixteen real tracks, 731 lines, aligned twice on a GPU and twice on a processor, plus both methods compared against the library's own sidecars. The check costs about +60% on either device. The whole-track rule that placed nothing was measured to be backwards — five for five it discarded a correct alignment — and now keeps every stamp and says so. 593 pytest + 60 node. |
 | 2026-09-27 | the X cases (P26: paid providers) | 7 | 0 in the design; 1 defect of my own (a finished draft discarded the editor), fixed | Against a server speaking the vendors' documented shapes — **nothing was ever billed**. Both vendors' capabilities, the confirm, the draft, the key redaction and the dated price all verified through the real page. 581 pytest + 56 node. |
 | 2026-09-27 | the W cases (P25: a timing provider) | 8 | 0 in the design; 2 defects of my own (the editor discarded when a read job finished, a missing import), both fixed before the commit | Scratch library with the spike's two mis-timed specimens. Local provider 12.2 s (GPU) and 108.4 s (CPU) for the same track, agreeing on 64 of 65 lines; the HTTP provider 19.3 s from an app with no torch installed. Both `.lrc` files corrected by about 6.4 s. 567 pytest + 52 node. |
 | 2026-09-27 | the V cases (P23: stamping to the file's clock) | 7 | 0 in the package; 1 blemish of my own (the shift field's width), fixed before the commit | A track trimmed to 1:30–5:20, so the player's clock and the file's differ by 90 s. The tap wrote `[00:24.9]` from a player time of 114.870, which is the arithmetic the case asks for. 554 pytest + 45 node. |
@@ -1615,7 +1805,7 @@ Written down rather than guessed at, per the task:
 
 ### Evidence methods that lied
 
-Seven of my own checks produced a false result, or none at all, before the software did anything
+Eight of my own checks produced a false result, or none at all, before the software did anything
 wrong. Use these forms:
 
 - **A layout check needs a picture *and* a measurement, and neither finds the other's faults.**
@@ -1649,6 +1839,15 @@ wrong. Use these forms:
 - **Process checks**: never `pgrep -f`/`pkill -f` with a pattern that appears in your own
   command line — it matches the shell running it. `pkill` that way killed the shell instead of
   the server. Check the **port** (`ss -ltnp | grep 8799`) or the log.
+- **Silence you designed in is not a stall, and an estimate needs the start time first.** A
+  measurement script of mine printed one row per track and nothing in between, because it passed no
+  log callback; when the log stopped growing I read it as a stalled track, reached for `ps` elapsed
+  figures that were giving nonsense, and told the reviewer a ninety-minute run would take five hours
+  — which became a question put to the user about cutting a measurement short. The process's own start
+  time settled it in one command: `ps -o lstart,etimes -p <pid>`, two tracks in eleven minutes, the
+  estimate wrong by a factor of three. Take the start time before saying anything about duration, and
+  log a wall-clock line per finished unit so the next claim has a number behind it rather than an
+  impression.
 
 ### Findings from the M pass
 
