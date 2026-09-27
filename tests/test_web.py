@@ -1241,3 +1241,27 @@ def test_opening_twice_in_a_row_does_not_queue_two_jobs(lyrics_server):
     c.get(f"/api/album?id={album_id}")
     assert len(app.jobs.recent(50)) == jobs_before  # that album is already in hand
     wait(c, held.id)
+
+
+def test_a_button_that_drops_its_background_must_set_its_own_colour() -> None:
+    """The P12 class of defect, twice now, so it gets a guard.
+
+    `button` paints itself accent-on-accent-ink. A variant that strips the background and says
+    nothing about colour keeps that ink, which is very nearly the page background in both themes —
+    so it renders invisible while every assertion about it passes. It shipped that way once as an
+    empty "you ↺" pill, and again as the `slack`-band length chip, unreadable at 1.00:1 in the light
+    theme over 103 tracks of the reference library (docs/qa-catalog.md, AI).
+    """
+    import re
+
+    css = (Path(__file__).parent.parent / "src/ytalbum/webui/style.css").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)          # comments may mention anything
+    offenders = []
+    for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        selector = " ".join(selector.split())
+        if "button" not in selector:
+            continue
+        drops = re.search(r"background(-color)?\s*:\s*(none|transparent)", body)
+        if drops and not re.search(r"(^|;)\s*color\s*:", body):
+            offenders.append(selector)
+    assert not offenders, f"these button rules drop the background without setting a colour: {offenders}"

@@ -2329,10 +2329,59 @@ on real audio. Details and the rule for adding a case are in `docs/regression.md
   the artist the case named, so it skipped with "not in this library" — a skip that reads like a fact
   about the library and was a fact about the test. A skip message has to be true.
 
+## AI. A chip nobody could see (P38, docs/regression.md)
+
+Found by looking at the album screenshot for P36, not by any assertion: the element, its class, its
+title and its click handler were all correct, and it was drawn in the page background colour.
+
+- [x] **AI1 · R** — the measurement, before the fix
+
+  `lengthChip` maps bands to classes with `{stub: "bad", big: "warn", slack: "", close: "muted"}`
+  (app.js) — **`slack` gets no class** — and `button.len.fix` stripped the background without setting
+  a colour, so it kept `button`'s `--accent-ink`, the ink meant to sit *on* the accent.
+
+  | chip | class | light | dark |
+  |---|---|---|---|
+  | inert | `len muted` | 5.49:1 | 5.78:1 |
+  | warning, clickable | `len warn fix` | 5.03:1 | 7.83:1 |
+  | **slack, clickable** | `len  fix` | **1.00:1** | **1.10:1** |
+
+  The span form of the same chip was always fine: it inherits ordinary text colour. Only the button
+  form disappeared, so the defect is exactly "a button variant with no colour rule of its own" — the
+  same shape as the empty `you ↺` pill of P12.
+  - **result:** confirmed, both themes
+
+- [x] **AI2 · R** — how far it reached
+
+  The invisible window is a gap of **10 to 20 s** with a MusicBrainz recording: above `lengthFix`'s
+  10 s threshold, below `lengthBand`'s 20 s `big`. That is the lower half of the band P32 added the
+  button for. Measured over the reference library: **103 of 2977** tracks that have an mbid and both
+  lengths — dArtagnan *Seit an Seit* (10.6 s), Feuerschwanz *Schubsetanz* and *Die Hörner Hoch*
+  (15.1 s), *Gangnam Style* (13.3 s), and 99 more.
+  - **result:** 103 tracks
+
+- [x] **AI3 · M** — the fix, measured on the page
+
+  `color: inherit` on `button.len.fix`; the `slack: ""` mapping stays, because the slack band's look
+  *is* ordinary text colour.
+
+  | theme | before | after |
+  |---|---|---|
+  | light | 1.00:1 | **17.04:1** |
+  | dark | 1.10:1 | **14.05:1** |
+  - **result:** pass
+
+- [x] **AI4 · R** — a guard, so the class of defect cannot return a third time
+
+  `tests/test_web.py`: any rule whose selector mentions `button` and which sets `background: none`
+  or `transparent` must also set `color`. Verified by removing the fix and watching it fail.
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AI cases (P38: a chip nobody could see) | 4 | 0 | `color: inherit` on `button.len.fix`. 1.00:1 → 17.04:1 light, 1.10:1 → 14.05:1 dark; 103 of 2977 tracks were in the invisible 10–20 s window. A CSS guard now forbids a button rule that drops its background without setting a colour — the P12 class, twice. album.jpg retaken. 712 pytest + 88 node. |
 | 2026-09-28 | the AH cases (P37: a corpus that keeps the measurements) | 4 | 0 in the design; 3 of my own in the corpus's own cases (two invented API names, the wrong lrclib entry and then no span, and a skip message that was my error rather than a fact about the library) | 27 fast cases over six fixtures, no model and no audio, 0.04 s. The slow half against the real library: 3 passed, 1 skipped (no `timing-check` extra), 89 s. Four dead heuristics each have a case that must keep failing them. 710 pytest + 88 node. |
 | 2026-09-27 | the AG cases (P35: an entry that is nearly this recording) | 3 | 0 in the design; 1 of my own (a criterion with no ceiling, declared and fixed before the design), 1 in the page (a stale verdict offering words to a track that had them) | 203 real candidates aligned against the files they claim to describe. 71% of the entries *beyond* 3% are still the recording's words, so length is a poor proxy and the alignment is the measurement. The only wrong song in 203 is one title collision. 683 pytest + 87 node. |
 | 2026-09-27 | the AF cases (P34: a draft that reads like a song) | 2 | 0 | The user's own draft, re-read: 11 lines → 17, longest a whole verse → 6.5 s, four gap markers, and a notice that counts seconds instead of lines. Four arms scored against LRCLIB's lyric for the recording: separating the voice doubles what Deepgram hears (16 → 32 of 52) and gains the local decoder a third (28 → 38). 665 pytest + 78 node. |

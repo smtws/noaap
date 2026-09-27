@@ -289,8 +289,14 @@ tr.lyrics .lyrics-actions .muted { font-size: .85em; }
 /* the length chip is also a button where MusicBrainz's own number looks wrong (§9.43): it must
    still read as the chip it has always been, so it takes the chip's own painting and only the
    cursor and the underline say it can be pressed */
-button.len.fix { cursor: pointer; font: inherit; border: 0; background: none; padding: 0;
+button.len.fix { cursor: pointer; font: inherit; color: inherit; border: 0; background: none; padding: 0;
                  text-decoration: underline dotted; text-underline-offset: .2em; }
+/* `color: inherit` is load-bearing. Stripping the background without it left the button with the
+   base button's ink, which is the colour meant to sit ON the accent — in both themes that is very
+   nearly the page background, so a `slack`-band chip (10-20 s out, no `warn` class) was drawn
+   invisible: 1.00:1 in the light theme and 1.10:1 in the dark, over 103 tracks of this library.
+   The span form of the same chip was always fine, because it inherits ordinary text colour; the
+   button form must look exactly like it (docs/qa-catalog.md, AI). */
 tr.lyrics .lines.preview { max-height: 11rem; margin-top: 0; }
 tr.lyrics .preview-head { font-size: .8em; margin-top: .2rem; }
 tr.lyrics .editor-with-preview { display: grid; gap: .4rem; }
