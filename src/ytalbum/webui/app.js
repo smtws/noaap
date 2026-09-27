@@ -726,11 +726,38 @@ async function lyricsTrack(button, p, t, reject) {
   await refreshAlbumPanel(); // the panel comes back with whatever lrclib answered this time
 }
 
+// The words being edited are what playback follows while the editor is open (§9.39), so the list
+// beside the textarea is drawn from the textarea and redrawn as it changes. `input` does not fire for
+// an assignment to `.value`, which is how every tool in here writes, so they all go through
+// `editorText` and the listener sees their work too.
+const PREVIEW_PAUSE = 150;  // ms: long enough that typing does not redraw on every keystroke
+
+function editorText(area, value) {
+  area.value = value;
+  area.dispatchEvent(new Event("input"));
+}
+
 function lyricsEditor(p, t, d) {
   const area = h("textarea", { class: "lyrics-edit", spellcheck: "false",
     rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)),
     onkeydown: (e) => editorKey(e, p, t, area) });
   area.value = d.text;
+  // read-only, and it writes nothing: Cancel leaves the file the truth again, Save makes the
+  // textarea the file, and until then this is the only way to hear whether a proposal fits
+  const preview = lyricsLines(p, t, d.text);
+  preview.classList.add("preview");
+  // it needs a name, or it reads as the saved lyrics shown twice: the point of it is that while the
+  // editor is open these are a *different* truth from the file beside the track
+  const previewHead = h("div", { class: "muted preview-head" },
+    "what you are editing, as it will play — click a line to hear it");
+  let pending = null;
+  area.addEventListener("input", () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      preview.replaceChildren(...Array.from(lyricsLines(p, t, area.value).children));
+      markLyricLine();  // the moment has not moved, but the stamps under it have
+    }, PREVIEW_PAUSE);
+  });
   // what a provider proposed, carried to the Save so the plan can record whose clock — and whose
   // words — these are
   const timing = { by: d.timed_by || "", words: d.words_by || "" };
@@ -740,7 +767,7 @@ function lyricsEditor(p, t, d) {
   const nudge = (delta, label) => h("button", { class: "quiet small", type: "button",
     title: `Move this line's stamp by ${label} s and play it from there (Alt+${delta < 0 ? "←" : "→"}${Math.abs(delta) > 0.1 ? " with Shift" : ""})`,
     onclick: () => nudgeStamp(p, t, area, delta) }, label);
-  return h("div", {}, area,
+  return h("div", { class: "editor-with-preview" }, area,
     h("div", { class: "panel-actions stamp-tools" },
       h("button", { class: "quiet small", type: "button",
         title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.",
@@ -754,6 +781,7 @@ function lyricsEditor(p, t, d) {
           + "Without a GPU this takes a couple of minutes for a four-minute track.",
         onclick: (e) => alignWords(e.currentTarget, p, t, area, proposal, timing) }, "⚖ align these words") : null,
       h("span", { class: "muted stamp-clock" })),
+    previewHead, preview,
     proposal,
     h("div", { class: "panel-actions" },
       h("span", { class: "muted" }, "shift every stamp by"), by, h("span", { class: "muted" }, "s"),
@@ -783,7 +811,7 @@ function tapStamp(p, t, area) {
   const playing = nowPlaying(p, t);
   if (!playing) return toast("Play this track first — a stamp is the moment you are hearing", "blocked");
   const got = tapped(area.value, area.selectionStart, toFileClock(audio.currentTime, trimOffset(playing)));
-  area.value = got.text;
+  editorText(area, got.text);
   area.focus();
   area.setSelectionRange(got.caret, got.caret);
 }
@@ -798,7 +826,7 @@ function nudgeStamp(p, t, area, delta) {
   const got = nudged(lines[i], delta);
   if (!got) return toast("This line has no stamp yet — stamp it first", "blocked");
   lines[i] = got.line;
-  area.value = lines.join("\n");
+  editorText(area, lines.join("\n"));
   const caret = lineStart(area.value, i);
   area.focus();
   area.setSelectionRange(caret, caret);
@@ -817,7 +845,7 @@ function shiftStamps(area, by) {
   if (!Number.isFinite(delta) || delta === 0) return toast("Type how many seconds to move every stamp by, e.g. -2.4", "blocked");
   const got = shifted(area.value, delta);
   if (!got.moved) return toast("There are no stamps to move yet", "blocked");
-  area.value = got.text;
+  editorText(area, got.text);
   toast(`moved ${got.moved} stamp${got.moved > 1 ? "s" : ""} by ${delta > 0 ? "+" : ""}${tenth(delta)} s — nothing is saved until you press Save`);
 }
 
@@ -876,7 +904,7 @@ async function alignWords(button, p, t, area, notice, timing) {
     return toast("the timing provider answered with nothing", "failed");
   }
   const got = applyStamps(area.value, timed);
-  area.value = got.text;
+  editorText(area, got.text);
   timing.by = job.result.by || "";
   notice.textContent = `⚠ ${alignNotice(timed, got)}`;
   area.focus();

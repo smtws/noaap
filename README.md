@@ -58,6 +58,12 @@ Comes with a command line and a small web app for the library.
   the player's on a trimmed track, and rounded to a tenth. Each stamp can then be played back and
   nudged by a tenth or a half until it sits right, or every stamp moved at once. Nothing is saved
   until you press Save.
+- **And you can judge the whole song before saving any of it.** While the editor is open, what you
+  are editing is what plays: a list beside the textarea is drawn from the words in it, the line being
+  sung is marked there as the song runs, and clicking a line jumps to it. Type a stamp, nudge one,
+  shift them all or take a provider's proposal, and the list follows at once — so "does this fit the
+  song?" is a question you answer by listening, not by saving and finding out. Cancel and the file
+  beside the track is in charge again.
 - **A track can take its audio from another video.** Where the playlist holds the official video —
   theatrical bits at both ends, a spoken passage in the middle — and the song exists on YouTube as
   its own upload, point the track at that one: it keeps its place, its name, its number and your

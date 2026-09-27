@@ -1716,6 +1716,61 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
     checking
   - **result:** pass
 
+## AA. The words being edited are what plays (P29, DESIGN §9.39)
+
+Run 2026-09-27 through the real page (Playwright, a second server on `:8799` with its own
+`XDG_CONFIG_HOME`), against a **scratch copy of Feuerschwanz — Fegefeuer** taken read-only out of the
+real library. The specimen is the spike's *Berzerkermode*, whose LRCLIB sidecar is about 6.3 s early:
+its saved stamps and an alignment of the same words differ by more than a line's width, which is the
+whole point of the case. The audio element was muted.
+
+- [x] **AA1 · R** — with the editor closed, nothing has changed
+  - the panel is the saved sidecar as before: `0:12 Berzerkermode ON`, `0:31 …`, `0:31 …`, and no
+    preview list exists in the DOM at all
+  - **result:** pass
+
+- [x] **AA2 · M** — the editor's list is the editor's words, not the file's
+  - Edit → the list appears below the tools, **66 timed lines**, first stamp `12.52` — the file's
+  - ⚖ align these words → the textarea fills with `[00:19.6]`, `[00:37.0]`, `[00:38.0]` and **the list
+    follows within the debounce**: `19.6`, `37`, `38`. The file on disk still says `12.52 / 31.06 /
+    31.92`
+  - notice: *"timed by local/VOXPOPULI_ASR_BASE_10K_DE + htdemucs — a machine's proposal, nothing is
+    saved yet: press ▶ on the first line. 1 stamped line without words was left as it was"*
+  - **result:** pass
+
+- [x] **AA3 · M** — the highlight follows the proposal, and the two truths are visibly different
+  - a preview line was clicked (`1:08 Party hard berserkermode`) and the track played on from there
+  - at player time **80.1 s** the marked line was the proposal's **79.8 s** *"Party hard berserkermode
+    ON"*, and `.line.now` was inside the preview
+  - the saved file would have marked a **different line** at that moment — its own `80.0 s` *"In der
+    Birne bisschen dumm"* — computed from the sidecar independently. This is the user's *two views fed
+    by two truths*, now decided the right way round
+  - **result:** pass
+
+- [x] **AA4 · M** — every kind of edit moves the highlight at once
+  - **shift all +30 s**: the textarea became `[00:49.6] …`, and 0.8 s later the marked line was
+    `150.3` at player time `153.2` — the walk agreeing exactly with the list's own stamps
+  - **typing**: inserting `[00:05.0] Typed by hand` at the top put `0:05 Typed by hand @5` at the head
+    of the list within the debounce
+  - so both paths are covered: the `input` event a person's keystrokes fire, and the tools, which fire
+    none and are routed through `editorText` for exactly that reason
+  - **result:** pass
+
+- [x] **AA5 · M** — Cancel gives the file back, Save makes the proposal the file
+  - Cancel → editor gone, no preview in the DOM, the list is the saved `12.52 / 31.06 / 31.92` again,
+    and at player time `205.2 s` the highlight was following **that** file's stamps (`185.66`)
+  - Save (after aligning again) → the `.lrc` on disk begins `[00:19.6] Berzerkermode ON`, and the plan
+    records `provenance.lyrics = user` with `lyrics_timed_by = "local/VOXPOPULI_ASR_BASE_10K_DE +
+    htdemucs 2.11.0+cu130"` — the words the user's, the clock the provider's, as §9.36 requires
+  - **result:** pass
+
+- [x] **AA6 · R** — what the picture said that the assertions did not
+  - the list rendered correctly and read as *a second copy of the lyrics*: nothing on screen said what
+    it was, and the panel showed the same words twice with different numbers. A caption was added —
+    *"what you are editing, as it will play — click a line to hear it"* — measured at **5.06:1**
+    against the page background, above the 4.5:1 minimum for body text
+  - **result:** pass after the fix
+
 ### A rule tried and overturned by its own measurement
 
 The most useful thing this section did. §9.38 was built with the rule the spike's numbers suggested:
@@ -1782,6 +1837,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AA cases (P29: the editor's own clock) | 6 | 0 in the design; 1 blemish of my own (the list had no name and read as the saved words shown twice), fixed before the commit | Scratch copy of *Fegefeuer* through the real page. The editor's list showed the alignment's `19.6` while the file still said `12.52`, and at player time 80.1 s the highlight marked the proposal's line where the file would have marked a different one. Cancel gave the file back; Save wrote the proposal with `lyrics_timed_by`. 593 pytest + 67 node. |
 | 2026-09-27 | the Y cases (P27: a second opinion) | 4 | 0 in the design; 3 defects of my own (a CUDA guard in the wrong place, a full graphics card taking the whole job with it, a model squatting on the card between tracks) and **one rule of the design overturned by its own measurement** | Sixteen real tracks, 731 lines, aligned twice on a GPU and twice on a processor, plus both methods compared against the library's own sidecars. The check costs about +60% on either device. The whole-track rule that placed nothing was measured to be backwards — five for five it discarded a correct alignment — and now keeps every stamp and says so. 593 pytest + 60 node. |
 | 2026-09-27 | the X cases (P26: paid providers) | 7 | 0 in the design; 1 defect of my own (a finished draft discarded the editor), fixed | Against a server speaking the vendors' documented shapes — **nothing was ever billed**. Both vendors' capabilities, the confirm, the draft, the key redaction and the dated price all verified through the real page. 581 pytest + 56 node. |
 | 2026-09-27 | the W cases (P25: a timing provider) | 8 | 0 in the design; 2 defects of my own (the editor discarded when a read job finished, a missing import), both fixed before the commit | Scratch library with the spike's two mis-timed specimens. Local provider 12.2 s (GPU) and 108.4 s (CPU) for the same track, agreeing on 64 of 65 lines; the HTTP provider 19.3 s from an app with no torch installed. Both `.lrc` files corrected by about 6.4 s. 567 pytest + 52 node. |

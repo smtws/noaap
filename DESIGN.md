@@ -1031,6 +1031,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Default: `timing_verify` unset means *check whenever the extra is installed*, because someone who
    paid 3 GB for a second opinion wants it.
 
+39. ✅ The words being edited are what plays (2026-09-27, P29, from the user's own test). *Alignment
+   works, but a proposal cannot be verified without saving it* — the user's finding, in their words:
+   **two views fed by two truths.** The follow-along highlight and the click-to-seek list read the
+   saved sidecar through `/api/lyrics`, while the proposal lives in the textarea, so the only way to
+   judge a whole song was to save it and find out. Alt+Enter on one line is not a judgement of a song.
+   **While the editor is open, the textarea is the truth for playback.** A read-only list sits below
+   the textarea, drawn from the textarea's own words, and it is the thing the player marks: the line
+   being sung is the last stamped line at or before the current moment, converted with the file's
+   clock exactly as a stamp is (§9.35). Clicking a line seeks to it. Nothing about the saved file
+   changes — the list writes nothing, Cancel puts the file back in charge, and Save does what it
+   always did.
+   **Every rewrite is seen, because they all go through one door.** The tools in the editor set
+   `textarea.value` directly, and an assignment fires no `input` event, so the list would have
+   followed typing and ignored the stamp, the nudge, the shift and the provider's proposal — the
+   four things it exists for. `editorText()` is that door; the redraw is debounced by 150 ms so
+   typing does not rebuild a 66-line list on every keystroke.
+   **The list is named**, because an unlabelled second copy of the words reads as the saved ones
+   shown twice: *"what you are editing, as it will play — click a line to hear it"*. That was a
+   screenshot's finding, not an assertion's.
+   The pure half is two functions in `logic.mjs` — `timedLines()` reads the textarea, `nowLine()`
+   picks the line for a moment — and they are what the seven node tests exercise, including the case
+   the feature is for: the same moment, before and after an edit, marking different lines.
+   Left out: marking the current line inside the textarea itself. A textarea has no per-line styling,
+   so it would mean replacing it with a contenteditable, and the list beside it already answers the
+   question.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1199,3 +1225,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   out; a half-filled editor would look like success.
 - **Size decides where something lives.** 3 GB is its own extra, off unless installed, and the
   README says what it downloads before anyone types the command.
+
+### Decisions of 2026-09-27 (the editor's own clock, §9.39)
+
+- **Two views must not be fed by two truths.** While the editor is open there is exactly one truth
+  for playback, and it is the textarea. The file is the truth again the moment the editor closes.
+- **One door for every rewrite.** Assigning `.value` fires no event; a redraw that listens for one
+  therefore has to be told. `editorText()` exists so that no tool can quietly stop being seen.
+- **A second copy of the words needs a name.** Found by looking at a screenshot, which is where the
+  page's unlabelled things are always found.

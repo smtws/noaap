@@ -281,6 +281,12 @@ tr.lyrics .lyrics-panel { display: grid; gap: .4rem; }
 tr.lyrics .lyrics-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 tr.lyrics .lyrics-actions > button { margin-left: 0; }
 tr.lyrics .lyrics-actions .muted { font-size: .85em; }
+/* The editor's preview (§9.39): the same list as the read-only panel's, drawn from the textarea.
+   It is shorter, because the textarea above it is the thing being worked in and the preview is
+   there to be watched — and it keeps the panel from growing past a screen with both of them open. */
+tr.lyrics .lines.preview { max-height: 11rem; margin-top: 0; }
+tr.lyrics .preview-head { font-size: .8em; margin-top: .2rem; }
+tr.lyrics .editor-with-preview { display: grid; gap: .4rem; }
 textarea.lyrics-edit {
   width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: .9em; line-height: 1.5; padding: .5rem; tab-size: 2;

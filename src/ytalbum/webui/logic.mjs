@@ -246,6 +246,29 @@ export function shifted(text, delta) {
   return { text: lines.join("\n"), moved };
 }
 
+// -- the words being edited, read as a clock (\u00a79.39) -------------------------------------------
+//
+// While the editor is open the textarea is the truth for playback: the follow-along highlight and
+// the click-to-seek list beside it are drawn from these two functions, not from the saved sidecar,
+// so a proposal can be followed through a whole song before anything is written. The stamps are in
+// the **file's** clock, like every stamp in the editor (\u00a79.35); converting the player's time is the
+// caller's job, exactly as it is for a tap.
+
+export function timedLines(text) {
+  return (text || "").split("\n").map((line) => ({ words: line.replace(STAMP, ""), at: stampOf(line) }));
+}
+
+// The line being sung: the last stamped line at or before this moment, in document order. Document
+// order and not the smallest distance, because a shift or a kept stamp can leave a file out of
+// order, and then what the reader wants is the line the file says comes next \u2014 the same walk the
+// page has always used for a saved sidecar. A line with no stamp is never the answer; -1 means the
+// song has not reached the first stamp yet.
+export function nowLine(lines, at) {
+  let found = -1;
+  (lines || []).forEach((line, i) => { if (line && line.at != null && line.at <= at) found = i; });
+  return found;
+}
+
 // -- stamps a provider proposed (\u00a79.36) ------------------------------------------------------
 
 // The provider is given the words without their stamps, one line each, blank lines dropped; what
