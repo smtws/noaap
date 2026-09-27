@@ -49,6 +49,7 @@ from .timing import (
     VENDORS,
     capabilities_of,
     kind_for,
+    release_gpu_memory,
     verifies_with,
 )
 from .titles import natural_key
@@ -179,6 +180,11 @@ class Jobs:
                 job.state = "failed"
             finally:
                 job.finished = time.time()
+                # nothing left to do in any lane: give the graphics card back (§9.41). It costs a
+                # dictionary lookup where no model was ever loaded, and the next job reloads from a
+                # warm disk in seconds — which is the right trade for a machine somebody else is using.
+                if not self.busy():
+                    release_gpu_memory()
 
 
 def _jsonable(value: Any) -> Any:

@@ -347,6 +347,12 @@ timing_endpoint = "http://thatmachine:8770"      # for "http"
 timing_device   = "auto"                         # "cpu" or "cuda" to force it
 ```
 
+**It gives the graphics card back.** Holding 3 GB of an 8 GB card while doing nothing would be rude
+to whatever else the machine is for — including its desktop — so ytalbum lets go as soon as there is
+nothing to do: the app's own service the moment its queue is empty, and `timing-serve` after
+`timing_idle_minutes` of quiet (set it to `0` on a machine that exists to serve this). The next
+request loads the models again off a warm disk and takes about the same time it did before.
+
 **What it does.** Given the words that are already in the editor, it places each line on the file's
 own clock. It downloads two models on first use, into torch's usual cache: a wav2vec2 aligner for
 the language (361 MB, English and German for now, chosen from the words themselves) and Demucs
@@ -454,6 +460,7 @@ file to spend its one request on.
 | `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |
 | `timing_verify` | unset | Check each alignment against a second method. Unset means "whenever the `timing-check` extra is installed". |
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
+| `timing_idle_minutes` | `5.0` | How long `ytalbum timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
 
 ## Limits

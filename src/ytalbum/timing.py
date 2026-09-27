@@ -13,11 +13,16 @@ another machine (`http`), and `docs/spikes/2026-09-alignment.md` is why it is sh
 
 from __future__ import annotations
 
+import gc
+import logging
 import re
+import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+log = logging.getLogger(__name__)
 
 ALIGN = "align"
 TRANSCRIBE = "transcribe"
@@ -412,6 +417,33 @@ def capabilities_of(cfg: Any) -> frozenset[str]:
     return frozenset(what for what in (ALIGN, TRANSCRIBE) if can(cfg, what))
 
 
+def release_gpu_memory() -> bool:
+    """Give the graphics card back when nothing is running (§9.41, backlog 18).
+
+    A provider is built per job and dropped with it, so the model weights go by themselves — but
+    torch keeps what it allocated in its own pool, and a desktop app sitting on 3 GB of an 8 GB card
+    with an empty queue is rude to whatever else wants it (it made a second process's separation fail
+    with an out-of-memory while P27 was being measured).
+
+    **Only if torch is already here.** An installation with no timing provider must never import it,
+    and importing 1.5 GB of it to free nothing would be the worst possible answer. What cannot be
+    returned this way is the CUDA context itself, a few hundred MB that belong to the process until
+    it exits.
+    """
+    torch = sys.modules.get("torch")
+    if torch is None:
+        return False
+    try:
+        if not torch.cuda.is_available():
+            return False
+        gc.collect()  # the pool can only release what nothing points at any more
+        torch.cuda.empty_cache()
+    except Exception:  # a tidy-up may never take a job's result with it
+        log.debug("could not release the graphics card", exc_info=True)
+        return False
+    return True
+
+
 def verifies_with(cfg: Any) -> bool:
     """Whether an alignment from this provider is checked against a second method (§9.38).
 
@@ -427,4 +459,4 @@ def verifies_with(cfg: Any) -> bool:
 
 __all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "HttpTiming",
            "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of", "kind_for",
-           "language_of", "line_starts", "lines_from_words", "plain_lines", "provider", "verified", "verifies_with"]
+           "language_of", "line_starts", "lines_from_words", "plain_lines", "provider", "release_gpu_memory", "verified", "verifies_with"]

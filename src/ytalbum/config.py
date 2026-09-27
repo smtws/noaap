@@ -77,6 +77,10 @@ class Config:
     timing_verify: bool | None = None
     timing_verify_threshold: float = 2.0  # seconds two methods may differ by and still agree
     timing_verify_lost: float = 5.0  # seconds past which one of them has lost the song, not drifted
+    # how long `ytalbum timing-serve` keeps its models loaded with nothing to do (§9.41). 0 = for
+    # ever, which is what a machine dedicated to this wants; the app's own service needs no timer,
+    # because it builds a provider per job.
+    timing_idle_minutes: float = 5.0
 
     def resolved_node(self) -> str | None:
         runtime = self.resolved_js_runtime()
@@ -136,6 +140,8 @@ def load(path: Path | None = None) -> Config:
                                         or timing.get("verify_threshold") or 2.0)
     cfg.timing_verify_lost = float(data.get("timing_verify_lost")
                                    or timing.get("verify_lost") or 5.0)
+    idle = data.get("timing_idle_minutes", timing.get("idle_minutes"))
+    cfg.timing_idle_minutes = 5.0 if idle is None else float(idle)
     return cfg
 
 

@@ -412,7 +412,7 @@ no Deepgram in the aligning list, an alignment ran locally in 8 s with no confir
 draft button on the same album warned that the audio goes to Deepgram. Nothing was sent: the confirm
 was cancelled, which is also what the case is for.
 
-## 18. The service parks 3 GB of VRAM after one alignment — OPEN (P30, queued)
+## 18. The service parks 3 GB of VRAM after one alignment — DONE (P30, DESIGN §9.41)
 
 Found 2026-09-27 while measuring P27: the installed service, having aligned one track for the user,
 was still holding **2.9 GB** of the laptop's 8 GB card minutes later with nothing queued — enough to
@@ -420,6 +420,16 @@ make the next process's separation fail with an out-of-memory. The models are ca
 instance for good reason (the next track is free), but an idle desktop app should not sit on a third
 of the graphics card. Release them when the job queue goes idle — the reload costs seconds off a warm
 disk, which is the right trade for a machine someone is also using for something else.
+
+**Done 2026-09-27 (P30).** Measured first: the idle figure was exactly the peak — **3314 MiB** held
+with an empty queue, nothing given back at all. The app's own service builds a provider per job, so
+its models were already gone and what lingered was torch's pool; it is emptied the moment no lane is
+busy, and the card drops to **180 MiB**, the CUDA context. `ytalbum timing-serve` keeps one engine
+alive, so it lets go of the models after `timing_idle_minutes` of quiet (default 5, `0` = never), and
+the next request reloads for nothing measurable (11.2 s against 11.8 s). The release never imports
+torch — it is a `sys.modules` lookup where no model was loaded. One defect of my own on the way, found
+by running it against a real server with a deliberately short timer: the watcher took the models out
+of a request that was still being served (catalog AB).
 
 ## 19. Publish lyrics to LRCLIB — OPEN (P31, queued)
 

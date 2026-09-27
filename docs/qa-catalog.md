@@ -1755,6 +1755,62 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AB. Giving the graphics card back (P30, DESIGN §9.41, backlog 18)
+
+Run 2026-09-27 on this laptop's RTX 4060 (8 GB), with `nvidia-smi
+--query-compute-apps=used_memory` sampled around real alignments of *Berzerkermode* — through the
+app's own service on `:8799` and through `ytalbum timing-serve` on `:8793`, both on the scratch copy
+of *Fegefeuer*.
+
+- [x] **AB1 · M** — what the defect actually was, measured before the fix
+  - the scratch server, minutes after its last alignment and with an empty queue, held **3314 MiB**
+  - that is the same number as the *peak during* an alignment: nothing had been given back at all.
+    The installed service showed the same thing at 2894 MiB while P27 was being measured, and that is
+    what made a second process's separation die with "tried to allocate 1.34 GiB"
+  - **result:** the defect, confirmed
+
+- [x] **AB2 · M** — the app's service gives it back when the queue empties
+  - one alignment through `/api/align`: peak **3314 MiB**, and **180 MiB** a few seconds later, with
+    the job `done` and 65 of 65 lines placed
+  - the 180 MiB is the CUDA context, which belongs to the process until it exits; everything else is
+    returned
+  - **result:** pass
+
+- [x] **AB3 · M** — `timing-serve` lets go of the models after its idle time
+  - `timing_idle_minutes = 0.5`, so a 30-second window. One alignment: 11.8 s, 4629 bytes of answer,
+    **3314 MiB** held. Then, sampled every 5 s: `3314, 3314, 3314, 3314, 3314, 3314, 180 …` — it let
+    go between +30 s and +35 s, exactly when it said it would
+  - the server's log says it in words: *"let go of the models; the next request loads them again"*
+  - **result:** pass
+
+- [x] **AB4 · M** — and the next request pays for it in nothing anybody can measure
+  - a second alignment after the release: the log shows the reload (*"loading the separator (htdemucs,
+    81 MB on first use)"*, *"loading the de aligner …"*) and the request took **11.2 s** against the
+    first one's 11.8 s — the weights come off a warm disk
+  - **result:** pass
+
+### The defect this found: a tidy-up that did not know the thing was in use
+
+The first live run of AB3 used a six-second idle window against an eleven-second alignment, and the
+request died:
+
+```
+File "…/timing_local.py", line 346, in _vocals
+    return vocals, int(self._separator.samplerate)
+AttributeError: 'NoneType' object has no attribute 'samplerate'
+```
+
+The watcher had released the models **while the request was still being served**. Two fixes, and both
+are the same lesson from different ends: a request now holds the `Idle` object while it works, so the
+watcher releases only when nothing is being served; and `_vocals` keeps the separator in a local
+rather than reading a cache twice that another thread may empty in between. A unit test with a fake
+clock now holds a request open across several idle periods and asserts that nothing is released,
+which is the case the live run found and no earlier test could have.
+
+It is worth saying how it was found: not by the suite, which was green, but by pointing the thing at
+a real server with a deliberately short timer. A timer set to a realistic five minutes would have
+hidden this for as long as nobody aligned a very long track.
+
 ## AA. The words being edited are what plays (P29, DESIGN §9.39)
 
 Run 2026-09-27 through the real page (Playwright, a second server on `:8799` with its own
@@ -1876,6 +1932,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AB cases (P30: giving the card back) | 4 | 0 in the design; 1 defect of my own (the idle timer released the models out of a running request), found live and fixed | 3314 MiB held after an alignment before the fix; 180 MiB after it, which is the CUDA context. `timing-serve` let go 30–35 s into a 30 s idle window and said so in its log; the next request reloaded in 11.2 s against 11.8 s. 609 pytest + 67 node. |
 | 2026-09-27 | the Z cases (P28: two slots) | 4 | 0 | `local` aligning and `deepgram` drafting on one album: the capability union, the panel offering no Deepgram for aligning, an 8 s local alignment with no confirm, and a draft confirm naming Deepgram that was cancelled — nothing was sent, and the key used was deliberately fake. 601 pytest + 67 node. |
 | 2026-09-27 | the AA cases (P29: the editor's own clock) | 6 | 0 in the design; 1 blemish of my own (the list had no name and read as the saved words shown twice), fixed before the commit | Scratch copy of *Fegefeuer* through the real page. The editor's list showed the alignment's `19.6` while the file still said `12.52`, and at player time 80.1 s the highlight marked the proposal's line where the file would have marked a different one. Cancel gave the file back; Save wrote the proposal with `lyrics_timed_by`. 593 pytest + 67 node. |
 | 2026-09-27 | the Y cases (P27: a second opinion) | 4 | 0 in the design; 3 defects of my own (a CUDA guard in the wrong place, a full graphics card taking the whole job with it, a model squatting on the card between tracks) and **one rule of the design overturned by its own measurement** | Sixteen real tracks, 731 lines, aligned twice on a GPU and twice on a processor, plus both methods compared against the library's own sidecars. The check costs about +60% on either device. The whole-track rule that placed nothing was measured to be backwards — five for five it discarded a correct alignment — and now keeps every stamp and says so. 593 pytest + 60 node. |

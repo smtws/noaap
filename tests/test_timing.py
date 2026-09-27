@@ -496,3 +496,142 @@ def test_a_slot_offers_only_what_that_kind_could_ever_do():
     assert OFFERS["none"] == ()
     for kind in ("local", "http", "elevenlabs"):  # these depend on what is installed, not on kind
         assert ALIGN in OFFERS[kind] and TRANSCRIBE in OFFERS[kind]
+
+
+# -- giving the graphics card back (§9.41, backlog 18) ----------------------------------------
+
+
+class Loadable:
+    """A provider that has models, for the timer to let go of."""
+
+    def __init__(self) -> None:
+        self.released = 0
+
+    def release(self) -> bool:
+        self.released += 1
+        return True
+
+
+def captured_watcher(monkeypatch) -> list:
+    """The helper starts a daemon thread; a test wants to drive it by hand, on a fake clock."""
+    watcher: list = []
+    monkeypatch.setattr("ytalbum.timing_serve.threading.Thread",
+                        lambda target, name=None, daemon=None:
+                        types.SimpleNamespace(start=lambda: watcher.append(target)))
+    return watcher
+
+
+def test_the_idle_timer_lets_go_after_the_configured_quiet(monkeypatch):
+    from ytalbum.timing_serve import idle_release
+
+    engine, clock, sleeps = Loadable(), [0.0], []
+    watcher = captured_watcher(monkeypatch)
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock[0] += seconds
+        if len(sleeps) > 20:
+            raise SystemExit  # the watcher runs for ever; this is how a test gets off
+
+    idle_release(engine, minutes=1, sleep=sleep, now=lambda: clock[0])
+    with pytest.raises(SystemExit):
+        watcher[0]()
+    assert engine.released >= 1
+    assert all(s == 15.0 for s in sleeps)  # it looks four times per idle period, not constantly
+
+
+def test_a_request_postpones_the_letting_go(monkeypatch):
+    from ytalbum.timing_serve import idle_release
+
+    engine, clock, ticks = Loadable(), [0.0], []
+    watcher = captured_watcher(monkeypatch)
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+        ticks.append(clock[0])
+        with idle:                    # something is aligned on every tick
+            clock[0] += 1
+        if len(ticks) > 30:
+            raise SystemExit
+
+    idle = idle_release(engine, minutes=1, sleep=sleep, now=lambda: clock[0])
+    with pytest.raises(SystemExit):
+        watcher[0]()
+    assert engine.released == 0        # a machine in use never has its models taken away
+
+
+def test_a_request_still_running_keeps_its_models(monkeypatch):
+    """The first live try took the separator out of a running alignment (catalog AB): a six-second
+    window and a ten-second job. Being *in* a request is not the same as having finished one."""
+    from ytalbum.timing_serve import idle_release
+
+    engine, clock, ticks = Loadable(), [0.0], []
+    watcher = captured_watcher(monkeypatch)
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds           # time passes, far beyond the idle window
+        ticks.append(clock[0])
+        if len(ticks) > 5:
+            raise SystemExit
+
+    idle = idle_release(engine, minutes=1, sleep=sleep, now=lambda: clock[0])
+    with idle, pytest.raises(SystemExit):   # a long request, held open the whole time
+        watcher[0]()
+    assert engine.released == 0
+    # and once it is over, the next quiet period does let go
+    with pytest.raises(SystemExit):
+        ticks.clear()
+        watcher[0]()
+    assert engine.released == 1
+
+
+def test_zero_minutes_means_never(monkeypatch):
+    from ytalbum.timing_serve import idle_release
+
+    engine = Loadable()
+    watcher = captured_watcher(monkeypatch)
+    idle = idle_release(engine, minutes=0)
+    with idle:                         # still usable, and does nothing at all
+        pass
+    assert watcher == [] and engine.released == 0   # no thread was even started
+
+
+def test_releasing_without_torch_is_a_dictionary_lookup(monkeypatch):
+    """An installation with no timing provider must not import 1.5 GB of torch to free nothing."""
+    from ytalbum.timing import release_gpu_memory
+
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    assert release_gpu_memory() is False
+
+
+def test_releasing_empties_the_pool_when_torch_is_here(monkeypatch):
+    from ytalbum.timing import release_gpu_memory
+
+    emptied: list[int] = []
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: True, empty_cache=lambda: emptied.append(1))))
+    assert release_gpu_memory() is True and emptied == [1]
+    # and on a machine with no card there is nothing to do
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: False, empty_cache=lambda: emptied.append(1))))
+    assert release_gpu_memory() is False and emptied == [1]
+
+
+def test_the_provider_lets_go_of_what_it_loaded(monkeypatch):
+    engine, said = LocalTiming(), []
+    engine.log = said.append
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: False, empty_cache=lambda: None)))
+    assert engine.release() is False          # nothing was loaded; nothing is said
+    assert said == []
+    engine._models, engine._separator = {"en": object()}, object()
+    assert engine.release() is True
+    assert engine._models == {} and engine._separator is None
+    assert any("next request loads them again" in line for line in said)
+
+
+def test_the_idle_minutes_are_configurable(tmp_path):
+    path = tmp_path / "c.toml"
+    path.write_text("timing_idle_minutes = 0\n")
+    assert load(path).timing_idle_minutes == 0.0          # 0 = keep them for ever
+    assert load(tmp_path / "none.toml").timing_idle_minutes == 5.0

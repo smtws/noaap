@@ -1078,6 +1078,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    and `http` can do either, since what they can do today depends on what is installed and on the
    machine at the other end, which `capabilities()` answers at runtime.
 
+41. ✅ Give the graphics card back (2026-09-27, P30, backlog 18). Found while measuring P27: the
+   installed service, having aligned one track for the user, was still holding **2.9 GB** of an 8 GB
+   card with an empty queue — enough to make another process's separation fail with an out-of-memory,
+   which it did. A desktop app should not sit on a third of the card while doing nothing.
+   **Two different situations, and only one of them needs a timer.** The app's own service builds a
+   provider per job and drops it with the job, so its models are already gone; what lingers is
+   torch's allocator pool, and `release_gpu_memory()` empties it the moment **no lane is busy**.
+   `ytalbum timing-serve` is the other case: one engine for the life of the process, so it lets go of
+   the models themselves after `timing_idle_minutes` of quiet (default 5; `0` means never, which is
+   what a machine dedicated to serving this wants).
+   **Only if torch is already in the process.** An installation with no timing provider must never
+   import it, and importing 1.5 GB to free nothing would be the worst possible answer — so the
+   release is a `sys.modules` lookup that costs nothing where no model was ever loaded.
+   **A tidy-up on a timer has to know the thing is in use.** The first live run took the separator
+   out of a *running* alignment (a six-second idle window against a ten-second job) and the request
+   died with `'NoneType' object has no attribute 'samplerate'`. A request now holds the `Idle` while
+   it works, and the watcher releases only when nothing is being served; the provider also keeps the
+   separator in a local, because a cache another thread may empty is not a place to read twice.
+   **Measured on this card** (`docs/qa-catalog.md`, section AB): 3314 MiB while the models are
+   loaded, **180 MiB** once released — that remainder is the CUDA context, which belongs to the
+   process until it exits. The next request reloads from a warm disk and costs nothing anybody can
+   measure: 11.8 s before the release, 11.2 s after it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1264,3 +1287,11 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   do — it is what each slot's provider can do for its own job.
 - **A list of choices should not contain a choice that cannot work.** Deepgram is absent from the
   aligning slot, because it transcribes and says so.
+
+### Decisions of 2026-09-27 (giving the card back, §9.41)
+
+- **An idle desktop app holds nothing it is not using.** The card is shared with whatever else the
+  machine is doing, including the desktop itself.
+- **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
+- **A timer must know when the thing is in use.** Found by running it: the first version took the
+  models out of a request that was still being served.

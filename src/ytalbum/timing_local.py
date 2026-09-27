@@ -35,6 +35,7 @@ from .timing import (
     TimedLine,
     TimingUnavailable,
     language_of,
+    release_gpu_memory,
     verified,
 )
 
@@ -227,6 +228,21 @@ class LocalTiming:
                      parameters={"device": self._whisper_device, "language": language or "detected",
                                  "temperature": "0"})
 
+    def release(self) -> bool:
+        """Let go of every model this provider has loaded (§9.41, backlog 18).
+
+        For the web service this is barely needed — a provider is built per job and dropped with it —
+        but `ytalbum timing-serve` keeps one for the life of the process, and a machine that is asked
+        to align one track an hour should not hold 3 GB of a graphics card for the other fifty-nine
+        minutes. The next request loads them again, in seconds off a warm disk, and says so in its log.
+        """
+        held = bool(self._models or self._separator or self._whisper)
+        self._models, self._separator, self._whisper = {}, None, None
+        if held:
+            self.log("let go of the models; the next request loads them again")
+        release_gpu_memory()
+        return held
+
     # -- the second opinion ----------------------------------------------------------------
 
     def _whisper_align(self, audio: Path, lines: list[str], lang: str) -> Timed:
@@ -319,15 +335,20 @@ class LocalTiming:
         except ImportError as e:
             raise TimingUnavailable(MISSING) from e
 
-        if self._separator is None:
+        # held in a local as well as in the cache: `release()` may empty the cache from another
+        # thread between these lines, and a separation that loses its separator half way through is
+        # the kind of failure that looks like a bug in the model (it happened, `docs/qa-catalog.md`
+        # section AB)
+        separator = self._separator
+        if separator is None:
             self.log(f"loading the separator ({SEPARATOR}, 81 MB on first use)")
-            self._separator = Separator(model=SEPARATOR, device=device, progress=False)
+            separator = self._separator = Separator(model=SEPARATOR, device=device, progress=False)
         if check:
             check()
         self.log(f"separating the voice from {audio.name} …")
-        _, stems = self._separator.separate_audio_file(audio)  # type: ignore[attr-defined]
+        _, stems = separator.separate_audio_file(audio)  # type: ignore[attr-defined]
         vocals = stems["vocals"].mean(0, keepdim=True).cpu()
-        return vocals, int(self._separator.samplerate)  # type: ignore[attr-defined]
+        return vocals, int(separator.samplerate)  # type: ignore[attr-defined]
 
 
 def has_whisper() -> bool:
