@@ -27,6 +27,95 @@ HIT_TTL = 30 * 24 * 3600
 MISS_TTL = 3600
 
 
+# The site, not the web service: seeding and editing are pages a person opens, not API calls
+# (§9.43). `YTALBUM_MUSICBRAINZ_WEB=http://127.0.0.1:8796` points them at a local stand-in, which is
+# how the seeding was verified without opening a real edit form.
+WEB = (os.environ.get("YTALBUM_MUSICBRAINZ_WEB") or "https://musicbrainz.org").rstrip("/")
+# what a YouTube playlist is to a release, in their vocabulary. Left for the editor to choose: the
+# numeric link_type is optional in the seeding format, and guessing it wrongly would be worse than
+# letting the person pick from the list that is already in front of them.
+SEED_NOTE = ("Seeded by ytalbum (https://github.com/smtws/ytalbum) from a YouTube playlist. "
+             "Track lengths are measured from the audio files. Please check everything before you submit.")
+
+
+def seed_url() -> str:
+    """Where the release editor takes a seeded form."""
+    return f"{WEB}/release/add"
+
+
+def recording_edit_url(mbid: str) -> str:
+    """The page where a person can correct one recording, which seeding cannot do for them."""
+    return f"{WEB}/recording/{mbid}/edit"
+
+
+def seed_release(plan: Any, lengths: dict[str, float] | None = None) -> dict[str, str]:
+    """The release editor's own form fields for this album (their documented seeding format).
+
+    Read from <https://musicbrainz.org/doc/Development/Release_Editor_Seeding> on 2026-09-27: a
+    form POST to `/release/add`, where only `name` is required and everything else is optional,
+    with `_x_` standing for an index. **ytalbum submits nothing** — these fields open a form with
+    the boxes already filled, and the person reviews it, logged in as themselves.
+
+    The lengths are the ones measured from the files, because that is the only number here that
+    MusicBrainz does not already have a better source for.
+    """
+    lengths = lengths or {}
+    fields: dict[str, str] = {
+        "name": plan.album or "",
+        "artist_credit.names.0.name": plan.albumartist or "",
+        "artist_credit.names.0.artist.name": plan.albumartist or "",
+        "mediums.0.format": "Digital Media",
+        "edit_note": SEED_NOTE,
+    }
+    # the kind of release, in their vocabulary. `single` is the only distinction this program makes
+    # that they also make; anything else is an album until a person says otherwise in the form.
+    fields["type"] = "Single" if plan.kind == "single" else "Album"
+    if plan.year:
+        fields["events.0.date.year"] = str(plan.year)
+    if plan.source_url:
+        fields["urls.0.url"] = plan.source_url
+    done = [t for t in plan.tracks if t.state == "done"]
+    for i, track in enumerate(sorted(done, key=lambda t: (t.disc, t.number))):
+        fields[f"mediums.0.track.{i}.name"] = track.title
+        fields[f"mediums.0.track.{i}.number"] = str(track.number)
+        seconds = lengths.get(track.video_id) or track.file_length or track.duration
+        if seconds:
+            fields[f"mediums.0.track.{i}.length"] = str(round(seconds * 1000))
+        # only where it differs from the album's: a credit repeated on every track is noise
+        if track.artist and track.artist != plan.albumartist:
+            fields[f"mediums.0.track.{i}.artist_credit.names.0.name"] = track.artist
+            fields[f"mediums.0.track.{i}.artist_credit.names.0.artist.name"] = track.artist
+    return fields
+
+
+def seedable(plan: Any) -> str:
+    """Empty when this album may be offered to MusicBrainz; otherwise why not (§9.43)."""
+    if plan.mbid:
+        return "MusicBrainz already has this release"
+    if plan.is_compilation:
+        return "MusicBrainz wants releases that exist as releases, not compilations"
+    if plan.kind == "artist_playlist":
+        return "this is a playlist somebody made, not a release"
+    if not any(t.state == "done" for t in plan.tracks):
+        return "nothing has been downloaded yet"
+    if not (plan.album or "").strip() or not (plan.albumartist or "").strip():
+        return "an album needs a title and an artist before it can be offered"
+    return ""
+
+
+def length_disagreement(track: Any, by: float = 10.0) -> dict[str, float] | None:
+    """Where the file and the recording disagree about how long the song is, by more than `by`.
+
+    Seeding cannot fix this: the format covers releases, not recordings. What is possible is a link
+    to the recording's own edit page and the two numbers, so the person can decide (§9.43).
+    """
+    ours = track.file_length or track.duration
+    if not (track.mbid and ours and track.mb_length):
+        return None
+    apart = abs(ours - track.mb_length)
+    return {"ours": round(ours, 1), "theirs": round(track.mb_length, 1), "apart": round(apart, 1)} if apart > by else None
+
+
 class MusicBrainzError(Exception):
     pass
 

@@ -1126,6 +1126,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `YTALBUM_LRCLIB_BASE` points the client at another host — a mirror, or the fake that let this be
    verified end to end without putting test words into a public database.
 
+43. ✅ Offering an album to MusicBrainz (2026-09-27, P32, backlog 20). The other half of giving
+   back: ytalbum reads MusicBrainz on every fetch, and an album it cannot find there is an album
+   nobody else can find either. **"Add to MusicBrainz"** on the album head opens *their* release
+   editor with the boxes filled in, through the documented seeding format (a form POST to
+   `/release/add`, read at <https://musicbrainz.org/doc/Development/Release_Editor_Seeding> on
+   2026-09-27).
+   **ytalbum submits nothing, and holds no credentials.** The page builds a hidden form and submits
+   it into a new tab; the person is signed in as themselves, reviews every field, and presses
+   MusicBrainz's own button — or does not. That is the whole reason this is seeding and not an API
+   client: an edit belongs to the person making it.
+   **Only what MusicBrainz would want.** Not a release they already have (the album has an `mbid`),
+   not a compilation, not somebody's artist playlist, nothing undownloaded, nothing without a title
+   and an artist. Where it is refused the head says which of those it was, in a line where the
+   button would have been, because a missing button teaches nobody anything.
+   **What is seeded** is the album title and artist credit, `type` (Album, or Single for a single),
+   one **Digital Media** medium, the tracklist with numbers, titles and the lengths **measured from
+   the files** in milliseconds, a track artist credit only where it differs from the album's, the
+   year, the playlist URL, and an edit note saying where it came from and asking the person to check
+   it. The `link_type` of the URL is deliberately left out: it is optional in their format, and a
+   wrong guess is worse than the dropdown that is already in front of them.
+   **The one thing seeding cannot do** is correct a recording, because the format is for releases. So
+   where the file and MusicBrainz disagree about a song's length by more than ten seconds and they
+   know the recording, **the length chip itself becomes the way to their page** — the chip that has
+   always shown the two numbers (§9.31). The first version of this put a second badge in the same row
+   printing the same numbers with the opposite implication; one place for one fact.
+   `YTALBUM_MUSICBRAINZ_WEB` points both at a stand-in, which is how this was verified without
+   opening a real edit form.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -1329,3 +1357,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   provenance; it does not make it new to them.
 - **One press, one request, one possible copy.** The publish POST is never retried.
 - **Record a fingerprint, not the text.** It answers "these again?" and nothing else.
+
+### Decisions of 2026-09-27 (offering an album, §9.43)
+
+- **An edit belongs to the person making it.** Seeding a form, never submitting one: no credentials
+  in ytalbum, and nothing reaches MusicBrainz that a person has not read.
+- **Offer only what they would want.** Compilations and hand-made playlists are not releases, and
+  the refusal says so where the button would have been.
+- **One place for one fact.** The length chip became the way to a recording's page rather than
+  gaining a neighbour that printed its numbers again.

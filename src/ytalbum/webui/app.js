@@ -1,7 +1,7 @@
-import { LENGTH, alignNotice, applyStamps, asTime, draftNotice, draftText, effectiveId, fmt, fold, foldMap, hits,
-         lengthBand, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow, nudged, numberByDisc, oneVideo,
-         ourLength, publishConfirm, publishState, refLength, resetKind, roundMark, shifted, sourceChange, stampOf,
-         tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
+import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
+         fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
+         nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLength, resetKind, roundMark,
+         seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
 // ytalbum web UI. No framework, no build step. All server text goes in via textContent.
@@ -486,6 +486,43 @@ async function refreshAlbumPanel() {
   for (const tr of document.querySelectorAll("#album tbody tr")) {
     const t = currentAlbum.tracks.find((x) => x.video_id === tr.dataset.id);
     if (t && before.get(t.video_id) !== rowKey(t)) tr.classList.add("changed");
+  }
+}
+
+// -- offering things to MusicBrainz (\u00a79.43) -------------------------------------------------
+//
+// Both of these open one of *their* pages. ytalbum holds no MusicBrainz credentials and submits
+// nothing: a seeded form is a form with the boxes filled in, and the person is signed in as
+// themselves in their own browser. Everything else here is about saying that first.
+
+function seedButton(p) {
+  const { can, why } = canSeed(p);
+  // An album MusicBrainz already has needs no explanation — the MB badge is the explanation. The
+  // other refusals get one visible line, because a button that is simply absent teaches nobody why.
+  if (!can) {
+    return why && !p.mbid ? h("span", { class: "muted seed-why", title: why }, why) : null;
+  }
+  return h("button", { class: "quiet", type: "button",
+    title: "Open MusicBrainz's release editor with this album filled in. Nothing is submitted: you review it there, signed in as you.",
+    onclick: (e) => seedMusicBrainz(p, e.currentTarget) }, "Add to MusicBrainz");
+}
+
+async function seedMusicBrainz(p, button) {
+  if (!confirm(seedConfirm(p))) return;
+  setWorking(button, true);
+  try {
+    const seed = await api(`/api/mbseed?id=${encodeURIComponent(p.source_id)}`);
+    // a form, not a link: the seeding format is a POST, and it must land in a tab of the user's own
+    const form = h("form", { method: "POST", action: seed.url, target: "_blank", hidden: true },
+      ...Object.entries(seed.fields).map(([name, value]) => h("input", { type: "hidden", name, value })));
+    document.body.append(form);
+    form.submit();
+    form.remove();
+    toast("MusicBrainz opened in a new tab \u2014 nothing was submitted", "done");
+  } catch (e) {
+    toast(e.message, "failed");
+  } finally {
+    setWorking(button, false);
   }
 }
 
@@ -1087,6 +1124,7 @@ function renderAlbum() {
             onkeydown: (e) => { if (e.key === "Enter") { const name = p.albumartist; closeAlbum(); showArtist(name); } } }, p.albumartist),
           ` — ${p.album}`, p.year ? h("span", { class: "muted" }, ` (${p.year})`) : null),
           h("div", { class: "muted" }, `${p.kind.replace("_", " ")} · ${p.tracks.length} tracks · ${p.folder}`))),
+      seedButton(p),
       h("button", { class: "quiet", type: "button", onclick: () => closeAlbum() }, "Close")),
     h("form", { id: "albumform", onsubmit: saveAlbum },
       h("div", { class: "fields" }, field("Album artist", "albumartist", p.albumartist), field("Album", "album", p.album), field("Year", "year", p.year, "number")),
@@ -1254,8 +1292,17 @@ function lengthChip(t) {
   const sources = [t.mb_length ? `MusicBrainz ${asTime(t.mb_length)}` : null, t.lyrics_length ? `LRCLIB ${asTime(t.lyrics_length)}` : null];
   const why = stub ? " — far too short to be this song (a teaser or a commentary clip?)"
     : band === "big" && gap > 0 ? " — an intro or outro to cut?" : "";
-  return h("span", { class: `len ${klass}`, title: `${sources.filter(Boolean).join(" · ")} · this file ${asTime(ours)}${why}` },
-    Math.round(Math.abs(gap)) === 0 ? "0:00" : `${gap > 0 ? "+" : "−"}${asTime(Math.round(Math.abs(gap)))}`);
+  const label = Math.round(Math.abs(gap)) === 0 ? "0:00" : `${gap > 0 ? "+" : "−"}${asTime(Math.round(Math.abs(gap)))}`;
+  const title = `${sources.filter(Boolean).join(" · ")} · this file ${asTime(ours)}${why}`;
+  // Where the gap is large and MusicBrainz knows this recording, the chip is also the way to their
+  // page (§9.43). One place for one fact: a second badge would have printed the same two numbers
+  // beside it with the opposite implication, which is how the first version of this looked.
+  const fix = lengthFix(t);
+  if (!fix) return h("span", { class: `len ${klass}`, title }, label);
+  return h("button", { class: `len ${klass} fix`, type: "button",
+    title: `${title} · click to open the recording on MusicBrainz, where their length can be corrected`,
+    onclick: () => { if (confirm(fixConfirm(t, fix))) window.open(`${state.settings?.musicbrainz_web || "https://musicbrainz.org"}/recording/${t.mbid}/edit`, "_blank", "noopener"); } },
+    label);
 }
 
 function suggestEnd(startInput, track) {

@@ -450,7 +450,7 @@ missing button explains nothing. Verified end to end through the page against a 
 documented shapes (catalog AC) — nothing reached lrclib.net, and the only live request in the package
 was a single `request-challenge`, which publishes nothing.
 
-## 20. Seed MusicBrainz — OPEN (P32, queued)
+## 20. Seed MusicBrainz — DONE (P32, DESIGN §9.43)
 
 Decided by the user 2026-09-27, the other half of giving back. Where an album has no release match at
 all, **"Add to MusicBrainz"** opens MusicBrainz's own release editor in the user's browser, pre-filled
@@ -462,6 +462,13 @@ with the file's, a **"Correct on MusicBrainz"** deep link with the numbers in th
 seeding mechanism does not cover recording edits and pretending otherwise would be worse than saying
 so. Compilations and hand-made playlists never get the button: MusicBrainz wants releases that exist
 as releases.
+
+**Done 2026-09-27 (P32).** Their documented seeding format, a form POST the page makes into a new
+tab, with the tracklist's lengths measured from the files. Where it is refused the head says which
+rule it was. The recording deep link found a duplication in the page — the length chip already prints
+both numbers — so the chip itself became the button rather than gaining a neighbour (catalog AD).
+Verified against a stand-in; nothing touched musicbrainz.org, because an edit form opened for real is
+a real edit waiting to be submitted.
 
 ## 21. Verify mode cannot tell which method is lost — OPEN (from P27's own evidence)
 

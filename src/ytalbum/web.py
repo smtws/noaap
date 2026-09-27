@@ -36,6 +36,8 @@ from . import config as config_mod
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
 from .lyrics import publishable, read_sidecar, reconcile, timings_stale
+from .mb import WEB as MB_WEB
+from .mb import seed_release, seed_url, seedable
 from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
@@ -467,6 +469,8 @@ class App:
                        # whether every alignment is checked against a second method (§9.38): it is
                        # the provider's answer, and it costs the user time, so the panel says so
                        "verifies": verifies_with(self.cfg)},
+            # where MusicBrainz lives, so the page can link to a recording it cannot seed (§9.43)
+            "musicbrainz_web": MB_WEB,
             "pot_mode": self.cfg.pot_mode,
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,
@@ -834,6 +838,16 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(self.app.state())
             case "/api/tracks":
                 return self._json(self.app.track_index())
+            case "/api/mbseed":
+                # the fields for MusicBrainz's own release editor (§9.43). Nothing is sent from
+                # here: the page builds a form with these and the person submits it themselves.
+                found = self.app.album(q.get("id", ""))
+                if not found:
+                    return self._error(HTTPStatus.NOT_FOUND, "no such album")
+                plan = found[1]
+                if why := seedable(plan):
+                    return self._error(HTTPStatus.BAD_REQUEST, f"this album is not one to offer: {why}")
+                return self._json({"url": seed_url(), "fields": seed_release(plan)})
             case "/api/album":
                 plan = self.app.album_view(q.get("id", ""))
                 return self._json(plan.to_dict()) if plan else self._error(HTTPStatus.NOT_FOUND, "no such album")

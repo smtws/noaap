@@ -1755,6 +1755,61 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
+## AD. Offering an album to MusicBrainz (P32, DESIGN §9.43, backlog 20)
+
+Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, with `YTALBUM_MUSICBRAINZ_WEB`
+pointing at **a stand-in that prints what a seeded form arrived with**. Nothing here touched
+musicbrainz.org: an edit form opened for real is a real edit waiting to be submitted, and a test has
+no business anywhere near one. The album's `mbid` was cleared and two recordings given a length
+45 s from the file's, to make the two cases exist.
+
+- [x] **AD1 · R** — offered where MusicBrainz has nothing, refused where it has or would not want
+  - the album head shows **"Add to MusicBrainz"**
+  - made a compilation: the button is gone and the head says, in its place, *"MusicBrainz wants
+    releases that exist as releases, not compilations"*
+  - `/api/mbseed` refuses the same album with 400 and that sentence, so a page that asked anyway
+    would be told no by the server
+  - **result:** pass
+
+- [x] **AD2 · M** — the form that opens, and what it carries
+  - the confirm first: *"MusicBrainz's release editor is about to open, with 11 tracks already filled
+    in… ytalbum submits nothing. The form opens in a new tab, signed in as you, and nothing reaches
+    MusicBrainz until you press their own submit button… MusicBrainz wants releases that were really
+    released."*
+  - the stand-in received a POST to `/release/add` with **41 fields**: `name = Fegefeuer`,
+    `artist_credit.names.0.name = Feuerschwanz`, `type = Album`, `mediums.0.format = Digital Media`,
+    `events.0.date.year = 2023`, the playlist's URL, the edit note naming ytalbum and asking for a
+    check, and eleven tracks — `mediums.0.track.0.{name, number, length}` with `length = 248581`,
+    milliseconds measured from the file
+  - no track artist credit was seeded on this album, because none of its tracks differs from the
+    album's artist (the differing case is covered in `tests/test_seed.py`)
+  - **result:** pass
+
+- [x] **AD3 · M** — the correction seeding cannot make
+  - the length chip on a track whose recording MusicBrainz has 45 s shorter is now a **button**; its
+    title reads *"MusicBrainz 3:23.6 · LRCLIB 3:35.1 · this file 4:08.6 — an intro or outro to cut? ·
+    click to open the recording on MusicBrainz, where their length can be corrected"*
+  - the confirm names both numbers and what ytalbum cannot do: *"ytalbum cannot seed a correction —
+    the seeding format is for releases, not recordings — so the change is yours to make, and only if
+    you are sure: a file can be shorter because it was trimmed, or longer because the upload has an
+    intro. Nothing is sent from here."*
+  - the stand-in logged `GET /recording/abe94365-…/edit`
+  - a track with a length difference but **no recording id** keeps a plain chip: there is nothing to
+    open
+  - **result:** pass
+
+### The defect the page found on itself: two affordances, one fact
+
+The first version put a separate badge in the track row — `MB ≠ 3:23.6` — next to the length chip.
+Looking at the row showed what that meant: **the chip already prints those two numbers**, and has
+since §9.31, with the reading *"an intro or outro to cut?"* — while the new badge printed them again
+with the opposite reading, *"their number may be wrong"*. Two affordances for one fact, disagreeing
+about what it means.
+
+The fix was to make the chip itself the button where MusicBrainz knows the recording and the gap is
+large, which is P14's lesson a second time: a diagnosis that is worth showing is worth acting on, and
+the place to act is where the diagnosis already is.
+
 ## AC. Giving the words back to LRCLIB (P31, DESIGN §9.42, backlog 19)
 
 Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, against **a server of my own
@@ -1994,6 +2049,7 @@ Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-27 | the AD cases (P32: offering an album to MusicBrainz) | 3 | 0 in the design; 1 of my own (a second badge printing the length chip's own numbers with the opposite implication), fixed by making the chip the button | Against a stand-in for their release editor — **nothing touched musicbrainz.org**. 41 seeded fields including eleven tracks with millisecond lengths measured from the files, the refusal for compilations shown where the button would be, and the recording deep link the seeding format cannot replace. 636 pytest + 75 node. |
 | 2026-09-27 | the AC cases (P31: publishing to LRCLIB) | 5 | 0 | Against a server speaking LRCLIB's documented publish flow — **nothing reached lrclib.net**, and the only live request in the package was one `request-challenge`, which publishes nothing. The gate, the confirm, the payload (with the file's length), the fingerprint, the never-twice rule and a refusal that changes nothing on disk. 621 pytest + 70 node. |
 | 2026-09-27 | the AB cases (P30: giving the card back) | 4 | 0 in the design; 1 defect of my own (the idle timer released the models out of a running request), found live and fixed | 3314 MiB held after an alignment before the fix; 180 MiB after it, which is the CUDA context. `timing-serve` let go 30–35 s into a 30 s idle window and said so in its log; the next request reloaded in 11.2 s against 11.8 s. 609 pytest + 67 node. |
 | 2026-09-27 | the Z cases (P28: two slots) | 4 | 0 | `local` aligning and `deepgram` drafting on one album: the capability union, the panel offering no Deepgram for aligning, an 8 s local alignment with no confirm, and a draft confirm naming Deepgram that was cancelled — nothing was sent, and the key used was deliberately fake. 601 pytest + 67 node. |

@@ -403,6 +403,64 @@ export function publishState(d) {
   return { show: false, label: "", can: false, title: "" };
 }
 
+// Offering an album to MusicBrainz (\u00a79.43). ytalbum never submits anything: the button opens
+// *their* release editor with the boxes filled in, and the person reviews it signed in as
+// themselves. So this half is only about when to offer, and what to say first.
+export function canSeed(plan) {
+  if (!plan) return { can: false, why: "" };
+  if (plan.mbid) return { can: false, why: "MusicBrainz already has this release" };
+  if (plan.kind === "compilation") return { can: false, why: "MusicBrainz wants releases that exist as releases, not compilations" };
+  if (plan.kind === "artist_playlist") return { can: false, why: "this is a playlist somebody made, not a release" };
+  if (!(plan.tracks || []).some((t) => t.state === "done")) return { can: false, why: "nothing has been downloaded yet" };
+  if (!String(plan.album || "").trim() || !String(plan.albumartist || "").trim()) {
+    return { can: false, why: "an album needs a title and an artist before it can be offered" };
+  }
+  return { can: true, why: "" };
+}
+
+export function seedConfirm(plan) {
+  const done = (plan.tracks || []).filter((t) => t.state === "done").length;
+  return [
+    `MusicBrainz's release editor is about to open, with ${done} track${done === 1 ? "" : "s"} already filled in:`,
+    "",
+    `    ${plan.albumartist} \u2014 ${plan.album}${plan.year ? ` (${plan.year})` : ""}`,
+    "    one Digital Media medium, the titles and the lengths measured from your files,",
+    "    the playlist's URL, and an edit note saying where it came from.",
+    "",
+    "ytalbum submits nothing. The form opens in a new tab, signed in as you, and nothing reaches",
+    "MusicBrainz until you press their own submit button. Check every field first:",
+    "the titles come from YouTube, and MusicBrainz wants releases that were really released.",
+    "",
+    "OK: open the form. Cancel: nothing opens.",
+  ].join("\n");
+}
+
+// A recording whose length MusicBrainz has wrong (\u00a79.43). Seeding cannot fix a recording \u2014 the
+// format is for releases \u2014 so what is possible is their edit page and the two numbers.
+export function lengthFix(track, by = 10) {
+  const ours = track && (track.file_length || track.duration);
+  if (!track || !track.mbid || !ours || !track.mb_length) return null;
+  const apart = Math.abs(ours - track.mb_length);
+  return apart > by ? { ours: Math.round(ours * 10) / 10, theirs: Math.round(track.mb_length * 10) / 10,
+    apart: Math.round(apart * 10) / 10 } : null;
+}
+
+export function fixConfirm(track, fix) {
+  return [
+    `MusicBrainz has a different length for “${track.title}”:`,
+    "",
+    `    their recording: ${asTime(fix.theirs)}`,
+    `    your file:       ${asTime(fix.ours)}  (${fix.apart} s apart)`,
+    "",
+    "Their recording page is about to open so you can look. ytalbum cannot seed a correction —",
+    "the seeding format is for releases, not recordings — so the change is yours to make, and",
+    "only if you are sure: a file can be shorter because it was trimmed, or longer because the",
+    "upload has an intro. Nothing is sent from here.",
+    "",
+    "OK: open the recording. Cancel: nothing opens.",
+  ].join("\n");
+}
+
 // The badge on a field: a button back to what ytalbum derived, a plain badge, or nothing.
 // Nothing is offered where nothing was derived — an album from before `auto` was recorded has
 // no value to go back to (§9.29).

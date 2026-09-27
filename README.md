@@ -430,8 +430,9 @@ or yours, is better than a guess.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
-**Three environment variables, not config keys**, all for people testing rather than listening:
+**Four environment variables, not config keys**, all for people testing rather than listening:
 `YTALBUM_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
+`YTALBUM_MUSICBRAINZ_WEB` points the seeding form and the recording links at another MusicBrainz;
 `YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
 host — a gateway, a proxy, or a server of your own speaking their shapes, which is how this feature
 was verified without spending anything — and `YTALBUM_LIVE_AUDIO` tells the opt-in live test which
@@ -456,6 +457,26 @@ press is one request, ytalbum never retries, and a refusal leaves everything her
 
 `YTALBUM_LRCLIB_BASE` points ytalbum at another LRCLIB — a mirror, or a server of your own, which is
 how this was tested without putting test words into the public one.
+
+## Offering an album to MusicBrainz
+
+Where an album is one MusicBrainz has never heard of, the album head offers **“Add to MusicBrainz”**.
+It opens *their* release editor in a new tab with the boxes already filled in — the title, the artist,
+one Digital Media medium, the tracklist with the lengths measured from your files, the playlist's URL
+and an edit note saying where it came from.
+
+**ytalbum submits nothing and holds no MusicBrainz account.** You are signed in as yourself, you
+check every field — the titles come from YouTube, and MusicBrainz wants releases that were really
+released — and you press their button, or you close the tab. It is not offered for a release they
+already have, for a compilation, for somebody's artist playlist, or for an album with nothing
+downloaded; where it is not offered, the head says which of those it was.
+
+One thing it cannot do: **correct a recording's length**. The seeding format covers releases, not
+recordings. So where your file and MusicBrainz disagree by more than ten seconds, the length chip in
+the track row becomes a button to that recording's page on MusicBrainz, with both numbers in the
+confirm — and the change, if there is one to make, is yours.
+
+`YTALBUM_MUSICBRAINZ_WEB` points both at another MusicBrainz (a test server, or a mirror).
 
 ## Configuration
 
