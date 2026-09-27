@@ -2,8 +2,19 @@
 
 What is not broken but missing for someone who lives in the web UI. Written 2026-09-26 by the
 reviewer after the QA run (`docs/qa-catalog.md`, fixes `1e3da95..bd0fe6f`, v0.2.0), from the
-code and the run's evidence rather than from clicking through the UI. Ordered by how much a
-daily user would feel each one. The owner agreed to start with item 1.
+code and the run's evidence rather than from clicking through the UI, and ordered by how much a
+daily user would feel each one.
+
+**This list is complete.** All 21 items are done, in that order, shipped between v0.2.0 and
+**v0.6.0**; each carries the package that closed it and the DESIGN slice that records the decision.
+So this file is a **record, not a queue** — read it to find out why something works the way it does,
+not to find out what is next. Later items are appended with their own number as they arise; the
+live queue is kept in the reviewer's ledger, which is not part of this repository.
+
+Two packages have no item here because they came from the user rather than from the QA run:
+**P34** (a draft that came back as 11 lines for a 3:25 song) and **P35** (an LRCLIB entry that was
+4.4 s from the file and refused, when it held the song's words all along). Both are in
+`docs/qa-catalog.md`, sections AF and AG, and in DESIGN §9.45 and §9.46.
 
 ## 1. Lyrics editor — DONE (P8, DESIGN §9.26)
 

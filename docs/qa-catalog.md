@@ -4,12 +4,21 @@ Hand-run checks from a user's point of view, aimed at the places where **feature
 trimming a track that has lyrics, renaming one that MusicBrainz matched, pruning an album whose
 order you set yourself. The pytest suite covers the pieces; this covers the seams.
 
-Derived from the code as of 2026-09-26 (379 tests when it was written, 516 after the fixes it produced and the seven backlog packages that followed; 246 albums in the reference library). Sections A–J are the original catalog, K–Q were added with the features they cover.
+Derived from the code as of 2026-09-26 and kept up with it since (379 tests when it was written,
+683 pytest plus 87 under node after the fixes it produced and the fourteen packages that followed;
+246 albums in the reference library). Sections A–J are the original catalog; K onwards were each
+added with the feature they cover, up to AG for v0.6.0.
 
 ## How to use it
 
 Tick a box when a case passes and write the one line that proves it. A case that fails gets the
 observed behaviour instead — that line is the bug report.
+
+**Two halves, two directions.** The case sections run **oldest first**, A to AG, so that reading
+straight through follows the software as it grew and a newcomer meets the lyrics editor before the
+near-miss check. The **Results** table at the end runs **newest first**, because that is the half
+you consult rather than read. Keep both as they are: a new section is appended with the next letter,
+a new result is prepended as the newest row.
 
 ### What the classes mean
 
@@ -1755,401 +1764,6 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
-## AG. An entry that is nearly this recording (P35, DESIGN §9.46)
-
-**The current gate has never refused something it could have matched.** Over this library's 1089
-tracks with no words at all, the number whose cached lrclib entry sits within the 3 s tolerance is
-**zero**. Everything below is about the boundary, not about a bug.
-
-Measured 2026-09-27, read-only, on the real library: every wordless track was asked about (the pass
-made **no new requests** — a lyrics run had already cached each one), and every candidate with the
-same artist and title was measured against the file it claims to describe.
-
-    wordless tracks                                              1089
-      a same-artist, same-title candidate with words exists       203
-        within 3 s — the gate takes it today                        0
-        over 3 s but within 3% of the file's length                74
-        beyond 3%                                                 129
-      no candidate with words at all                              886
-
-- [x] **AG1 · M** — do the words of a near miss belong to this recording?
-
-  The instrument is the aligner, and the criterion was written down **before** the run and not moved:
-  *fits* = the entry's stamps span ≥ 0.85 of the singing with ≤ 10% of lines unplaced; *does not fit*
-  = span < 0.75, span > 1.15, or > 25% unplaced; anything else is inconclusive and counted as neither.
-  The reference, measured before the criterion was fixed: LRCLIB's 52 lines against the user's own
-  *Blackbeard* — the 4.4 s miss that started this — span **0.968**, 52 of 52 lines placed.
-
-| population | fits | inconclusive | does not fit | uncheckable |
-|---|---|---|---|---|
-| near misses, 3 s to 3% (74) | **62** | 10 | 2 | — |
-| beyond 3%, the "control" (129) | **91** | 19 | 18 | 1 |
-
-  - the control is not a control: **71% of the entries beyond 3% are still this recording's words.**
-    The length gap is a poor proxy for "the same recording"; the alignment is a direct measurement
-  - fits are not marginal: span median 0.96 among the near misses, lowest 0.87
-  - **the span needed a ceiling, and I had not written one.** Four control candidates passed as fits
-    with the lyric spanning *more* than the singing — the worst an 83 s file against a 222 s entry at
-    span 1.60. A span over **1.15** is now a non-fit. The verdict is a pure function of two recorded
-    numbers, so both populations were recounted from the recordings rather than re-aligned
-  - **result:** pass
-
-- [x] **AG2 · M** — what the non-fits are, one by one
-
-  Every one of the 18 has **0% of its lines unplaced**: the aligner found all the words, in order, in
-  our audio. They are not wrong songs. What they are is a different *cut*:
-
-| track | our file | their entry | span | what it is |
-|---|---|---|---|---|
-| Schandmaul — Willst du (Live) | 305 s | 289 s | 0.45 | a live recording |
-| Schandmaul — Dein Anblick (Live) | 368 s | 313 s | 0.64 | a live recording |
-| ASP — Schneefall in der Hölle (Plakat…) | 342 s | 407 s | 0.65 | a marked variant |
-| Feuerschwanz — Ringelpietz (mit Anfassen) | 83 s | 222 s | 1.60 | a marked variant |
-| Faun — Wenn wir uns wiedersehen | 78 s | 199 s | 1.17 | a clip: our file is much shorter |
-| Lord of the Lost — Last Words | 344 s | 264 s | 0.66 | a longer cut |
-| Lord of the Lost — Prison | 346 s | 302 s | 0.66 | a longer cut |
-| Lord of the Lost — Sex on Legs | 268 s | 238 s | 0.72 | a longer cut |
-| Lord of the Lost — Dry the Rain | 277 s | 293 s | 0.57 | a shorter cut |
-| Darkher — Ghost Tears | 243 s | 254 s | 0.58 | a shorter cut |
-| Joachim Witt — Gloria | 286 s | 317 s | 0.68 | a shorter cut |
-| Assemblage 23 — Lullaby | 335 s | 324 s | 0.72 | a longer cut |
-| Saltatio Mortis — Wir sind Papst | 233 s | 222 s | 0.73 | a longer cut |
-| Feuerschwanz — Metfest (×2 in the library) | 253 s | 243 s | 0.73 | a longer cut |
-| Schandmaul — Knüppel aus dem Sack | 291 s | 270 s | 0.75 | a longer cut |
-| Warkings — Stahl auf Stahl | 226 s | 216 s | 1.23 | a longer cut |
-| Kupfergold — Met Kasalla Uss Valhalla | 239 s | 177 s | 1.29 | a longer cut |
-
-  - **the only wrong song in 203 candidates** is *Feuerschwanz — Gangnam Style* among the near
-    misses, at **71% of its lines unplaced** — a title collision, and the one case the aligner
-    rejects outright
-  - so the alignment answers two questions at once, and they are different questions: *how many
-    lines it can place* says whether these are the song's words, *how much of the singing they span*
-    says whether the entry's clock is this recording's
-  - **result:** pass — and this is what the three outcomes in §9.46 are built on
-
-- [x] **AG3 · M** — the outcomes, through the page, against a stand-in lrclib
-
-  A scratch copy of *Fegefeuer* with its words removed, and a server of my own answering with
-  deliberate near misses. Nothing touched lrclib.net.
-  - a 5.6 s near miss: the panel offered *"⚖ check them against the audio"*, the check aligned the
-    entry's words (**span 0.976, nothing unplaced**) and took **words and timings**; the sidecar was
-    written, the track retagged, and `lyrics_fit` recorded the two numbers
-  - an entry 124 s away: **no alignment was spent**, and the panel says *"lrclib has words for this
-    title, for a 1:35 recording; this file is 3:39.1 — probably another cut. Nothing was taken; you
-    can take the words as plain text."*
-  - taking them by hand: status `plain`, `lyrics_id` set, **owner unchanged** — lrclib's words stay
-    lrclib's however they were taken — and the sidecar holds the words without stamps
-  - **result:** pass. The *another cut* and *reject* outcomes are covered by the service tests with
-    fakes rather than here: a stand-in's synthetic words align to anything, so the page could not
-    have shown those two honestly
-
-### The defect the panel showed and no test had
-
-A track that already had words was still being offered *"take the words as plain text"*, because a
-verdict recorded earlier stayed in the plan and the panel read it without asking whether the words
-question was still open. Found by preparing a scratch album carelessly — the plan said "no words"
-while the `.lrc` files were still on disk, so `reconcile` made them the user's own words and the
-stale verdict kept offering more. Now the panel says only *where words came from* once there are any.
-
-## AF. A draft that reads like a song (P34, DESIGN §9.45)
-
-From the user's own test: **“draft the words” on Mr. Hurley & Die Pulveraffen — *Blackbeard*** (3:38)
-came back as **eleven lines**, one of them a whole verse of three sung lines, with a minute of silence
-in the middle that nothing on the screen mentioned, under the notice *“11 of 11 lines came with a
-time”*. Two faults, one ours and one the vendor's, measured 2026-09-27 on a read-only copy.
-
-- [x] **AF1 · M** — the line builder, on the user's own response
-
-  No new request: the same Deepgram answer, re-read.
-
-| | lines | longest line | gap markers | what the notice says |
-|---|---|---|---|---|
-| before | 11 | a whole verse (three sung lines) | none | "11 of 11 lines came with a time" |
-| after | **17** | **6.5 s** | **4** | "Words for 1:01.3 of 3:38.1 of audio, with 4 gaps longer than 6 s marked in the text" |
-
-  - lines now break where the singing pauses (over 0.6 s), not where the vendor put a full stop;
-    where a line must still be split, it splits **at its own longest internal pause** — the first
-    attempt cut at the twelfth word and left a line reading just *“Rauch.”*
-  - the holes are visible: `… (46 s without words)` stamped where the singing stopped
-  - **result:** pass
-
-- [x] **AF2 · M** — what the transcriber should listen to: the mix, or the separated voice?
-
-  Four arms on the same 218 s track, scored against **LRCLIB's own synced lyric for the recording**
-  (52 usable lines), which is a reference rather than my ear. Two of the arms are paid requests; that
-  is all the money this section spent.
-
-| arm | lines | covered | gaps | longest line | reference lines found | time |
-|---|---|---|---|---|---|---|
-| whisper · mix | 71 | 152.6 s | 0 | 8.9 s | 28 of 52 | 208 s |
-| whisper · **stem** | 54 | 144.4 s | 1 | 11.0 s | **38 of 52** | 116 s |
-| deepgram · mix | 17 | 61.3 s | 4 | 6.9 s | 16 of 52 | 3.9 s |
-| deepgram · **stem** | 27 | 103.3 s | 4 | 6.6 s | **32 of 52** | 21 s |
-
-  - **the voice wins for both vendors**: Deepgram doubles (16 → 32), the local decoder gains a third
-    (28 → 38). Drafting now separates first wherever the `timing` extra is installed, and says so
-  - **more lines is not better**: whisper on the mix wrote the *most* lines (71) and found the
-    *fewest* of the reference's (28) — it writes words over the instrumental passages. The stem arm
-    produced 54, almost exactly the reference's 52, and found ten more of them
-  - sending the isolated voice instead of the record is also less of somebody's music leaving the
-    house, which is worth having for free
-  - **result:** pass
-
-### The thing this found that was bigger than the package
-
-**LRCLIB has this song's words** — entry 24423598, 53 timed lines, the same recording. ytalbum
-refused it because the file is **218.06 s** and the entry says **213.68 s**: 4.4 s apart, against
-`TOLERANCE = 3.0`. The user was offered a machine's guess for a song whose words were one lookup
-away, and the eleven lines they got were a poor copy of something that already existed. A 2% length
-difference on a four-minute song is ordinary, so this is unlikely to be one track. It is not fixed
-here — a tuned constant with its own reasons does not get widened inside a package about line breaks
-— and it is queued as its own measurement-first package.
-
-## AE. Telling which method lost the song (P33, DESIGN §9.44, backlog 21)
-
-Run 2026-09-27 on the sixteen P27 tracks (copied read-only out of the real library again) plus two
-**held out**: Mono Inc. — *Princess of the Night* and Saltatio Mortis — *Seitdem du weg bist*, which
-were measured only after the thresholds below were written down. Each track was separated once, then
-aligned by both methods, and every candidate signal was computed from the recorded stamps — the run
-writes the raw stamps, the sung stretches and both methods' own confidences, so a signal can be
-designed and re-designed without asking the models again.
-
-- [x] **AE1 · M** — what the two methods' answers look like, and what decides between them
-
-  `span` is how much of the sung part of the track a method's stamps cover; `piled` is the share of
-  its stamps within a third of a second of the one before.
-
-| track | CTC span | Whisper span | Whisper piled | verdict |
-|---|---|---|---|---|
-| DOMINUM — Killed by Life | 0.87 | 0.86 | 0.00 | cannot tell |
-| DOMINUM — Die for the Devil | 0.99 | 0.98 | 0.11 | cannot tell |
-| DOMINUM — Can't Kill a Dead Man | 0.98 | 0.95 | 0.00 | cannot tell |
-| Die Legende von Nord — Bösewicht | 0.93 | 0.93 | 0.00 | cannot tell |
-| Feuerschwanz — Bastard of Asgard | 1.12 | 1.12 | 0.03 | cannot tell |
-| Kupfergold — Zombie Malone | 0.98 | 0.98 | 0.04 | cannot tell |
-| Lord of the Lost — 2000 Years a Pyre | 0.97 | 0.93 | 0.00 | cannot tell |
-| **Lord of the Lost — Argent** | 0.99 | **0.41** | 0.26 | **Whisper lost** |
-| Lord of the Lost — A War Within | 0.98 | 0.98 | 0.00 | cannot tell |
-| Michael Jackson — Ben | 0.98 | 0.96 | 0.00 | cannot tell |
-| **Mono Inc. — A Love That Never Dies** | 0.95 | **0.67** | 0.21 | **Whisper lost** |
-| **Powerwolf — Armata Strigoi** | 0.98 | **0.52** | 0.06 | **Whisper lost** |
-| **Sabaton — A Lifetime of War** | 1.00 | **0.45** | 0.36 | **Whisper lost** |
-| Saltatio Mortis — Brunhild | 0.99 | 0.98 | 0.00 | cannot tell |
-| **Warkings — Azrael** | 1.09 | **0.70** | 0.24 | **Whisper lost** |
-| dArtagnan — Alles aus Liebe | 0.97 | 0.97 | 0.00 | cannot tell |
-| *held out:* Mono Inc. — Princess of the Night | 0.98 | 0.98 | 0.00 | cannot tell |
-| *held out:* Saltatio Mortis — Seitdem du weg bist | 0.99 | 0.98 | 0.00 | cannot tell |
-
-  - **five right, none wrong, none missed.** The five methods that lost the song span **0.41–0.70**
-    of the singing; all twenty-seven answers that followed it span **0.86–1.12**
-  - *Bastard of Asgard*, the one track where the CTC pass was the worse of the two, comes out
-    **cannot tell** — which the task allowed, and which falls back to the policy of §9.38
-  - the thresholds are **0.75** of the singing and **12%** piled. Any floor from **0.70 to 0.85**
-    gives these eighteen verdicts unchanged, so the number is not load-bearing; the piling rule alone
-    gets four of the five, and is kept because it catches a different shape of failure
-  - **the held-out pair was measured after the thresholds were fixed** and answered correctly
-  - **result:** pass
-
-### Two signals that do not work, with the numbers that killed them
-
-Both are still **recorded on every alignment and never judged**, so that nobody has to take this on
-trust — and so nobody proposes them again.
-
-- **"Its stamps fall where nobody sings"** (the first idea, and the obvious one). These tracks are
-  **55–86% singing**, so a method that is somewhere else entirely still lands *inside* singing nearly
-  every time. A human's own stamps shifted by a full minute — the cleanest synthetic "lost" there is,
-  and it touches none of the judged tracks — put only **12–30%** of themselves in silence. On *Argent*,
-  where the second method is **120 s** out, **0 of its 46 stamps** fell in silence. The sharper form,
-  "is a phrase starting here", is no better: on a good track the **human's own** sidecar has 26 of 42
-  stamps away from any detected onset, because lines begin inside sung stretches, not at their edges.
-- **"Each method's own confidence"**, which looked decisive for an hour and is not. The CTC pass and
-  the decoder do not report the same quantity (0.13–0.41 against 0.77–0.98 for the same quality of
-  work), so no shared threshold is honest — and the per-method version fails on its own terms:
-  Whisper **lost** *A Love That Never Dies* at **0.60**, higher than the CTC pass's **0.36** on
-  *Argent* where it was right, and on *Armata Strigoi* both collapse at once (0.07 and 0.03) so it
-  names nobody.
-
-### And one evidence method that lied, again
-
-A patch that adds a field to a measurement script was checked by grepping for the word `stamps` —
-which the script already contained six times, in `lines_and_stamps` and elsewhere. The patch had
-never applied (a self-matching `pkill` had killed the shell before the heredoc ran), the grep said
-otherwise, and a forty-minute run produced a file with no raw stamps in it. **Verify a patch by
-something new and unique to it** — here `"raw_stamps"` — never by a word the file could already have.
-
-## AD. Offering an album to MusicBrainz (P32, DESIGN §9.43, backlog 20)
-
-Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, with `YTALBUM_MUSICBRAINZ_WEB`
-pointing at **a stand-in that prints what a seeded form arrived with**. Nothing here touched
-musicbrainz.org: an edit form opened for real is a real edit waiting to be submitted, and a test has
-no business anywhere near one. The album's `mbid` was cleared and two recordings given a length
-45 s from the file's, to make the two cases exist.
-
-- [x] **AD1 · R** — offered where MusicBrainz has nothing, refused where it has or would not want
-  - the album head shows **"Add to MusicBrainz"**
-  - made a compilation: the button is gone and the head says, in its place, *"MusicBrainz wants
-    releases that exist as releases, not compilations"*
-  - `/api/mbseed` refuses the same album with 400 and that sentence, so a page that asked anyway
-    would be told no by the server
-  - **result:** pass
-
-- [x] **AD2 · M** — the form that opens, and what it carries
-  - the confirm first: *"MusicBrainz's release editor is about to open, with 11 tracks already filled
-    in… ytalbum submits nothing. The form opens in a new tab, signed in as you, and nothing reaches
-    MusicBrainz until you press their own submit button… MusicBrainz wants releases that were really
-    released."*
-  - the stand-in received a POST to `/release/add` with **41 fields**: `name = Fegefeuer`,
-    `artist_credit.names.0.name = Feuerschwanz`, `type = Album`, `mediums.0.format = Digital Media`,
-    `events.0.date.year = 2023`, the playlist's URL, the edit note naming ytalbum and asking for a
-    check, and eleven tracks — `mediums.0.track.0.{name, number, length}` with `length = 248581`,
-    milliseconds measured from the file
-  - no track artist credit was seeded on this album, because none of its tracks differs from the
-    album's artist (the differing case is covered in `tests/test_seed.py`)
-  - **result:** pass
-
-- [x] **AD3 · M** — the correction seeding cannot make
-  - the length chip on a track whose recording MusicBrainz has 45 s shorter is now a **button**; its
-    title reads *"MusicBrainz 3:23.6 · LRCLIB 3:35.1 · this file 4:08.6 — an intro or outro to cut? ·
-    click to open the recording on MusicBrainz, where their length can be corrected"*
-  - the confirm names both numbers and what ytalbum cannot do: *"ytalbum cannot seed a correction —
-    the seeding format is for releases, not recordings — so the change is yours to make, and only if
-    you are sure: a file can be shorter because it was trimmed, or longer because the upload has an
-    intro. Nothing is sent from here."*
-  - the stand-in logged `GET /recording/abe94365-…/edit`
-  - a track with a length difference but **no recording id** keeps a plain chip: there is nothing to
-    open
-  - **result:** pass
-
-### The defect the page found on itself: two affordances, one fact
-
-The first version put a separate badge in the track row — `MB ≠ 3:23.6` — next to the length chip.
-Looking at the row showed what that meant: **the chip already prints those two numbers**, and has
-since §9.31, with the reading *"an intro or outro to cut?"* — while the new badge printed them again
-with the opposite reading, *"their number may be wrong"*. Two affordances for one fact, disagreeing
-about what it means.
-
-The fix was to make the chip itself the button where MusicBrainz knows the recording and the gap is
-large, which is P14's lesson a second time: a diagnosis that is worth showing is worth acting on, and
-the place to act is where the diagnosis already is.
-
-## AC. Giving the words back to LRCLIB (P31, DESIGN §9.42, backlog 19)
-
-Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, against **a server of my own
-speaking LRCLIB's documented publish flow** (`YTALBUM_LRCLIB_BASE`). **Nothing in this section
-reached lrclib.net**: their database is public and permanent, and test words do not belong in it.
-The one live request made anywhere in this package was a single `POST /api/request-challenge` — it
-publishes nothing — to learn the real difficulty, which turned out to be exactly the `000000FF…`
-their documentation prints.
-
-- [x] **AC1 · R** — LRCLIB's own words are never offered back to LRCLIB
-  - *Berzerkermode* with its LRCLIB sidecar: the panel has **no publish button at all**, and the
-    payload says why: `"these are lrclib's own words, not yours"`
-  - *Uruk-Hai*, whose sidecar is plain text: also refused, with `"only timed lyrics are worth giving
-    back — these have no timestamps"`
-  - **result:** pass
-
-- [x] **AC2 · M** — once the words are the user's, the button appears and says everything first
-  - the same track, shifted by −0.5 s in the editor and saved: the head reads *"with timestamps ·
-    yours"* and **"↑ publish to lrclib"** is there
-  - the confirm: *"These words are about to be published to LRCLIB, for everyone. / Feuerschwanz —
-    Berzerkermode / album: Fegefeuer / length: 219 s (the file's own, which is what the timestamps
-    follow) / 66 lines, with their timestamps, and the same words without them / LRCLIB is a public
-    database and takes no account. A publish cannot be taken back… / OK: publish them. Cancel:
-    nothing leaves this machine."*
-  - **result:** pass
-
-- [x] **AC3 · M** — what actually goes, and what comes back
-  - the fake received `trackName: Berzerkermode`, `artistName: Feuerschwanz`, `albumName: Fegefeuer`,
-    `duration: 219.14` — **the file's length, not the video's** — 66 synced lines and the same words
-    with the stamps taken off, under a token `qaPrefixForTheCatalog:56997` whose SHA-256 it verified
-    against the target itself
-  - the job log, in full: *"publishing Feuerschwanz — Berzerkermode to lrclib (66 lines, 219 s) —
-    this is public and cannot be undone"*, *"solving lrclib's challenge (target 0000ffff…)"*,
-    *"solved in 0.0 s"*, *"published Berzerkermode — thank you: the next person looking for this song
-    finds it"*
-  - the panel comes back with **"✓ published to lrclib"**, disabled, titled *"These words were
-    published on 2026-09-27T13:07:36+00:00…"*, and the plan holds
-    `lyrics_published = {"at": …, "sha": "1cc3adfbd63bc387"}` — a fingerprint, with none of the words
-    in it
-  - **result:** pass
-
-- [x] **AC4 · M** — the same words are never sent twice, edited ones may go again
-  - asked again: `failed — Berzerkermode: already published`, and the fake saw **no second request**
-  - a line added to the sidecar and asked again: accepted, because "I changed it" is the only
-    sensible reading of new bytes
-  - **result:** pass
-
-- [x] **AC5 · M** — a refusal changes nothing on disk
-  - the fake set to refuse with *"This track already has these lyrics"*: the job is `failed`, the
-    message is **LRCLIB's own**, `lyrics_published` on disk is still `None`, and the button is still
-    there to try again
-  - **result:** pass
-
-### The evidence method that nearly lied here
-
-`/api/state` shows only the **last three lines** of each job's log (`Job.summary(full=False)`), and I
-read the publish job from there: the first line — the one that says a publish is about to happen and
-cannot be undone — was simply outside the window, and for several minutes I believed it was missing
-and was hunting a bug in my own logging. `/api/job?id=N` returns the whole log and showed all four
-lines. **A truncated view is not evidence of absence**; ask for the full record before reporting that
-something did not happen.
-
-## AB. Giving the graphics card back (P30, DESIGN §9.41, backlog 18)
-
-Run 2026-09-27 on this laptop's RTX 4060 (8 GB), with `nvidia-smi
---query-compute-apps=used_memory` sampled around real alignments of *Berzerkermode* — through the
-app's own service on `:8799` and through `ytalbum timing-serve` on `:8793`, both on the scratch copy
-of *Fegefeuer*.
-
-- [x] **AB1 · M** — what the defect actually was, measured before the fix
-  - the scratch server, minutes after its last alignment and with an empty queue, held **3314 MiB**
-  - that is the same number as the *peak during* an alignment: nothing had been given back at all.
-    The installed service showed the same thing at 2894 MiB while P27 was being measured, and that is
-    what made a second process's separation die with "tried to allocate 1.34 GiB"
-  - **result:** the defect, confirmed
-
-- [x] **AB2 · M** — the app's service gives it back when the queue empties
-  - one alignment through `/api/align`: peak **3314 MiB**, and **180 MiB** a few seconds later, with
-    the job `done` and 65 of 65 lines placed
-  - the 180 MiB is the CUDA context, which belongs to the process until it exits; everything else is
-    returned
-  - **result:** pass
-
-- [x] **AB3 · M** — `timing-serve` lets go of the models after its idle time
-  - `timing_idle_minutes = 0.5`, so a 30-second window. One alignment: 11.8 s, 4629 bytes of answer,
-    **3314 MiB** held. Then, sampled every 5 s: `3314, 3314, 3314, 3314, 3314, 3314, 180 …` — it let
-    go between +30 s and +35 s, exactly when it said it would
-  - the server's log says it in words: *"let go of the models; the next request loads them again"*
-  - **result:** pass
-
-- [x] **AB4 · M** — and the next request pays for it in nothing anybody can measure
-  - a second alignment after the release: the log shows the reload (*"loading the separator (htdemucs,
-    81 MB on first use)"*, *"loading the de aligner …"*) and the request took **11.2 s** against the
-    first one's 11.8 s — the weights come off a warm disk
-  - **result:** pass
-
-### The defect this found: a tidy-up that did not know the thing was in use
-
-The first live run of AB3 used a six-second idle window against an eleven-second alignment, and the
-request died:
-
-```
-File "…/timing_local.py", line 346, in _vocals
-    return vocals, int(self._separator.samplerate)
-AttributeError: 'NoneType' object has no attribute 'samplerate'
-```
-
-The watcher had released the models **while the request was still being served**. Two fixes, and both
-are the same lesson from different ends: a request now holds the `Idle` object while it works, so the
-watcher releases only when nothing is being served; and `_vocals` keeps the separator in a local
-rather than reading a cache twice that another thread may empty in between. A unit test with a fake
-clock now holds a request open across several idle periods and asserts that nothing is released,
-which is the case the live run found and no earlier test could have.
-
-It is worth saying how it was found: not by the suite, which was green, but by pointing the thing at
-a real server with a deliberately short timer. A timer set to a realistic five minutes would have
-hidden this for as long as nobody aligned a very long track.
-
 ## AA. The words being edited are what plays (P29, DESIGN §9.39)
 
 Run 2026-09-27 through the real page (Playwright, a second server on `:8799` with its own
@@ -2266,6 +1880,401 @@ then reported *"the local timing provider needs the optional extra"*. Found by t
 the extra into a clean project venv — not visible in a working tree that has numpy for other reasons.
 Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align']`, both extras →
 `['align', 'transcribe']`.
+
+## AB. Giving the graphics card back (P30, DESIGN §9.41, backlog 18)
+
+Run 2026-09-27 on this laptop's RTX 4060 (8 GB), with `nvidia-smi
+--query-compute-apps=used_memory` sampled around real alignments of *Berzerkermode* — through the
+app's own service on `:8799` and through `ytalbum timing-serve` on `:8793`, both on the scratch copy
+of *Fegefeuer*.
+
+- [x] **AB1 · M** — what the defect actually was, measured before the fix
+  - the scratch server, minutes after its last alignment and with an empty queue, held **3314 MiB**
+  - that is the same number as the *peak during* an alignment: nothing had been given back at all.
+    The installed service showed the same thing at 2894 MiB while P27 was being measured, and that is
+    what made a second process's separation die with "tried to allocate 1.34 GiB"
+  - **result:** the defect, confirmed
+
+- [x] **AB2 · M** — the app's service gives it back when the queue empties
+  - one alignment through `/api/align`: peak **3314 MiB**, and **180 MiB** a few seconds later, with
+    the job `done` and 65 of 65 lines placed
+  - the 180 MiB is the CUDA context, which belongs to the process until it exits; everything else is
+    returned
+  - **result:** pass
+
+- [x] **AB3 · M** — `timing-serve` lets go of the models after its idle time
+  - `timing_idle_minutes = 0.5`, so a 30-second window. One alignment: 11.8 s, 4629 bytes of answer,
+    **3314 MiB** held. Then, sampled every 5 s: `3314, 3314, 3314, 3314, 3314, 3314, 180 …` — it let
+    go between +30 s and +35 s, exactly when it said it would
+  - the server's log says it in words: *"let go of the models; the next request loads them again"*
+  - **result:** pass
+
+- [x] **AB4 · M** — and the next request pays for it in nothing anybody can measure
+  - a second alignment after the release: the log shows the reload (*"loading the separator (htdemucs,
+    81 MB on first use)"*, *"loading the de aligner …"*) and the request took **11.2 s** against the
+    first one's 11.8 s — the weights come off a warm disk
+  - **result:** pass
+
+### The defect this found: a tidy-up that did not know the thing was in use
+
+The first live run of AB3 used a six-second idle window against an eleven-second alignment, and the
+request died:
+
+```
+File "…/timing_local.py", line 346, in _vocals
+    return vocals, int(self._separator.samplerate)
+AttributeError: 'NoneType' object has no attribute 'samplerate'
+```
+
+The watcher had released the models **while the request was still being served**. Two fixes, and both
+are the same lesson from different ends: a request now holds the `Idle` object while it works, so the
+watcher releases only when nothing is being served; and `_vocals` keeps the separator in a local
+rather than reading a cache twice that another thread may empty in between. A unit test with a fake
+clock now holds a request open across several idle periods and asserts that nothing is released,
+which is the case the live run found and no earlier test could have.
+
+It is worth saying how it was found: not by the suite, which was green, but by pointing the thing at
+a real server with a deliberately short timer. A timer set to a realistic five minutes would have
+hidden this for as long as nobody aligned a very long track.
+
+## AC. Giving the words back to LRCLIB (P31, DESIGN §9.42, backlog 19)
+
+Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, against **a server of my own
+speaking LRCLIB's documented publish flow** (`YTALBUM_LRCLIB_BASE`). **Nothing in this section
+reached lrclib.net**: their database is public and permanent, and test words do not belong in it.
+The one live request made anywhere in this package was a single `POST /api/request-challenge` — it
+publishes nothing — to learn the real difficulty, which turned out to be exactly the `000000FF…`
+their documentation prints.
+
+- [x] **AC1 · R** — LRCLIB's own words are never offered back to LRCLIB
+  - *Berzerkermode* with its LRCLIB sidecar: the panel has **no publish button at all**, and the
+    payload says why: `"these are lrclib's own words, not yours"`
+  - *Uruk-Hai*, whose sidecar is plain text: also refused, with `"only timed lyrics are worth giving
+    back — these have no timestamps"`
+  - **result:** pass
+
+- [x] **AC2 · M** — once the words are the user's, the button appears and says everything first
+  - the same track, shifted by −0.5 s in the editor and saved: the head reads *"with timestamps ·
+    yours"* and **"↑ publish to lrclib"** is there
+  - the confirm: *"These words are about to be published to LRCLIB, for everyone. / Feuerschwanz —
+    Berzerkermode / album: Fegefeuer / length: 219 s (the file's own, which is what the timestamps
+    follow) / 66 lines, with their timestamps, and the same words without them / LRCLIB is a public
+    database and takes no account. A publish cannot be taken back… / OK: publish them. Cancel:
+    nothing leaves this machine."*
+  - **result:** pass
+
+- [x] **AC3 · M** — what actually goes, and what comes back
+  - the fake received `trackName: Berzerkermode`, `artistName: Feuerschwanz`, `albumName: Fegefeuer`,
+    `duration: 219.14` — **the file's length, not the video's** — 66 synced lines and the same words
+    with the stamps taken off, under a token `qaPrefixForTheCatalog:56997` whose SHA-256 it verified
+    against the target itself
+  - the job log, in full: *"publishing Feuerschwanz — Berzerkermode to lrclib (66 lines, 219 s) —
+    this is public and cannot be undone"*, *"solving lrclib's challenge (target 0000ffff…)"*,
+    *"solved in 0.0 s"*, *"published Berzerkermode — thank you: the next person looking for this song
+    finds it"*
+  - the panel comes back with **"✓ published to lrclib"**, disabled, titled *"These words were
+    published on 2026-09-27T13:07:36+00:00…"*, and the plan holds
+    `lyrics_published = {"at": …, "sha": "1cc3adfbd63bc387"}` — a fingerprint, with none of the words
+    in it
+  - **result:** pass
+
+- [x] **AC4 · M** — the same words are never sent twice, edited ones may go again
+  - asked again: `failed — Berzerkermode: already published`, and the fake saw **no second request**
+  - a line added to the sidecar and asked again: accepted, because "I changed it" is the only
+    sensible reading of new bytes
+  - **result:** pass
+
+- [x] **AC5 · M** — a refusal changes nothing on disk
+  - the fake set to refuse with *"This track already has these lyrics"*: the job is `failed`, the
+    message is **LRCLIB's own**, `lyrics_published` on disk is still `None`, and the button is still
+    there to try again
+  - **result:** pass
+
+### The evidence method that nearly lied here
+
+`/api/state` shows only the **last three lines** of each job's log (`Job.summary(full=False)`), and I
+read the publish job from there: the first line — the one that says a publish is about to happen and
+cannot be undone — was simply outside the window, and for several minutes I believed it was missing
+and was hunting a bug in my own logging. `/api/job?id=N` returns the whole log and showed all four
+lines. **A truncated view is not evidence of absence**; ask for the full record before reporting that
+something did not happen.
+
+## AD. Offering an album to MusicBrainz (P32, DESIGN §9.43, backlog 20)
+
+Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, with `YTALBUM_MUSICBRAINZ_WEB`
+pointing at **a stand-in that prints what a seeded form arrived with**. Nothing here touched
+musicbrainz.org: an edit form opened for real is a real edit waiting to be submitted, and a test has
+no business anywhere near one. The album's `mbid` was cleared and two recordings given a length
+45 s from the file's, to make the two cases exist.
+
+- [x] **AD1 · R** — offered where MusicBrainz has nothing, refused where it has or would not want
+  - the album head shows **"Add to MusicBrainz"**
+  - made a compilation: the button is gone and the head says, in its place, *"MusicBrainz wants
+    releases that exist as releases, not compilations"*
+  - `/api/mbseed` refuses the same album with 400 and that sentence, so a page that asked anyway
+    would be told no by the server
+  - **result:** pass
+
+- [x] **AD2 · M** — the form that opens, and what it carries
+  - the confirm first: *"MusicBrainz's release editor is about to open, with 11 tracks already filled
+    in… ytalbum submits nothing. The form opens in a new tab, signed in as you, and nothing reaches
+    MusicBrainz until you press their own submit button… MusicBrainz wants releases that were really
+    released."*
+  - the stand-in received a POST to `/release/add` with **41 fields**: `name = Fegefeuer`,
+    `artist_credit.names.0.name = Feuerschwanz`, `type = Album`, `mediums.0.format = Digital Media`,
+    `events.0.date.year = 2023`, the playlist's URL, the edit note naming ytalbum and asking for a
+    check, and eleven tracks — `mediums.0.track.0.{name, number, length}` with `length = 248581`,
+    milliseconds measured from the file
+  - no track artist credit was seeded on this album, because none of its tracks differs from the
+    album's artist (the differing case is covered in `tests/test_seed.py`)
+  - **result:** pass
+
+- [x] **AD3 · M** — the correction seeding cannot make
+  - the length chip on a track whose recording MusicBrainz has 45 s shorter is now a **button**; its
+    title reads *"MusicBrainz 3:23.6 · LRCLIB 3:35.1 · this file 4:08.6 — an intro or outro to cut? ·
+    click to open the recording on MusicBrainz, where their length can be corrected"*
+  - the confirm names both numbers and what ytalbum cannot do: *"ytalbum cannot seed a correction —
+    the seeding format is for releases, not recordings — so the change is yours to make, and only if
+    you are sure: a file can be shorter because it was trimmed, or longer because the upload has an
+    intro. Nothing is sent from here."*
+  - the stand-in logged `GET /recording/abe94365-…/edit`
+  - a track with a length difference but **no recording id** keeps a plain chip: there is nothing to
+    open
+  - **result:** pass
+
+### The defect the page found on itself: two affordances, one fact
+
+The first version put a separate badge in the track row — `MB ≠ 3:23.6` — next to the length chip.
+Looking at the row showed what that meant: **the chip already prints those two numbers**, and has
+since §9.31, with the reading *"an intro or outro to cut?"* — while the new badge printed them again
+with the opposite reading, *"their number may be wrong"*. Two affordances for one fact, disagreeing
+about what it means.
+
+The fix was to make the chip itself the button where MusicBrainz knows the recording and the gap is
+large, which is P14's lesson a second time: a diagnosis that is worth showing is worth acting on, and
+the place to act is where the diagnosis already is.
+
+## AE. Telling which method lost the song (P33, DESIGN §9.44, backlog 21)
+
+Run 2026-09-27 on the sixteen P27 tracks (copied read-only out of the real library again) plus two
+**held out**: Mono Inc. — *Princess of the Night* and Saltatio Mortis — *Seitdem du weg bist*, which
+were measured only after the thresholds below were written down. Each track was separated once, then
+aligned by both methods, and every candidate signal was computed from the recorded stamps — the run
+writes the raw stamps, the sung stretches and both methods' own confidences, so a signal can be
+designed and re-designed without asking the models again.
+
+- [x] **AE1 · M** — what the two methods' answers look like, and what decides between them
+
+  `span` is how much of the sung part of the track a method's stamps cover; `piled` is the share of
+  its stamps within a third of a second of the one before.
+
+| track | CTC span | Whisper span | Whisper piled | verdict |
+|---|---|---|---|---|
+| DOMINUM — Killed by Life | 0.87 | 0.86 | 0.00 | cannot tell |
+| DOMINUM — Die for the Devil | 0.99 | 0.98 | 0.11 | cannot tell |
+| DOMINUM — Can't Kill a Dead Man | 0.98 | 0.95 | 0.00 | cannot tell |
+| Die Legende von Nord — Bösewicht | 0.93 | 0.93 | 0.00 | cannot tell |
+| Feuerschwanz — Bastard of Asgard | 1.12 | 1.12 | 0.03 | cannot tell |
+| Kupfergold — Zombie Malone | 0.98 | 0.98 | 0.04 | cannot tell |
+| Lord of the Lost — 2000 Years a Pyre | 0.97 | 0.93 | 0.00 | cannot tell |
+| **Lord of the Lost — Argent** | 0.99 | **0.41** | 0.26 | **Whisper lost** |
+| Lord of the Lost — A War Within | 0.98 | 0.98 | 0.00 | cannot tell |
+| Michael Jackson — Ben | 0.98 | 0.96 | 0.00 | cannot tell |
+| **Mono Inc. — A Love That Never Dies** | 0.95 | **0.67** | 0.21 | **Whisper lost** |
+| **Powerwolf — Armata Strigoi** | 0.98 | **0.52** | 0.06 | **Whisper lost** |
+| **Sabaton — A Lifetime of War** | 1.00 | **0.45** | 0.36 | **Whisper lost** |
+| Saltatio Mortis — Brunhild | 0.99 | 0.98 | 0.00 | cannot tell |
+| **Warkings — Azrael** | 1.09 | **0.70** | 0.24 | **Whisper lost** |
+| dArtagnan — Alles aus Liebe | 0.97 | 0.97 | 0.00 | cannot tell |
+| *held out:* Mono Inc. — Princess of the Night | 0.98 | 0.98 | 0.00 | cannot tell |
+| *held out:* Saltatio Mortis — Seitdem du weg bist | 0.99 | 0.98 | 0.00 | cannot tell |
+
+  - **five right, none wrong, none missed.** The five methods that lost the song span **0.41–0.70**
+    of the singing; all twenty-seven answers that followed it span **0.86–1.12**
+  - *Bastard of Asgard*, the one track where the CTC pass was the worse of the two, comes out
+    **cannot tell** — which the task allowed, and which falls back to the policy of §9.38
+  - the thresholds are **0.75** of the singing and **12%** piled. Any floor from **0.70 to 0.85**
+    gives these eighteen verdicts unchanged, so the number is not load-bearing; the piling rule alone
+    gets four of the five, and is kept because it catches a different shape of failure
+  - **the held-out pair was measured after the thresholds were fixed** and answered correctly
+  - **result:** pass
+
+### Two signals that do not work, with the numbers that killed them
+
+Both are still **recorded on every alignment and never judged**, so that nobody has to take this on
+trust — and so nobody proposes them again.
+
+- **"Its stamps fall where nobody sings"** (the first idea, and the obvious one). These tracks are
+  **55–86% singing**, so a method that is somewhere else entirely still lands *inside* singing nearly
+  every time. A human's own stamps shifted by a full minute — the cleanest synthetic "lost" there is,
+  and it touches none of the judged tracks — put only **12–30%** of themselves in silence. On *Argent*,
+  where the second method is **120 s** out, **0 of its 46 stamps** fell in silence. The sharper form,
+  "is a phrase starting here", is no better: on a good track the **human's own** sidecar has 26 of 42
+  stamps away from any detected onset, because lines begin inside sung stretches, not at their edges.
+- **"Each method's own confidence"**, which looked decisive for an hour and is not. The CTC pass and
+  the decoder do not report the same quantity (0.13–0.41 against 0.77–0.98 for the same quality of
+  work), so no shared threshold is honest — and the per-method version fails on its own terms:
+  Whisper **lost** *A Love That Never Dies* at **0.60**, higher than the CTC pass's **0.36** on
+  *Argent* where it was right, and on *Armata Strigoi* both collapse at once (0.07 and 0.03) so it
+  names nobody.
+
+### And one evidence method that lied, again
+
+A patch that adds a field to a measurement script was checked by grepping for the word `stamps` —
+which the script already contained six times, in `lines_and_stamps` and elsewhere. The patch had
+never applied (a self-matching `pkill` had killed the shell before the heredoc ran), the grep said
+otherwise, and a forty-minute run produced a file with no raw stamps in it. **Verify a patch by
+something new and unique to it** — here `"raw_stamps"` — never by a word the file could already have.
+
+## AF. A draft that reads like a song (P34, DESIGN §9.45)
+
+From the user's own test: **“draft the words” on Mr. Hurley & Die Pulveraffen — *Blackbeard*** (3:38)
+came back as **eleven lines**, one of them a whole verse of three sung lines, with a minute of silence
+in the middle that nothing on the screen mentioned, under the notice *“11 of 11 lines came with a
+time”*. Two faults, one ours and one the vendor's, measured 2026-09-27 on a read-only copy.
+
+- [x] **AF1 · M** — the line builder, on the user's own response
+
+  No new request: the same Deepgram answer, re-read.
+
+| | lines | longest line | gap markers | what the notice says |
+|---|---|---|---|---|
+| before | 11 | a whole verse (three sung lines) | none | "11 of 11 lines came with a time" |
+| after | **17** | **6.5 s** | **4** | "Words for 1:01.3 of 3:38.1 of audio, with 4 gaps longer than 6 s marked in the text" |
+
+  - lines now break where the singing pauses (over 0.6 s), not where the vendor put a full stop;
+    where a line must still be split, it splits **at its own longest internal pause** — the first
+    attempt cut at the twelfth word and left a line reading just *“Rauch.”*
+  - the holes are visible: `… (46 s without words)` stamped where the singing stopped
+  - **result:** pass
+
+- [x] **AF2 · M** — what the transcriber should listen to: the mix, or the separated voice?
+
+  Four arms on the same 218 s track, scored against **LRCLIB's own synced lyric for the recording**
+  (52 usable lines), which is a reference rather than my ear. Two of the arms are paid requests; that
+  is all the money this section spent.
+
+| arm | lines | covered | gaps | longest line | reference lines found | time |
+|---|---|---|---|---|---|---|
+| whisper · mix | 71 | 152.6 s | 0 | 8.9 s | 28 of 52 | 208 s |
+| whisper · **stem** | 54 | 144.4 s | 1 | 11.0 s | **38 of 52** | 116 s |
+| deepgram · mix | 17 | 61.3 s | 4 | 6.9 s | 16 of 52 | 3.9 s |
+| deepgram · **stem** | 27 | 103.3 s | 4 | 6.6 s | **32 of 52** | 21 s |
+
+  - **the voice wins for both vendors**: Deepgram doubles (16 → 32), the local decoder gains a third
+    (28 → 38). Drafting now separates first wherever the `timing` extra is installed, and says so
+  - **more lines is not better**: whisper on the mix wrote the *most* lines (71) and found the
+    *fewest* of the reference's (28) — it writes words over the instrumental passages. The stem arm
+    produced 54, almost exactly the reference's 52, and found ten more of them
+  - sending the isolated voice instead of the record is also less of somebody's music leaving the
+    house, which is worth having for free
+  - **result:** pass
+
+### The thing this found that was bigger than the package
+
+**LRCLIB has this song's words** — entry 24423598, 53 timed lines, the same recording. ytalbum
+refused it because the file is **218.06 s** and the entry says **213.68 s**: 4.4 s apart, against
+`TOLERANCE = 3.0`. The user was offered a machine's guess for a song whose words were one lookup
+away, and the eleven lines they got were a poor copy of something that already existed. A 2% length
+difference on a four-minute song is ordinary, so this is unlikely to be one track. It is not fixed
+here — a tuned constant with its own reasons does not get widened inside a package about line breaks
+— and it is queued as its own measurement-first package.
+
+## AG. An entry that is nearly this recording (P35, DESIGN §9.46)
+
+**The current gate has never refused something it could have matched.** Over this library's 1089
+tracks with no words at all, the number whose cached lrclib entry sits within the 3 s tolerance is
+**zero**. Everything below is about the boundary, not about a bug.
+
+Measured 2026-09-27, read-only, on the real library: every wordless track was asked about (the pass
+made **no new requests** — a lyrics run had already cached each one), and every candidate with the
+same artist and title was measured against the file it claims to describe.
+
+    wordless tracks                                              1089
+      a same-artist, same-title candidate with words exists       203
+        within 3 s — the gate takes it today                        0
+        over 3 s but within 3% of the file's length                74
+        beyond 3%                                                 129
+      no candidate with words at all                              886
+
+- [x] **AG1 · M** — do the words of a near miss belong to this recording?
+
+  The instrument is the aligner, and the criterion was written down **before** the run and not moved:
+  *fits* = the entry's stamps span ≥ 0.85 of the singing with ≤ 10% of lines unplaced; *does not fit*
+  = span < 0.75, span > 1.15, or > 25% unplaced; anything else is inconclusive and counted as neither.
+  The reference, measured before the criterion was fixed: LRCLIB's 52 lines against the user's own
+  *Blackbeard* — the 4.4 s miss that started this — span **0.968**, 52 of 52 lines placed.
+
+| population | fits | inconclusive | does not fit | uncheckable |
+|---|---|---|---|---|
+| near misses, 3 s to 3% (74) | **62** | 10 | 2 | — |
+| beyond 3%, the "control" (129) | **91** | 19 | 18 | 1 |
+
+  - the control is not a control: **71% of the entries beyond 3% are still this recording's words.**
+    The length gap is a poor proxy for "the same recording"; the alignment is a direct measurement
+  - fits are not marginal: span median 0.96 among the near misses, lowest 0.87
+  - **the span needed a ceiling, and I had not written one.** Four control candidates passed as fits
+    with the lyric spanning *more* than the singing — the worst an 83 s file against a 222 s entry at
+    span 1.60. A span over **1.15** is now a non-fit. The verdict is a pure function of two recorded
+    numbers, so both populations were recounted from the recordings rather than re-aligned
+  - **result:** pass
+
+- [x] **AG2 · M** — what the non-fits are, one by one
+
+  Every one of the 18 has **0% of its lines unplaced**: the aligner found all the words, in order, in
+  our audio. They are not wrong songs. What they are is a different *cut*:
+
+| track | our file | their entry | span | what it is |
+|---|---|---|---|---|
+| Schandmaul — Willst du (Live) | 305 s | 289 s | 0.45 | a live recording |
+| Schandmaul — Dein Anblick (Live) | 368 s | 313 s | 0.64 | a live recording |
+| ASP — Schneefall in der Hölle (Plakat…) | 342 s | 407 s | 0.65 | a marked variant |
+| Feuerschwanz — Ringelpietz (mit Anfassen) | 83 s | 222 s | 1.60 | a marked variant |
+| Faun — Wenn wir uns wiedersehen | 78 s | 199 s | 1.17 | a clip: our file is much shorter |
+| Lord of the Lost — Last Words | 344 s | 264 s | 0.66 | a longer cut |
+| Lord of the Lost — Prison | 346 s | 302 s | 0.66 | a longer cut |
+| Lord of the Lost — Sex on Legs | 268 s | 238 s | 0.72 | a longer cut |
+| Lord of the Lost — Dry the Rain | 277 s | 293 s | 0.57 | a shorter cut |
+| Darkher — Ghost Tears | 243 s | 254 s | 0.58 | a shorter cut |
+| Joachim Witt — Gloria | 286 s | 317 s | 0.68 | a shorter cut |
+| Assemblage 23 — Lullaby | 335 s | 324 s | 0.72 | a longer cut |
+| Saltatio Mortis — Wir sind Papst | 233 s | 222 s | 0.73 | a longer cut |
+| Feuerschwanz — Metfest (×2 in the library) | 253 s | 243 s | 0.73 | a longer cut |
+| Schandmaul — Knüppel aus dem Sack | 291 s | 270 s | 0.75 | a longer cut |
+| Warkings — Stahl auf Stahl | 226 s | 216 s | 1.23 | a longer cut |
+| Kupfergold — Met Kasalla Uss Valhalla | 239 s | 177 s | 1.29 | a longer cut |
+
+  - **the only wrong song in 203 candidates** is *Feuerschwanz — Gangnam Style* among the near
+    misses, at **71% of its lines unplaced** — a title collision, and the one case the aligner
+    rejects outright
+  - so the alignment answers two questions at once, and they are different questions: *how many
+    lines it can place* says whether these are the song's words, *how much of the singing they span*
+    says whether the entry's clock is this recording's
+  - **result:** pass — and this is what the three outcomes in §9.46 are built on
+
+- [x] **AG3 · M** — the outcomes, through the page, against a stand-in lrclib
+
+  A scratch copy of *Fegefeuer* with its words removed, and a server of my own answering with
+  deliberate near misses. Nothing touched lrclib.net.
+  - a 5.6 s near miss: the panel offered *"⚖ check them against the audio"*, the check aligned the
+    entry's words (**span 0.976, nothing unplaced**) and took **words and timings**; the sidecar was
+    written, the track retagged, and `lyrics_fit` recorded the two numbers
+  - an entry 124 s away: **no alignment was spent**, and the panel says *"lrclib has words for this
+    title, for a 1:35 recording; this file is 3:39.1 — probably another cut. Nothing was taken; you
+    can take the words as plain text."*
+  - taking them by hand: status `plain`, `lyrics_id` set, **owner unchanged** — lrclib's words stay
+    lrclib's however they were taken — and the sidecar holds the words without stamps
+  - **result:** pass. The *another cut* and *reject* outcomes are covered by the service tests with
+    fakes rather than here: a stand-in's synthetic words align to anything, so the page could not
+    have shown those two honestly
+
+### The defect the panel showed and no test had
+
+A track that already had words was still being offered *"take the words as plain text"*, because a
+verdict recorded earlier stayed in the plan and the panel read it without asking whether the words
+question was still open. Found by preparing a scratch album carelessly — the plan said "no words"
+while the `.lrc` files were still on disk, so `reconcile` made them the user's own words and the
+stale verdict kept offering more. Now the panel says only *where words came from* once there are any.
 
 ## Results
 

@@ -48,16 +48,17 @@ Comes with a command line and a small web app for the library.
   points from what you are hearing and watch the length come right before you save, write or
   correct lyrics in the panel that shows them, and run the offline tidy-up from a button.
 - **Or let a model place them, if you want one.** Off by default and no dependency of ytalbum: with
-  a *timing provider* configured, one button in the editor puts every line on the file's clock. It
+  a *timing provider* configured, **"⚖ align these words"** in the editor puts every line on the
+  file's clock. It
   writes nothing — the stamps appear in the editor, you play a line to check them and press Save, and
   the words stay yours while the clock is recorded as the provider's. Measured on twenty real tracks
   before it was built: a median of under a second per line, growled vocals no harder than clean ones
   ([the spike](docs/spikes/2026-09-alignment.md)).
-- **You can time the lyrics by tapping.** With the song playing, one key writes the moment you are
-  hearing onto the line the cursor is in and moves to the next — in the *file's* clock, which is not
-  the player's on a trimmed track, and rounded to a tenth. Each stamp can then be played back and
-  nudged by a tenth or a half until it sits right, or every stamp moved at once. Nothing is saved
-  until you press Save.
+- **You can time the lyrics by tapping.** With the song playing, **"⏱ stamp this line"** (or one
+  keystroke) writes the moment you are hearing onto the line the cursor is in and moves to the next —
+  in the *file's* clock, which is not the player's on a trimmed track, and rounded to a tenth. Each
+  stamp can then be played back and nudged by a tenth or a half until it sits right, or every stamp
+  moved together with **"shift all"**. Nothing is saved until you press Save.
 - **And you can judge the whole song before saving any of it.** While the editor is open, what you
   are editing is what plays: a list beside the textarea is drawn from the words in it, the line being
   sung is marked there as the song runs, and clicking a line jumps to it. Type a stamp, nudge one,
@@ -66,10 +67,23 @@ Comes with a command line and a small web app for the library.
   beside the track is in charge again.
 - **A track can take its audio from another video.** Where the playlist holds the official video —
   theatrical bits at both ends, a spoken passage in the middle — and the song exists on YouTube as
-  its own upload, point the track at that one: it keeps its place, its name, its number and your
+  its own upload, the **⇄** button in the track row points it at that one: it keeps its place, its name, its number and your
   lyrics, and only the audio is fetched again. What the marks and the tags described was another
   recording, so they go, and the page says which before it asks. The badge that says "you" puts the
   playlist's video back.
+- **When LRCLIB nearly has your recording, you can settle it by listening.** Their entry is matched
+  by length, and a live version or a radio edit shares a title — so an entry a few seconds off is
+  normally refused. **"⚖ check them"** aligns its words to your file instead and reads the answer off
+  the result: the words and the timings fit, or the words are right and your cut needs its own clock,
+  or it is another song. Measuring this library found 74 tracks with no words whose entry was only
+  seconds away.
+- **And you can give your own timings back.** When you have timed a song yourself, **"↑ publish to
+  lrclib"** sends it to the database the lyrics came from — no account and no key, and only ever your
+  own timed words that LRCLIB has no equal of.
+- **An album MusicBrainz has never heard of can be offered to them.** **"Add to MusicBrainz"** opens
+  *their* release editor with the boxes filled in — the tracklist, the lengths measured from your
+  files, the playlist's URL. ytalbum submits nothing: you are signed in as yourself and you press
+  their button.
 - **Re-runs are cheap.** An update checks each album with a single request and only does
   real work when the playlist actually changed.
 - **You can find what you have.** Filter the library by album, artist **or song** — matches
@@ -209,6 +223,7 @@ Library/
 | `ytalbum app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--remove-profile` on uninstall also drops the app's browser profile. |
 | `ytalbum repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. |
 | `ytalbum lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
+| `ytalbum timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
 | `ytalbum config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
 
 Exit codes: `0` fine, `1` something failed, `2` wrong usage, `3` YouTube is blocking
@@ -275,7 +290,8 @@ network.
 | `GET /api/thumb?u=<url>` | A thumbnail, fetched by the server (allow-listed hosts only, cached). |
 | `GET /api/audio?id=<source-id>&v=<video-id>` | The track's audio, with `Range` support so players can seek. |
 | `GET /api/job?id=<n>` | One job with its full log and result. |
-| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours) and `timings` — set when the timestamps were written against a different file than the one on disk. |
+| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours), `words_by` and `timed_by` (who drafted and who timed them, when it was not a person), `timings` — set when the timestamps were written against a different file than the one on disk — `publish` (whether they may be given back to LRCLIB, and why not when they may not), `fit` (what was made of an entry that was nearly this recording) and `can_check` (whether ⚖ can be offered). |
+| `GET /api/mbseed?id=<source-id>` | The fields for MusicBrainz's own release editor, and its URL. Nothing is sent from here — the page builds their form with these and you submit it yourself. Refused, with the reason, for an album that is not one to offer. |
 
 ### Writing (POST, JSON body, header `X-Ytalbum: 1`)
 
@@ -292,6 +308,9 @@ network.
 | `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
 | `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
 | `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
+| `/api/check_lyrics` | `{id, video_id}` | Align LRCLIB's near-miss entry for that track against your file and decide what may be taken from it: the words and its timings, the words with our own stamps, nothing, or a rejection that is remembered. Needs a provider that can `align`. |
+| `/api/take_plain_lyrics` | `{id, video_id}` | Put a near-miss entry's words beside the track without its timings. They stay LRCLIB's words. |
+| `/api/publish_lyrics` | `{id, video_id}` | Give your own timed words back to LRCLIB. One press is one request, it is never retried, and it is refused for anything that is not your own timed words that LRCLIB has no equal of. |
 | `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
 | `/api/delete_track` | `{id, video_id}` | Delete one track. |
 | `/api/delete_album` | `{id}` | Delete an album (files ytalbum owns; anything else is kept). |
@@ -314,7 +333,8 @@ they are chosen separately — the usual pairing is `local` for aligning, which 
 your machine, and a vendor for the occasional draft, which needs nothing installed. `timing_provider`
 still works and means both, so nothing you have configured has to change.
 
-Four providers, and the first choice is whether the audio may leave the machine:
+Five providers, and the first choice is whether the audio may leave the machine
+(the second row is not a provider but the local one with its second extra installed):
 
 | provider | what it needs | where the audio goes | can it | what it costs |
 |---|---|---|---|---|
@@ -423,6 +443,8 @@ Neither is retried: one press is one request, so one press is at most one charge
 ### Drafting the words of a track that has none
 
 Where a provider can transcribe and a track has **no words at all**, its lyrics panel offers
+**"✎ draft the words"**.
+
 **ytalbum separates the voice first** wherever the `ytalbum[timing]` extra is installed, and sends
 *that* to the transcriber rather than the finished track. It is worth doing: on one real song, scored
 against its own published lyric, Deepgram found 16 of 52 lines on the mix and **32** on the voice,
@@ -447,7 +469,7 @@ or yours, is better than a guess.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
-**Four environment variables, not config keys**, all for people testing rather than listening:
+**Five environment variables, not config keys**, all for people testing rather than listening:
 `YTALBUM_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
 `YTALBUM_MUSICBRAINZ_WEB` points the seeding form and the recording links at another MusicBrainz;
 `YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
@@ -544,8 +566,8 @@ confirm — and the change, if there is one to make, is yours.
 | `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |
 | `timing_verify` | unset | Check each alignment against a second method. Unset means "whenever the `timing-check` extra is installed". |
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
-| `timing_idle_minutes` | `5.0` | How long `ytalbum timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
+| `timing_idle_minutes` | `5.0` | How long `ytalbum timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
 
 ## Limits
 
@@ -572,9 +594,11 @@ confirm — and the change, if there is one to make, is yours.
   the lyrics pass — and an album can pick up or lose its length flag because of it.
 - **Lyrics are found for about three tracks in four**, and only half of those carry
   timestamps — LRCLIB is contributed by its users, so folk, ritual and instrumental music is
-  where the gaps are. A lyric is only accepted when its length is within three seconds of
+  where the gaps are. A lookup only *takes* an entry whose length is within three seconds of
   your file's, because a title-only match is how a cover version's words end up on the
-  original. The `.lrc` beside the file is the original: delete it and the tag goes with it, and
+  original — and where an entry is further off than that, the panel says so rather than staying
+  silent, so that a timing provider can settle it by listening (see "when LRCLIB nearly has your
+  recording" above). The `.lrc` beside the file is the original: delete it and the tag goes with it, and
   a lyric you wrote or edited — in the web UI or with any editor — is recognised as yours by its
   bytes, not by a flag you have to set, and kept through every later pass including `--refetch`.
   Delete your own version to let LRCLIB answer again. A wrong match can be rejected for good, so
@@ -649,7 +673,7 @@ distributed under the GPL.
 ## Tests
 
 ```sh
-uv run pytest        # 518 tests, offline, ~40 s — including the page's own 23, under node
+uv run pytest        # 683 tests, offline, ~65 s — including the page's own 87, under node
 ```
 
 They run against recorded YouTube and MusicBrainz responses in `design-fixtures/` and mock
