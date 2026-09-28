@@ -28,11 +28,16 @@ from .tag import audio_quality
 
 BANDS = (14, 15, 16, 17, 18, 19, 20, 21, 22, 23)  # kHz, each one 1 kHz wide
 EMPTY = -150.0   # below this there is no signal at all: the band is above the file's Nyquist
-FLOOR = -85.0    # a backstop: below this nobody hears anything whatever the rest of the file does
+FLOOR = -80.0    # a backstop: below this nobody hears anything whatever the rest of the file does
 # …and the test that actually decides. Opus carries nothing above 20 kHz by design, yet its files
 # leave 40–50 dB of decoder residue in the bands above; measured against an absolute floor alone,
 # a quiet track's residue reads as content and the file looks full-band. So a band counts only if
 # it is within this much of the 14–15 kHz band, which is reliably music in anything worth keeping.
+#
+# Both numbers were chosen by measuring all 338 Opus files in the collection, which carry nothing
+# above 20 kHz by design: at -35 dB three of them read 24 kHz, at -40 dB eight did. At -30 two
+# still did — quiet tracks whose residue sat at -82 dB absolute — which is what the floor above is
+# for. At -30 and -80 together, none of the 338 reads above 21.
 BELOW = -30.0
 WINDOW = (30.0, 20.0)  # from 30 s in, 20 s long: past the intro, inside the song
 
