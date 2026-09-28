@@ -223,6 +223,40 @@ An album whose artist and name are **already in your library** is reported with 
 titles overlap, and then left alone: choosing between two copies of a recording is a decision of its
 own, and noaap does not make it quietly in the middle of an import.
 
+## Two copies of one song
+
+`noaap merge <another library>` looks at both, pairs what is the same song, and tells you which copy
+is better. It changes nothing until you add `--apply`, and the library you point it at is never
+written to at all.
+
+**It measures the audio rather than believing the file.** A container and a bitrate are claims: a
+FLAC can be a decode of a 128 kbps mp3, eight times the size and exactly as good. So each file is
+decoded once and split into 1 kHz bands from 14 to 23 kHz, and the highest band that still holds
+content is where that file stops. A FLAC made from an mp3 reads 17 kHz; a FLAC made from a YouTube
+Opus reads what that Opus reads; a real CD rip reaches 22 kHz, which is where 44.1 kHz audio has to
+stop, and it is not the worse file for that.
+
+The order of the rule, and it is short:
+
+1. **Your own work wins.** A trim you marked, a source you chose, words you *timed* to this file —
+   none of that is outranked by a measurement.
+2. **Is it even the same recording?** Within 3 seconds yes, beyond 20 no, and in between it is shown
+   rather than decided. Where MusicBrainz or LRCLIB knows the length, both files are measured against
+   that instead of against each other, because both can be padded.
+3. **Then quality, on measured things only.** A wider band decides. A lossless *container* decides
+   nothing. A bitrate decides only against the same codec. A tie goes to the copy you already have.
+
+Anything it cannot settle is listed with both files' numbers — codec, rate, where the audio stops,
+length, size — so you can settle it yourself in the ⇄ panel with one click. Nothing is ever removed
+except through the recycle bin, whose entry records both copies' numbers; restoring one puts your
+file back and makes sure that proposal never returns.
+
+```sh
+noaap merge ~/Music/other-library              # show what it would do
+noaap merge ~/Music/other-library --undecided  # only what it will not decide for you
+noaap merge ~/Music/other-library --apply      # do it
+```
+
 Each album folder holds a **plan** (`.ytalbum.json`): what the source listed, what each
 track should be called, where every value came from, what has been downloaded, and which
 trim points apply. The plan is the only state — delete it and the album is just files;

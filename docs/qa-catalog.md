@@ -3059,10 +3059,93 @@ verification output for `Sturm|Rhein|Blick|Better` and it matched "Sturm" as a b
 quoted it without checking that it belonged. The listing count said so all along — 129 to 132 is
 three. **A number that can be derived two ways should be, before it is reported.**
 
+## AW. Which copy is better (P52, DESIGN §9, slice 54)
+
+Two real libraries: 246 albums of YouTube Opus in the disposable copy, and 132 albums taken out of
+the user's 43.8 GB legacy collection. Everything below is measured over both; nothing was written to
+either.
+
+- [x] **AW1 · M** — the measurement separates what the containers hide
+
+  A ladder built from one lossless original: the original at its own ceiling, **a FLAC made from a
+  128 kbps mp3 reading 17 kHz, and a FLAC made from an Opus reading exactly what that Opus reads.**
+  - **result:** pass. Over whole classes: **87% of the 533 24-bit/48 kHz FLACs are band-limited at
+    20–21 kHz**, where 326 of the 338 Opus files sit. 44% of the CD-rate FLACs are cut there too,
+    which is why sample rate is recorded and never used to decide.
+
+- [x] **AW2 · R** — the thresholds are measured, not chosen
+
+  Opus carries nothing above 20 kHz by design, so all 338 of its files are the test. At a relative
+  floor of −35 dB three read 24 kHz; at −40 dB eight did; at −30 dB two still did, both quiet tracks
+  whose decoder residue sat at −82 dB absolute.
+  - **result:** −30 dB relative **and** −80 dB absolute. None of the 338 reads above 21 kHz.
+
+- [x] **AW3 · M** — pairing refuses more than it concludes
+
+  762 pairs (482 by recording id, 280 by artist and title), 200 ambiguous, 1038 not in the other
+  library. A key matching several tracks is shown, never guessed, and the search stops there instead
+  of falling through to a weaker key — which costs 8 pairs and is worth every one.
+  - **result:** pass.
+
+- [x] **AW4 · M** — the verdicts, over all 762
+
+  | | |
+  |---|---|
+  | replace | **88** |
+  | fill | **0** |
+  | keep | **420** |
+  | undecided | **254** |
+
+  3.36 GB would be added, 0.35 GB moved to the bin, 21 albums touched.
+  - **the largest single group is 163 undecided**: the incoming file is lossless and holds exactly
+    the same audio as the one here. Under a rule that trusted the container, all 163 would have been
+    replacements — about 8 GB written for nothing.
+  - 62 keeps are "same band, different codecs: the rates do not compare" — every one of them an MP3
+    against an Opus, which is why a rate may only be compared within a codec.
+  - 83 undecided are 3–20 s apart, mostly live against studio; 94 keeps are more than 20 s apart and
+    are simply different recordings; 8 undecided have nothing above 14 kHz in one of the two files.
+  - **fill is 0 because nothing in that library is missing** — every one of the 762 library tracks
+    is present and done. The verdict exists for a failed download, which this material does not have.
+
+- [x] **AW5 · R** — a bare merge is a read
+
+  A case reads every byte and every mtime of the target library before and after a survey and demands
+  they are unchanged.
+  - **result:** pass. `--apply` is the only thing that acts, and the only thing that removes audio
+    is the bin.
+
+- [x] **AW6 · R** — a restore after a replacement is an undo
+
+  The third shape of restore, and it did not exist: the track is present *and* its file is there,
+  just a different one. The old code answered "already in the album" and stopped.
+  - **result:** fixed. The copy that displaced it goes, the binned audio comes back under its own
+    extension, and the displacer is refused so the pass cannot propose it again.
+
+### Three defects the material found, none of them in the rule
+
+1. **A tag that is not UTF-8 killed the pass.** File 801 of 2000: ffmpeg echoes the tags it reads,
+   this collection has ID3 frames in Latin-1, and `text=True` raised on a byte in a *comment*. All
+   four subprocess readers had it.
+2. **A merged track forgot where its audio came from.** `own_the_candidates` claimed whatever
+   `source_override` named, so on the next load a candidate measured as the folder's was rewritten
+   to the album's provider — and a re-download would have asked YouTube for a folder path.
+3. **The page built links out of refs.** Every candidate was linked to `youtube.com/watch?v=<ref>`;
+   for a folder's ref that is a path on this machine, so the link would have been wrong and a home
+   directory in an anchor. The server asks each provider for a link now. It was reachable because
+   the slice-51 grep guard scans `.py` and `.mjs` but **not `app.js`** — so the rendering moved into
+   `logic.mjs`, which the guard does scan.
+
+### Open, queued behind this package
+
+**575 library tracks have a file and no `file_length`.** Nothing is missing; nobody ever asked the
+file. A pass that measures and records them — part of `update`, or `repair` — is its own small
+package (R-167).
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AW cases (P52: which copy is better) | 6 | 0 in the design; 3 defects found by using it, all fixed | Two real libraries, 2000 tracks against 3942. Quality is measured, not believed: ten 1 kHz bands per file, and a FLAC made from an Opus reads what that Opus reads. **87% of the collection's 533 24/48 FLACs are band-limited where Opus stops.** Thresholds derived from all 338 Opus files. 762 pairs → **88 replace, 0 fill, 420 keep, 254 undecided**, 3.36 GB added and 0.35 GB binned. The largest group is 163 undecided lossless-but-identical — about 8 GB that a container-trusting rule would have written for nothing. 1033 pytest + 95 node. |
 | 2026-09-28 | the AV cases (P51: a folder is a source) | 6 | 0 in the design; **8 defects found by using it**, all fixed | The second real provider, built against the user's own 43.8 GB / 2000-file collection. Four defects from the dry run (two tracks lost to a merge on track number alone; three albums refused because a FLAC header's `total_samples = 0` was read as a length; no length at all for those 52 files; YouTube's 30-second intro-card rule applied to folders), one from arithmetic (three multi-disc albums unreachable from the root — 2000 in, 1933 out, 24+22+21 = 67), one from a MusicBrainz pass (the database overruling the files' own tags), two from the first real copy (every file named `.opus` and an mp3; a home path in every file's `source` tag). Final: **132 albums, 2000 tracks from 2000 files**, nothing merged, dropped or unaccounted. 957 pytest + 92 node. |
 | 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.ytalbum.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
 | 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |

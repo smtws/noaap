@@ -1431,6 +1431,44 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    digest, and is fetched only if something later chooses it. Copying 43.8 GB of losing candidates
    to find out would be absurd.
 
+54. ✅ **Which copy is better, and replacing the worse** (2026-09-28, P52). Two libraries meet: 246
+   albums of YouTube Opus and 132 albums taken out of a 43.8 GB legacy collection. 2000 tracks
+   against 3942, **762 pairs, 200 ambiguous, 1038 the library does not have.**
+   **A container and a bitrate are claims; where the audio stops is a measurement.** One decode per
+   file, ten 1 kHz bands from 14 to 23 kHz through ffmpeg's own filters, and the highest band still
+   holding content is the file's cutoff. A band below −150 dB is not quiet, it is above that file's
+   Nyquist, so every file is measured against its own ceiling: a CD rip reads 22 kHz and a full-band
+   48 kHz file reads 24, and the CD rip is not the worse file — which is why `full` is compared
+   before the number ever is. Residue is not content either: Opus leaves 40–50 dB of decoder noise
+   above 20 kHz, so a band counts only within 30 dB of the 14–15 kHz band and above −80 dB absolute.
+   Both numbers come from measuring all 338 Opus files in the collection, which carry nothing above
+   20 kHz by design; at those two, none of them reads above 21.
+   **What it catches:** a FLAC made from a 128 kbps mp3 reads 17 kHz, and a FLAC made from an Opus
+   reads exactly what that Opus reads. **87% of that collection's 533 24-bit/48 kHz FLACs are
+   band-limited at 20–21 kHz**, where 326 of its 338 Opus files sit. Sample rate does not decide and
+   is only recorded: 44% of its CD-rate FLACs are cut at 19–21 kHz too.
+   **What it cannot tell:** a quiet recording or an old master has nothing up there to judge by, and
+   that is an answer — "no evidence" — never a bad score. An absent number never wins or loses a
+   comparison; it makes the verdict undecided.
+   **The order is the user, then identity, then quality.** A trim they marked, a source they chose,
+   words they *timed* to this file: none of those is outranked by a measurement. Then ≤3 s is the
+   same recording and >20 s is not, measured against MusicBrainz or LRCLIB where either knows the
+   length, because two files can both be padded. Then a wider band decides; a lossless *container*
+   decides nothing; a rate decides only against the same codec, because Opus at 125 kbps and MP3 at
+   320 are not ranked by their numbers; and a tie goes to the incumbent.
+   **Verdicts over all 762 pairs: 88 replace, 0 fill, 420 keep, 254 undecided** — 3.36 GB added,
+   0.35 GB binned, 21 albums touched. The largest single group is the **163 undecided where the
+   incoming file is lossless and holds exactly the same audio**: under a rule that trusted the
+   container those would all have been replacements, about 8 GB written for nothing.
+   **The pass proposes and a person disposes.** A bare `merge` is a read — a case reads every byte
+   and mtime of the target before and after and demands they are unchanged. `--apply` acts, and the
+   only thing that removes audio is the bin, whose entry carries both files' numbers and the ref
+   that displaced this one. Restoring is an undo: the copy that displaced it goes, the binned audio
+   comes back, and the displacer is refused so the pass cannot propose it again.
+   **Nothing derived from a ref leaves the program**, extended here to the page: it asks each
+   candidate's provider for a link rather than building one out of a ref, because a folder's ref is
+   a path on this machine.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
