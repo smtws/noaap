@@ -2998,8 +2998,18 @@ that reads its own surroundings must not be named after what it looks for.**
 
 ### Evidence methods that lied
 
-Nine of my own checks produced a false result, or none at all, before the software did anything
+Ten of my own checks produced a false result, or none at all, before the software did anything
 wrong. Use these forms:
+
+- **A suite proves what it has seen, and this one had never seen a FLAC.** Found 2026-09-28 while
+  surveying the legacy collection for P51, present in every release up to and including **1.0.0**:
+  `tag.py` opened everything that was not `.m4a` as Opus, so `audio_length` on a `.flac` raised
+  `MutagenError`, caught it by design — the catch is right, an unreadable file must not crash a
+  pass — and answered `None`. A `None` length reads as "no match" and an empty `audio_quality`
+  reads as "unknown", so 1662 of 2000 files in that collection would have arrived measurable by
+  nothing, tagged by nothing, and ranked as unknown quality, with no error anywhere. 900 tests were
+  green. The form to use: **when a module dispatches on a file type, the suite needs one real file
+  of each type it claims to handle** — generated at test time, not reasoned about.
 
 - **A layout check needs a picture *and* a measurement, and neither finds the other's faults.**
   P15 added the grip and P17 photographed the rows; both passed. The grip was sitting above the
