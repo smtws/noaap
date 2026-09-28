@@ -3383,6 +3383,63 @@ measured on public pages; nothing here touches DRM.
    fetch says so instead of writing a plan. **A cleaner that removes a marker must not remove the
    fact.**
 
+## BA. A collection becomes a library where it stands (P54, DESIGN §9, slice 58)
+
+Measured on a **41 GB working copy** of the user's collection at `~/Musik/noaap-inplace`, verified
+byte-for-byte identical to the original before anything ran. `~/Music/legacy` was never written.
+
+- [x] **BA1 · R** — the defect that decided the design
+
+  Adopt an album the naive way — write a plan, mark the tracks done — and run one ordinary pass.
+  - **result:** it renamed every file into noaap's scheme **and renamed an mp3 to `.opus`**, after
+    which our own tagger could not open it (`read b'ID3', expected b'OggS'`). `PlanTrack.ext`
+    defaulted to `opus` and nothing set it from the file, because the download path fixes that when
+    the audio arrives and for an album already on disk it never arrives. **1662 of 2000 files** (932
+    mp3, 730 flac). Fixed at the cause: `Entry.ext` carries the container where a source can know it
+    before fetching, and the core still never reads one off a ref.
+
+- [x] **BA2 · R** — an adopted album is left alone by every ordinary pass
+
+  `keep_names` and `keep_tags`, both false everywhere else.
+  - **result:** pass. A full run over an adopted album leaves its audio at identical mtime, size and
+    stream digest, and writes only the plan. A twin case asserts an album noaap fetched is still
+    renamed into noaap's scheme, so the default path is provably untouched.
+
+- [x] **BA3 · M** — adopting the whole copy adds one file per album and nothing else
+
+  Dry first, then `--apply`, each 2 m 53 s over 132 folders.
+  - **result:** the dry run wrote nothing (2153 files before and after, identical). The apply added
+    **132 files, every one a plan**; **0 files removed, 0 changed, 0 audio names changed**.
+    132 albums, 2000 tracks, and 2000 = 2000 + 0 on the reconciliation line.
+
+- [x] **BA4 · M** — and then giving it all back
+
+  `--retag --rename` on three albums, one per container (38 mp3, 40 flac, 23 opus), then `--undo`
+  over all 132.
+  - **result:** the undo took **1.3 s**: 132 plans removed, 2 files renamed back, **56 files' tags
+    restored**, 0 kept. Against the untouched original, over all 2000 audio files: **0 names
+    differ, 0 audio streams differ, 0 tag fields differ.** Over the whole tree of 2153 files, 0
+    name differences. The only remaining difference is **24 files whose byte size changed** — 23
+    opus and 1 mp3, every one of them among the three albums deliberately retagged. The 40 FLACs
+    came back the same size because their padding absorbed it, and 37 of the 38 mp3s did too.
+  - **that size difference is the promise's boundary, and it is the documented one**: a tag block
+    does not come back byte for byte, because mutagen rewrites it whole and a writer putting the
+    same values back cannot put the same padding back. The names, the fields and the audio stream
+    are what is promised, and those are identical.
+
+- [x] **BA5 · R** — neither act runs without a way back
+
+  `--rename` and `--retag` refuse an album whose record of what it was is missing or incomplete.
+  - **result:** pass, and the refusal names the album.
+
+### A number in my own proposal that was wrong
+
+I-144 said adoption would make **1699 renames**. The true number is **438**. The 1699 was produced
+by the very defect BA1 describes: every mp3 and flac "needed renaming" only because the plan wanted
+a `.opus` name for it. Once the container is read from the file, three quarters of those renames
+turn out not to exist — and the collection is largely in noaap's naming scheme already, because
+noaap downloaded much of it. **A measurement taken through a defect measures the defect.**
+
 ### Open, queued behind this package
 
 **The real library has 574 of these**, untouched: this package ran on the disposable copy only.
@@ -3393,6 +3450,7 @@ One `noaap repair` closes it.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the BA cases (P54: a collection in place) | 5 | 0 in the design; 1 defect found before building, fixed first | `noaap adopt` writes one plan per album and nothing else. The design was decided by a measurement: adopting naively and running one ordinary pass renamed an mp3 to `.opus` and then could not read it — **1662 of 2000 files**. Fixed at the cause, then `keep_names`/`keep_tags` so no pass touches an adopted album. Live on a 41 GB copy: dry wrote nothing, apply added **132 files, all plans, 0 changed**; retag+rename on three albums across three containers; `--undo` of all 132 in **1.3 s**, after which the copy and the untouched original agree on **every name, every audio stream and every tag field** (2000 files, 0 differences of each), with 24 files differing only in tag-block size — the documented boundary of the promise. Correction: my own proposal's 1699 renames was 438 — the 1699 was the defect being measured. 1147 pytest + 102 node. |
 | 2026-09-28 | the AZ cases (P53: SoundCloud) | 6 | 0 in the design; 2 defects found by running it, both fixed | The third provider, and the first whose purpose had to be settled before the design: **SoundCloud is for music that is not on YouTube, not for better copies.** Measured, not assumed — label uploads are DRM protected (3 of 3), ordinary tracks cap at 160 kbps AAC (8 of 8), and the one file fetched live reads **16 kHz** against this library's 20–21. A shared `ytdlp.py` that may not name a site, cookies as an argument, and a province guard that runs three ways. `LISTING` split from `SEARCH`, because a provider does not declare what it cannot do. Live: 11/11 tracks in 1 m 57 s, MusicBrainz matched the release, `update` 1.3 s. Defects: an address no extractor claimed (401 from the *generic* one), and a preview that planned as the song. **CI ran once on the head of commits 1–4**, which it covers. 1121 pytest + 102 node. |
 | 2026-09-28 | the AY cases (P52e: lengths nobody asked for) | 5 | 0 | 574 finished tracks with a file and no length, and the reason is the shape of the pass: `repair` skips an album whose names are already right **before** it measures anything, so a tidy library could never close the gap. The measuring moved in front of the skip; `update` does the albums it touches; `--dry-run` on either writes nothing, which meant giving `repair` a real dry run. `file_length_by` records header vs decoded. Live on the disposable library: 556 measured in 16.8 s, all from the header, 0 left, `plan --verify` 0 changed. **What it turned on: nothing visible.** All 556 already fell back to the video duration, median 0.24 s away, so no ⏱ verdict and no album flag changed, and all 556 already have words so none gains the near-miss check. What it removes is a fallback standing in for a measurement. 1070 pytest + 102 node. |
 | 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. No screenshot: the panel can only be shown on an artist this repository does not publish. 1059 pytest + 102 node. |

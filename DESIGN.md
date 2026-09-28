@@ -1574,6 +1574,40 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **The ref is the numeric track id** and `url_for` answers None: a permalink can be renamed by its
    uploader, and the protocol would rather have nothing than a link that 404s.
 
+58. ✅ **A collection becomes a library where it stands** (2026-09-28, P54). `noaap adopt <root>`
+   writes **one file per album and nothing else**: the plan, beside the audio its owner already
+   arranged. No file renamed, no folder moved, no tag written. That is enough for a library — the
+   page, the player, lyrics, the length check and `merge` all work off the plan.
+   **The reason it had to be built this way is a measurement.** Adopting the naive way — write a
+   plan, mark the tracks done — and running one ordinary pass renamed every file into noaap's
+   scheme **and renamed an mp3 to `.opus`**, after which our own tagger could not open it
+   (`read b'ID3', expected b'OggS'`). `PlanTrack.ext` defaulted to `opus` and nothing ever set it
+   from the file, because the download path fixes that when the audio arrives and for an album
+   already on the disk the audio never arrives. Over the reference collection that is **1662 of
+   2000 files** (932 mp3, 730 flac). So `Entry.ext` carries the container where a source can know
+   it before fetching, and the core still never reads one off a ref.
+   **`keep_names` and `keep_tags`** say the album is the collection's, not ours. `refresh_derived`
+   returns without deriving anything — *that is where the wanting starts*, and a name derived once
+   makes every later pass want to rename. `relocate` leaves the folder alone, the rename at the top
+   of a run has nothing to compare against, and no pass writes into the audio: the words still
+   arrive as a sidecar, MusicBrainz fills the plan, nothing is embedded.
+   **Renaming and retagging are separate acts a person asks for**, and neither runs without a way
+   back. `--retag` keeps every field this program does not model, because losing replaygain, ISRC,
+   composer or somebody's own comment would be the adoption destroying the thing it took in.
+   **The undo is judged on what matters, and says so.** Every file answers to the name it had,
+   every field noaap would write has the value the file gave it, and the audio stream is the one
+   that was there. The tag *block* does not come back byte for byte — mutagen rewrites it whole and
+   a writer putting the same values back cannot put the same padding back — so byte identity is not
+   the promise, and claiming it was would be a lie. An **absent** tag is restored by removing the
+   key: putting the old values back while leaving our additions behind is not giving the file back.
+   What noaap added is removed only while it is still what noaap wrote; a sidecar the user has
+   edited since is theirs, whatever put it there.
+   **Two things are refused rather than guessed:** a folder that already holds a plan, and a folder
+   whose files say they are two different albums — the owner made that folder, and deciding which
+   files belong together is theirs. And a replacement by `merge` in such a library takes the
+   displaced file's own stem, because putting noaap's name on one file of an album called something
+   else throughout is the one thing adoption promised not to decide.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -242,6 +242,39 @@ An album whose artist and name are **already in your library** is reported with 
 titles overlap, and then left alone: choosing between two copies of a recording is a decision of its
 own, and noaap does not make it quietly in the middle of an import.
 
+## A collection you already have
+
+`noaap adopt <folder>` takes a collection in **where it stands**. It reads every album folder under
+that root and writes one file per album — the plan, beside the audio you already arranged. Nothing
+is renamed, no folder is moved, and **not one tag is written into your files**. Dry by default;
+`--apply` writes the plans, `--only` and `--album` narrow it.
+
+That is the whole of it, and it is enough for a library: the page, the player, lyrics, the length
+check and `merge` all work off the plan. The album is marked as **yours, not noaap's** — every
+ordinary pass afterwards leaves its names and its tags alone, which is the thing that had to be
+built for this to be safe at all.
+
+Two things you can ask for afterwards, each on its own: **`--rename`** gives the files noaap's
+names and still leaves the folder where you put it, and **`--retag`** writes the plan's fields in
+while keeping every field this program does not model — replaygain, ISRC, composer, BPM, your own
+comment. Neither runs on an album whose record of what it was is missing, because:
+
+**`--undo` gives an album back.** Every file answers to the name it had, every field noaap would
+ever write has the value your file gave it, and the audio stream is untouched. What noaap added is
+removed — unless you have edited it since, in which case it is yours now and it stays, and the undo
+says so. The tag *block* does not come back byte for byte: mutagen rewrites it whole, and a writer
+putting the same values back cannot put the same padding back. The names, the fields and the audio
+are the promise.
+
+The recycle bin lives at the root of the library — which, for a collection adopted in place, is
+**inside your own music folder**, as `.recycle`. Nothing else noaap does puts a file there.
+
+```sh
+noaap adopt ~/Music/my-collection                  # what it would write
+noaap adopt ~/Music/my-collection --apply          # write the plans
+noaap adopt ~/Music/my-collection --undo --apply   # give it all back
+```
+
 ## Two copies of one song
 
 `noaap merge <another library>` looks at both, pairs what is the same song, and tells you which copy
@@ -393,6 +426,7 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
 | `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
 | `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
+| `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` says what it would do and writes nothing. |
 | `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
 | `noaap timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
