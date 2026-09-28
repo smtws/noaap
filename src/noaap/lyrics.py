@@ -16,7 +16,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import re
 import sqlite3
 import threading
@@ -170,8 +169,7 @@ class LyricsAPI(Protocol):
 
 
 def default_cache_path() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / config.NAME / "lyrics.sqlite3"
+    return config.cache_dir() / "lyrics.sqlite3"
 
 
 class Lrclib:

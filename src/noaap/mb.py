@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -129,8 +128,7 @@ class MusicBrainzAPI(Protocol):
 
 
 def default_cache_path() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / config.NAME / "musicbrainz.sqlite3"
+    return config.cache_dir() / "musicbrainz.sqlite3"
 
 
 def phrase(text: str) -> str:

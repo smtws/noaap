@@ -115,6 +115,11 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--older-than", type=float, metavar="DAYS",
                     help="empty: only entries older than this many days")
 
+    mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
+    mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
+    mg.add_argument("--uninstall-old", action="store_true",
+                    help="also remove ytalbum's systemd units and desktop launcher (never its browser profile)")
+
     c = sub.add_parser("config", help="show or set configuration")
     c.add_argument("--library", type=Path, help="set the library root")
     c.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use a browser's YouTube login: gets past the bot check and unlocks age-restricted videos; 'none' to unset")
@@ -165,6 +170,11 @@ def main(argv: list[str] | None = None) -> int:
                 return _systemd(args, cfg)
             case "app":
                 return _app(args)
+            case "migrate":
+                from . import migrate
+                for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old):
+                    print(line)
+                return 0
             case "delete":
                 return _delete(args, cfg)
             case "repair":

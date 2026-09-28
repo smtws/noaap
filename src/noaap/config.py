@@ -46,6 +46,11 @@ def config_dir(name: str = NAME) -> Path:
     return Path(base) / name
 
 
+def cache_dir(name: str = NAME) -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+    return Path(base) / name
+
+
 def config_path() -> Path:
     return config_dir() / "config.toml"
 

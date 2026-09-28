@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import signal
 import subprocess
 import sys
@@ -30,8 +29,7 @@ START_TIMEOUT = 15.0
 
 
 def cache_dir() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / config.NAME
+    return config.cache_dir()
 
 
 def heartbeat_path() -> Path:

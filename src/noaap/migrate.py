@@ -1,0 +1,116 @@
+"""`noaap migrate`: take over what ytalbum left on this machine (DESIGN §9, slice 52).
+
+Nothing here is needed to *run* — the settings and the `YTALBUM_*` variables are read where they
+are, and the library was never touched by the rename. This exists so that the old names stop being
+read, and so the two caches do not have to refill.
+
+It **copies, never moves**, and it leaves ytalbum's own directories alone. That is what makes the
+undo trivial: ytalbum still works afterwards, because nothing of its was taken away.
+
+Dry by default, which is the opposite of `--dry-run` elsewhere in this program. The reason is that
+this is the one command that reaches outside the library and into the user's configuration and their
+systemd units, where "show me first" is the only reasonable default.
+"""
+
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+
+from . import config, desktop, systemd
+
+# runtime scratch, not worth carrying: a heartbeat file and the token server's log
+CACHES = ("lyrics.sqlite3", "musicbrainz.sqlite3")
+
+
+@dataclass
+class Copy:
+    src: Path
+    dst: Path
+    skip: str | None = None  # why not, if not
+
+
+def copies() -> list[Copy]:
+    """Everything worth carrying over, with the reason where one is skipped.
+
+    The settings file, whatever `*.env` the user keeps beside it (a vendor key lives in one here —
+    its name is read, never its contents), and the two sqlite caches with their write-ahead files.
+    """
+    out: list[Copy] = []
+    theirs, ours = config.config_dir(config.LEGACY), config.config_dir()
+    for src in sorted([theirs / "config.toml", *theirs.glob("*.env")]):
+        if src.exists():
+            out.append(Copy(src, ours / src.name))
+    old_cache, new_cache = config.cache_dir(config.LEGACY), config.cache_dir()
+    for name in CACHES:
+        for src in sorted(old_cache.glob(f"{name}*")):  # the db, plus -wal/-shm if it was left open
+            out.append(Copy(src, new_cache / src.name))
+    for copy in out:
+        if copy.dst.exists():
+            copy.skip = "already here"
+    return out
+
+
+def legacy_profile() -> Path:
+    return desktop.data_home() / f"{desktop.LEGACY_APP_ID}-browser"
+
+
+def removals() -> list[Path]:
+    """ytalbum's units, its launcher entry and its icons — and never its browser profile.
+
+    Its own config and cache directories are not here either: they are what makes going back to
+    ytalbum possible, and this command is not the place to close that door.
+    """
+    profile = legacy_profile()
+    return systemd.legacy_units() + [p for p in desktop.legacy_installed() if p != profile]
+
+
+def run(apply: bool = False, uninstall_old: bool = False) -> list[str]:
+    """What was done, or what would be. One line each, for the user to read before saying yes."""
+    lines: list[str] = []
+    for copy in copies():
+        if copy.skip:
+            lines.append(f"skipped {copy.dst} — {copy.skip}")
+        elif apply:
+            copy.dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(copy.src, copy.dst)
+            lines.append(f"copied {copy.src} → {copy.dst}")
+        else:
+            lines.append(f"would copy {copy.src} → {copy.dst}")
+
+    if uninstall_old:
+        for unit in (f"{systemd.LEGACY_UNIT}.socket", f"{systemd.LEGACY_UNIT}.service"):
+            if not (systemd.unit_dir() / unit).exists():
+                continue
+            if apply:
+                if unit.endswith(".socket"):
+                    systemd.systemctl("disable", "--now", unit)
+                else:
+                    systemd.systemctl("stop", unit)
+                lines.append(f"stopped {unit}")
+            else:
+                lines.append(f"would stop and disable {unit}")
+        for path in removals():
+            if apply:
+                path.unlink()
+                lines.append(f"removed {path}")
+            else:
+                lines.append(f"would remove {path}")
+        if apply and systemd.legacy_units() == []:
+            systemd.systemctl("daemon-reload")
+    elif removals():
+        lines.append(f"ytalbum's units and launcher are still installed ({len(removals())} files) — "
+                     "add --uninstall-old to remove them")
+
+    if (profile := legacy_profile()).is_dir():
+        lines.append(f"left alone: {profile} (ytalbum's browser profile — it holds your cookies "
+                     "and logins; delete it yourself if you want it gone)")
+    lines.append(f"left alone: {config.config_dir(config.LEGACY)} and {config.cache_dir(config.LEGACY)} — "
+                 "nothing is removed from them, so ytalbum still runs")
+    if not apply:
+        lines.append("nothing was changed. `noaap migrate --apply` does it.")
+    elif uninstall_old:
+        lines.append("to go back: `ytalbum service install` and `ytalbum app install` rebuild what "
+                     "was removed.")
+    return lines
