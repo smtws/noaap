@@ -3002,6 +3002,29 @@ would have come out of a test**. They are the five cases.
   - **evidence:** 2000 files in, 1933 tracks out, 67 in no album at all — and 24 + 22 + 21 = 67
   - **result:** fixed; 129 albums listed became 132.
 
+- [x] **AV6 · M** — the first real copy, four tracks
+
+  A dry run plans; only a real one copies, renames, tags and writes a sidecar. Run once against
+  `3 Doors Down/Landing in London Part 1` into a scratch library, with the source folder hashed by
+  name, size and mtime before and after.
+  - **result:** two defects, both in the copy path. **Every file was named `.opus` and was an
+    mp3** — `ext` had only ever been set from a YouTube audio choice, so any other provider's file
+    was filed under a name that lied about its contents, and `tag_file` dispatches on that suffix.
+    The same silent container corruption this catalog records from the trim path, from a new
+    direction. **And every file carried a home path**: `TXXX:source` held the folder's absolute
+    address, which identifies the album to nobody and stops being true the moment anything moves.
+  - After the fixes: four `.mp3` under their own extension, tagged, cover embedded, three `.lrc`
+    sidecars, no `/home/` in any tag, and the source folder byte-for-byte and mtime-for-mtime as
+    it was.
+
+### Eight defects, and where each one came from
+
+None of them came from writing tests. Four came from a dry run over 2000 files, one from arithmetic
+on the totals, one from a MusicBrainz pass, two from a single real copy of four tracks. The suite
+was green at every step — 900 tests when the first was found, 957 when the last was. What the suite
+proves is that the paths it walks still work; it cannot notice a path nobody walked, a number nobody
+balanced, or a file nobody opened afterwards.
+
 ### Count what went in, count what came out, itemise the difference
 
 AV5 is the one no amount of test-writing would have produced, and it came out of arithmetic:
@@ -3040,6 +3063,7 @@ three. **A number that can be derived two ways should be, before it is reported.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AV cases (P51: a folder is a source) | 6 | 0 in the design; **8 defects found by using it**, all fixed | The second real provider, built against the user's own 43.8 GB / 2000-file collection. Four defects from the dry run (two tracks lost to a merge on track number alone; three albums refused because a FLAC header's `total_samples = 0` was read as a length; no length at all for those 52 files; YouTube's 30-second intro-card rule applied to folders), one from arithmetic (three multi-disc albums unreachable from the root — 2000 in, 1933 out, 24+22+21 = 67), one from a MusicBrainz pass (the database overruling the files' own tags), two from the first real copy (every file named `.opus` and an mp3; a home path in every file's `source` tag). Final: **132 albums, 2000 tracks from 2000 files**, nothing merged, dropped or unaccounted. 957 pytest + 92 node. |
 | 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.ytalbum.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
 | 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |
 | 2026-09-28 | the AS cases (P48: candidates) | 5 | 0 in the software; 1 of my own (a case that asserted a sample rate Opus does not report) | `candidates` / `chosen` / `refused_candidates` on a track, synthesised from `video_id` + `source_override`, which stay **the truth** where a plan disagrees with itself. `plan --verify` over 245 real plans: 0 lost, 0 changed. The library's one real override reads back unchanged. Switch and refuse driven end to end on the disposable copy. 831 pytest + 91 node. |
