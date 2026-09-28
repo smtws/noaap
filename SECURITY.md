@@ -21,6 +21,14 @@ rebinding), files are served by album and video id only — never by a path from
 a strict CSP applies, and thumbnails are fetched by the server so the page never talks to
 Google.
 
+## The recycle bin
+
+`GET /api/recycle` lists what ytalbum moved aside instead of deleting. It reports an **entry id and
+the track's own names** — artist, title, album, reason, size — and **no filesystem path**, so the
+page never learns where the library is. Restoring and emptying are ordinary write calls and need the
+same header as every other one; emptying asks first, because it is the only place in ytalbum that
+really deletes audio.
+
 ## `ytalbum timing-serve`
 
 The alignment service is a **separate exposure from the web UI, with its own default**: it binds

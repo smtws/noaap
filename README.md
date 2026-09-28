@@ -279,14 +279,15 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `ytalbum plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer ytalbum left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
 | `ytalbum download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
 | `ytalbum update` | Re-check every album against its source. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
-| `ytalbum prune <album-folder>` | Delete tracks that are no longer in the source playlist (asks first, `--yes` skips). |
-| `ytalbum delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). |
+| `ytalbum prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
+| `ytalbum delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
 | `ytalbum serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
 | `ytalbum service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
 | `ytalbum app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
 | `ytalbum repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. |
 | `ytalbum lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
 | `ytalbum timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
+| `ytalbum recycle list\|restore\|empty` | What ytalbum moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
 | `ytalbum config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
 
 `-v` / `--verbose` before the subcommand turns on debug logging for any of them.
@@ -724,6 +725,38 @@ The rest is internal and written for whoever works on this, not for using it:
 
 ## Removing it
 
+### The recycle bin
+
+**ytalbum never removes audio. It moves it to the bin.** Deleting a track, deleting an album and
+pruning what left a playlist all put the file in `<library>/.recycle/` instead of unlinking it —
+with its lyrics sidecar, the untouched original kept for trimming, the tags it carried, and the plan
+entry exactly as it was, which is what lets it come back.
+
+```sh
+ytalbum recycle list                 # what is in there, why, and how big
+ytalbum recycle restore <entry>      # put one back
+ytalbum recycle empty --older-than 90
+```
+
+The web UI shows the same under **Settings › Recycle bin**, with a *Put it back* button.
+
+**It never empties itself.** There is no age cap and no size limit, because a bin that quietly
+empties is one you cannot rely on; `ytalbum config` and the settings panel report how big it has
+grown, and `recycle empty` is the only thing in ytalbum that really deletes audio.
+
+Restoring puts the file back, returns the track to its album with its old numbering, and brings the
+sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which case yours
+stay and the restore says so. Tags are rewritten by the ordinary pass rather than replayed, so a
+track restored after its album was renamed gets the album's current names. If the album itself is
+gone the restore is refused and the entry is left alone: fetch the album again first. And a track
+the playlist no longer lists comes back the way it was — the next `prune` will move it aside again,
+which is correct, because restoring undoes one action rather than arguing with the playlist.
+
+It is not `.originals/`: that holds one untouched file per *trimmed* track so a cut can be redone or
+undone, and it stays exactly as it is.
+
+### Everything else
+
 ytalbum keeps everything in four places, and nothing anywhere else.
 
 ```sh
@@ -738,6 +771,7 @@ Then delete, if you want them gone:
 | the program | the clone, including `.venv/` and `.pot-provider/` |
 | settings | `~/.config/ytalbum/config.toml` (or `$XDG_CONFIG_HOME/ytalbum/`) |
 | caches | `~/.cache/ytalbum/lyrics.sqlite3`, `~/.cache/ytalbum/musicbrainz.sqlite3`, and the token server's files in the same folder |
+| the recycle bin | `<library>/.recycle/` — see above; deleting it by hand is the same as emptying it |
 | models, only if you used the `timing` extras | `~/.cache/torch/hub/checkpoints/` (the aligner and Demucs, ~0.5 GB) and `~/.cache/huggingface/` (the Whisper decoder, ~3 GB) |
 
 **Your music is not touched by any of this.** The library folder, the audio, the covers and the

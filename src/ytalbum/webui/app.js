@@ -1343,13 +1343,13 @@ function markAlbumFields() {
 }
 
 function deleteTrack(plan, track, button) {
-  const message = `Delete “${track.artist} – ${track.title}”?\n\nThe file is removed and the remaining tracks are renumbered.\nIf the video is still in the playlist, a later update fetches it again.`;
+  const message = `Delete “${track.artist} – ${track.title}”?\n\nThe file is moved to the recycle bin — nothing is deleted outright — and the\nremaining tracks are renumbered. Settings › Recycle bin puts it back.\nIf the video is still in the playlist, a later update fetches it again.`;
   if (confirm(message)) submit("delete_track", { id: plan.source_id, video_id: track.video_id }, button);
 }
 
 function deleteAlbum(plan, button) {
   const n = plan.tracks.length;
-  const message = `Delete the album “${plan.albumartist} — ${plan.album}”?\n\n${n} track(s), the cover and the album data are removed from\n${plan.folder}\n\nFiles you put there yourself are kept.`;
+  const message = `Delete the album “${plan.albumartist} — ${plan.album}”?\n\n${n} track(s) and the cover move to the recycle bin; the album data in\n${plan.folder}\nis removed.\n\nFiles you put there yourself are kept. Settings › Recycle bin puts the audio back.`;
   if (confirm(message)) {
     submit("delete_album", { id: plan.source_id }, button).then(() => closeAlbum(null));
   }
@@ -1357,7 +1357,7 @@ function deleteAlbum(plan, button) {
 
 function pruneAlbum(p, gone, button) {
   const list = gone.map((t) => `  ${t.number}. ${t.artist} – ${t.title}`).join("\n");
-  if (confirm(`Delete these files? They are no longer in the YouTube playlist:\n\n${list}`)) submit("prune", { id: p.source_id }, button);
+  if (confirm(`Move these to the recycle bin? They are no longer in the YouTube playlist:\n\n${list}\n\nNothing is deleted outright; Settings › Recycle bin puts them back.`)) submit("prune", { id: p.source_id }, button);
 }
 
 // keeps tenths when there are any, so a value set on the player survives a save from the field
@@ -1490,7 +1490,7 @@ function previewView(p, close, known) {
     h("td", { class: "num" }, t.number), h("td", {}, t.artist), h("td", {}, t.title),
     h("td", { class: "src" }, provBadge(t.provenance.artist), provBadge(t.provenance.title),
       t.source_override ? h("span", { class: "badge user", title: `its audio comes from ${t.source_override}, which you chose, not the playlist's ${t.video_id}` }, `audio \u2190 ${t.source_override}`) : null,
-      t.in_source === false ? h("span", { class: "badge", title: "no longer in the source playlist; a fetch keeps the file, “Remove gone tracks” deletes it" }, "gone") : null)));
+      t.in_source === false ? h("span", { class: "badge", title: "no longer in the source playlist; a fetch keeps the file, “Remove gone tracks” moves it to the recycle bin" }, "gone") : null)));
   return [
     h("div", { class: "panel-head" },
       h("div", {}, h("h2", {}, `${p.albumartist} — ${p.album}`, p.year ? ` (${p.year})` : ""),
@@ -1628,6 +1628,51 @@ function renderLog(job) {
 
 const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium", brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
 
+// What ytalbum moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
+// way anything leaves is from here or `ytalbum recycle empty` — which is the point of having it.
+function recycleSection() {
+  const box = h("div", { class: "recycle" }, h("h3", {}, "Recycle bin"), h("div", { class: "muted" }, "loading…"));
+  loadRecycle(box);
+  return box;
+}
+
+async function loadRecycle(box) {
+  let rows = [];
+  try {
+    rows = (await (await fetch("/api/recycle")).json()).entries || [];
+  } catch { /* the panel is still useful without it */ }
+  const size = rows.reduce((n, r) => n + (r.bytes || 0), 0);
+  box.replaceChildren(
+    h("h3", {}, "Recycle bin"),
+    h("div", { class: "muted" }, rows.length
+      ? `${rows.length} thing(s) ytalbum moved aside instead of deleting, ${(size / 1e6).toFixed(1)} MB. `
+        + "Nothing here is ever removed on its own."
+      : "Empty. When ytalbum deletes or prunes a track, the audio comes here first."),
+    ...rows.map((r) => h("div", { class: "recycle-row" },
+      h("span", {}, `${r.artist} — ${r.title}`),
+      h("span", { class: "muted" }, `${r.album} · ${r.reason} · ${(r.bytes / 1e6).toFixed(1)} MB`),
+      r.track ? h("button", { class: "quiet small", type: "button",
+        onclick: (e) => restoreEntry(r, e.currentTarget, box) }, "Put it back") : null)),
+    rows.length ? h("button", { class: "quiet small danger-text", type: "button",
+      onclick: (e) => emptyRecycle(rows, e.currentTarget, box) }, "Empty the bin") : null);
+}
+
+async function restoreEntry(row, button, box) {
+  const id = await submit("restore", { entry: row.id }, button);
+  if (id != null) await jobSettled(id);
+  await loadRecycle(box);
+  await refreshAlbumPanel();
+}
+
+async function emptyRecycle(rows, button, box) {
+  const size = rows.reduce((n, r) => n + (r.bytes || 0), 0);
+  if (!confirm(`Empty the recycle bin?\n\n${rows.length} thing(s), ${(size / 1e6).toFixed(1)} MB.\n`
+      + "This is the one place where ytalbum really does delete audio, and it cannot be undone.")) return;
+  const id = await submit("empty_recycle", {}, button);
+  if (id != null) await jobSettled(id);
+  await loadRecycle(box);
+}
+
 function renderSettings() {} // the panel is built when opened, so polling never overwrites what you type
 
 // What each provider row says under its label: what that choice means for the audio, and — for the
@@ -1694,7 +1739,8 @@ function openSettings() {
         h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
           placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
-      h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
+      h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))),
+    recycleSection());
   panel.hidden = false;
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }

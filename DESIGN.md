@@ -1277,6 +1277,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    untouched and written back where they were. An unknown *schema* is still refused: tolerating a
    field is not tolerating a format.
 
+49. ✅ The recycle bin, and one rule to replace three behaviours (2026-09-28, P47, spike
+   `docs/spikes/2026-09-candidates.md` §4). **ytalbum never removes audio; it moves it to
+   `<library>/.recycle/`.** Deleting a track, deleting an album and pruning what left a playlist all
+   went through `unlink()` before, and they disagreed with each other: `delete_track` removed the
+   kept original, `prune` left it behind (catalog E, phase 5). One rule settles both.
+   **At the library root, not in the album.** An album folder can be deleted, and a bin inside it
+   would go with the very thing it protects against.
+   An entry holds the audio, the sidecar, the kept original, the tags as they were written, and the
+   **whole plan track**, so a restore never has to reconstruct anything. Restoring is deliberately
+   *not* symmetric: **the user's lyrics win** — a sidecar written while the track was gone is kept
+   and the restore says so; **tags are rewritten by the ordinary pass**, not replayed, so a track
+   restored after its album was renamed gets today's names; and a track the source no longer lists
+   **comes back as it was**, for the next `prune` to move aside again, because restore undoes one
+   action rather than arguing with the playlist.
+   **It never empties itself** — no age cap, no size cap, no sweeping. A bin that empties itself is
+   one nobody can rely on, and the whole reason this exists is that the program makes judgements the
+   user may disagree with. `ytalbum recycle empty` is the only thing in the program that really
+   deletes audio, and it asks first.
+   This is the groundwork for replacing a file with a better candidate (spike §3): nothing may be
+   replaced until it can be taken back.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -106,6 +106,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--browser", help="which Chromium-based browser to use")
     ap.add_argument("--remove-profile", action="store_true", help="uninstall: also delete the app's browser profile")
 
+    rc = sub.add_parser("recycle", help="what ytalbum moved aside instead of deleting")
+    rc.add_argument("action", choices=["list", "restore", "empty"])
+    rc.add_argument("entry", nargs="?", help="restore: the entry id, or enough of it to be unique")
+    rc.add_argument("--library", type=Path)
+    rc.add_argument("--older-than", type=float, metavar="DAYS",
+                    help="empty: only entries older than this many days")
+
     c = sub.add_parser("config", help="show or set configuration")
     c.add_argument("--library", type=Path, help="set the library root")
     c.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use a browser's YouTube login: gets past the bot check and unlocks age-restricted videos; 'none' to unset")
@@ -126,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
         match args.cmd:
             case "config":
                 return _config(args, cfg)
+            case "recycle":
+                return _recycle(args, cfg)
             case "plan" if args.verify:
                 return _verify_plans(cfg, getattr(args, "library", None))
             case "fetch" | "plan":
@@ -219,8 +228,43 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     # reported, not enforced: a library can be browsed, tagged, searched and have its lyrics fetched
     # with no ffmpeg at all. It is downloading and trimming that stop, and they stop at the moment
     # of use, which is a bad moment to find out (docs/qa-catalog.md, AP).
+    if cfg.library_root and cfg.library_root.is_dir():
+        from .recycle import total as bin_total
+
+        count, size = bin_total(cfg.library_root)
+        print(f"recycle bin:  {count} entr{'y' if count == 1 else 'ies'}, {size / 1e6:.1f} MB"
+              + ("" if not count else " — `ytalbum recycle list`"))
     ffmpeg = cfg.resolved_ffmpeg()
     print(f"ffmpeg:       {ffmpeg or 'NOT FOUND — downloading and trimming will fail; apt install ffmpeg'}")
+    return 0
+
+
+def _recycle(args: argparse.Namespace, cfg: Config) -> int:
+    """The bin: what is in it, putting one back, and emptying it — never automatically."""
+    from . import recycle as bin_
+
+    root = args.library or cfg.library_root
+    if not root or not root.is_dir():
+        print("set the library first: ytalbum config --library PATH", file=sys.stderr)
+        return 2
+    if args.action == "list":
+        found = bin_.entries(root)
+        if not found:
+            print("the recycle bin is empty")
+            return 0
+        for entry in found:
+            print(f"{entry.id}  {entry.bytes / 1e6:6.1f} MB  {entry.describe()}")
+        count, size = bin_.total(root)
+        print(f"\n{count} entr{'y' if count == 1 else 'ies'}, {size / 1e6:.1f} MB — "
+              f"nothing here is ever removed on its own")
+        return 0
+    if args.action == "restore":
+        if not args.entry:
+            print("which one? `ytalbum recycle list` shows the ids", file=sys.stderr)
+            return 2
+        return exit_code(_service(cfg, args.library).restore(args.entry))
+    gone, freed = bin_.empty(root, args.older_than)
+    print(f"removed {gone} entr{'y' if gone == 1 else 'ies'} for good, {freed / 1e6:.1f} MB")
     return 0
 
 

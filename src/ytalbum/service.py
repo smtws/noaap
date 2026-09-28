@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import shutil
 import tempfile
 import threading
 from collections import Counter
@@ -35,6 +36,7 @@ from .lyrics import (
     remove_sidecar,
     sent_sha,
     sidecar_lost,
+    sidecar_path,
     status_of,
     update_track,
     user_owns,
@@ -44,6 +46,7 @@ from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
+from .recycle import DELETED, PRUNED, bin_file, bin_track
 from .search import SearchResult, search_artist
 from .tag import audio_length
 from .timing import (
@@ -469,12 +472,10 @@ class Service:
             return Outcome("ok", plan, album_dir)
         for t in gone:
             path = _inside(album_dir, t.filename)
-            if path and path.exists():
-                path.unlink()
-            remove_sidecar(album_dir, t.filename)
-            for kept in kept_originals(album_dir, t):
-                kept.unlink()  # the untouched download goes with the track, as in delete_track
-            self.log(f"removed {t.number:02d} {t.artist} - {t.title}" + ("" if path else " (unsafe file name ignored)"))
+            entry = self._bin(album_dir, plan, t, PRUNED, audio=path)
+            self.log(f"moved {t.number:02d} {t.artist} - {t.title} to the recycle bin"
+                     + (f" ({entry.name})" if entry else " — nothing was on disk")
+                     + ("" if path else " (unsafe file name ignored)"))
         plan.tracks = [t for t in plan.tracks if t.in_source]
         # Close the gap the removed tracks leave — on every album, not only single-disc ones:
         # a player showing 1, 2, 4 is a defect in the tags, and what a user order protects is
@@ -1084,15 +1085,95 @@ class Service:
         track = next((t for t in plan.tracks if t.video_id == video_id), None)
         if not track:
             return Outcome("failed", message="no such track")
-        for path in (_inside(album_dir, track.filename), *kept_originals(album_dir, track)):
-            if path and path.exists():
-                path.unlink()
-        remove_sidecar(album_dir, track.filename)
-        self.log(f"removed {track.number:02d} {track.artist} - {track.title}")
+        entry = self._bin(album_dir, plan, track, DELETED, audio=_inside(album_dir, track.filename))
+        self.log(f"moved {track.number:02d} {track.artist} - {track.title} to the recycle bin"
+                 + (f" ({entry.name})" if entry else " — nothing was on disk"))
         plan.tracks.remove(track)
         renumber(plan)
         save_plan(plan, album_dir)
         return self.execute(plan, album_dir)  # renames and retags the rest
+
+    def _bin(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack, reason: str, *,
+             audio: Path | None = None, ranking: dict[str, Any] | None = None) -> Path | None:
+        """Move a track's files to the bin. Without a library root there is nowhere to put them,
+        so the old behaviour stands — that only happens for a plan opened by path in a test."""
+        # the sidecar is only touched when the audio name itself passed `_inside`: `sidecar_path`
+        # joins the plan's filename without checking, and a tampered plan must not reach outside
+        sidecar = sidecar_path(album_dir, track.filename) if audio else None
+        if not self.library:
+            for path in (audio, *kept_originals(album_dir, track)):
+                if path and path.exists():
+                    path.unlink()
+            if sidecar:
+                sidecar.unlink(missing_ok=True)
+            return None
+        return bin_track(self.library, album_dir, plan, track, reason,
+                         audio=audio, sidecar=sidecar, ranking=ranking)
+
+    def restore(self, entry_id: str) -> Outcome:
+        """Put a binned track back where it came from (DESIGN §9, slice 49).
+
+        The plan track goes back as it was, which is the whole reason the snapshot is kept. Three
+        things are deliberately *not* symmetric with binning:
+
+        * **The user's lyrics win.** If a sidecar has appeared since — the user wrote words for a
+          track that no longer existed — theirs stay and the restore says so.
+        * **A track the source no longer lists comes back anyway**, with `in_source` as it was. The
+          next `prune` will bin it again, which is correct: restore undoes one action, it does not
+          argue with the playlist.
+        * **Tags are not replayed from the snapshot.** The ordinary pass rewrites them, so a track
+          restored after its album was renamed gets the album's current names, not last week's.
+        """
+        from .recycle import find as find_entry
+
+        if not self.library:
+            return Outcome("failed", message="no library configured")
+        entry = find_entry(self.library, entry_id)
+        if not entry:
+            return Outcome("failed", message=f"no such recycle entry: {entry_id}")
+        found = self.find_album(entry.source_id)
+        if not found:
+            return Outcome("failed", message=(
+                f"{entry.describe()}: its album is not in the library any more, so there is nowhere "
+                "to put it back. The entry is untouched; fetch the album again and restore then."))
+        album_dir, plan = found
+        if not entry.data.get("track"):
+            return Outcome("failed", message=f"{entry.id} is not a track (it holds the album cover)")
+
+        track = PlanTrack.from_dict(entry.data["track"])
+        if any(t.video_id == track.video_id for t in plan.tracks):
+            return Outcome("failed", message=f"{track.title} is already in {plan.album}")
+
+        album_dir.mkdir(parents=True, exist_ok=True)
+        if (audio := entry.audio) and track.filename:
+            shutil.move(str(audio), album_dir / track.filename)
+        if original := entry.original:
+            (album_dir / ORIGINALS).mkdir(exist_ok=True)
+            shutil.move(str(original), album_dir / ORIGINALS / f"{track.effective_id}{original.suffix}")
+        said = ""
+        if words := entry.words:
+            if read_sidecar(album_dir, track):
+                said = " — your own lyrics were there, so the binned ones were left in the bin"
+            else:
+                shutil.move(str(words), sidecar_path(album_dir, track.filename))
+
+        plan.tracks.append(track)
+        plan.tracks.sort(key=lambda t: (t.disc or 1, t.number))
+        save_plan(plan, album_dir)
+        if not said:
+            shutil.rmtree(entry.path, ignore_errors=True)
+        self.log(f"restored {track.artist} - {track.title} to {plan.album}{said}")
+        return self.execute(plan, album_dir)   # renames, retags, and fixes tracktotal
+
+    def empty_recycle(self, older_than_days: float | None = None) -> Outcome:
+        """Remove bin entries for good. Only ever because somebody asked."""
+        from .recycle import empty as empty_bin
+
+        if not self.library:
+            return Outcome("failed", message="no library configured")
+        gone, freed = empty_bin(self.library, older_than_days)
+        self.log(f"removed {gone} recycle entr{'y' if gone == 1 else 'ies'} for good, {freed / 1e6:.1f} MB")
+        return Outcome("ok", message=f"{gone} removed")
 
     def delete_album(self, source_id: str) -> Outcome:
         """Delete everything ytalbum put into this album folder, then the folder if it is empty."""
@@ -1100,13 +1181,17 @@ class Service:
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
         album_dir, plan = found
+        binned = 0
         for track in plan.tracks:
-            for path in (_inside(album_dir, track.filename), *kept_originals(album_dir, track)):
-                if path and path.exists():
-                    path.unlink()
-            remove_sidecar(album_dir, track.filename)
+            if self._bin(album_dir, plan, track, DELETED, audio=_inside(album_dir, track.filename)):
+                binned += 1
+        for cover in sorted(album_dir.glob("cover.*")):
+            if self.library and bin_file(self.library, plan, cover, DELETED):
+                binned += 1
         for path in [*album_dir.glob("cover.*"), album_dir / PLAN_FILE]:
             path.unlink(missing_ok=True)
+        if binned:
+            self.log(f"moved {binned} file group(s) to the recycle bin")
         for folder in (album_dir / ORIGINALS, album_dir / PARTS_DIR):
             if folder.is_dir() and not any(folder.iterdir()):
                 folder.rmdir()

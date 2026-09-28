@@ -62,7 +62,13 @@ def test_delete_album_removes_the_folder(library):
     assert outcome.status == "ok"
     assert not album_dir.exists()
     assert not album_dir.parent.exists()  # the artist folder went too, it was empty
-    assert list(tmp_path.iterdir()) == []
+    # the audio is not gone, it is in the bin: nothing ytalbum deletes leaves the library (slice 49)
+    assert [p.name for p in tmp_path.iterdir()] == [".recycle"]
+    from ytalbum.recycle import entries
+
+    binned = entries(tmp_path)
+    assert len(binned) == len(plan.tracks) + 1           # every track, and the cover
+    assert all(e.reason == "deleted" for e in binned)
 
 
 def test_delete_album_keeps_files_that_are_not_ours(library):

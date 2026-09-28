@@ -2665,10 +2665,59 @@ undoing that decision. No code.
     likely to be wrong.
   - Scan cost on a large folder, and whether `update` over a folder stays cheap, were not measured.
 
+## AR. The recycle bin (P47, DESIGN §9, slice 49)
+
+- [x] **AR1 · M** — deleting a track moves everything it had
+
+  Audio, sidecar, and the kept `.originals/` file, plus the whole plan track and the tags as
+  written. A track that was never downloaded leaves **no** entry, because an empty bin entry is only
+  noise.
+  - **result:** pass
+
+- [x] **AR2 · M** — restore, and the three ways it is not symmetric
+
+  The file, the sidecar and the original go back and the track returns to its album. **The user's
+  lyrics win:** a sidecar written while the track was gone is kept, the binned words stay in the bin,
+  and the log says so. A track the playlist no longer lists comes back as it was and the next
+  `prune` bins it again. An album that is gone means the restore is refused with a reason and the
+  entry is left untouched.
+  - **result:** pass
+
+- [x] **AR3 · M** — prune and delete-album route through it too
+
+  Pruning bins instead of unlinking, **with the kept original** — which fixes the inconsistency phase
+  5 recorded, where `delete_track` removed it and `prune` did not. Deleting an album bins every track
+  and the cover, and afterwards the library holds exactly one thing: `.recycle/`.
+  - **result:** pass
+
+- [x] **AR4 · R** — it never empties itself
+
+  A prune, a lyrics pass and a delete leave the bin's size unchanged. Only `empty_recycle` removes
+  anything, and `--older-than` leaves the young entries alone. An unreadable entry directory is
+  skipped rather than crashing the listing.
+  - **result:** pass
+
+- [x] **AR5 · R** — `/api/recycle` gives the page no path
+
+  Asserted against the real payload builder: the keys are id, when, reason, artist, title, album,
+  bytes, track — and the library root appears nowhere in the response.
+  - **result:** pass
+
+### A regression I wrote and the existing suite caught
+
+The first version of `bin_track` fell back to `album_dir / track.filename` when the caller passed no
+audio path. Every caller computes that path with `_inside`, which returns **None** for a plan naming
+`../../something` — so the fallback quietly reopened the traversal that guard exists to close, and
+made it worse by *moving* the file instead of unlinking a `.lrc`.
+`test_prune_never_deletes_outside_the_album` failed immediately. `bin_track` now takes both paths
+explicitly and derives nothing from the plan; `sidecar_path` is only consulted when the audio name
+itself passed `_inside`, because it joins the filename without checking.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AR cases (P47: the recycle bin) | 5 | 0 in the design; 1 of my own, caught by the existing suite (a fallback in `bin_track` reopened the path traversal `_inside` closes, and moving is worse than unlinking) | `ytalbum never removes audio, it only moves it to the bin`. Delete, delete-album and prune all route through `<library>/.recycle/`; the kept original goes with the track, which fixes the phase-5 inconsistency. Restore is deliberately asymmetric: the user's lyrics win, tags are rewritten not replayed, a track the playlist dropped comes back and is binned again. Never empties itself. 799 pytest + 91 node. |
 | 2026-09-28 | the AQ cases (P46: several sources for one track) | 3 | n/a — design spike, no code | Candidates on a track (additive, ships before the boundary, folds in `source_override`); intake folder vs library-as-source; a **length-first** ranking rule with quality only inside the 3 s band, argued from median 0.3 s / p90 17.1 s / max 514 s over 2539 tracks; a recycle bin at the library root that never empties itself, with `prune`/`delete` routed through it. Flagged: this library has **one** `source_override` and **one** format, so it holds no evidence about ranking — that part is reasoned, not measured. |
 | 2026-09-28 | the AP cases (P45: the half of the cold read that was code) | 2 | 0 in the software; 1 of my own (a scanner that matched its own docstring) | `ytalbum config` now reports ffmpeg — found, or NOT FOUND with the two things that break — and still exits 0, because ffmpeg is reported and not required. 204 slice references across 40 files brought into line with the docs, with a test that keeps them there. 786 pytest + 91 node. |
 | 2026-09-28 | the AO cases (P44: a cold reader on a fresh clone) | 3 | 24 documentation faults found, 24 fixed | A throwaway session installed v0.7.0 from the README and read it cold. Five stale, nine missing, ten unclear. One number in the brief was wrong: **213 tests skip without ffmpeg**, not 4 — measured, and it explains why CONTRIBUTING said the suite takes "a few seconds". Docs only; no code changed. 780 pytest + 91 node. |

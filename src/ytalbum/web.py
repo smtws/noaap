@@ -399,6 +399,16 @@ class App:
                 "can_check": bool(track.state == "done" and track.file_length
                                   and (track.lyrics or "none") == "none" and ALIGN in capabilities_of(self.cfg))}
 
+    def recycle(self) -> list[dict[str, Any]]:
+        """The bin, for the page. Deliberately without any path: an entry is its id."""
+        from .recycle import entries
+
+        if not self.cfg.library_root:
+            return []
+        return [{"id": e.id, "when": e.when, "reason": e.reason, "artist": e.artist,
+                 "title": e.title, "album": e.album, "bytes": e.bytes,
+                 "track": bool(e.data.get("track"))} for e in entries(self.cfg.library_root)]
+
     def _publish_state(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack) -> dict[str, Any]:
         text = (read_sidecar(album_dir, track) or "").strip()
         published = track.lyrics_published or {}
@@ -716,6 +726,16 @@ class App:
                 return self.jobs.submit("lyrics", f"Take lrclib's words for {track.title}",
                                         lambda s: s.take_plain_lyrics(source_id, video_id, entry),
                                         target=source_id)
+            case "restore":
+                entry = str(body.get("entry", ""))
+                if not entry:
+                    raise ValueError("which entry?")
+                return self.jobs.submit("library", f"Restore {entry} from the recycle bin",
+                                        lambda s: s.restore(entry))
+            case "empty_recycle":
+                days = body.get("older_than")
+                return self.jobs.submit("library", "Empty the recycle bin",
+                                        lambda s: s.empty_recycle(None if days is None else float(days)))
             case "publish_lyrics":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
                 found = self.album(source_id)
@@ -877,6 +897,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(self.app.state())
             case "/api/tracks":
                 return self._json(self.app.track_index())
+            case "/api/recycle":
+                # what ytalbum moved aside instead of deleting (§9, slice 49). No filesystem path
+                # leaves this endpoint: an entry is addressed by its id and nothing else.
+                return self._json({"entries": self.app.recycle()})
             case "/api/mbseed":
                 # the fields for MusicBrainz's own release editor (§9, slice 43). Nothing is sent from
                 # here: the page builds a form with these and the person submits it themselves.
