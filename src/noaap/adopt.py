@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from . import sources
+from .config import Refused
 from .download import COVER_STEM, PLAN_FILE, save_plan
 from .lyrics import rename_sidecar, sidecar_path
 from .models import AlbumPlan
@@ -210,12 +211,12 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
     """
     done = {"renamed": 0, "restored": 0, "removed": 0, "kept": 0, "failed": 0}
     if not plan.adopted:
-        raise ValueError(f"{plan.album}: no record of an adoption to undo")
+        raise Refused(f"{plan.album}: there is no record of an adoption to undo")
 
     for track in plan.tracks:
         try:
             if not track.adopted_name:
-                raise ValueError(f"{track.title} has no record of the name it had")
+                raise Refused(f"{track.title} has no record of the name it had")
             here = _inside(album_dir, track.filename)
             want = album_dir / track.adopted_name
             if here and here != want and here.is_file():
@@ -281,7 +282,7 @@ def rename(album_dir: Path, plan: AlbumPlan, log: Callable[[str], None] = lambda
     laid out that way on purpose — so this renames files and nothing else.
     """
     if why := undo_data_complete(plan):
-        raise ValueError(f"{plan.album}: {why}, so it cannot be renamed")
+        raise Refused(f"{plan.album}: {why}, so it cannot be renamed")
     moved = 0
     for track in plan.tracks:
         here = _inside(album_dir, track.filename)
@@ -309,7 +310,7 @@ def retag(album_dir: Path, plan: AlbumPlan, cover: bytes | None = None,
     those would be the adoption destroying the thing it took in (§9, slice 53).
     """
     if why := undo_data_complete(plan):
-        raise ValueError(f"{plan.album}: {why}, so it cannot be retagged")
+        raise Refused(f"{plan.album}: {why}, so it cannot be retagged")
     written = 0
     for track in plan.tracks:
         audio = _inside(album_dir, track.filename)

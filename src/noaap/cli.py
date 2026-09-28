@@ -164,7 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--lyrics", choices=("on", "off"), help="look lyrics up at lrclib.net when downloading")
 
     args = p.parse_args(argv)
-    sys.stdout.reconfigure(line_buffering=True)  # keep progress in order with stderr when piped
+    if hasattr(sys.stdout, "reconfigure"):  # a captured stream in a test is not a real one
+        sys.stdout.reconfigure(line_buffering=True)  # keep progress in order with stderr when piped
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     if notice := config_mod.legacy_notice():  # still configured as ytalbum (§9, slice 52)
@@ -213,7 +214,12 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 from . import merge as merge_pass
                 from .ranking import Verdict
-                found = merge_pass.survey(Path(args.source).expanduser(), library, log=print,
+                source_dir = Path(args.source).expanduser()
+                if not source_dir.is_dir():
+                    # it answered "0 albums, nothing to do" for a path that was simply not there,
+                    # which tells a user who mistyped it that everything is fine
+                    raise config_mod.Refused(f"there is no folder at {source_dir}")
+                found = merge_pass.survey(source_dir, library, log=print,
                                           artist=args.only, album=args.album)
                 wanted = [Verdict.UNDECIDED] if args.undecided else None
                 for line in merge_pass.report(found, verdicts=wanted, applying=args.apply):
@@ -295,6 +301,12 @@ def main(argv: list[str] | None = None) -> int:
                 return exit_code(outcomes)
     except NotSupported as e:
         print(f"not supported: {e}", file=sys.stderr)
+        return 2
+    except config_mod.Refused as e:
+        # a wrong setting or a wrong argument is answered in one sentence, never with a stack
+        # trace: a traceback for "nothing is watched yet" hides the only line worth reading
+        # (found by the P55 acceptance run, §9, slice 59)
+        print(str(e), file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         print("\ninterrupted — run the same command again to resume", file=sys.stderr)

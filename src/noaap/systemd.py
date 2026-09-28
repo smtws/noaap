@@ -14,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from .config import Config
+from .config import Config, Refused, watch_trouble
 
 UNIT = "noaap"
 LEGACY_UNIT = "ytalbum"          # ytalbum's units are left alone; `noaap migrate` offers to remove them
@@ -88,12 +88,11 @@ WantedBy=default.target
 
 def install_watch(cfg: Config, port: int | None = None) -> list[str]:
     """Write and start the watcher's unit. Refuses a configuration that cannot stand."""
-    from .config import watch_trouble
-
     if not cfg.watches:
-        raise ValueError("nothing is watched: put a [[watch]] table in the config file first")
+        raise Refused("nothing is watched yet — put a [[watch]] table in the config file "
+                      "(`noaap watch --help`), then install the service")
     if trouble := watch_trouble(cfg.watches, cfg.library_root):
-        raise ValueError("; ".join(trouble))
+        raise Refused("; ".join(trouble))
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
     for name, text in render_watch_unit(cfg, port or installed_port()).items():
@@ -102,7 +101,7 @@ def install_watch(cfg: Config, port: int | None = None) -> list[str]:
     for args in (("daemon-reload",), ("enable", "--now", f"{WATCH_UNIT}.service")):
         r = systemctl(*args)
         if r.returncode:
-            raise RuntimeError(f"systemctl --user {' '.join(args)}: {r.stderr.strip()}")
+            raise Refused(f"systemctl --user {' '.join(args)}: {r.stderr.strip()}")
         done.append(f"systemctl --user {' '.join(args)}")
     return done
 
@@ -160,9 +159,9 @@ def clash(port: int) -> str | None:
 def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> list[str]:
     """Write the units, enable and start the socket. Returns what was done, for the user."""
     if not cfg.library_root:
-        raise ValueError("set the library first: noaap config --library PATH")
+        raise Refused("set the library first: noaap config --library PATH")
     if message := clash(port):
-        raise RuntimeError(message)
+        raise Refused(message)
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
     for name, text in render_units(cfg, port, idle_exit).items():
@@ -171,7 +170,7 @@ def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -
     for args in (("daemon-reload",), ("enable", "--now", f"{UNIT}.socket")):
         r = systemctl(*args)
         if r.returncode:
-            raise RuntimeError(f"systemctl --user {' '.join(args)}: {r.stderr.strip()}")
+            raise Refused(f"systemctl --user {' '.join(args)}: {r.stderr.strip()}")
         done.append(f"systemctl --user {' '.join(args)}")
     return done
 
@@ -210,10 +209,10 @@ def busy(port: int | None = None) -> bool:
 def restart(force: bool = False) -> list[str]:
     """Restart the service, but never while it is working (that would kill the job)."""
     if not force and busy():
-        raise RuntimeError("a job is running — wait for it, cancel it in the web UI, or use --force")
+        raise Refused("a job is running — wait for it, cancel it in the web UI, or use --force")
     r = systemctl("restart", f"{UNIT}.service")
     if r.returncode:
-        raise RuntimeError(f"systemctl --user restart: {r.stderr.strip()}")
+        raise Refused(f"systemctl --user restart: {r.stderr.strip()}")
     return [f"systemctl --user restart {UNIT}.service"]
 
 

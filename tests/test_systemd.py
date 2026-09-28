@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from noaap.config import Config
+from noaap.config import Config, Refused
 from noaap.systemd import install, render_units
 from noaap.web import App
 
@@ -47,7 +47,7 @@ def test_restart_refuses_while_a_job_runs(monkeypatch):
     monkeypatch.setattr(sd, "busy", lambda port=None: True)
     calls = []
     monkeypatch.setattr(sd, "systemctl", lambda *a: calls.append(a) or subprocess.CompletedProcess(a, 0, "", ""))
-    with pytest.raises(RuntimeError, match="job is running"):
+    with pytest.raises(Refused, match="job is running"):
         sd.restart()
     assert calls == []
     sd.restart(force=True)  # only on purpose
@@ -124,7 +124,7 @@ def test_the_same_port_is_a_sentence_not_an_address_already_in_use(units, monkey
     monkeypatch.setattr(sd, "systemctl",
                         lambda *a: subprocess.CompletedProcess(a, 0, "active\n", ""))
 
-    with pytest.raises(RuntimeError, match="ytalbum is already listening on port 8765"):
+    with pytest.raises(Refused, match="ytalbum is already listening on port 8765"):
         sd.install(Config(library_root=Path("/tmp")), port=8765)
 
     assert not (units / "noaap.socket").exists(), "nothing was written before the refusal"

@@ -465,3 +465,50 @@ def test_a_watcher_that_has_run_before_does_not_start_again_from_nothing(tmp_pat
     monkeypatch.setattr("noaap.watch.read_state", lambda: {"drop": {"folders": {}, "waiting": {}}})
 
     assert runs(cfg, now=0)[0].first is False, "it has looked before, so what is there it knows"
+
+
+# -- a refusal is a sentence -----------------------------------------------------------------------
+
+
+def run_cli(args, config_home) -> tuple[int, str]:
+    import contextlib
+    import io
+    import os
+
+    from noaap.cli import main
+
+    out = io.StringIO()
+    was = os.environ.get("XDG_CONFIG_HOME")
+    os.environ["XDG_CONFIG_HOME"] = str(config_home)
+    try:
+        with contextlib.redirect_stderr(out), contextlib.redirect_stdout(out):
+            code = main(args)
+    finally:
+        os.environ.pop("XDG_CONFIG_HOME") if was is None else os.environ.update(XDG_CONFIG_HOME=was)
+    return code, out.getvalue()
+
+
+@pytest.mark.parametrize("args,says", [
+    (["watch-service", "install"], "nothing is watched yet"),
+    (["watch"], "nothing is watched"),
+    (["merge", "/definitely/not/there", "--library", "/tmp"], "there is no folder at"),
+])
+def test_a_refusal_is_one_sentence_and_a_non_zero_exit(tmp_path, args, says):
+    """R-203. A stack trace for "nothing is watched yet" hides the only line worth reading."""
+    code, said = run_cli(args, tmp_path)
+
+    assert code == 2
+    assert says in said
+    assert "Traceback" not in said and "raise " not in said
+
+
+def test_a_setting_that_cannot_stand_is_refused_by_name(tmp_path):
+    (tmp_path / "noaap").mkdir()
+    (tmp_path / "noaap" / "config.toml").write_text(
+        f'library_root = "{tmp_path / "library"}"\n\n'
+        f'[[watch]]\nname = "bad"\nfolder = "{tmp_path}"\nshape = "intake"\n')
+
+    code, said = run_cli(["watch-service", "install"], tmp_path)
+
+    assert code == 2 and "bad:" in said and "may not hold" in said
+    assert "Traceback" not in said

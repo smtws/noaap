@@ -99,6 +99,16 @@ def env(name: str) -> str | None:
     return value
 
 
+class Refused(ValueError):
+    """A refusal a person can reach by a wrong setting or a wrong argument.
+
+    **It is one sentence and a non-zero exit, never a traceback.** A stack trace for "nothing is
+    watched yet" tells the user nothing they can act on and hides the sentence that would (found by
+    the P55 acceptance run). It is its own type rather than a bare `ValueError` so that a genuine
+    bug still fails loudly instead of being dressed up as advice.
+    """
+
+
 @dataclass(frozen=True)
 class Watch:
     """One folder the watcher looks at, and what it means.
