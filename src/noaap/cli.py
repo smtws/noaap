@@ -285,6 +285,23 @@ def _service(cfg: config_mod.Config, library: Path | None) -> Service:
     return Service(cfg, library, log=lambda s: print(s, file=sys.stderr), on_plan=_print_plan, on_track=_print_track)
 
 
+def _print_watches(cfg: config_mod.Config) -> None:
+    """What is watched, and why a setting cannot stand (R-200, ruling 4: it says so here)."""
+    if not cfg.watches:
+        print("watching:     (nothing — `noaap watch --help`)")
+        return
+    from . import watch as watch_pass
+
+    state = watch_pass.read_state()
+    for row in cfg.watches:
+        when = state.get(row.name, {}).get("looked")
+        print(f"watching:     {row.name} ({row.shape}) {row.folder}"
+              + (f" — last looked {when}" if when else " — not looked at yet")
+              + ("" if row.folder.is_dir() else "  [the folder is not there]"))
+    for why in config_mod.watch_trouble(cfg.watches, cfg.library_root):
+        print(f"  refused:    {why}", file=sys.stderr)
+
+
 def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     changes = {}
     if args.library:
@@ -305,6 +322,7 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     print(f"library_root: {cfg.library_root or '(not set)'}")
     print(f"cookies:      {cfg.cookies_file or cfg.cookies_from_browser or '(none — age-restricted videos are skipped)'}")
     print(f"musicbrainz:  {'on' if cfg.musicbrainz else 'off'}")
+    _print_watches(cfg)
     print(f"lyrics:       {'on (lrclib.net)' if cfg.lyrics else 'off'}")
     pot = cfg.resolved_pot_provider()
     if not pot or cfg.pot_mode == "off":

@@ -6,8 +6,9 @@ import os
 import shutil
 import sys
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # `uv` installs this project editable, so the repo checkout is two levels above the package
 PROJECT_POT_HOME = Path(__file__).resolve().parents[2] / ".pot-provider" / "server"
@@ -98,6 +99,22 @@ def env(name: str) -> str | None:
     return value
 
 
+@dataclass(frozen=True)
+class Watch:
+    """One folder the watcher looks at, and what it means.
+
+    `intake`: what is dropped there is copied into the library and the folder is left as it is.
+    `library`: an adopted library watching itself, where the owner adds and changes files in place.
+    """
+
+    name: str
+    folder: Path
+    shape: str = "intake"   # intake | library
+
+    def holds(self, other: Path) -> bool:
+        return other == self.folder or self.folder in other.parents
+
+
 @dataclass
 class Config:
     library_root: Path | None = None
@@ -146,6 +163,14 @@ class Config:
     # ever, which is what a machine dedicated to this wants; the app's own service needs no timer,
     # because it builds a provider per job.
     timing_idle_minutes: float = 5.0
+    # folders `noaap watch` looks at (§9, slice 59). Empty is the default and nothing is watched;
+    # ruling 4 of R-200 is why it is a separate unit and not a thread in the web service.
+    watches: list[Watch] = field(default_factory=list)
+
+    def watch(self, name: str) -> Watch | None:
+        """The configured root of that name, or None. **The only way a path enters the watcher**:
+        the API takes a name and a relative path, never a path of its own (§9, slice 59)."""
+        return next((w for w in self.watches if w.name == name), None)
 
     def resolved_node(self) -> str | None:
         runtime = self.resolved_js_runtime()
@@ -219,7 +244,52 @@ def load(path: Path | None = None) -> Config:
                                    or timing.get("verify_lost") or 5.0)
     idle = data.get("timing_idle_minutes", timing.get("idle_minutes"))
     cfg.timing_idle_minutes = 5.0 if idle is None else float(idle)
+    cfg.watches = _watches(data)
     return cfg
+
+
+def _watches(data: dict[str, Any]) -> list[Watch]:
+    """`[[watch]]` tables, in the order they are written."""
+    out = []
+    for row in data.get("watch") or []:
+        if not isinstance(row, dict) or not row.get("folder"):
+            continue
+        folder = Path(str(row["folder"])).expanduser()
+        shape = str(row.get("shape") or "intake")
+        out.append(Watch(name=str(row.get("name") or folder.name), folder=folder,
+                         shape=shape if shape in ("intake", "library") else "intake"))
+    return out
+
+
+def watch_trouble(watches: list[Watch], library: Path | None) -> list[str]:
+    """Why a set of watched folders cannot stand, in sentences a person can act on.
+
+    **The two shapes may not be nested** (R-200, ruling 1). An intake folder inside a library would
+    have every drop taken twice — once as an arrival and once as the library's own album — and a
+    library inside an intake folder would have the intake pass copy the library into itself. A
+    library watching itself is the `library` shape and needs no intake at all.
+    """
+    out = []
+    seen: dict[str, Watch] = {}
+    for watch in watches:
+        if not watch.folder.is_absolute():
+            out.append(f"{watch.name}: {watch.folder} is not an absolute path")
+        if watch.name in seen:
+            out.append(f"{watch.name}: two watched folders share that name")
+        seen[watch.name] = watch
+        if library and watch.shape == "intake" and (watch.holds(library) or library == watch.folder
+                                                    or _inside(watch.folder, library)):
+            out.append(f"{watch.name}: an intake folder may not hold the library, and the library "
+                       "may not hold it — a library that watches itself is the `library` shape")
+    for a in watches:
+        for b in watches:
+            if a is not b and a.holds(b.folder):
+                out.append(f"{b.name}: lies inside {a.name}; watched folders may not be nested")
+    return out
+
+
+def _inside(folder: Path, other: Path) -> bool:
+    return folder == other or other in folder.parents
 
 
 def save_setting(name: str, value: str | bool | int | None, path: Path | None = None) -> Path:

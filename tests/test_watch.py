@@ -159,3 +159,62 @@ def test_an_arrival_still_being_written_survives_a_restart_and_settles_after_it(
 
     assert again.step(album(A, size=100), now=110) == [], "the window starts afresh, not expired"
     assert again.step(album(A, size=100), now=120) == ["A Band/An Album"]
+
+
+# -- what may be watched, and what may not ------------------------------------------------------------
+
+
+def test_the_two_shapes_may_not_be_nested(tmp_path):
+    """R-200, ruling 1. An intake folder inside a library would take every drop twice — once as an
+    arrival and once as the library's own album — and a library inside an intake folder would have
+    the intake pass copy the library into itself."""
+    from noaap.config import Watch, watch_trouble
+
+    library = tmp_path / "library"
+
+    assert watch_trouble([Watch("drop", tmp_path / "drop")], library) == []
+    assert "may not hold" in watch_trouble([Watch("drop", tmp_path)], library)[0]
+    assert "may not hold" in watch_trouble([Watch("drop", library / "inside")], library)[0]
+
+
+def test_a_library_watching_itself_is_the_other_shape(tmp_path):
+    """And needs no intake at all."""
+    from noaap.config import Watch, watch_trouble
+
+    library = tmp_path / "library"
+
+    assert watch_trouble([Watch("mine", library, "library")], library) == []
+
+
+def test_two_watched_folders_may_not_be_nested_either(tmp_path):
+    from noaap.config import Watch, watch_trouble
+
+    trouble = watch_trouble([Watch("a", tmp_path / "a"), Watch("b", tmp_path / "a" / "b")], None)
+
+    assert trouble and "may not be nested" in trouble[0]
+
+
+def test_a_watch_is_read_from_the_config_file(tmp_path):
+    from noaap.config import load
+
+    (tmp_path / "config.toml").write_text(
+        '[[watch]]\nname = "drop"\nfolder = "~/Musik/drop"\n\n'
+        '[[watch]]\nname = "mine"\nfolder = "~/Music"\nshape = "library"\n')
+
+    cfg = load(tmp_path / "config.toml")
+
+    assert [(w.name, w.shape) for w in cfg.watches] == [("drop", "intake"), ("mine", "library")]
+    assert cfg.watch("mine").folder == Path.home() / "Music"
+    assert cfg.watch("nobody") is None
+    assert load(tmp_path / "missing.toml").watches == [], "nothing is watched unless it is configured"
+
+
+def test_the_state_file_is_the_users_own_business(tmp_path):
+    """Its notes are the shape of somebody's music collection (R-200, ruling 5)."""
+    from noaap.watch import read_state, write_state
+
+    path = write_state({"drop": {"looked": "2026-09-29"}}, tmp_path / "watch-state.json")
+
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert read_state(path) == {"drop": {"looked": "2026-09-29"}}
+    assert read_state(tmp_path / "gone.json") == {}, "no state is not an error"

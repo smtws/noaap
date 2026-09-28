@@ -17,6 +17,7 @@ instead of sleeping.
 from __future__ import annotations
 
 import fnmatch
+import json
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -166,5 +167,40 @@ def albums(ready: Iterable[str]) -> list[str]:
     return [where for where in ready if where != "."]
 
 
+
+
+# -- what survives a restart (§9, slice 59) ---------------------------------------------------------
+#
+# Beside the config, mode 600, and **no path out of it ever reaches a log line the page shows**
+# (R-200, ruling 5): a watched folder is named by its configured name, and an arrival by its path
+# relative to that folder.
+
+STATE_NAME = "watch-state.json"
+
+
+def state_path() -> Path:
+    from .config import config_path
+
+    return config_path().parent / STATE_NAME
+
+
+def read_state(path: Path | None = None) -> dict[str, Any]:
+    try:
+        return json.loads((path or state_path()).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(state: dict[str, Any], path: Path | None = None) -> Path:
+    """Written with the mode set before anything is in it: a watcher's notes are the shape of
+    somebody's music collection, and that is theirs."""
+    path = path or state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_text(json.dumps(state, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 __all__ = ["INTERVAL", "SETTLE", "Folder", "Seen", "Watcher", "album_of", "albums", "look",
-           "loose", "skip"]
+           "loose", "read_state", "skip", "state_path", "write_state"]
