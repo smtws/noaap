@@ -48,6 +48,13 @@ class Provenance(StrEnum):
     COLLECTION = "playlist"     # derived from the collection's own title or its owner
     USER = "user"
 
+    # a folder's three origins (§9, slice 53). `FILE_TAGS` is the same *kind* of evidence as
+    # `SOURCE_TAGS` — metadata carried beside the audio — but it is worth telling apart on disk:
+    # whoever tagged that collection is not YouTube Music, and a reader of a plan should see which.
+    FILE_TAGS = "file_tags"
+    FOLDER_NAME = "folder_name"
+    FILE_NAME = "file_name"
+
     # what these were called while YouTube was the only source
     YT_MUSIC = SOURCE_TAGS
     YT_TITLE = SOURCE_TITLE
@@ -88,6 +95,7 @@ class Entry:
     thumbnail: str | None = None
     chapters: list[dict[str, Any]] = field(default_factory=list)
     music: Music = field(default_factory=Music)
+    disc: int = 1  # a source that knows its discs says so; a flat one leaves it at 1 (§9, slice 53)
     skipped: str | None = None  # reason, if this entry is unusable — the provider's own words
     skipped_kind: str | None = None  # and which `Failure` that is, for the pipeline to branch on
     transient: bool = False  # the reason may go away (bot check, network): the entry is still in the source

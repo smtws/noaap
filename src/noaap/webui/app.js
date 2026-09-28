@@ -9,7 +9,8 @@ import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftTe
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
-const PROV = { mb: "MB", yt_music: "YT Music", yt_title: "title", playlist: "playlist", user: "you" };
+const PROV = { mb: "MB", yt_music: "YT Music", yt_title: "title", playlist: "playlist", user: "you",
+               file_tags: "tags", folder_name: "folder", file_name: "file name" };
 let state = { albums: [], jobs: [], busy: false };
 let waitingFor = null; // job id whose result the results panel is waiting for
 let openLog = null; // job id whose full log is expanded

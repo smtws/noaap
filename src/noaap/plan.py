@@ -72,6 +72,16 @@ def read_entry(entry: Entry, source: Any = None) -> tuple[str | None, str]:
     return reader(entry) if reader else (None, entry.title)
 
 
+DEFAULT_ORIGINS = {"tags": Provenance.SOURCE_TAGS, "title": Provenance.SOURCE_TITLE,
+                   "collection": Provenance.COLLECTION}
+
+
+def origins(source: Any = None) -> dict[str, str]:
+    """Which provenance names this source's evidence carries (§9, slice 53)."""
+    naming = getattr(_source(source), "origins", None)
+    return {**DEFAULT_ORIGINS, **naming()} if naming else DEFAULT_ORIGINS
+
+
 def owner_artist_of(owner: str | None, source: Any = None) -> str | None:
     """The artist an owner's name stands for, if the provider says it stands for one."""
     reader = getattr(_source(source), "owner_artist", None)
@@ -83,16 +93,17 @@ def owner_artist_of(owner: str | None, source: Any = None) -> str | None:
 
 def track_artist(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     """YouTube Music's field, else the artist named in the title, else the channel."""
+    named = origins(source)
     if entry.music.artist:
-        return entry.music.artist, Provenance.SOURCE_TAGS
+        return entry.music.artist, named["tags"]
     parsed, _ = read_entry(entry, source)
-    return parsed or owner_artist_of(entry.owner, source) or "Unknown Artist", Provenance.SOURCE_TITLE
+    return parsed or owner_artist_of(entry.owner, source) or "Unknown Artist", named["title"]
 
 
 def track_title(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     if entry.music.track:
-        return entry.music.track, Provenance.SOURCE_TAGS
-    return read_entry(entry, source)[1], Provenance.SOURCE_TITLE
+        return entry.music.track, origins(source)["tags"]
+    return read_entry(entry, source)[1], origins(source)["title"]
 
 
 def named_artist(entry: Entry, collection: Collection, source: Any = None) -> str | None:
@@ -140,11 +151,12 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
     kind = kind or classify(collection, source)
     entries = usable_entries(collection)
     album_prov: dict[str, str] = {}
+    named_origin = origins(source)
 
     if kind == Kind.COMPILATION:
         albumartist = collection.channel or "Various Artists"
         album = compilation_album_title(collection.title, albumartist)
-        album_prov = {"albumartist": Provenance.COLLECTION, "album": Provenance.COLLECTION}
+        album_prov = {"albumartist": named_origin["collection"], "album": named_origin["collection"]}
         year = None
     else:
         named = [(a, track_artist(e, source)[1]) for e in entries if (a := named_artist(e, collection, source))]
@@ -153,22 +165,27 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
         albumartist, prov = (
             _most_common(named)
             or _most_common([track_artist(e, source) for e in entries])
-            or (collection.channel or "Unknown Artist", Provenance.COLLECTION)
+            or (collection.channel or "Unknown Artist", named_origin["collection"])
         )
         album_prov["albumartist"] = prov
         shared_album = _shared([e.music.album for e in entries])
         if shared_album:
-            album, album_prov["album"] = shared_album, Provenance.SOURCE_TAGS
+            album, album_prov["album"] = shared_album, named_origin["tags"]
         else:
             album = _playlist_album_title(collection.title, albumartist)
-            album_prov["album"] = Provenance.COLLECTION
+            album_prov["album"] = named_origin["collection"]
         # release_year also exists on plain videos (upload year) - only trust it with an album
         year = _most_common_value([e.music.year for e in entries if e.music.year and e.music.album])
         if year:
-            album_prov["year"] = Provenance.SOURCE_TAGS
+            album_prov["year"] = named_origin["tags"]
 
     tracks = []
-    for number, entry in enumerate(entries, start=1):
+    # numbering runs within a disc. For a flat source — every entry on disc 1 — this is the
+    # straight 1..N it has always been; a source that knows its discs (a folder of `cd1`/`cd2`)
+    # gets each one numbered from 1, which is what the disc means.
+    counted: dict[int, int] = {}
+    for entry in entries:
+        counted[entry.disc] = number = counted.get(entry.disc, 0) + 1
         artist, artist_prov = track_artist(entry, source)
         title, title_prov = track_title(entry, source)
         named = entry.music.artist or read_entry(entry, source)[0]
@@ -179,7 +196,7 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             # the album's own artist, not the channel handle or the album title read as a name
             # (the guest credit stays on for move_feat, which puts it into the title below)
             stripped = _without_collection_title(artist, collection.title) if named else None
-            artist, artist_prov = (stripped, artist_prov) if stripped else (albumartist, Provenance.COLLECTION)
+            artist, artist_prov = (stripped, artist_prov) if stripped else (albumartist, named_origin["collection"])
         title = strip_leading_artist(artist, title)  # "Metallica: Nothing Else Matters"
         artist, title = move_feat(artist, title)  # guests belong in the title
         title = strip_self_feat(artist, title)
@@ -187,6 +204,7 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             PlanTrack(
                 video_id=entry.video_id,
                 number=number,
+                disc=entry.disc,
                 artist=artist,
                 title=title,
                 filename="",  # set by refresh_derived
@@ -394,7 +412,11 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
 
 
 # how much a value is trusted; a merge never replaces a value by a less trusted one
-TRUST = {Provenance.COLLECTION: 1, Provenance.SOURCE_TITLE: 1, Provenance.SOURCE_TAGS: 2, Provenance.MB: 3, Provenance.USER: 4}
+TRUST = {Provenance.COLLECTION: 1, Provenance.SOURCE_TITLE: 1, Provenance.SOURCE_TAGS: 2,
+         Provenance.MB: 3, Provenance.USER: 4,
+         # a folder's origins weigh the same as the ones they stand in for: a file's own tags are
+         # evidence of the same kind as a source's metadata, a name is a name
+         Provenance.FOLDER_NAME: 1, Provenance.FILE_NAME: 1, Provenance.FILE_TAGS: 2}
 
 
 def _merge_fields(target: AlbumPlan | PlanTrack, fresh: AlbumPlan | PlanTrack, fields: tuple[str, ...]) -> None:

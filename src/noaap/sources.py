@@ -120,6 +120,15 @@ class Source(Protocol):
     def one_ref(self, text: str) -> str | None:
         """A single item's ref out of whatever the user typed, or None if it is not one."""
 
+    def origins(self) -> dict[str, str]:
+        """What this provider's evidence is called on disk: `tags`, `title`, `collection`.
+
+        A provider that does not answer gets the names YouTube's plans have always used. One that
+        does — a folder, whose evidence is a file's tags and a folder's name — says so here rather
+        than having the planner guess from its name (§9, slice 53).
+        """
+        ...
+
     def settings(self) -> dict[str, Any]:
         """This provider's own configuration, for the settings panel."""
 

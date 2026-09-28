@@ -106,7 +106,10 @@ def strip_album_name(album: str, title: str) -> str:
     rest = re.sub(r"\s+", " ", rest).strip(" -–—:|,.")
     inner = BRACKETS.fullmatch(rest)
     rest = (inner[1] if inner else rest).strip()
-    return rest or title
+    # a title that *is* the album name leaves punctuation behind, not a name: "Drachentanz
+    # (Live 2008)" on the album of that name strips to ")". Empty was already guarded; a remainder
+    # with no word in it is the same thing wearing a bracket (found 2026-09-28, P51).
+    return rest if re.search(r"\w", rest) else title
 
 
 _CHANNEL_NOISE = re.compile(r"(\s*-\s*topic|vevo|\s*official)$", re.I)

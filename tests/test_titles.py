@@ -11,6 +11,7 @@ from noaap.titles import (
     clean_title,
     drop_label,
     parse_video_title,
+    strip_album_name,
     title_by_artist,
 )
 
@@ -393,3 +394,11 @@ def test_a_pipe_only_ends_the_title_outside_brackets(raw, cleaned):
 )
 def test_drop_label(raw, want):
     assert drop_label(raw) == want
+
+
+def test_a_title_that_is_the_album_name_keeps_it():
+    """Found by the folder provider on a live album whose first track is the album: stripping the
+    run left `")"`, which is punctuation, not a name. Empty was guarded; this was not."""
+    assert strip_album_name("Drachentanz (Live 2008)", "Drachentanz (Live 2008)") == "Drachentanz (Live 2008)"
+    assert strip_album_name("Drachentanz (Live 2008)", "Turnier (Live 2008)") == "Turnier"
+    assert strip_album_name("Hex", "Hex") == "Hex", "a one-word album never strips at all"

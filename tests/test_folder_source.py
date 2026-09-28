@@ -19,6 +19,10 @@ from noaap.config import Config
 from noaap.models import Collection
 from noaap.sources_folder import FolderSource, cover_in, read_tags
 
+# long enough to be a song: anything under `plan.MIN_TRACK_SECONDS` is read as an intro card and
+# never becomes a track, which is right for a playlist and would silently empty a folder here
+SECONDS = 31
+
 
 def encode(path: Path, **tags: str) -> Path:
     if not shutil.which("ffmpeg"):
@@ -26,7 +30,7 @@ def encode(path: Path, **tags: str) -> Path:
     meta = [arg for key, value in tags.items() for arg in ("-metadata", f"{key}={value}")]
     codec = {".flac": "flac", ".mp3": "libmp3lame", ".opus": "libopus"}[path.suffix]
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=duration={SECONDS}",
                     "-c:a", codec, *meta, str(path)], check=True)
     return path
 
@@ -68,7 +72,7 @@ def test_a_folder_is_a_collection_and_the_tags_are_the_truth(album, source):
     assert [e.title for e in found.entries] == ["Back in the Lead", "Javelin", "Trust in Rust"]
     assert [e.position for e in found.entries] == [1, 2, 3]
     assert all(e.music.album == "Trust in Rust" and e.music.year == 2018 for e in found.entries)
-    assert all(e.duration == pytest.approx(1.0, abs=0.2) for e in found.entries)
+    assert all(e.duration == pytest.approx(SECONDS, abs=0.5) for e in found.entries)
     assert found.thumbnail == str(album / "cover.jpg")
 
 
@@ -80,12 +84,16 @@ def test_the_track_number_orders_it_not_the_file_name(tmp_path, source):
     assert [e.title for e in source.collection(str(folder)).entries] == ["First", "Second"]
 
 
-def test_without_track_numbers_the_name_orders_it(tmp_path, source):
+def test_without_a_track_number_tag_the_name_supplies_one(tmp_path, source):
+    """The name is read per field and only where a tag is absent, so these files gain both a
+    number and a title from it — which is also what orders them."""
     folder = tmp_path / "album"
     for name in ("02 - second.flac", "01 - first.flac"):
         encode(folder / name, artist="A", album="B")
 
-    assert [e.title for e in source.collection(str(folder)).entries] == ["01 - first", "02 - second"]
+    entries = source.collection(str(folder)).entries
+    assert [e.title for e in entries] == ["first", "second"]
+    assert [e.music.artist for e in entries] == ["A", "A"], "and the tag still wins where there is one"
 
 
 def test_a_folder_with_no_audio_is_refused_by_name(tmp_path, source):
@@ -126,7 +134,7 @@ def test_probe_answers_from_the_file_alone(album, source):
     entry = source.probe(str(album / "02 - Javelin.mp3"))
 
     assert entry.title == "Javelin" and entry.music.artist == "Van Canto"
-    assert entry.duration == pytest.approx(1.0, abs=0.2)
+    assert entry.duration == pytest.approx(SECONDS, abs=0.5)
 
 
 def test_the_cover_is_read_as_bytes_by_its_path(album, source):
@@ -192,7 +200,7 @@ def test_an_unreadable_file_does_not_stop_the_folder(album, source):
 
     assert len(found.entries) == 4
     broken = found.entries[-1]
-    assert broken.title == "04 - broken", "no tags to read, so the name stands in"
+    assert broken.title == "broken", "no tags to read, so the name is read instead"
     assert broken.duration is None
 
 
@@ -257,3 +265,181 @@ def test_importing_one_provider_does_not_hide_the_others():
     the moment this file imported `sources_folder` at the top."""
     assert sources.known() == ["folder", "youtube"]
     assert sources.get(None, Config()).name == "youtube", "the default still resolves"
+
+
+# -- how a folder spells more than one disc --------------------------------------------------------
+
+
+def discs(folder: Path, *names: str) -> Path:
+    for disc, name in enumerate(names, 1):
+        for n in (1, 2):
+            encode(folder / name / f"{n:02d} - t{disc}{n}.flac", title=f"t{disc}{n}",
+                   artist="In Extremo", album="Am goldenen Rhein", track=str(n))
+    return folder
+
+
+@pytest.mark.parametrize("names", [("cd1", "cd2"), ("CD 1", "CD 2"), ("1", "2"), ("Disc 1", "Disc 2")])
+def test_numbered_sub_folders_are_the_discs_of_one_album(tmp_path, source, names):
+    """Three spellings occur in the reference collection, in three different albums."""
+    folder = discs(tmp_path / "Am goldenen Rhein", *names)
+
+    found = source.collection(str(folder))
+
+    assert len(found.entries) == 4
+    assert [e.disc for e in found.entries] == [1, 1, 2, 2]
+    assert found.title == "Am goldenen Rhein"
+
+
+def test_each_disc_is_numbered_from_one(tmp_path, source):
+    from noaap.plan import build_plan
+
+    plan = build_plan(source.collection(str(discs(tmp_path / "album", "cd1", "cd2"))), source=source)
+
+    assert [(t.disc, t.number) for t in plan.tracks] == [(1, 1), (1, 2), (2, 1), (2, 2)]
+
+
+def test_one_numbered_folder_among_named_ones_is_not_a_disc_split(tmp_path, source):
+    """All of them or none. A bonus disc beside three named folders is not this shape, and
+    guessing which of them were discs would be worse than reading the folder flat."""
+    folder = tmp_path / "album"
+    encode(folder / "cd1" / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    encode(folder / "bonus tracks" / "01 - b.flac", title="b", artist="A", album="B", track="1")
+
+    with pytest.raises(sources.NotSupported, match="no audio"):
+        source.collection(str(folder))
+
+
+def test_sibling_folders_are_one_album_when_their_tags_agree(tmp_path, source):
+    for disc in (1, 2):
+        for n in (1, 2):
+            encode(tmp_path / f"The Better Life Disc {disc}" / f"{n:02d} - t{disc}{n}.flac",
+                   title=f"t{disc}{n}", artist="3 Doors Down", album="The Better Life", track=str(n))
+
+    found = source.collection(str(tmp_path / "The Better Life Disc 2"))
+
+    assert [e.disc for e in found.entries] == [1, 1, 2, 2], "anchored on the lowest, from either side"
+    assert found.source_url.endswith("Disc 1")
+
+
+def test_siblings_whose_own_tags_name_two_albums_stay_two_albums(tmp_path, source):
+    """The one real case in the reference collection: `The Better Life [Deluxe Edition] Disc 1|2`,
+    whose files say the album *is* "… Disc 1" and "… Disc 2". This is the grouping the filesystem
+    did not state, so the tags get the vote, and here they vote against it."""
+    for disc in (1, 2):
+        encode(tmp_path / f"The Better Life Disc {disc}" / "01 - a.flac",
+               title="a", artist="3 Doors Down", album=f"The Better Life Disc {disc}", track="1")
+
+    found = source.collection(str(tmp_path / "The Better Life Disc 1"))
+
+    assert len(found.entries) == 1 and found.title == "The Better Life Disc 1"
+
+
+# -- what a name can say when the tags say nothing --------------------------------------------------
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("Feuerschwanz - Drachentanz (Live 2008) - 01 - Turnier (Live 2008)",
+     {"artist": "Feuerschwanz", "album": "Drachentanz (Live 2008)", "n": 1, "title": "Turnier (Live 2008)"}),
+    ("01 - Fleetwood Mac - Rhiannon", {"artist": "Fleetwood Mac", "n": 1, "title": "Rhiannon"}),
+    ("03 - Trust in Rust", {"n": 3, "title": "Trust in Rust"}),
+    ("07. Melody", {"n": 7, "title": "Melody"}),
+    ("just a name", {}),
+])
+def test_a_file_name_is_read_as_the_record_it_is(name, expected):
+    from noaap.sources_folder import from_name
+
+    found = from_name(Path(f"{name}.opus"))
+
+    assert found.get("title") == expected.get("title")
+    assert found.get("artist") == expected.get("artist")
+    assert found.get("album") == expected.get("album")
+    assert found.get("tracknumber") == expected.get("n")
+
+
+def test_an_untagged_album_is_recovered_and_says_where_from(tmp_path, source):
+    """The 17 untagged files in the reference collection are one album, named by this program's
+    own output scheme. So the recovery is exact — and the plan records that it was the name."""
+    from noaap.models import Provenance
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Drachentanz (Live 2008)"
+    titles = ["Drachentanz (Live 2008)", "Turnier (Live 2008)", "Der Barbier (Live 2008)",
+              "Das Groupie (Live 2008)", "Der Glöckner (Live 2008)"]
+    for n, title in enumerate(titles, 1):
+        encode(folder / f"Feuerschwanz - Drachentanz (Live 2008) - {n:02d} - {title}.opus")
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert plan.albumartist == "Feuerschwanz" and plan.album == "Drachentanz (Live 2008)"
+    assert plan.provenance["albumartist"] == Provenance.FILE_NAME
+    assert [t.title for t in plan.tracks] == ["Drachentanz (Live 2008)", "Turnier", "Der Barbier",
+                                              "Das Groupie", "Der Glöckner"], \
+        "the album's name comes out of the titles — except the one that *is* it"
+    assert all(t.provenance["title"] == Provenance.FILE_NAME for t in plan.tracks)
+
+
+def test_a_tag_always_beats_the_name(tmp_path, source):
+    from noaap.models import Provenance
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "album"
+    encode(folder / "Someone - Some Album - 01 - Wrong.flac", title="Right", artist="Right Artist",
+           album="Right Album", track="1")
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert plan.tracks[0].title == "Right" and plan.tracks[0].artist == "Right Artist"
+    assert plan.tracks[0].provenance["title"] == Provenance.FILE_TAGS
+
+
+# -- covers, and what is left alone ------------------------------------------------------------------
+
+
+def test_a_folder_without_a_cover_file_falls_back_to_the_picture_inside_a_track(tmp_path, source):
+    """65 of 135 folders in the reference collection have a cover file; 269 of 2000 files carry a
+    picture. The second number is why this fallback exists."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+    from noaap.tag import tag_file
+
+    folder = tmp_path / "album"
+    path = encode(folder / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    plan = AlbumPlan(source_url=str(folder), source_id=str(folder), kind=Kind.OFFICIAL_ALBUM,
+                     album="B", albumartist="A", year=None, cover_url=None, folder="x",
+                     tracks=[PlanTrack(video_id=str(path), number=1, artist="A", title="a",
+                                       filename="a.flac", provenance={})], provider="folder")
+    tag_file(path, plan, plan.tracks[0], cover=JPEG)
+
+    found = source.collection(str(folder))
+
+    assert found.thumbnail is None, "there is no cover file to name"
+    assert source.art(str(folder)) == JPEG, "so the folder itself is the address for the one inside"
+
+
+def test_what_is_left_alone_is_counted_by_kind(album, source):
+    (album / "New Album Releases.url").write_text("[InternetShortcut]\n")
+    (album / ".thumb").mkdir()
+    (album / ".thumb" / "cover.jpg.jpg").write_bytes(b"thumbnail")
+
+    left = source.ignored(str(album))
+
+    assert left["url"] == 1
+    assert left["image"] == 1, "the cover itself"
+    assert left["hidden"] == 1
+    assert (album / "New Album Releases.url").exists(), "counted, never touched"
+
+
+def test_a_various_artists_folder_is_a_compilation(tmp_path, source):
+    from noaap.models import Kind
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Classic Rock Hits"
+    for n, (artist, title) in enumerate([("Fleetwood Mac", "Rhiannon"), ("ZZ Top", "La Grange"),
+                                         ("Whitesnake", "Here I Go Again")], 1):
+        encode(folder / f"{n:02d} - {artist} - {title}.mp3", title=title, artist=artist,
+               album="Classic Rock Hits", album_artist="Various Artists", track=str(n))
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert plan.kind == Kind.COMPILATION
+    assert plan.albumartist == "Various Artists"
+    assert [t.artist for t in plan.tracks] == ["Fleetwood Mac", "ZZ Top", "Whitesnake"]
