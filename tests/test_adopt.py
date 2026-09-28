@@ -289,25 +289,31 @@ def test_an_undo_after_a_rename_puts_the_names_back(library):
     assert fingerprint(library) == before
 
 
-def test_a_file_noaap_added_and_the_user_edited_is_kept(library):
-    """It is theirs now, whatever put it there."""
+def test_a_sidecar_the_user_edited_is_kept_and_one_noaap_wrote_is_not(library):
+    """**Every file noaap writes records its own fingerprint as it writes it** — a sidecar answers
+    to `lyrics_sha`, "the bytes we wrote; anything else is the user's". A snapshot taken at
+    adoption instead is stale the moment a later pass writes one, which is how the first live undo
+    kept 80 sidecars noaap had written itself."""
     from noaap import adopt
-    from noaap.download import load_plan
-    from noaap.lyrics import sidecar_path
+    from noaap.download import load_plan, save_plan
+    from noaap.lyrics import sidecar_path, sidecar_sha
 
     adopt.carry_out(survey_of(library))
     album_dir = library / "A Band" / "An Album"
     plan = load_plan(album_dir)
-    words = sidecar_path(album_dir, plan.tracks[0].filename)
-    words.write_text("[00:01.00] as noaap wrote it\n", encoding="utf-8")
-    adopt.remember_added(album_dir, plan)
-    words.write_text("[00:01.00] as the user fixed it\n", encoding="utf-8")
+    ours, theirs = plan.tracks[0], plan.tracks[1]
+    for track in (ours, theirs):
+        sidecar_path(album_dir, track.filename).write_text("[00:01.00] words\n", encoding="utf-8")
+    ours.lyrics_sha = sidecar_sha(album_dir, ours)      # written by a pass, which records it
+    sidecar_path(album_dir, theirs.filename).write_text("[00:01.00] mine\n", encoding="utf-8")
+    save_plan(plan, album_dir)
 
     said: list[str] = []
     done = adopt.give_back(album_dir, load_plan(album_dir), library, log=said.append)
 
-    assert words.is_file() and "fixed it" in words.read_text()
-    assert done["kept"] == 1 and any("edited since" in line for line in said)
+    assert not sidecar_path(album_dir, ours.filename).exists(), "ours goes"
+    assert sidecar_path(album_dir, theirs.filename).is_file(), "theirs stays"
+    assert done["kept"] == 1 and any("not the file noaap wrote" in line for line in said)
 
 
 def test_an_undo_without_a_record_refuses_rather_than_guesses(library):

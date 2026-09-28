@@ -83,7 +83,7 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
     plan.own_the_candidates()
     plan.keep_names = plan.keep_tags = True
     plan.folder = str(album_dir.relative_to(library))
-    plan.adopted = {"folder": plan.folder, "at": dt.date.today().isoformat(), "added": {}}
+    plan.adopted = {"folder": plan.folder, "at": dt.date.today().isoformat()}
 
     for track in plan.tracks:
         # the file is here and finished: that is what adoption means. Its name is the owner's.
@@ -143,7 +143,6 @@ def carry_out(found: Survey, log: Callable[[str], None] = lambda s: None) -> dic
     done = {"adopted": 0, "tracks": 0}
     for adoption in found.taking:
         save_plan(adoption.plan, adoption.album_dir)
-        remember_added(adoption.album_dir, adoption.plan)
         done["adopted"] += 1
         done["tracks"] += adoption.tracks
         log(f"  {adoption.plan.albumartist} — {adoption.plan.album} ({adoption.tracks} track(s))")
@@ -160,38 +159,37 @@ __all__ = ["Adoption", "Survey", "carry_out", "examine", "in_scope", "report", "
 # -- giving it back ------------------------------------------------------------------------------
 
 
-def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[Path]:
-    """Everything noaap put into this folder: the plan, the sidecars, a cover it saved.
+def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[tuple[Path, str | None]]:
+    """Everything noaap put into this folder, each with the fingerprint noaap wrote.
 
-    Not the audio and not one file that was here before — those are the owner's, and the only
-    thing that ever displaces one is the bin (§9, slice 55).
+    **Every one of them already records its own**, and that is the point: a snapshot taken at
+    adoption is stale the moment a later pass writes a sidecar, and the first live undo kept 80 of
+    them as "edited" when noaap had written every one (found 2026-09-28). A sidecar answers to
+    `lyrics_sha` — *the bytes we wrote; anything else is the user's* — and a cover to
+    `cover_fetched.sha1`, both maintained by the passes that write them.
+
+    The plan carries `None`: it is ours whatever it says, and an undo removes it.
+
+    Not the audio and not one file that was here before — those are the owner's, and the only thing
+    that ever displaces one is the bin (§9, slice 55).
     """
-    out = [album_dir / PLAN_FILE]
+    out: list[tuple[Path, str | None]] = [(album_dir / PLAN_FILE, None)]
     for track in plan.tracks:
         words = sidecar_path(album_dir, track.filename)
         if words.is_file():
-            out.append(words)
-    if plan.cover_fetched.get("sha1"):
-        out += [p for p in sorted(album_dir.glob(f"{COVER_STEM}.*")) if _sha1(p) == plan.cover_fetched["sha1"]]
+            out.append((words, track.lyrics_sha))
+    for cover in sorted(album_dir.glob(f"{COVER_STEM}.*")):
+        if cover.is_file():
+            out.append((cover, plan.cover_fetched.get("sha1")))
     return out
 
 
-def _sha1(path: Path) -> str:
-    return hashlib.sha1(path.read_bytes()).hexdigest()
-
-
-def remember_added(album_dir: Path, plan: AlbumPlan) -> None:
-    """Record the fingerprint of everything noaap has put in this folder.
-
-    An undo removes what noaap added — but only what is still as noaap wrote it. A sidecar the user
-    has edited since is **theirs now**, whatever put it there, and it stays (R-189, ruling 3).
-    """
-    # not the plan: it is rewritten by every pass that touches the album, and an undo removes it
-    # whatever it says. The fingerprints are for the files an undo has to think about.
-    added = {p.name: _sha1(p) for p in added_by_us(album_dir, plan)
-             if p.is_file() and p.name != PLAN_FILE}
-    plan.adopted["added"] = added
-    save_plan(plan, album_dir)
+def ours_still(path: Path, wrote: str | None) -> bool:
+    """Is this file still the one noaap wrote? A fingerprint we never took answers no."""
+    if wrote is None:
+        return False
+    digest = hashlib.sha1(path.read_bytes()).hexdigest()
+    return digest == wrote or digest[:len(wrote)] == wrote
 
 
 def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
@@ -239,11 +237,11 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
         save_plan(plan, album_dir)
         return done
 
-    for path in added_by_us(album_dir, plan):
+    for path, wrote in added_by_us(album_dir, plan):
         if not path.is_file():
             continue
-        if path.name != PLAN_FILE and _sha1(path) != (plan.adopted.get("added") or {}).get(path.name):
-            log(f"  kept {path.name}: it has been edited since noaap wrote it")
+        if path.name != PLAN_FILE and not ours_still(path, wrote):
+            log(f"  kept {path.name}: it is not the file noaap wrote")
             done["kept"] += 1
             continue
         path.unlink()
@@ -297,7 +295,6 @@ def rename(album_dir: Path, plan: AlbumPlan, log: Callable[[str], None] = lambda
         moved += 1
     if moved:
         plan.keep_names = False  # from here on the names are noaap's, and passes may keep them so
-        remember_added(album_dir, plan)
     return moved
 
 
@@ -324,5 +321,4 @@ def retag(album_dir: Path, plan: AlbumPlan, cover: bytes | None = None,
         written += 1
     if written:
         plan.keep_tags = False  # the tags are noaap's now; the undo still knows what they were
-        remember_added(album_dir, plan)
     return written
