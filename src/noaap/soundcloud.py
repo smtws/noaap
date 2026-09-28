@@ -24,7 +24,7 @@ from yt_dlp.utils import DownloadCancelled, DownloadError
 from . import sources, ytdlp
 from .config import Config
 from .models import Collection, Entry, Music, SourceRef
-from .titles_soundcloud import clean_title
+from .titles_soundcloud import clean_title, is_preview
 
 log = logging.getLogger(__name__)
 
@@ -190,14 +190,18 @@ class SoundCloud:
         position in it. The artist is deliberately left out of `music`: the title may name one
         ("Bloodywood - Gaddaar"), and reading that is `clean_entry`'s job, as it is for YouTube.
         """
+        title = info.get("title") or ""
         return Entry(
             video_id=str(info.get("id") or ""),
             position=position,
-            title=info.get("title") or "",
+            title=title,
             channel=info.get("uploader"),
             duration=info.get("duration"),
             thumbnail=_thumbnail(info),
             music=Music(album=album or None, year=int(year) if year else None),
+            # a snippet is not the work. `clean_title` takes the marker off, so without this the
+            # preview would plan as the song itself — which is exactly what the live run did
+            skipped="a preview, not the song" if is_preview(title) else None,
         )
 
     # -- the cheap check -----------------------------------------------------------------
@@ -286,8 +290,16 @@ class SoundCloud:
 
 
 def track_url(ref: str) -> str:
-    """The address yt-dlp takes for one track id. Not a page a person opens — see `url_for`."""
-    return f"https://api.soundcloud.com/tracks/soundcloud:tracks:{ref}"
+    """The address yt-dlp takes for one track id. Not a page a person opens — see `url_for`.
+
+    **The plain `/tracks/<id>` form, and it matters.** yt-dlp's own listings emit
+    `/tracks/soundcloud%3Atracks%3A<id>`, and the decoded `soundcloud:tracks:<id>` spelling of that
+    is matched by **no** SoundCloud extractor: it falls through to the generic one, which asks the
+    API host without a client id and is told `401 Unauthorized`. Every download in the first live
+    run failed that way, and the error says nothing about the cause — the only tell is `[generic]`
+    in front of it (found 2026-09-28).
+    """
+    return f"https://api.soundcloud.com/tracks/{ref}"
 
 
 def _stamp(info: dict[str, Any]) -> str | None:

@@ -344,3 +344,32 @@ def test_the_plan_says_where_each_value_came_from(provider):
     assert plan.provenance["album"] == "sc_set"
     assert plan.provenance["year"] == "sc_set"
     assert plan.tracks[0].provenance["title"] == "sc_title"
+
+
+def test_the_address_we_build_is_one_soundclouds_own_extractor_claims():
+    """The live run's first failure, pinned offline.
+
+    An address yt-dlp does not recognise does not fail as "unrecognised": it falls through to the
+    **generic** extractor, which asks the API host without a client id and gets `401 Unauthorized`.
+    Every download failed that way, and nothing in the message says why — the only tell is
+    `[generic]`. So the case asks the extractor itself whether it claims what we build.
+    """
+    from yt_dlp.extractor.soundcloud import SoundcloudIE
+
+    assert SoundcloudIE.suitable(track_url("865897327")), "the generic extractor would 401 on this"
+    assert not SoundcloudIE.suitable("https://api.soundcloud.com/tracks/soundcloud:tracks:865897327"), \
+        "the decoded spelling of yt-dlp's own listing URL is claimed by nothing"
+
+
+def test_a_preview_is_marked_because_cleaning_removes_the_only_sign_of_it():
+    """Found live. `clean_title` takes "(snip)" off, and a preview without its marker looks exactly
+    like the song — a label's 40-second teaser planned as the single."""
+    from noaap.models import Entry
+    from noaap.titles_soundcloud import is_preview
+
+    assert is_preview("Auf Wiederseh'n (snip)") and is_preview("Song [Preview]")
+    assert not is_preview("Song (Live)")
+
+    entry = SoundCloud(Config())._entry({"id": "1", "title": "Auf Wiederseh'n (snip)"}, 1)
+    assert entry.skipped == "a preview, not the song"
+    assert isinstance(entry, Entry) and entry.video_id == "1", "and it is still listed, not dropped"

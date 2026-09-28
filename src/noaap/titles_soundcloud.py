@@ -26,6 +26,9 @@ NOISE = re.compile(
     r")\s*[)\]]\s*$",
     re.I,
 )
+# a preview is not the song, whatever it is called
+PREVIEW = re.compile(r"[(\[]\s*(?:snip|snippet|preview|teaser|clip)\s*[)\]]", re.I)
+
 # "Artist - Title", the one convention the two sites share
 SPLIT = re.compile(r"^\s*(?P<artist>.{1,80}?)\s+[-–—]\s+(?P<title>.+?)\s*$")
 
@@ -54,6 +57,17 @@ def parse_track_title(title: str, uploader: str | None = None) -> tuple[str | No
         if artist and rest:
             return artist, rest
     return None, cleaned
+
+
+def is_preview(title: str) -> bool:
+    """Does this title say it is a snippet?
+
+    It matters because `clean_title` takes the marker off, and a preview whose marker has been
+    removed looks exactly like the song. Found live: a label's "(snip)" upload planned as a single
+    with the full song's name. The entry is still listed — a person may want to know it exists —
+    but it is marked, and nothing downloads it by accident.
+    """
+    return bool(PREVIEW.search(title or ""))
 
 
 def owner_is_artist(owner: str | None) -> str | None:
