@@ -634,3 +634,22 @@ def test_a_file_the_owner_removed_is_recorded_and_nothing_is_deleted(library):
     assert [t.in_source for t in after.tracks].count(False) == 1
     assert len(list(album_dir.glob("*.mp3"))) + len(list(album_dir.glob("*.flac"))) \
         + len(list(album_dir.glob("*.opus"))) == 2, "and the other two are still there"
+
+
+def test_an_album_taken_in_from_elsewhere_is_not_re_read_as_its_own_folder(library, tmp_path):
+    """Measured live: an album imported from an intake folder was re-read as if the library folder
+    were its source, every ref looked new, and 13 tracks became 26. Its refs name the files over
+    there; `update` is what re-checks it against where it came from."""
+    from noaap import adopt
+    from noaap.download import load_plan, save_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    plan.source_id = str(tmp_path / "somewhere else")  # what an intake import leaves behind
+    save_plan(plan, album_dir)
+
+    outcome = reread(library, album_dir)
+
+    assert outcome.status == "held"
+    assert len(load_plan(album_dir).tracks) == 3, "and not one track was added"

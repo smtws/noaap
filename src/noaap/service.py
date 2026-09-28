@@ -441,6 +441,14 @@ class Service:
         plan = load_plan(album_dir)
         if not plan:
             return Outcome("failed", message=f"no plan in {album_dir}")
+        if Path(plan.source_id).resolve() != album_dir.resolve():
+            # **only an album that is its own source is re-read this way.** One taken in from an
+            # intake folder still belongs to that folder: its refs name the files over there, so
+            # reading it here would see every track as new and double the album — measured, live,
+            # on an imported album that went from 13 tracks to 26 (§9, slice 59). What re-checks
+            # that one against where it came from is `update`.
+            self.log(f"{plan.albumartist} — {plan.album} came from somewhere else; `update` re-checks it")
+            return Outcome("held", plan, album_dir, "not this album's own folder")
         source = sources.for_plan(plan, self.cfg, self.cancel)
         try:
             collection = source.collection(str(album_dir))
