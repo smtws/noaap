@@ -169,7 +169,20 @@ def can(source: Source, what: str) -> bool:
     return what in source.capabilities()
 
 
+_loaded = False
+
+
 def _load() -> None:
-    if _MAKERS:
+    """Import the built-in providers once.
+
+    The guard is a flag and not `if _MAKERS`, which is what it used to be. A provider module
+    registers itself on import, so **anything that imported one directly filled the registry** —
+    and then this returned early and the others were never imported at all. With one provider
+    nothing could notice; the second one turned it into 153 failures the moment a test module
+    imported `sources_folder` by name (found 2026-09-28, P51).
+    """
+    global _loaded
+    if _loaded:
         return
-    from . import sources_youtube  # noqa: F401  — registers itself on import
+    _loaded = True
+    from . import sources_folder, sources_youtube  # noqa: F401  — they register themselves

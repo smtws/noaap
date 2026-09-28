@@ -61,7 +61,7 @@ class SourceRef:
     url: str
     source_id: str
     title: str
-    tab: str  # "releases" (official albums), "playlists", "ytmusic" or "search"
+    tab: str  # "releases" (official albums), "playlists", "ytmusic", "search" or "folders"
     artist: str | None = None  # who YouTube says made it (search hits only)
     channel_url: str | None = None  # the channel that uploaded its tracks
     count: int | None = None  # entries, when YouTube told us
@@ -281,6 +281,12 @@ class PlanTrack:
                 self.candidates.append(Candidate(ref=ref, added_by=added, why=why))
                 refs.add(ref)
         self.chosen = self.source_override or self.video_id or None
+
+    def provider_in(self, plan: AlbumPlan) -> str:
+        """Whose audio this track's file is — its chosen candidate's provider, else the album's."""
+        found = self.candidate(self.effective_id)
+        return (found.provider if found else None) or plan.provider
+
 
     def candidate(self, ref: str) -> Candidate | None:
         return next((c for c in self.candidates if c.ref == ref), None)

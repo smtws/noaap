@@ -28,6 +28,7 @@ from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 
 from .models import AlbumPlan, PlanTrack
+from .sources import DEFAULT as DEFAULT_PROVIDER
 
 PICTURE_KEY = "metadata_block_picture"
 
@@ -111,9 +112,13 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
         "tracknumber": str(track.number),
         "tracktotal": str(len(plan.tracks)),
         "totaltracks": str(len(plan.tracks)),
-        "youtube_id": track.video_id,
         "source": plan.source_url,
     }
+    # The ref only means something to the provider that minted it (§9, slice 50), so it is written
+    # as an identifier only where it *is* one. A folder's ref is an absolute path: putting that in
+    # every file would carry someone's home directory around and identify the track to nobody.
+    if track.provider_in(plan) == DEFAULT_PROVIDER:
+        tags["youtube_id"] = track.video_id
     if plan.year:
         tags["date"] = str(plan.year)
     if plan.is_compilation:
