@@ -352,6 +352,27 @@ class App:
     def album(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
         return next(((d, p) for d, p in iter_plans(self.library) if p.source_id == source_id), None) if self.library.exists() else None
 
+    def with_links(self, plan: AlbumPlan) -> dict[str, Any]:
+        """The plan as the page wants it: each candidate with a link, where its provider has one.
+
+        The page must not build a link from a ref. A ref means something only to the provider that
+        minted it — a folder's is a path on this machine, and a URL made out of one would be both
+        wrong and a home directory in a link (§9, slices 51 and 54).
+        """
+        out = plan.to_dict()
+        links: dict[str, str | None] = {}
+        for track in out["tracks"]:
+            for candidate in track.get("candidates") or []:
+                name = candidate.get("provider") or sources.DEFAULT
+                if name not in links:
+                    try:
+                        links[name] = getattr(sources.get(name, self.cfg), "url_for", lambda _r: None)
+                    except ValueError:  # a provider this build does not have: no link, no crash
+                        links[name] = None
+                maker = links[name]
+                candidate["url"] = maker(candidate["ref"]) if maker else None
+        return out
+
     def album_view(self, source_id: str) -> AlbumPlan | None:
         """The album as the view opens it: checked against the `.lrc` files on disk first.
 
@@ -919,7 +940,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json({"url": seed_url(), "fields": seed_release(plan)})
             case "/api/album":
                 plan = self.app.album_view(q.get("id", ""))
-                return self._json(plan.to_dict()) if plan else self._error(HTTPStatus.NOT_FOUND, "no such album")
+                return self._json(self.app.with_links(plan)) if plan else self._error(HTTPStatus.NOT_FOUND, "no such album")
             case "/api/cover":
                 cover = self.app.cover(q.get("id", ""))
                 return self._send(HTTPStatus.OK, cover[0], cover[1]) if cover else self._error(HTTPStatus.NOT_FOUND, "no cover")

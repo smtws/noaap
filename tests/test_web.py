@@ -1268,3 +1268,38 @@ def test_a_button_that_drops_its_background_must_set_its_own_colour() -> None:
         if drops and not re.search(r"(^|;)\s*color\s*:", body):
             offenders.append(selector)
     assert not offenders, f"these button rules drop the background without setting a colour: {offenders}"
+
+
+def test_a_candidates_link_comes_from_its_own_provider(server, library):
+    """The page must not build a link out of a ref: a folder's is a path on this machine, and a
+    URL made from one would be both wrong and a home directory in a link (§9, slice 54)."""
+    from noaap.download import iter_plans, save_plan
+    from noaap.models import Candidate
+
+    album_dir, plan = next(iter_plans(library))
+    track = plan.tracks[0]
+    track.candidates.append(Candidate(ref="/home/someone/Music/A Band/01 - One.flac",
+                                      provider="folder", codec="flac", added_by="pass"))
+    save_plan(plan, album_dir)
+    app, client = server
+
+    sent = client.get(f"/api/album?id={plan.source_id}").json()
+
+    candidates = {c["ref"]: c for c in sent["tracks"][0]["candidates"]}
+    assert candidates[track.video_id]["url"], "YouTube knows how to link to its own"
+    assert candidates["/home/someone/Music/A Band/01 - One.flac"]["url"] is None, \
+        "and a folder says there is nothing to open"
+
+
+def test_a_candidate_from_a_provider_this_build_lacks_gets_no_link(server, library):
+    from noaap.download import iter_plans, save_plan
+    from noaap.models import Candidate
+
+    album_dir, plan = next(iter_plans(library))
+    plan.tracks[0].candidates.append(Candidate(ref="whatever", provider="gramophone"))
+    save_plan(plan, album_dir)
+    _, client = server
+
+    sent = client.get(f"/api/album?id={plan.source_id}").json()
+
+    assert {c["ref"]: c["url"] for c in sent["tracks"][0]["candidates"]}["whatever"] is None

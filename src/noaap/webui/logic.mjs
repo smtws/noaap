@@ -145,6 +145,17 @@ export function refLabel(ref) {
   return ref.split("/").filter(Boolean).slice(-2).join("/");
 }
 
+// One line about one candidate: what it is, how good it is, and what it costs. Numbers only —
+// the words around them belong to the page, and the link belongs to the provider (§9, slice 54).
+export function candidateLine(c, inUse, refused) {
+  const bits = [inUse ? "in use" : refused ? "refused" : (c.why || c.added_by || "")];
+  if (c.codec) bits.push(c.bitrate ? `${c.codec} ${Math.round(c.bitrate / 1000)} kbps` : c.codec);
+  if (c.cutoff_khz) bits.push(`to ${c.cutoff_khz} kHz${c.full_band ? " (all it can hold)" : ""}`);
+  if (c.length) bits.push(asTime(c.length));
+  if (c.bytes) bits.push(`${(c.bytes / 1e6).toFixed(1)} MB`);
+  return bits.filter(Boolean).join(" \u00b7 ");
+}
+
 export function sourceChange(track, wanted) {
   const to = wanted || track.video_id;
   if (to === effectiveId(track)) return null;

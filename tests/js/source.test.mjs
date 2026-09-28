@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { effectiveId, oneVideo, refLabel, sourceChange, timingNotice } from "../../src/noaap/webui/logic.mjs";
+import { candidateLine, effectiveId, oneVideo, refLabel, sourceChange, timingNotice } from "../../src/noaap/webui/logic.mjs";
 
 const table = JSON.parse(readFileSync(new URL("../shared/video_ids.json", import.meta.url))).cases;
 
@@ -82,4 +82,23 @@ test("a ref that is a path is shown by its last two parts", () => {
   assert.equal(refLabel("dQw4w9WgXcQ"), "dQw4w9WgXcQ", "a ref with no separator is left alone");
   assert.equal(refLabel(""), "");
   assert.equal(refLabel(undefined), undefined);
+});
+
+test("a candidate says what it is, how good it is and what it costs", () => {
+  const line = candidateLine({ codec: "flac", bitrate: 912000, cutoff_khz: 22, full_band: true,
+                               length: 201.4, bytes: 41_300_000, why: "holds more audio" }, false, false);
+  assert.match(line, /holds more audio/);
+  assert.match(line, /flac 912 kbps/);
+  assert.match(line, /to 22 kHz \(all it can hold\)/);
+  assert.match(line, /41\.3 MB/);
+});
+
+test("the one in use says so, and a refused one says that instead", () => {
+  const c = { codec: "opus", bitrate: 128000, why: "the playlist's own video" };
+  assert.match(candidateLine(c, true, false), /^in use/);
+  assert.match(candidateLine(c, false, true), /^refused/);
+});
+
+test("a candidate with nothing measured still renders", () => {
+  assert.equal(candidateLine({ ref: "x", added_by: "source" }, false, false), "source");
 });

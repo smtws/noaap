@@ -1,7 +1,7 @@
 import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         resetKind, roundMark,
+         candidateLine, resetKind, roundMark,
          seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
@@ -635,13 +635,15 @@ function closeSource(el, t) {
 
 function sourcePanel(p, t) {
   const id = effectiveId(t);
+  const here = (t.candidates || []).find((c) => c.ref === id);
   const note = h("div", { class: "muted source-note" });
   const field = h("input", { type: "text", name: "source", value: t.source_override || "",
     placeholder: "YouTube URL or video id", "aria-label": `audio source of ${t.title}`, size: 34,
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.parentElement.querySelector("button.use").click(); } } });
   return h("div", { class: "source-panel" },
     h("div", { class: "muted" }, `${t.artist} \u2014 ${t.title} \u00b7 audio from `,
-      h("a", { href: `https://www.youtube.com/watch?v=${id}`, target: "_blank", rel: "noopener" }, id),
+      here && here.url ? h("a", { href: here.url, target: "_blank", rel: "noopener" }, refLabel(id))
+                       : h("span", { title: id }, refLabel(id)),
       t.source_override ? " \u2014 yours, not the playlist's video " : " \u2014 the playlist's own video",
       t.source_override ? resetMark(p, t, "source", "audio source") : null),
     h("div", { class: "panel-actions" }, field,
@@ -663,11 +665,9 @@ function candidateList(p, t) {
   return h("div", { class: "candidates" },
     h("div", { class: "muted" }, "known sources for this track:"),
     ...all.map((c) => h("div", { class: "candidate" + (c.ref === id ? " on" : "") },
-      h("a", { href: `https://www.youtube.com/watch?v=${c.ref}`, target: "_blank", rel: "noopener" }, c.ref),
-      h("span", { class: "muted" },
-        (c.ref === id ? "in use" : refused.has(c.ref) ? "refused" : c.why || c.added_by)
-        + (c.bitrate ? ` · ${c.codec || ""} ${Math.round(c.bitrate / 1000)} kbps` : "")
-        + (c.length ? ` · ${asTime(c.length)}` : "")),
+      c.url ? h("a", { href: c.url, target: "_blank", rel: "noopener" }, refLabel(c.ref))
+            : h("span", { title: c.ref }, refLabel(c.ref)),
+      h("span", { class: "muted" }, candidateLine(c, c.ref === id, refused.has(c.ref))),
       c.ref === id || refused.has(c.ref) ? null
         : h("button", { class: "quiet small", type: "button",
             title: "Never offer this one for this track again",
