@@ -285,7 +285,11 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
     was = _inside(album_dir, track.filename) if track.filename else None
     # the file decides its own extension, as it has since slice 53
     track.ext = incoming.suffix.lstrip(".").lower() or track.ext
-    wanted = wanted_filename(plan, track)
+    # **an album that keeps its names keeps them through a replacement too** (§9, slice 58): the
+    # displaced file's own stem, with the container the new file actually is. Putting noaap's name
+    # on it would be this pass deciding something the adoption promised not to decide.
+    wanted = (f"{Path(was.name).stem}.{track.ext}" if plan.keep_names and was
+              else wanted_filename(plan, track))
 
     # Ruling 5's other half. `write_sidecar` records what timed words were written against, but a
     # sidecar older than that field says nothing — and most of this library's do. At the moment of

@@ -656,3 +656,25 @@ def test_one_track_is_replaced_at_most_once_in_a_pass(tmp_path):
     track = load_plan(target / plan.folder).tracks[0]
     waiting = track.undecided_copies()
     assert len(waiting) == 1 and waiting[0].why.startswith("another copy was taken in the same pass")
+
+
+def test_a_replacement_in_an_adopted_album_keeps_the_owners_name(tmp_path):
+    """§9, slice 58. The album keeps its names, so the copy that replaces a file is called what the
+    file was called — with the container the new file actually is, and nothing else changed."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    album_dir = target / plan.folder
+    theirs = load_plan(album_dir)
+    theirs.keep_names = True
+    theirs.tracks[0].filename = "the owner called it this.opus"
+    (album_dir / "01 - One.opus").rename(album_dir / "the owner called it this.opus")
+    save_plan(theirs, album_dir)
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE, why="holds more audio")), target)
+
+    assert (album_dir / "the owner called it this.flac").is_file()
+    assert load_plan(album_dir).tracks[0].filename == "the owner called it this.flac"
+    assert not (album_dir / "A Band - Album - 01 - One.flac").exists(), "noaap's name stays out"
