@@ -19,9 +19,8 @@ from typing import Any
 
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import refresh_derived
+from .plan import owner_artist_of, refresh_derived
 from .text import key, move_feat
-from .titles import channel_artist
 
 log = logging.getLogger(__name__)
 
@@ -140,9 +139,9 @@ def pick_recording(artist: str, title: str, recordings: list[dict[str, Any]]) ->
     return min(ok, key=rank)
 
 
-def uploader_stood_in(t: PlanTrack) -> bool:
-    """Nothing named the artist, so the channel did - a name MusicBrainz will not know."""
-    return bool(t.channel) and key(t.artist) == key(channel_artist(t.channel) or "")
+def uploader_stood_in(t: PlanTrack, source: Any = None) -> bool:
+    """Nothing named the artist, so the collection's owner did — a name MusicBrainz will not know."""
+    return bool(t.owner) and key(t.artist) == key(owner_artist_of(t.owner, source) or "")
 
 
 def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, Any]] | None:
@@ -160,7 +159,7 @@ def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, An
     return None
 
 
-def enrich_track(t: PlanTrack, mb: MusicBrainzAPI) -> bool:
+def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
     rec = pick_recording(t.artist, t.title, mb.search_recordings(t.artist, core(t.title) or t.title))
     title_source = t.title
     if rec is None:  # maybe "Song - Artist": swap
@@ -168,7 +167,7 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI) -> bool:
         if swapped_artist and swapped_title:
             rec = pick_recording(swapped_artist, swapped_title, mb.search_recordings(swapped_artist, swapped_title))
             title_source = swapped_title
-    if rec is None and uploader_stood_in(t) and (found := split_lookup(t.title, mb)):
+    if rec is None and uploader_stood_in(t, source) and (found := split_lookup(t.title, mb)):
         _, title_source, rec = found
     if rec is None:
         return False
@@ -274,7 +273,8 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
 # -- entry point -----------------------------------------------------------------------------
 
 
-def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] = lambda s: None) -> dict[str, int]:
+def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] = lambda s: None,
+           source: Any = None) -> dict[str, int]:
     """Enrich a fresh plan in place. Network errors degrade to 'no match', never abort."""
     stats = {"release": 0, "tracks": 0, "looked_up": 0}
     try:
@@ -286,7 +286,7 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
         for i, t in enumerate(todo, 1):
             progress(f"MusicBrainz: track {i}/{len(todo)} {t.artist} - {t.title}")
             stats["looked_up"] += 1
-            stats["tracks"] += int(enrich_track(t, mb))
+            stats["tracks"] += int(enrich_track(t, mb, source))
     except MusicBrainzError as e:
         log.warning("MusicBrainz unavailable, continuing without it: %s", e)
     refresh_derived(plan)

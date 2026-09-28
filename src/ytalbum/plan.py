@@ -5,15 +5,14 @@ from __future__ import annotations
 import copy
 import re
 from collections import Counter
+from typing import Any
 
 from .models import AlbumPlan, Collection, Entry, Kind, PlanTrack, Provenance
 from .text import key, move_feat, split_feat, strip_leading_artist, strip_self_feat
 from .titles import (
     NOISE_WORDS,
-    channel_artist,
     clean_title,
     drop_label,
-    parse_video_title,
     strip_album_name,
     title_by_artist,
 )
@@ -43,24 +42,60 @@ def usable_entries(collection: Collection) -> list[Entry]:
     return out
 
 
+# -- what the source's own conventions say ---------------------------------------------
+
+
+def _source(source: Any) -> Any:
+    """The provider to read conventions with.
+
+    `None` means the default one, for the same reason `AlbumPlan.provider` defaults to it: a
+    collection that names no provider came from the only one there was. Making the caller pass it
+    would be purer and would silently drop the conventions wherever somebody forgot.
+    """
+    if source is not None:
+        return source
+    from . import sources
+    from .config import Config
+
+    return sources.get(None, Config())
+
+
+def read_entry(entry: Entry, source: Any = None) -> tuple[str | None, str]:
+    """(artist, title) as the source's own conventions read them.
+
+    A provider whose titles carry conventions — "(Official Video)", a reversed "Song - Artist" —
+    says so with the CLEAN capability and reads them here (§9, slice 51; DESIGN §5). One whose
+    titles mean what they say, a folder of well-tagged files, has no such method, and the entry's
+    own title is used unchanged.
+    """
+    reader = getattr(_source(source), "clean_entry", None)
+    return reader(entry) if reader else (None, entry.title)
+
+
+def owner_artist_of(owner: str | None, source: Any = None) -> str | None:
+    """The artist an owner's name stands for, if the provider says it stands for one."""
+    reader = getattr(_source(source), "owner_artist", None)
+    return reader(owner) if reader else None
+
+
 # -- track-level metadata ------------------------------------------------------------
 
 
-def track_artist(entry: Entry) -> tuple[str, Provenance]:
+def track_artist(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     """YouTube Music's field, else the artist named in the title, else the channel."""
     if entry.music.artist:
         return entry.music.artist, Provenance.YT_MUSIC
-    parsed, _ = parse_video_title(entry.title, entry.channel)
-    return parsed or channel_artist(entry.channel) or "Unknown Artist", Provenance.YT_TITLE
+    parsed, _ = read_entry(entry, source)
+    return parsed or owner_artist_of(entry.owner, source) or "Unknown Artist", Provenance.YT_TITLE
 
 
-def track_title(entry: Entry) -> tuple[str, Provenance]:
+def track_title(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     if entry.music.track:
         return entry.music.track, Provenance.YT_MUSIC
-    return parse_video_title(entry.title, entry.channel)[1], Provenance.YT_TITLE
+    return read_entry(entry, source)[1], Provenance.YT_TITLE
 
 
-def named_artist(entry: Entry, collection: Collection) -> str | None:
+def named_artist(entry: Entry, collection: Collection, source: Any = None) -> str | None:
     """The artist a title actually names, or None when only the channel is left to go by.
 
     On an artist's own channel the video titles carry the album around ("Feuerschwanz
@@ -69,7 +104,7 @@ def named_artist(entry: Entry, collection: Collection) -> str | None:
     """
     if entry.music.artist:
         return split_feat(entry.music.artist)[0]
-    parsed, title = parse_video_title(entry.title, entry.channel)
+    parsed, title = read_entry(entry, source)
     if not parsed and (credited := title_by_artist(title)):
         return credited[0]  # "… by The Editors": the title names them after all
     return _without_collection_title(split_feat(parsed)[0], collection.title) if parsed else None
@@ -87,20 +122,22 @@ def _without_collection_title(artist: str, playlist_title: str) -> str | None:
 # -- stage 3: classify ---------------------------------------------------------------
 
 
-def classify(collection: Collection) -> Kind:
+def classify(collection: Collection, source: Any = None) -> Kind:
     if not collection.is_playlist:
         return Kind.SINGLE
-    if collection.source_id.startswith("OLAK5uy_"):
+    # whether a collection is a release is the provider's to say: "OLAK5uy_" is a YouTube id shape
+    # and the core must not read one (§9, slice 51)
+    if (released := getattr(_source(source), "is_release", None)) and released(collection):
         return Kind.OFFICIAL_ALBUM
-    artists = {_key(a) for e in usable_entries(collection) if (a := named_artist(e, collection))}
+    artists = {_key(a) for e in usable_entries(collection) if (a := named_artist(e, collection, source))}
     return Kind.ARTIST_PLAYLIST if len(artists) <= 1 else Kind.COMPILATION
 
 
 # -- stages 4+5: metadata and plan ---------------------------------------------------
 
 
-def build_plan(collection: Collection, kind: Kind | None = None) -> AlbumPlan:
-    kind = kind or classify(collection)
+def build_plan(collection: Collection, kind: Kind | None = None, source: Any = None) -> AlbumPlan:
+    kind = kind or classify(collection, source)
     entries = usable_entries(collection)
     album_prov: dict[str, str] = {}
 
@@ -110,12 +147,12 @@ def build_plan(collection: Collection, kind: Kind | None = None) -> AlbumPlan:
         album_prov = {"albumartist": Provenance.PLAYLIST, "album": Provenance.PLAYLIST}
         year = None
     else:
-        named = [(a, track_artist(e)[1]) for e in entries if (a := named_artist(e, collection))]
+        named = [(a, track_artist(e, source)[1]) for e in entries if (a := named_artist(e, collection, source))]
         # when no title names an artist, the uploader is the best guess there is: an album
         # playlist carries no channel of its own, but its videos do ("Saltatio Mortis")
         albumartist, prov = (
             _most_common(named)
-            or _most_common([track_artist(e) for e in entries])
+            or _most_common([track_artist(e, source) for e in entries])
             or (collection.channel or "Unknown Artist", Provenance.PLAYLIST)
         )
         album_prov["albumartist"] = prov
@@ -132,9 +169,9 @@ def build_plan(collection: Collection, kind: Kind | None = None) -> AlbumPlan:
 
     tracks = []
     for number, entry in enumerate(entries, start=1):
-        artist, artist_prov = track_artist(entry)
-        title, title_prov = track_title(entry)
-        named = entry.music.artist or parse_video_title(entry.title, entry.channel)[0]
+        artist, artist_prov = track_artist(entry, source)
+        title, title_prov = track_title(entry, source)
+        named = entry.music.artist or read_entry(entry, source)[0]
         if not named and (credited := title_by_artist(title)):
             # the uploader is not the artist, the title credits them: "… by The Editors"
             artist, title, named = credited[0], credited[1], credited[0]

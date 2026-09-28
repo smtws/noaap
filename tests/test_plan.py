@@ -98,7 +98,14 @@ def test_artist_full_album_playlist_is_not_an_official_album():
 
 
 def test_olak_playlists_are_official_albums(vol1):
+    """Whether an id means "a release" is the provider's to say (§9, slice 51), so the classifier
+    has to be given one — without it, nothing knows what OLAK5uy_ is."""
+    from ytalbum.config import Config
+    from ytalbum.sources import get
+
     vol1.source_id = "OLAK5uy_example"
+    assert classify(vol1, get(None, Config())) == Kind.OFFICIAL_ALBUM
+    # and with no provider named it is the default one's, exactly as a plan's `provider` is
     assert classify(vol1) == Kind.OFFICIAL_ALBUM
 
 

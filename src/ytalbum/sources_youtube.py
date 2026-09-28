@@ -14,7 +14,7 @@ from yt_dlp.utils import DownloadError
 from . import sources
 from .config import Config
 from .models import Collection, Entry, SourceRef
-from .titles import parse_video_title
+from .titles import channel_artist, parse_video_title
 from .youtube import YouTube, channel_base_url, one_video
 
 WATCH = "https://www.youtube.com/watch?v="
@@ -78,6 +78,13 @@ class YouTubeSource:
     def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
         """YouTube titles carry conventions; §5 is what reads them."""
         return parse_video_title(entry.title, entry.channel)
+
+    def is_release(self, collection: Collection) -> bool:
+        """YouTube Music's album playlists carry an id that says so."""
+        return collection.source_id.startswith("OLAK5uy_")
+
+    def owner_artist(self, owner: str | None) -> str | None:
+        return channel_artist(owner)
 
     def url_for(self, ref: str) -> str | None:
         return f"{WATCH}{ref}" if ref else None

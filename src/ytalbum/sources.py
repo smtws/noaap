@@ -100,6 +100,17 @@ class Source(Protocol):
         correct tags, say — and the entry's own fields are used unchanged.
         """
 
+    def is_release(self, collection: Collection) -> bool:
+        """CLEAN: whether this collection is a released album rather than somebody's playlist."""
+
+    def owner_artist(self, owner: str | None) -> str | None:
+        """CLEAN: the artist an owner's name stands for, if it stands for one.
+
+        "Feuerschwanz - Topic" is Feuerschwanz; "Mel Satyria" is a person who makes playlists and
+        stands for nobody. A provider without conventions answers None and the classifier falls
+        back to what the entries themselves say.
+        """
+
     def url_for(self, ref: str) -> str | None:
         """A link a person can open, or None where the provider has no web page."""
 

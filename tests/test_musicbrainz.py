@@ -50,7 +50,13 @@ class RecordedMB(MusicBrainz):
 
 
 def plan_for(name: str):
-    return build_plan(Collection.from_dict(json.loads((FIXTURES / name).read_text())))
+    """These fixtures are YouTube collections, so the plan is built with that provider — it is what
+    reads an OLAK id as a release and a video title as a title (§9, slice 51)."""
+    from ytalbum.config import Config
+    from ytalbum.sources import get
+
+    return build_plan(Collection.from_dict(json.loads((FIXTURES / name).read_text())),
+                      source=get(None, Config()))
 
 
 # -- matching on real data ---------------------------------------------------------------

@@ -80,6 +80,11 @@ class Entry:
     skipped_kind: str | None = None  # and which `Failure` that is, for the pipeline to branch on
     transient: bool = False  # the reason may go away (bot check, network): the entry is still in the source
 
+    @property
+    def owner(self) -> str | None:
+        """Who published this one — the provider's `channel`, under the name the core uses."""
+        return self.channel
+
     # `url` used to live here, building a watch link from the video id. It had no callers left, and
     # a link is the provider's to build (§9, slice 51): `sources.Source.url_for(ref)`.
 
@@ -103,6 +108,16 @@ class Collection:
     def from_dict(cls, d: dict[str, Any]) -> Collection:
         entries = [Entry(**{**e, "music": Music(**e.get("music", {}))}) for e in d["entries"]]
         return cls(**{**d, "entries": entries})
+
+    @property
+    def owner(self) -> str | None:
+        """Whoever publishes this collection — a channel on YouTube, a folder's name elsewhere.
+
+        `channel` is the provider's word and stays on disk; `owner` is what the classifier reads
+        (§9, slice 51), so that "how many artists, and does the collection have an owner" does not
+        have to be asked in YouTube's vocabulary.
+        """
+        return self.channel
 
     @property
     def unreadable(self) -> list[Entry]:
@@ -232,6 +247,11 @@ class PlanTrack:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> PlanTrack:
         return keeping(cls, {**d, "candidates": [Candidate(**c) for c in d.get("candidates") or []]})
+
+    @property
+    def owner(self) -> str | None:
+        """Who published this track's audio — the provider's `channel`, under the core's name."""
+        return self.channel
 
     def sync_candidates(self) -> None:
         """Keep `candidates`/`chosen` in step with `video_id`/`source_override`.

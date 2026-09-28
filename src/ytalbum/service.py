@@ -175,7 +175,7 @@ class Service:
             self.log(msg)
             return Outcome("blocked" if kind == Failure.BOT_CHECK else "incomplete", message=msg)
 
-        plan = build_plan(collection)
+        plan = build_plan(collection, source=self.source_for())
         if collection.entries and not plan.tracks:
             # every video unusable for a reason that will not pass (Music Premium only, private,
             # removed): there is no album here, and writing one leaves an empty folder behind
@@ -186,7 +186,8 @@ class Service:
             return Outcome("failed", plan, message=msg)
 
         if mb := self.mb:
-            stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")))
+            stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")),
+                           source=self.source_for(plan))
             self.log("MusicBrainz: " + ("release matched" if stats["release"] else f"{stats['tracks']}/{stats['looked_up']} tracks matched"))
             # enrichment keeps bracket groups MusicBrainz lacks, which puts a live album's own
             # name back into every track ("Louder Than Hell (Live in Hamburg)") - so the
