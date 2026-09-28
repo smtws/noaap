@@ -2629,10 +2629,47 @@ words. Separately, `git checkout <file>` was used twice to undo a test edit and 
 uncommitted fix in the same file both times; it is not an undo for a working tree with real work in
 it.
 
+## AQ. Several sources for one track (P46, docs/spikes/2026-09-candidates.md)
+
+A design spike on top of the Source boundary, answering four questions the boundary inventory does
+not: a track available from more than one place, a folder as a source, which copy is better, and
+undoing that decision. No code.
+
+- [x] **AQ1 · R** — the method
+
+  Read-only, from the plans alone: 3946 done tracks, their length references, their formats, their
+  trims and overrides; then three concrete shapes pulled out by their gap to the authoritative
+  length. The design is argued from those numbers rather than from preference. Nothing was
+  prototyped and no path appears in the document.
+  - **result:** written
+
+- [x] **AQ2 · R** — the numbers the recommendation rests on
+
+  |file − reference| over the 2539 done tracks that have both: **median 0.3 s, p90 17.1 s, max
+  514 s** — the tail is other recordings, not worse encodes, which is why the recommended rule ranks
+  by *is this the same recording* before it ranks by quality. Supporting shapes: `source_override`
+  used **1 of 3946**, formats **opus 3946 of 3946**, trims **4**.
+  - **result:** length-first, with 3 s / 20 s / 60% bands and quality only inside the first band
+
+- [x] **AQ3 · R** — what the spike cannot know without running
+
+  - **Stream hashing was not measured.** Content hashing is recommended for local identity — a path
+    moves and tags get edited, which is the whole point of this program — but the per-file cost of
+    `ffmpeg -f hash` over 3946 files is unknown, and if it is slow the (size, duration) pre-filter
+    carries more weight than the design assumes.
+  - **The 3 s band may not transfer.** It was measured on LRCLIB entries against YouTube audio
+    (§9, slice 46), not on two encodes of one recording, where the true figure is probably tighter.
+  - **This library contains no evidence about ranking at all.** One `source_override`, one audio
+    format: there has never been a second candidate to choose between. That evidence can only come
+    from a real intake folder, so the ranking rule is reasoned, not measured, and is the part most
+    likely to be wrong.
+  - Scan cost on a large folder, and whether `update` over a folder stays cheap, were not measured.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AQ cases (P46: several sources for one track) | 3 | n/a — design spike, no code | Candidates on a track (additive, ships before the boundary, folds in `source_override`); intake folder vs library-as-source; a **length-first** ranking rule with quality only inside the 3 s band, argued from median 0.3 s / p90 17.1 s / max 514 s over 2539 tracks; a recycle bin at the library root that never empties itself, with `prune`/`delete` routed through it. Flagged: this library has **one** `source_override` and **one** format, so it holds no evidence about ranking — that part is reasoned, not measured. |
 | 2026-09-28 | the AP cases (P45: the half of the cold read that was code) | 2 | 0 in the software; 1 of my own (a scanner that matched its own docstring) | `ytalbum config` now reports ffmpeg — found, or NOT FOUND with the two things that break — and still exits 0, because ffmpeg is reported and not required. 204 slice references across 40 files brought into line with the docs, with a test that keeps them there. 786 pytest + 91 node. |
 | 2026-09-28 | the AO cases (P44: a cold reader on a fresh clone) | 3 | 24 documentation faults found, 24 fixed | A throwaway session installed v0.7.0 from the README and read it cold. Five stale, nine missing, ten unclear. One number in the brief was wrong: **213 tests skip without ffmpeg**, not 4 — measured, and it explains why CONTRIBUTING said the suite takes "a few seconds". Docs only; no code changed. 780 pytest + 91 node. |
 | 2026-09-28 | the AN cases (P43: the plan format, pinned) | 4 | 0 | Twelve real plans, 20 shapes, 55 cases. Over 246 real plans a round trip is **additive only** — 140 byte-identical, 106 gaining defaults, 0 losing or changing anything. An unknown field used to raise `TypeError` and is now carried through; an unknown schema is still refused. `ytalbum plan --verify` writes nothing, verified by hashing the plans before and after. 780 pytest + 91 node. |
