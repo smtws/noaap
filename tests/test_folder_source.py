@@ -443,3 +443,73 @@ def test_a_various_artists_folder_is_a_compilation(tmp_path, source):
     assert plan.kind == Kind.COMPILATION
     assert plan.albumartist == "Various Artists"
     assert [t.artist for t in plan.tracks] == ["Fleetwood Mac", "ZZ Top", "Whitesnake"]
+
+
+# -- one recording, more than one copy ---------------------------------------------------------------
+
+
+def test_the_same_track_twice_is_two_candidates_not_two_tracks(tmp_path, source):
+    """What P48's candidates were shaped for, arriving from a single source (§9, slice 50).
+
+    **The reference collection does not hold this**, which is worth stating: its two mixed-format
+    folders are one album each with a single track filled in from elsewhere (10 flac + 1 mp3,
+    14 flac + 1 mp3), not an album kept twice. So this shape is real, tested, and so far unmet —
+    the same standing as the sibling-disc merge.
+    """
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Voices Of Doom"
+    for suffix in (".flac", ".mp3"):
+        encode(folder / f"02 - Gothic Queen{suffix}", title="Gothic Queen", artist="Mono Inc",
+               album="Voices Of Doom", track="2")
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert len(plan.tracks) == 1
+    track = plan.tracks[0]
+    assert [c.codec for c in track.candidates] == ["flac", "mp3"], "lossless first"
+    assert track.chosen == track.candidates[0].ref and track.chosen.endswith(".flac")
+    assert all(c.provider == "folder" for c in track.candidates)
+    assert all(c.why == "default, not ranked" for c in track.candidates), "P52 can find every one"
+
+
+def test_a_copy_carries_what_ranking_will_want(tmp_path, source):
+    folder = tmp_path / "album"
+    path = encode(folder / "01 - a.flac", title="a", artist="A", album="B", track="1")
+
+    candidate = source.collection(str(folder)).entries[0].copies[0]
+
+    assert candidate.bytes == path.stat().st_size
+    assert candidate.codec == "flac" and candidate.channels == 1
+    assert candidate.length == pytest.approx(SECONDS, abs=0.5)
+    assert candidate.stream_sha and len(candidate.stream_sha) == 32
+
+
+def test_the_digest_is_of_the_audio_and_not_of_the_file(tmp_path, source):
+    """A file hash finds nothing in the reference collection — every copy differs in its tags.
+    This is what tells the same recording from another encoding of it."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+    from noaap.sources_folder import stream_sha
+    from noaap.tag import tag_file
+
+    path = encode(tmp_path / "album" / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    before, bytes_before = stream_sha(path), path.read_bytes()
+
+    plan = AlbumPlan(source_url="x", source_id="x", kind=Kind.OFFICIAL_ALBUM, album="Renamed",
+                     albumartist="Someone Else", year=2001, cover_url=None, folder="x",
+                     tracks=[PlanTrack(video_id=str(path), number=1, artist="Someone Else",
+                                       title="Renamed", filename="a.flac", provenance={})],
+                     provider="folder")
+    tag_file(path, plan, plan.tracks[0], cover=JPEG)
+
+    assert path.read_bytes() != bytes_before, "the file did change"
+    assert stream_sha(path) == before, "and the recording did not"
+
+
+def test_two_encodings_of_one_recording_are_not_the_same_stream(tmp_path, source):
+    from noaap.sources_folder import stream_sha
+
+    flac = encode(tmp_path / "a.flac", title="a")
+    mp3 = encode(tmp_path / "a.mp3", title="a")
+
+    assert stream_sha(flac) != stream_sha(mp3), "the same music, not the same recording"

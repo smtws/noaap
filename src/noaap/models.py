@@ -96,6 +96,9 @@ class Entry:
     chapters: list[dict[str, Any]] = field(default_factory=list)
     music: Music = field(default_factory=Music)
     disc: int = 1  # a source that knows its discs says so; a flat one leaves it at 1 (§9, slice 53)
+    # every copy of this recording the source can offer, best first — `video_id` is the first.
+    # A folder holding an album twice, once as flac and once as mp3, is the case this is for.
+    copies: list[Candidate] = field(default_factory=list)
     skipped: str | None = None  # reason, if this entry is unusable — the provider's own words
     skipped_kind: str | None = None  # and which `Failure` that is, for the pipeline to branch on
     transient: bool = False  # the reason may go away (bot check, network): the entry is still in the source
@@ -126,7 +129,9 @@ class Collection:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Collection:
-        entries = [Entry(**{**e, "music": Music(**e.get("music", {}))}) for e in d["entries"]]
+        entries = [Entry(**{**e, "music": Music(**e.get("music", {})),
+                            "copies": [Candidate(**c) for c in e.get("copies") or []]})
+                   for e in d["entries"]]
         return cls(**{**d, "entries": entries})
 
     @property
@@ -184,6 +189,10 @@ class Candidate:
     bitrate: int | None = None
     sample_rate: int | None = None
     channels: int | None = None
+    bytes: int | None = None             # how big the file is, where there is a file
+    # the audio stream's own digest: the same recording in two files, told apart from two
+    # encodings of it (§9, slice 53). Tag edits do not change it; a re-encode does, correctly.
+    stream_sha: str | None = None
     added_by: str = "source"             # source | user | pass
     why: str = ""
     when: str = ""

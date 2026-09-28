@@ -20,13 +20,15 @@ from __future__ import annotations
 import datetime as dt
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from . import sources
 from .config import Config
-from .models import Collection, Entry, Music, Provenance, SourceRef
-from .tag import audio_length
+from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
+from .tag import audio_length, audio_quality
+from .text import key as text_key
 
 NAME = "folder"
 
@@ -220,6 +222,46 @@ def embedded_cover(path: Path) -> bytes | None:
     return None
 
 
+# How good a copy is, before anything ranks them. flac first because it is the only lossless
+# format here; bitrate decides the rest. P52 replaces this with a measured rule — until then every
+# candidate it chose says so, so that they can all be found again.
+LOSSLESS = ("flac",)
+UNRANKED = "default, not ranked"
+
+
+def stream_sha(path: Path) -> str | None:
+    """A digest of the audio stream alone, or None where ffmpeg cannot be asked.
+
+    Measured over 2000 files: 80 ms each, 160 s for the collection — against 41 s to hash every
+    byte, which finds **nothing**, because every copy differs in its tags. This finds the 68
+    recordings that collection holds twice. Being the same stream never means discarding one: they
+    are a track on the album and the same track on the best-of, and both are wanted.
+    """
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
+                               "-c", "copy", "-f", "md5", "-"], capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = done.stdout.strip()
+    return out.removeprefix("MD5=") if out.startswith("MD5=") else None
+
+
+def measure(path: Path) -> Candidate:
+    """Everything about this file that ranking will ever want, read from the file itself."""
+    return Candidate(ref=str(path), provider=NAME, length=audio_length(path),
+                     bytes=path.stat().st_size, stream_sha=stream_sha(path),
+                     added_by="source", why=UNRANKED,
+                     when=dt.date.today().isoformat(), **audio_quality(path))
+
+
+def better(a: Candidate, b: Candidate) -> Candidate:
+    """The default pick between two copies of one recording: lossless, else the higher bitrate."""
+    for one, two in ((a, b), (b, a)):
+        if one.codec in LOSSLESS and two.codec not in LOSSLESS:
+            return one
+    return a if (a.bitrate or 0) >= (b.bitrate or 0) else b
+
+
 def _stamp(path: Path) -> str:
     return dt.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y%m%d")
 
@@ -267,16 +309,31 @@ class FolderSource:
             rows.sort(key=lambda r: (r[0], r[2].get("discnumber") or r[0],
                                      r[2].get("tracknumber") or r[3]["tracknumber"]))
 
+        # one recording may be in there twice — an album kept as flac *and* as mp3 is two of the
+        # 135 folders in the reference collection. Those are two copies of one track, not two
+        # tracks, which is what P48's candidates were shaped for (§9, slice 50).
+        grouped: dict[Any, list[tuple[int, Path, dict, dict]]] = {}
+        for row in rows:
+            disc, path, tags, named = row
+            known = {**named, **tags}
+            number = known.get("tracknumber")
+            grouped.setdefault((disc, number) if number else (disc, text_key(known.get("title") or path.stem)),
+                               []).append(row)
+
         entries = []
-        for n, (disc, path, tags, named) in enumerate(rows, 1):
+        for n, group in enumerate(grouped.values(), 1):
+            copies = sorted((measure(path) for _, path, _, _ in group),
+                            key=lambda c: (c.codec not in LOSSLESS, -(c.bitrate or 0)))
+            disc, path, tags, named = next(row for row in group if str(row[1]) == copies[0].ref)
             known = {**named, **tags}
             entries.append(Entry(
-                video_id=str(path),
+                video_id=copies[0].ref,
                 position=n,
                 title=known.get("title") or path.stem,
                 channel=known.get("albumartist") or known.get("artist"),
-                duration=audio_length(path),
+                duration=copies[0].length,
                 disc=disc,
+                copies=copies,
                 music=Music(artist=tags.get("artist"), track=tags.get("title"),
                             album=tags.get("album"), year=tags.get("year")),
             ))

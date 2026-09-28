@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 from collections import Counter
+from dataclasses import replace
 from typing import Any
 
 from .models import AlbumPlan, Collection, Entry, Kind, PlanTrack, Provenance
@@ -212,6 +213,9 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
                 auto={"artist": artist, "title": title},
                 channel=entry.channel,
                 duration=entry.duration,
+                # every copy the source can offer, best first. `sync_candidates` only ever adds a
+                # missing ref, so the one that is `video_id` is already here and stays chosen.
+                candidates=[replace(c) for c in entry.copies],
             )
         )
 

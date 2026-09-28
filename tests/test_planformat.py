@@ -270,7 +270,9 @@ def test_a_plan_from_a_provider_this_build_lacks_loads_and_keeps_saying_whose_it
     assert plan.provider == "intake"
     track = plan.tracks[0]
     assert track.candidate(track.chosen).provider == "intake"
-    assert serialise(plan).count('"provider": "intake"') == 2, "the plan's and the candidate's"
+    assert serialise(plan).count('"provider": "intake"') == 3, "the plan's and both candidates'"
+    kept = plan.tracks[0].candidates[1]
+    assert kept.stream_sha and kept.bytes, "a copy that was measured and never taken keeps both"
 
     with pytest.raises(ValueError, match="unknown source provider 'intake'"):
         sources.for_plan(plan, Config())

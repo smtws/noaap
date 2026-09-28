@@ -63,6 +63,22 @@
           "channels": 2,
           "added_by": "source",
           "why": "the file that was already there",
+          "when": "2026-09-28",
+          "bytes": 42318944,
+          "stream_sha": "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        },
+        {
+          "ref": "Lord of the Lost - 01 - My Own Grave.mp3",
+          "provider": "intake",
+          "length": 251.4,
+          "codec": "mp3",
+          "bitrate": 320000,
+          "sample_rate": 44100,
+          "channels": 2,
+          "bytes": 10056000,
+          "stream_sha": "ffeeddccbbaa99887766554433221100",
+          "added_by": "source",
+          "why": "default, not ranked",
           "when": "2026-09-28"
         }
       ],
