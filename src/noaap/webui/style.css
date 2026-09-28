@@ -357,6 +357,9 @@ tr.source > td { padding: .2rem .5rem .6rem; }
 .source-note.bad { color: var(--bad); }
 button.src-pick { padding: 0 .35rem; font-size: .95em; line-height: 1.5; margin-left: .25rem; }
 button.src-pick.on { border-color: var(--accent); color: var(--accent); }
+/* a copy is here that the pass could not rank: the mark is the only way into the panel that
+   shows both of them, so it says so (§9, slice 55) */
+button.src-pick.waiting { border-color: var(--warn); color: var(--warn); }
 /* The words are untouched and stay the user's; what changed is the file under them. The sentence
    is `--ink` and only its edge is `--warn`: a sentence to be read wants the body text colour, and
    the warning belongs in the edge and the tint. */

@@ -124,7 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     mr.add_argument("--new", action="store_true",
                     help="also fetch the albums this library does not have at all")
     mr.add_argument("--only", metavar="ARTIST", help="one artist's albums, on both sides")
-    mr.add_argument("--album", metavar="NAME", help="one album, on both sides")
+    mr.add_argument("--album", metavar="NAME",
+                    help="one album in the library being changed (the other side keeps its own names)")
 
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
@@ -194,7 +195,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(line)
                 if args.apply:
                     done = merge_pass.carry_out(found, library, log=print)
-                    print(f"{done['replaced']} replaced, {done['filled']} filled"
+                    print(f"{done['replaced']} replaced, {done['filled']} filled, "
+                          f"{done['offered']} listed for you to decide"
                           + (f", {done['failed']} could not be taken" if done["failed"] else ""))
                 if args.new:
                     service = _service(cfg, library)

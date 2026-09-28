@@ -197,6 +197,10 @@ class Candidate:
     # encodings of it (§9, slice 53). Tag edits do not change it; a re-encode does, correctly.
     stream_sha: str | None = None
     added_by: str = "source"             # source | user | pass
+    # a copy the merge pass found and could not rank against the one in use (§9, slice 55). It is
+    # listed and nothing was copied: the pass had two files' numbers and no reason to prefer either,
+    # so the decision is a person's. `why` carries the verdict's own sentence, unchanged.
+    undecided: bool = False
     why: str = ""
     when: str = ""
 
@@ -310,6 +314,17 @@ class PlanTrack:
 
     def candidate(self, ref: str) -> Candidate | None:
         return next((c for c in self.candidates if c.ref == ref), None)
+
+    def undecided_copies(self) -> list[Candidate]:
+        """Copies a pass found and could not rank, still waiting for a person (§9, slice 55).
+
+        Both answers empty this list and nothing else does: taking one makes it the chosen ref,
+        refusing one puts it in `refused_candidates` for good. That is why the library page can
+        count it — a number that only a person can bring down.
+        """
+        chosen = self.effective_id
+        return [c for c in self.candidates
+                if c.undecided and c.ref != chosen and c.ref not in self.refused_candidates]
 
     def refuse(self, ref: str) -> bool:
         """Never offer this one for this track again (§9, slice 50)."""

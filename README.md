@@ -177,8 +177,8 @@ Set the key to an absolute path if you keep it elsewhere.
 | **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the ⏱ column says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what may be done with them — here, that these are LRCLIB's words and so not yours to give back. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing, the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. Nothing is written until Save. |
 | ![Settings](docs/screenshots/settings.jpg) | ![Channel listing](docs/screenshots/search.jpg) |
 | **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. A key that is set reads `•••••••• (set)` and is never shown again. Below: what noaap found — config file, JS runtime, token generator. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
-| ![Library](docs/screenshots/library.jpg) | |
-| **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | |
+| ![Library](docs/screenshots/library.jpg) | ![Two copies of one song](docs/screenshots/copies.jpg) |
+| **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | **Two copies of one song:** what `merge` could not decide, kept where you can decide it. Every copy is listed with what was measured — codec, rate, where the audio stops, length, size — and the one in use says so. A copy the pass could not rank says what stopped it: here the same audio in a lossless container, and an mp3 that is 11 seconds shorter. **take this one** fetches it and **not this one** is remembered for good, so the number on the album card can only fall. |
 
 The compilations throughout these screenshots are
 [**My Dark Lullabies**](https://www.youtube.com/@MyDarkLullabies) — *"a curated collection
@@ -243,18 +243,24 @@ The order of the rule, and it is short:
 2. **Is it even the same recording?** Within 3 seconds yes, beyond 20 no, and in between it is shown
    rather than decided. Where MusicBrainz or LRCLIB knows the length, both files are measured against
    that instead of against each other, because both can be padded.
-3. **Then quality, on measured things only.** A wider band decides. A lossless *container* decides
-   nothing. A bitrate decides only against the same codec. A tie goes to the copy you already have.
+3. **Then quality, on measured things only.** A wider band decides — by 2 kHz, because one
+   kilohertz is inside what a single encoder varies by. A file that reaches its own ceiling beats one
+   that does not, by any margin. A lossless *container* decides nothing. A bitrate decides only
+   against the same codec. A tie goes to the copy you already have.
 
-Anything it cannot settle is listed with both files' numbers — codec, rate, where the audio stops,
-length, size — so you can settle it yourself in the ⇄ panel with one click. Nothing is ever removed
-except through the recycle bin, whose entry records both copies' numbers; restoring one puts your
-file back and makes sure that proposal never returns.
+**Anything it cannot settle is kept where you can settle it.** `--apply` writes the other copy onto
+the track — listed, not chosen, nothing copied — with the sentence that failed to choose and both
+files' numbers: codec, rate, where the audio stops, length, size. The ⇄ panel then offers *take this
+one* and *not this one*, the album card counts the tracks that are waiting, and a refusal is
+remembered for good. Nothing is ever removed except through the recycle bin, whose entry records both
+copies' numbers; restoring one puts your file back and makes sure that proposal never returns.
 
 ```sh
 noaap merge ~/Music/other-library              # show what it would do
 noaap merge ~/Music/other-library --undecided  # only what it will not decide for you
 noaap merge ~/Music/other-library --apply      # do it
+noaap merge ~/Music/other-library --only Dominum --apply   # one artist, both sides
+noaap merge ~/Music/other-library --new --apply            # and fetch the albums you do not have
 ```
 
 Each album folder holds a **plan** (`.ytalbum.json`): what the source listed, what each

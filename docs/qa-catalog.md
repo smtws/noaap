@@ -3079,6 +3079,13 @@ either.
   floor of −35 dB three read 24 kHz; at −40 dB eight did; at −30 dB two still did, both quiet tracks
   whose decoder residue sat at −82 dB absolute.
   - **result:** −30 dB relative **and** −80 dB absolute. None of the 338 reads above 21 kHz.
+  - **and the deciding margin was wrong, on the same evidence.** Those thresholds say where a band
+    stops; they do not say how much wider one has to be to mean anything, and the first rule said
+    1 kHz. But the same 338 files read **20 kHz on 219 of them and 21 kHz on 107** — so "21 against
+    20" is inside what one encoder spans across one collection. It decided **37 of 88 replacements**
+    on nothing. At 2 kHz, with "at its own ceiling beats not-at-ceiling by any margin" kept ahead of
+    the number, replacements fall to 51 (R-173). **A threshold derived from a distribution does not
+    also give you the distance at which two readings differ.**
 
 - [x] **AW3 · M** — pairing refuses more than it concludes
 
@@ -3091,17 +3098,26 @@ either.
 
   | | |
   |---|---|
-  | replace | **88** |
+  | replace | **51** |
   | fill | **0** |
-  | keep | **420** |
-  | undecided | **254** |
+  | keep | **423** |
+  | undecided | **288** |
 
-  3.36 GB would be added, 0.35 GB moved to the bin, 21 albums touched.
-  - **the largest single group is 163 undecided**: the incoming file is lossless and holds exactly
-    the same audio as the one here. Under a rule that trusted the container, all 163 would have been
-    replacements — about 8 GB written for nothing.
-  - 62 keeps are "same band, different codecs: the rates do not compare" — every one of them an MP3
-    against an Opus, which is why a rate may only be compared within a codec.
+  1.93 GB would be added, 0.22 GB moved to the bin, 14 albums touched. (The first reading of the
+  same 762 said 88 / 0 / 420 / 254 and 3.36 GB on a 1 kHz margin — see AW2.)
+  - **the largest single group is 197 undecided**: the incoming file is lossless and holds exactly
+    the same audio as the one here. Under a rule that trusted the container every one of them would
+    have been a replacement; the 163 of them the first reading found came to about 8 GB written for
+    nothing.
+  - 134 keeps are "same band, different codecs: the rates do not compare" — **every one of them an
+    MP3 against an Opus** (`{('mp3', 'opus'): 134}`), which is why a rate may only be compared
+    within a codec. 72 of these arrived with the wider margin: without a band to separate them,
+    what is left is two rates that do not compare.
+  - **the two runs account for each other exactly.** 37 pairs left `replace` and 96 left "the one
+    here holds more audio" — 133 pairs whose band no longer decides. They arrive as 72 more
+    different-codec keeps, 34 more lossless-but-identical undecideds and 27 more "nothing to choose":
+    **72 + 34 + 27 = 133.** No pair changed verdict for any other reason, which is what a one-line
+    threshold change should look like.
   - 83 undecided are 3–20 s apart, mostly live against studio; 94 keeps are more than 20 s apart and
     are simply different recordings; 8 undecided have nothing above 14 kHz in one of the two files.
   - **fill is 0 because nothing in that library is missing** — every one of the 762 library tracks
@@ -3135,17 +3151,107 @@ either.
    the slice-51 grep guard scans `.py` and `.mjs` but **not `app.js`** — so the rendering moved into
    `logic.mjs`, which the guard does scan.
 
+## AX. The copy nobody could choose (P52c, DESIGN §9, slice 55)
+
+The acceptance run of AW passed every case and still left the package unfinished, which is the
+interesting part: **288 of 762 pairs were undecided, and the library held no trace of one of them.**
+The rule was right, the report was readable, and the decision it handed to a person could not be
+taken by anyone — the ⇄ panel can only show what the plan holds. A verdict that reaches nobody is
+not a verdict.
+
+- [x] **AX1 · R** — an undecided pair exists in the library afterwards
+
+  `--apply` records the other copy on the track: listed, not chosen, **nothing copied and nothing
+  binned**. A case asserts all three — the incoming file is not in the album folder, the file that
+  was there still holds its own bytes, and `chosen` is unmoved.
+  - **result:** pass. The candidate carries `undecided`, `provider`, `added_by: pass` and the
+    verdict's own sentence as `why`, so the panel says what the report said.
+
+- [x] **AX2 · R** — both copies carry their numbers
+
+  The point of listing it. Both sides keep what was measured — codec, rate, cutoff, whether that is
+  all the file can hold, length, size — so a person compares two copies instead of asking for a
+  second run.
+  - **result:** pass.
+
+- [x] **AX3 · R** — two answers end it, and nothing else does
+
+  *Take this one* makes it the track's ref by the ordinary switch (state back to pending, the old
+  file's marks named before they are cleared). *Not this one* is the existing refusal: it stays
+  listed, marked refused, and is never offered again. A case runs both and asserts the waiting list
+  is empty either way; another asserts a second `--apply` adds nothing at all.
+  - **result:** pass. This is what makes the count trustworthy — it can only fall, and only because
+    somebody answered.
+  - a track the user trimmed or chose a source for is still *told* about the other copy: `untouchable`
+    stops the pass from acting, not the user from being offered a choice, and the reason says whose
+    decision it is.
+
+- [x] **AX4 · R** — only a copy the track already has can be taken
+
+  A ref is opaque. The user is answering the pass's question, not naming a new source — that is the
+  field beside it, and parsing what someone typed is the provider's job.
+  - **result:** pass. A path that is not on the track is refused by name, not switched to.
+
+- [x] **AX5 · R** — the page reaches what the count counts
+
+  A number on a card that cannot be reached from the card is the same hole in a smaller shape. The
+  album badge counts the tracks waiting, the filter shows those albums beside the "needs you" ones,
+  and inside the album the ⇄ mark on the row is marked so the panel can be found.
+  - **result:** pass, `docs/screenshots/copies.jpg`. The offered copy is named by its last two parts
+    — a case asserts no `/home/` reaches a label. The full path stays in the tooltip of the panel the
+    user opened, which is the one place slice 53 allows it.
+
+- [x] **AX6 · M** — the whole thing on the real libraries
+
+  `merge --apply`, intake (2000 tracks) into the merged disposable library (5142). 1313 pairs, 606
+  ambiguous, 81 not there at all. **0 to replace, 0 to fill, 1050 keep, 263 undecided** — the second
+  pass over a merged library proposes no action at all, which is the strongest thing the run says.
+  - **result:** 178 copies listed on 175 tracks across 29 albums; **0 replaced, 0 binned** (the bin
+    still holds exactly the 51 entries the previous run made). Nothing outside the disposable library
+    was written: not one file under `~/Music/legacy`, `~/Music/YouTube Downloads` or the intake is
+    newer than the run.
+  - the 85 undecided pairs that produced no offer are the two the rule already covers: **42 are
+    "you chose where this one comes from"** — tracks the previous run replaced, so the copy is
+    already their chosen ref — and the rest already held it as a candidate. Nothing is listed twice.
+  - `plan --verify` over all 329 plans afterwards: **0 lose or change anything**, 300 gain defaults.
+    The new field is additive, as the format requires.
+  - **three tracks are offered two copies each** — the same song on an album and on a compilation
+    (`Heptessenz` and `Manufactum`, `Temple of the Torn` and its Collector's Cut). Correct for an
+    offer, and the reason the guard below exists.
+  - taken through the real UI, end to end: the FLAC arrived in the album, the track reads `done`,
+    **the file decided the extension** (`.flac`, not the plan's `.opus`), and the mp3 copy is still
+    listed as waiting.
+
+### One defect the material found, and one guard it asked for
+
+1. **One track could be replaced twice in a pass.** Two incoming tracks can pair with the same
+   library track — three of them really do. The second replacement would have binned the file the
+   run had just written and left the first bin entry naming a displacer that no longer exists. The
+   reference run never hit it (all 51 replacements were distinct), so only the offer counting made
+   it visible. A track is now taken at most once per pass and the second copy is **listed** against
+   the one just taken, saying so in its reason.
+
 ### Open, queued behind this package
 
 **575 library tracks have a file and no `file_length`.** Nothing is missing; nobody ever asked the
 file. A pass that measures and records them — part of `update`, or `repair` — is its own small
 package (R-167).
 
+**A switch that changes the file's extension leaves the old audio in the album folder.** Seen while
+taking a copy live: the track moved from `.opus` to `.flac`, the FLAC arrived, and the Opus stayed
+beside it. **Not introduced by P52c** — `run` has renamed on `got != track.ext` since slice 53, and
+the `audio_choice` switch (opus ↔ m4a) reaches it the same way; taking a copy in another format just
+makes it easy to reach. Nothing is lost and nothing is wrong in the plan, but the folder grows a file
+nobody refers to. The fix is to bin the displaced file the way `merge` does, which needs the library
+root inside `run` — a small package of its own, not a change to make inside this one.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
-| 2026-09-28 | the AW cases (P52: which copy is better) | 6 | 0 in the design; 3 defects found by using it, all fixed | Two real libraries, 2000 tracks against 3942. Quality is measured, not believed: ten 1 kHz bands per file, and a FLAC made from an Opus reads what that Opus reads. **87% of the collection's 533 24/48 FLACs are band-limited where Opus stops.** Thresholds derived from all 338 Opus files. 762 pairs → **88 replace, 0 fill, 420 keep, 254 undecided**, 3.36 GB added and 0.35 GB binned. The largest group is 163 undecided lossless-but-identical — about 8 GB that a container-trusting rule would have written for nothing. 1033 pytest + 95 node. |
+| 2026-09-28 | the AX cases (P52c: the copy nobody could choose) | 6 | 0 in the design; 1 defect the counting exposed, fixed | The gap the AW run left: **288 of 762 undecided verdicts existed nowhere but in the report**, so a decision handed to a person could not be taken. `--apply` now lists the other copy on the track — not chosen, nothing copied — with the verdict's sentence and both files' numbers; *take this one* and *not this one* end it, and the library page counts what is waiting the way it counts "needs you". Live: 1313 pairs, **0 replace / 0 fill / 1050 keep / 263 undecided**, 178 copies listed on 175 tracks, 0 binned, `plan --verify` 329 plans 0 changed, and one copy taken through the UI end to end. Defect found by the counting: one track could be replaced twice in a pass. 1052 pytest + 102 node. |
+| 2026-09-28 | the AW cases re-run (P52b: the deciding margin) | 6 | 1 threshold wrong in the reviewed commit, fixed | The margin, not the floor: 1 kHz is inside Opus's own spread (20 kHz on 219 of the collection's files, 21 on 107), and it decided **37 of 88 replacements** on nothing. At 2 kHz the same 762 pairs read **51 replace, 0 fill, 423 keep, 288 undecided**, 1.93 GB added and 0.22 GB binned, 14 albums touched — and the reviewer predicted 51 before the run. Both candidates now keep what was measured; a replacement records what the binned file's timed words belong to. `--new` / `--only` / `--album` added. 1042 pytest + 95 node. |
+| 2026-09-28 | the AW cases (P52: which copy is better) | 6 | 0 in the design; 3 defects found by using it, all fixed | Two real libraries, 2000 tracks against 3942. Quality is measured, not believed: ten 1 kHz bands per file, and a FLAC made from an Opus reads what that Opus reads. **87% of the collection's 533 24/48 FLACs are band-limited where Opus stops.** Thresholds derived from all 338 Opus files. 762 pairs → 88 replace, 0 fill, 420 keep, 254 undecided on a **1 kHz** margin, corrected to 51 / 0 / 423 / 288 in P52b above. The largest group is 163 undecided lossless-but-identical — about 8 GB that a container-trusting rule would have written for nothing. 1033 pytest + 95 node. |
 | 2026-09-28 | the AV cases (P51: a folder is a source) | 6 | 0 in the design; **8 defects found by using it**, all fixed | The second real provider, built against the user's own 43.8 GB / 2000-file collection. Four defects from the dry run (two tracks lost to a merge on track number alone; three albums refused because a FLAC header's `total_samples = 0` was read as a length; no length at all for those 52 files; YouTube's 30-second intro-card rule applied to folders), one from arithmetic (three multi-disc albums unreachable from the root — 2000 in, 1933 out, 24+22+21 = 67), one from a MusicBrainz pass (the database overruling the files' own tags), two from the first real copy (every file named `.opus` and an mp3; a home path in every file's `source` tag). Final: **132 albums, 2000 tracks from 2000 files**, nothing merged, dropped or unaccounted. 957 pytest + 92 node. |
 | 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.ytalbum.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
 | 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |

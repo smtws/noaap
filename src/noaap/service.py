@@ -1585,6 +1585,13 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any], source: Any = None)
             if wanted and chosen is None:
                 raise ValueError(f"{t.title}: “{wanted}” is not a single YouTube video")
             switch_source(t, None if chosen == t.video_id else chosen)
+        if take := str(te.get("take") or "").strip():
+            # taking a copy the pass listed and could not rank (§9, slice 55). Only a ref already on
+            # this track can be taken: the user is answering a question the pass asked, not naming a
+            # new source — that is what the field above is for, and it is the provider's to parse.
+            if not t.candidate(take):
+                raise ValueError(f"{t.title}: “{take}” is not one of this track's known copies")
+            switch_source(t, None if take == t.video_id else take)
         if refuse := str(te.get("refuse") or "").strip():
             # never offered for this track again, and if it is the one in use the track goes back to
             # the playlist's own video — refusing what you are listening to has to mean something

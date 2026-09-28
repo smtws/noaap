@@ -148,7 +148,9 @@ export function refLabel(ref) {
 // One line about one candidate: what it is, how good it is, and what it costs. Numbers only —
 // the words around them belong to the page, and the link belongs to the provider (§9, slice 54).
 export function candidateLine(c, inUse, refused) {
-  const bits = [inUse ? "in use" : refused ? "refused" : (c.why || c.added_by || "")];
+  const waiting = c.undecided && !inUse && !refused;
+  const bits = [inUse ? "in use" : refused ? "refused"
+    : waiting ? `nothing could choose: ${c.why || ""}`.trim() : (c.why || c.added_by || "")];
   if (c.codec) bits.push(c.bitrate ? `${c.codec} ${Math.round(c.bitrate / 1000)} kbps` : c.codec);
   if (c.cutoff_khz) bits.push(`to ${c.cutoff_khz} kHz${c.full_band ? " (all it can hold)" : ""}`);
   if (c.length) bits.push(asTime(c.length));
@@ -156,7 +158,18 @@ export function candidateLine(c, inUse, refused) {
   return bits.filter(Boolean).join(" \u00b7 ");
 }
 
-export function sourceChange(track, wanted) {
+// Copies a pass found and could not rank (§9, slice 55). The twin of `PlanTrack.undecided_copies`,
+// and the same two answers empty it: taking one makes it the track's ref, refusing one is kept.
+export function awaitingChoice(track) {
+  const refused = new Set(track.refused_candidates || []);
+  const chosen = effectiveId(track);
+  return (track.candidates || []).filter((c) => c.undecided && c.ref !== chosen && !refused.has(c.ref));
+}
+
+// `copy` is the listed candidate being taken, where the user is answering the pass rather than
+// naming a video: then this is another copy of the same song, not another recording of it, and the
+// confirm has to say which (§9, slice 55).
+export function sourceChange(track, wanted, copy = null) {
   const to = wanted || track.video_id;
   if (to === effectiveId(track)) return null;
   const marks = track.trim_start != null || track.trim_end != null
@@ -168,7 +181,8 @@ export function sourceChange(track, wanted) {
     wanted
       ? `Take the audio from ${refLabel(to)} instead of the source's own ${refLabel(track.video_id)}.`
       : `Back to the source's own ${refLabel(track.video_id)}.`,
-    "The track is downloaded again \u2014 it is a different recording.",
+    copy ? "The track is fetched again from that copy."
+         : "The track is downloaded again \u2014 it is a different recording.",
   ];
   if (marks) lines.push(`The trim ${marks} belongs to the current file and will be cleared.`);
   if (track.lyrics === "synced") {

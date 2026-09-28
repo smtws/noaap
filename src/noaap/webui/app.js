@@ -1,7 +1,7 @@
 import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         candidateLine, resetKind, roundMark,
+         candidateLine, awaitingChoice, resetKind, roundMark,
          seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
@@ -235,7 +235,7 @@ function matchingTracks(a, terms) {
 function shownAlbums() {
   let byArtist = artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums;
   if (lengthOnly) byArtist = byArtist.filter((a) => a.length);
-  if (needsYouOnly) byArtist = byArtist.filter((a) => a.needs_you);
+  if (needsYouOnly) byArtist = byArtist.filter((a) => a.needs_you || a.copies);
   if (!libFilter) return byArtist.map((a) => ({ ...a, matches: null }));
   const terms = fold(libFilter).split(" ").filter(Boolean);
   const out = [];
@@ -272,14 +272,14 @@ let needsYouOnly = false;
 
 function renderNeedsYouFilter() {
   const scope = artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums;
-  const waiting = scope.reduce((n, a) => n + (a.needs_you || 0), 0);
+  const waiting = scope.reduce((n, a) => n + (a.needs_you || 0) + (a.copies || 0), 0);
   const button = $("#needs-you-filter");
   if (!waiting && !needsYouOnly) {
     button.hidden = true;
     return;
   }
   button.hidden = false;
-  button.textContent = needsYouOnly ? "\u266a show all albums" : `\u266a ${waiting} need${waiting === 1 ? "s" : ""} you`;
+  button.textContent = needsYouOnly ? "show all albums" : `${waiting} need${waiting === 1 ? "s" : ""} you`;
   button.setAttribute("aria-pressed", String(needsYouOnly));
 }
 
@@ -407,7 +407,10 @@ function card(a) {
         lengthBadge(a),
         a.needs_you ? h("span", { class: "badge warn", title:
           `${a.needs_you} track(s) where lrclib has words and nothing could decide whether they are this recording's`
-          }, `\u266a ${a.needs_you} need${a.needs_you === 1 ? "s" : ""} you`) : null),
+          }, `\u266a ${a.needs_you} need${a.needs_you === 1 ? "s" : ""} you`) : null,
+        a.copies ? h("span", { class: "badge warn", title:
+          `${a.copies} track(s) where another copy of the song is here and nothing could rank it against the one in use`
+          }, `\u21c4 ${a.copies}`) : null),
       songs));
 }
 
@@ -609,8 +612,10 @@ const openSource = new Set();
 
 function sourceMark(p, t) {
   const own = t.source_override;
-  return h("button", { class: "quiet small src-pick" + (own ? " on" : ""), type: "button",
-    title: own ? `Audio from ${refLabel(own)}, not the source's ${refLabel(t.video_id)} \u2014 click to change it or go back`
+  const waiting = awaitingChoice(t).length;
+  return h("button", { class: "quiet small src-pick" + (own ? " on" : "") + (waiting ? " waiting" : ""), type: "button",
+    title: waiting ? `Another copy of this song is here and nothing could choose between them \u2014 open to compare and decide`
+      : own ? `Audio from ${refLabel(own)}, not the source's ${refLabel(t.video_id)} \u2014 click to change it or go back`
       : "Take the audio from another video \u2014 the same song without the film around it",
     onclick: (e) => toggleSource(e.currentTarget, p, t) }, "\u21c4");
 }
@@ -652,7 +657,7 @@ function sourcePanel(p, t) {
     note,
     candidateList(p, t),
     h("div", { class: "muted" }, "The track keeps its place, its name and your words \u2014 only the audio is fetched again, "
-      + "from the video you name here. Its length becomes the one the \u23f1 chip is measured against."));
+      + "from the copy you take or the video you name here. Its length becomes the one the \u23f1 chip is measured against."));
 }
 
 // Everywhere this track's audio can be had from (§9, slice 50). Today they are all YouTube
@@ -669,9 +674,20 @@ function candidateList(p, t) {
             : h("span", { title: c.ref }, refLabel(c.ref)),
       h("span", { class: "muted" }, candidateLine(c, c.ref === id, refused.has(c.ref))),
       c.ref === id || refused.has(c.ref) ? null
+        : h("button", { class: "small", type: "button",
+            title: "Use this copy for this track \u2014 it is fetched again, from here",
+            onclick: (e) => takeCandidate(e.currentTarget, p, t, c.ref) }, "take this one"),
+      c.ref === id || refused.has(c.ref) ? null
         : h("button", { class: "quiet small", type: "button",
             title: "Never offer this one for this track again",
             onclick: (e) => refuseCandidate(e.currentTarget, p, t, c.ref) }, "not this one"))));
+}
+
+async function takeCandidate(button, p, t, ref) {
+  const change = sourceChange(t, ref === t.video_id ? null : ref, t.candidates?.find((c) => c.ref === ref));
+  if (!change || !confirm(change.lines.join("\n"))) return;
+  await submit("edit", { id: p.source_id, edits: { tracks: [{ video_id: t.video_id, take: ref }] } }, button);
+  await refreshAlbumPanel();
 }
 
 async function refuseCandidate(button, p, t, ref) {

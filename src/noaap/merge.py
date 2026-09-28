@@ -160,6 +160,10 @@ def report(found: Survey, *, verdicts: Iterable[Verdict] | None = None, show_unp
         albums = len(unpaired_albums(found))
         lines.append(f"{len(found.pairing.unpaired)} track(s) in {albums} album(s) are not in this "
                      "library at all — `--new` fetches those albums")
+    if counts["undecided"]:
+        lines.append(f"{counts['undecided']} undecided pair(s) "
+                     + ("are listed on their tracks" if applying else "would be listed on their tracks")
+                     + " with both files' numbers — the ⇄ panel offers each one, and refusing is remembered")
     lines.append("about to do it." if applying else "nothing was changed. `noaap merge --apply` does it.")
     return lines
 
@@ -205,16 +209,66 @@ def carry_out(found: Survey, library: Path, log: Callable[[str], None] = lambda 
     Each replacement is one album's plan saved at a time, so an interruption leaves a library that
     is consistent up to the track it was working on rather than a half-written pass.
     """
-    done = {"replaced": 0, "filled": 0, "failed": 0}
+    done = {"replaced": 0, "filled": 0, "offered": 0, "failed": 0}
+    touched: dict[Path, AlbumPlan] = {}
+    already: set[tuple[Path, str]] = set()
     for proposal in found.acting:
+        # **one track is replaced at most once in a pass.** Two incoming tracks can pair with the
+        # same library track — the same song on an album and on a compilation, which the reference
+        # material really has (three of them, found 2026-09-28). Acting twice would bin the file
+        # this run just wrote and leave the first bin entry naming a displacer that is gone. The
+        # second copy is listed instead, against the one just taken, for a person to settle.
+        key = (proposal.album_dir, proposal.pair.old.track.video_id)
+        if key in already:
+            if _offer(proposal, why=f"another copy was taken in the same pass, and this one {proposal.verdict.why}"):
+                done["offered"] += 1
+                touched[proposal.album_dir] = proposal.album
+            continue
         try:
             _take(proposal, library, log)
         except OSError as e:  # one file's trouble is not the pass's
             done["failed"] += 1
             log(f"  could not take {proposal.pair.new.track.title}: {e}")
             continue
+        already.add(key)
         done["filled" if proposal.verdict.verdict is Verdict.FILL else "replaced"] += 1
+
+    # and the ones nobody could decide. One save per album, not per track: 288 of the reference
+    # run's 762 pairs land here and each is a few bytes in a plan that is already open.
+    for proposal in found.by_verdict(Verdict.UNDECIDED):
+        if _offer(proposal):
+            done["offered"] += 1
+            touched[proposal.album_dir] = proposal.album
+    for album_dir, plan in sorted(touched.items()):
+        save_plan(plan, album_dir)
+        waiting = sum(len(t.undecided_copies()) for t in plan.tracks)
+        log(f"  {plan.albumartist} — {plan.album}: {waiting} copy/copies waiting for you")
     return done
+
+
+def _offer(proposal: Proposal, why: str | None = None) -> bool:
+    """Record an undecided pair on the track: listed, not chosen, nothing copied.
+
+    Before this the undecided verdicts left **no trace in the library at all** — the pass printed
+    them once and the page cannot show what the plan does not hold, so 288 of 762 pairs were a
+    decision nobody could ever take (found in the P52 acceptance run). Both sides keep their
+    measurements here, because a person deciding between two copies needs both files' numbers and
+    the sentence that failed to choose (§9, slice 55).
+
+    Nothing here fetches, copies or chooses. A ref already refused for this track is not offered
+    again, and an offer already on the track is not repeated — a second `--apply` adds nothing.
+    """
+    track, ref = proposal.pair.old.track, proposal.pair.new.track.video_id
+    if not ref or ref in track.refused_candidates or track.candidate(ref):
+        return False
+    track.candidates.append(Candidate(ref=ref, provider=proposal.pair.new.plan.provider,
+                                      added_by="pass", undecided=True,
+                                      why=why or proposal.verdict.why,
+                                      when=dt.date.today().isoformat()))
+    remember(track.candidate(ref), proposal.verdict.new)
+    if proposal.verdict.old:
+        remember(track.candidate(track.effective_id), proposal.verdict.old)
+    return True
 
 
 def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None:

@@ -340,6 +340,10 @@ class App:
                     # tracks where the near-miss check ran and could not decide for you (§9, slice 46):
                     # the words exist and nothing was taken, so they wait for a person
                     "needs_you": sum(needs_you(t) for t in plan.tracks),
+                    # tracks where a merge found another copy and could not rank it against the one
+                    # in use (§9, slice 55) — counted like `needs_you`, for the same reason: it is a
+                    # decision only a person can take, and nothing listed it before.
+                    "copies": sum(bool(t.undecided_copies()) for t in plan.tracks),
                 }
             )
         # artist, then chronological, then by name. Albums with no year all tie, so compilations

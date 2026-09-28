@@ -210,7 +210,7 @@ def test_apply_copies_the_file_in_and_bins_what_was_there(tmp_path):
     found = survey(source, target, judge=fixed(Verdict.REPLACE, why="holds more audio"))
     done = carry_out(found, target)
 
-    assert done == {"replaced": 1, "filled": 0, "failed": 0}
+    assert done == {"replaced": 1, "filled": 0, "offered": 0, "failed": 0}
     album_dir = target / plan.folder
     assert (album_dir / "A Band - Album - 01 - One.flac").read_bytes() == b"new audio", \
         "the file decides its extension, and the album decides its name"
@@ -284,7 +284,7 @@ def test_a_source_file_that_vanished_fails_only_its_own_track(tmp_path):
 
     done = carry_out(found, target)
 
-    assert done == {"replaced": 1, "filled": 0, "failed": 1}
+    assert done == {"replaced": 1, "filled": 0, "offered": 0, "failed": 1}
     assert (target / plan.folder / "A Band - Album - 02 - Two.flac").is_file()
 
 
@@ -475,3 +475,184 @@ def test_the_report_names_the_albums_not_just_the_tracks(tmp_path):
 
     assert any("2 track(s) in 1 album(s)" in line and "`--new` fetches those albums" in line
                for line in lines)
+
+
+# -- and the ones nobody could decide (§9, slice 55) --------------------------------------------------
+#
+# The acceptance run of P52 found that the 288 undecided pairs left no trace in the library at all:
+# the pass printed them once and the page cannot show what the plan does not hold. These cases are
+# about the trace, and about the two answers that end it.
+
+
+def test_an_undecided_pair_is_listed_on_the_track_and_nothing_is_copied(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder",
+                             body=b"other audio")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    done = carry_out(survey(source, target, judge=fixed(
+        Verdict.UNDECIDED, why="the incoming file is lossless but they hold the same audio")), target)
+
+    assert done == {"replaced": 0, "filled": 0, "offered": 1, "failed": 0}
+    album_dir = target / plan.folder
+    assert sorted(p.name for p in album_dir.glob("*.flac")) == [], "nothing was copied in"
+    assert (album_dir / "01 - One.opus").read_bytes() == b"old audio", "and nothing was binned"
+    track = load_plan(album_dir).tracks[0]
+    offer = track.candidate("Intake-1")
+    assert offer.undecided and offer.added_by == "pass" and offer.provider == "folder"
+    assert offer.why == "the incoming file is lossless but they hold the same audio"
+    assert track.chosen == "Album-1" and track.source_override is None, "listed, not chosen"
+    assert [c.ref for c in track.undecided_copies()] == ["Intake-1"]
+
+
+def test_both_copies_keep_their_numbers_so_a_person_can_compare_them(tmp_path):
+    """The whole point of listing it: the panel has to show what the report showed."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    offered, here = track.candidate("Intake-1"), track.candidate("Album-1")
+    assert offered.codec == "flac" and offered.cutoff_khz == 22 and offered.full_band is True
+    assert here.codec == "opus" and here.cutoff_khz == 20 and here.full_band is False
+
+
+def test_a_second_apply_adds_nothing(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+    again = carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+
+    assert again["offered"] == 0
+    assert len(load_plan(target / plan.folder).tracks[0].candidates) == 2
+
+
+def test_a_refused_copy_is_never_offered_again(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    album_dir = target / plan.folder
+    refused = load_plan(album_dir)
+    refused.tracks[0].refuse("Intake-1")
+    save_plan(refused, album_dir)
+
+    done = carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+
+    assert done["offered"] == 0
+    assert load_plan(album_dir).tracks[0].candidates == refused.tracks[0].candidates
+
+
+def test_a_track_the_user_worked_on_is_still_told_about_the_other_copy(tmp_path):
+    """`untouchable` stops the *pass* from acting, not the user from being shown a choice: the
+    verdict's reason says it is theirs, and the copy is there if they want it."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED, why="you trimmed this one")), target)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    assert track.candidate("Intake-1").why == "you trimmed this one"
+
+
+def test_taking_the_offer_empties_the_list_and_refusing_it_does_too(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+    from noaap.service import apply_user_edits
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+    album_dir = target / plan.folder
+
+    taken = load_plan(album_dir)
+    apply_user_edits(taken, {"tracks": [{"video_id": "Album-1", "take": "Intake-1"}]})
+    assert taken.tracks[0].source_override == "Intake-1" and taken.tracks[0].undecided_copies() == []
+    assert taken.tracks[0].state == "pending", "the audio is fetched again, from the copy chosen"
+
+    left = load_plan(album_dir)
+    apply_user_edits(left, {"tracks": [{"video_id": "Album-1", "refuse": "Intake-1"}]})
+    assert left.tracks[0].undecided_copies() == []
+    assert left.tracks[0].candidate("Intake-1").undecided, "it stays listed, marked refused"
+
+
+def test_only_a_copy_this_track_already_has_can_be_taken(tmp_path):
+    """The user is answering the pass's question, not naming a new source — that is the field
+    beside it, and parsing a ref is the provider's job, never this one's."""
+    import pytest
+
+    from noaap.service import apply_user_edits
+
+    plan = plan_with("Album", "One")
+
+    with pytest.raises(ValueError, match="not one of this track's known copies"):
+        apply_user_edits(plan, {"tracks": [{"video_id": "Album-1", "take": "/home/someone/Music/x.flac"}]})
+
+
+def test_the_report_says_the_undecided_will_be_listed(tmp_path):
+    source = library(tmp_path / "source", plan_with("Intake", "One"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+
+    lines = report(survey(source, target, judge=fixed(Verdict.UNDECIDED)))
+
+    assert any("would be listed on their tracks" in line and "refusing is remembered" in line
+               for line in lines)
+
+
+def test_the_library_page_counts_the_tracks_that_wait(tmp_path):
+    """Counted the way `needs_you` is, and for the same reason: nothing else lists it, and only a
+    person can bring the number down."""
+    from noaap.config import Config
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+    from noaap.web import App
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", "Two", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One", "Two")
+    carry_out(survey(source, target, judge=fixed(Verdict.UNDECIDED)), target)
+
+    rows = App(Config(musicbrainz=False, lyrics=False), target).state()["albums"]
+    assert [r["copies"] for r in rows] == [2]
+
+    left = load_plan(target / plan.folder)
+    left.tracks[0].refuse("Intake-1")
+    save_plan(left, target / plan.folder)
+    assert [r["copies"] for r in App(Config(musicbrainz=False, lyrics=False), target).state()["albums"]] == [1]
+
+
+def test_one_track_is_replaced_at_most_once_in_a_pass(tmp_path):
+    """Two incoming tracks can pair with the same library track — the same song on an album and on
+    a compilation, which the real material has three of. Acting twice would bin the file the run
+    just wrote and leave the first bin entry naming a displacer that is gone."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+    from noaap.recycle import entries as bin_entries
+
+    source = tmp_path / "source"
+    real_library(source, "Album", "One", ext="flac", provider="folder", body=b"from the album")
+    real_library(source, "Compilation", "One", ext="flac", provider="folder", body=b"from the compilation")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    found = survey(source, target, judge=fixed(Verdict.REPLACE, why="holds more audio"))
+    done = carry_out(found, target)
+
+    assert len(found.acting) == 2, "both copies really are proposed"
+    assert done["replaced"] == 1 and done["offered"] == 1
+    assert len(bin_entries(target)) == 1, "nothing was binned twice"
+    track = load_plan(target / plan.folder).tracks[0]
+    waiting = track.undecided_copies()
+    assert len(waiting) == 1 and waiting[0].why.startswith("another copy was taken in the same pass")

@@ -1453,13 +1453,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **The order is the user, then identity, then quality.** A trim they marked, a source they chose,
    words they *timed* to this file: none of those is outranked by a measurement. Then ≤3 s is the
    same recording and >20 s is not, measured against MusicBrainz or LRCLIB where either knows the
-   length, because two files can both be padded. Then a wider band decides; a lossless *container*
-   decides nothing; a rate decides only against the same codec, because Opus at 125 kbps and MP3 at
+   length, because two files can both be padded. Then a wider band decides — **by 2 kHz, because
+   one kilohertz is inside Opus's own spread**, and a file at its own ceiling beats one that is not
+   by any margin at all; a lossless *container* decides nothing; a rate decides only against the same codec, because Opus at 125 kbps and MP3 at
    320 are not ranked by their numbers; and a tie goes to the incumbent.
-   **Verdicts over all 762 pairs: 88 replace, 0 fill, 420 keep, 254 undecided** — 3.36 GB added,
-   0.35 GB binned, 21 albums touched. The largest single group is the **163 undecided where the
+   **Verdicts over all 762 pairs: 51 replace, 0 fill, 423 keep, 288 undecided** — 1.93 GB added,
+   0.22 GB binned, 14 albums touched. The largest single group is the **197 undecided where the
    incoming file is lossless and holds exactly the same audio**: under a rule that trusted the
-   container those would all have been replacements, about 8 GB written for nothing.
+   container every one of them would have been a replacement, and the 163 of them the first reading
+   found already came to about 8 GB written for nothing. The second largest is the **134 keeps where
+   the band is the same and the codecs are not**, every one an MP3 against an Opus.
+   **The first reading of this material said 88, on a 1 kHz margin.** 37 of those were "21 kHz
+   against 20" — and Opus itself reads 20 kHz on 219 of this collection's files and 21 on 107, so
+   that difference is inside one encoder's own spread and decided nothing. At 2 kHz they are keeps
+   and undecideds, and every replacement left can say why in a number wider than the encoder's own
+   scatter (R-173).
    **The pass proposes and a person disposes.** A bare `merge` is a read — a case reads every byte
    and mtime of the target before and after and demands they are unchanged. `--apply` acts, and the
    only thing that removes audio is the bin, whose entry carries both files' numbers and the ref
@@ -1468,6 +1476,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **Nothing derived from a ref leaves the program**, extended here to the page: it asks each
    candidate's provider for a link rather than building one out of a ref, because a folder's ref is
    a path on this machine.
+
+55. ✅ **The copy nobody could choose, kept where a person can see it** (2026-09-28, P52c). The
+   acceptance run of slice 54 found the hole in it: **288 of the 762 pairs were undecided, and the
+   library held no trace of a single one.** The pass printed them once and exited. The panel that
+   was supposed to let a person settle them could not, because *the page cannot show what the plan
+   does not hold* — and so a verdict deliberately left to a human being was, in practice, a verdict
+   nobody could ever take. A proposal a person cannot act on is not a proposal.
+   **`--apply` now records the undecided copy on the track**: listed, not chosen, nothing copied and
+   nothing binned, carrying the verdict's own sentence and both files' measurements. Both sides keep
+   their numbers, because someone deciding between two copies needs what the report printed in front
+   of them, not a second run of it. `Candidate.undecided` says so in the plan, and the plan format
+   stays additive — an older noaap reads the field it does not know and writes it back.
+   **Two answers end it and nothing else does.** *Take this one* makes it the track's ref by the
+   ordinary switch — the audio is fetched again, the marks that belonged to the old file are named
+   before they are cleared. *Not this one* is the refusal that already existed, remembered for good:
+   it stays listed, marked refused, and no later pass offers it again. That is what makes the count
+   trustworthy: `undecided_copies` can only fall, and only because a person answered.
+   **So the library page counts it, the way it counts "needs you"** — the other question only a
+   person can settle. Both are on the filter and both are a badge on the album, and the ⇄ mark on
+   the row says a copy is waiting, because a number on a card that cannot be reached from the card
+   is the same hole in a smaller shape.
+   **A ref is still opaque here.** Only a ref already on the track can be taken: the user is
+   answering the pass's question, not naming a new source, and parsing what someone typed stays the
+   provider's job. A folder's ref is a path, so it is shown by its last two parts and never in full
+   outside the panel the user opened.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
