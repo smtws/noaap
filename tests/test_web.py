@@ -364,13 +364,13 @@ def test_collapsing_a_split_keeps_the_arrangement_the_user_set():
 
 
 def test_a_merge_and_a_renumber_in_one_save_put_the_track_where_it_was_asked():
-    """A number the user *typed* counts in the disc they are putting the track on (§9.32).
+    """A number the user *typed* counts in the disc they are putting the track on (§9, slice 32).
 
     Changed in P15: it used to count inside the disc the track came from, so this track landed
     seventh — first of its former disc-2 block — after a save that collapsed both discs into one.
     Under one disc, "1" means first, and the same rule is what makes a row dragged into another
     disc land where it was dropped. A number left *alone* still counts where the track was, which
-    is what keeps a plain collapse from interleaving the two discs (§9.22).
+    is what keeps a plain collapse from interleaving the two discs (§9, slice 22).
     """
     plan = build_plan(vol1())
     apply_user_edits(plan, {"tracks": [{"video_id": t.video_id, "disc": "2"} for t in plan.tracks[6:]]})
@@ -527,11 +527,11 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
 
     got = c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()
     publish = got.pop("publish")
-    assert got.pop("fit") is None and got.pop("can_check") is False   # it has words already (§9.46)
+    assert got.pop("fit") is None and got.pop("can_check") is False   # it has words already (§9, slice 46)
     assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
                    "timed_by": None, "words_by": None,  # nobody's clock and nobody's words but LRCLIB's
                    "timings": None}  # and they were written for the file that is there
-    # and lrclib's own words are never offered back to it (§9.42)
+    # and lrclib's own words are never offered back to it (§9, slice 42)
     assert publish["can"] is False and publish["why"] == "these are lrclib's own words, not yours"
 
     # point the track at another video and the same panel says the timings are for the old file
@@ -601,7 +601,7 @@ def test_the_grid_carries_the_length_flag(server):
     assert app.albums()[0]["length"] == {"way": "stub", "n": len(plan.tracks), "of": len(plan.tracks)}
 
 
-# -- the lyrics editor (DESIGN.md §9.26) --------------------------------------------------
+# -- the lyrics editor (DESIGN.md §9, slice 26) --------------------------------------------------
 
 
 def saved(c, album_id, video_id, text):
@@ -748,7 +748,7 @@ def test_a_sidecar_the_editor_wrote_is_recognised_on_disk_without_a_special_case
     assert album_dir == app.album(album_id)[0]  # nothing moved
 
 
-# -- per-track lyrics actions (P9, DESIGN.md §9.27) ---------------------------------------
+# -- per-track lyrics actions (P9, DESIGN.md §9, slice 27) ---------------------------------------
 
 
 def track_action(c, album_id, video_id, reject=False):
@@ -952,7 +952,7 @@ def test_the_spelling_hint_names_both_ways_to_run_repair(tmp_path, opus_template
     assert "ytalbum repair" in hint and "Repair library" in hint
 
 
-# -- the fetch preview (P11, DESIGN.md §9.28) ---------------------------------------------
+# -- the fetch preview (P11, DESIGN.md §9, slice 28) ---------------------------------------------
 
 
 def previewing_server(library, opus_template, collection):
@@ -1055,7 +1055,7 @@ def test_the_direct_path_does_not_go_through_a_preview(library, opus_template):
     assert yt.downloads  # it downloaded without any preview in between
 
 
-# -- a way back from an edit (P12, DESIGN.md §9.29) ----------------------------------------
+# -- a way back from an edit (P12, DESIGN.md §9, slice 29) ----------------------------------------
 
 
 def test_resetting_an_album_field_restores_what_ytalbum_derived():
@@ -1157,7 +1157,7 @@ def test_repair_unifies_an_album_artist_that_was_reset(tmp_path, opus_template):
     assert {p.albumartist for _, p in iter_plans(tmp_path)} == {"My Dark Lullabies"}
 
 
-# -- opening an album tells the truth about its lyrics (P13, DESIGN.md §9.30) --------------
+# -- opening an album tells the truth about its lyrics (P13, DESIGN.md §9, slice 30) --------------
 
 
 def opened(app, c, album_id):

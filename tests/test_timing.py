@@ -255,7 +255,7 @@ def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
     assert len(timed.lines) == 1 and timed.provider == "local"
 
 
-# -- a second opinion on an alignment (§9.38) ------------------------------------------------
+# -- a second opinion on an alignment (§9, slice 38) ------------------------------------------------
 
 
 def timed_at(*starts: float | None) -> Timed:
@@ -303,7 +303,7 @@ def test_when_the_second_method_loses_the_song_the_primary_is_kept_whole():
 
 
 def test_jitter_on_most_lines_is_not_a_lost_track(monkeypatch):
-    """The two rules are separate constants on purpose (§9.38): being generous about jitter must not
+    """The two rules are separate constants on purpose (§9, slice 38): being generous about jitter must not
     make a broken track look salvageable, and being strict about it must not condemn a good one."""
     from ytalbum.timing import verified
 
@@ -374,7 +374,7 @@ class Loaded:
 
 
 def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
-    """ctranslate2 loads the model happily and only then finds no libcublas (§9.38).
+    """ctranslate2 loads the model happily and only then finds no libcublas (§9, slice 38).
 
     Found by running the cross-check for real on this laptop: torch brought CUDA 13, ctranslate2
     wanted 12, and the guard that sat around the *load* never saw it.
@@ -436,7 +436,7 @@ def test_the_default_width_of_agreement_is_two_seconds():
     assert [line.start for line in verified(primary, second).lines] == [10.0, None]
 
 
-# -- two slots, because the two jobs are bought in different places (§9.40) --------------------
+# -- two slots, because the two jobs are bought in different places (§9, slice 40) --------------------
 
 
 def test_one_provider_in_the_old_key_still_means_both():
@@ -499,7 +499,7 @@ def test_a_slot_offers_only_what_that_kind_could_ever_do():
         assert ALIGN in OFFERS[kind] and TRANSCRIBE in OFFERS[kind]
 
 
-# -- giving the graphics card back (§9.41, backlog 18) ----------------------------------------
+# -- giving the graphics card back (§9, slice 41, backlog 18) ----------------------------------------
 
 
 class Loadable:
@@ -638,7 +638,7 @@ def test_the_idle_minutes_are_configurable(tmp_path):
     assert load(tmp_path / "none.toml").timing_idle_minutes == 5.0
 
 
-# -- telling which method lost the song (§9.44) -------------------------------------------------
+# -- telling which method lost the song (§9, slice 44) -------------------------------------------------
 
 
 def a_song(lines: int = 40, every: float = 5.0) -> list[float]:
@@ -658,7 +658,7 @@ def test_a_method_that_followed_the_song_looks_like_one():
 
 
 def test_stamps_that_do_not_cover_the_singing_are_what_lost_looks_like():
-    """The signal the sixteen tracks chose (§9.44): a lyric spans the singing, or it is elsewhere."""
+    """The signal the sixteen tracks chose (§9, slice 44): a lyric spans the singing, or it is elsewhere."""
     from ytalbum.timing import lost, signals_of
 
     # the whole lyric squeezed into a minute of a three-and-a-half minute song
@@ -765,7 +765,7 @@ def test_without_evidence_the_old_policy_stands():
 
 
 def test_a_saved_alignment_keeps_both_methods_figures(album, tmp_path, monkeypatch):
-    """The library accumulates the evidence sixteen tracks cannot give (§9.44)."""
+    """The library accumulates the evidence sixteen tracks cannot give (§9, slice 44)."""
     from ytalbum.web import App
 
     album_dir, plan, yt = album

@@ -1,5 +1,5 @@
 {
-  "_comment": "One table, two runners: tests/js/source.test.mjs checks logic.mjs's oneVideo and tests/test_source.py checks youtube.one_video against it. The page refuses a bad source before sending it and the server refuses it again; the two must agree on what a single video is (DESIGN.md §9.34).",
+  "_comment": "One table, two runners: tests/js/source.test.mjs checks logic.mjs's oneVideo and tests/test_source.py checks youtube.one_video against it. The page refuses a bad source before sending it and the server refuses it again; the two must agree on what a single video is (DESIGN.md §9, slice 34).",
   "cases": [
     {"why": "a bare id is what the plan stores", "text": "dQw4w9WgXcQ", "id": "dQw4w9WgXcQ"},
     {"why": "with the spaces a paste brings", "text": "  dQw4w9WgXcQ  ", "id": "dQw4w9WgXcQ"},

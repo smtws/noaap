@@ -1,4 +1,4 @@
-"""The local timing provider: separate the voice, then force-align the words to it (§9.36).
+"""The local timing provider: separate the voice, then force-align the words to it (§9, slice 36).
 
 Imported only when `timing_provider = "local"`, and it is the only file in ytalbum that touches a
 model. It needs the optional extra:
@@ -51,7 +51,7 @@ SEPARATOR = "htdemucs"
 BLANK = 0  # index 0 is the CTC blank in both bundles (their label 0 is "-"), never a letter
 MISSING = ("the local timing provider needs the optional extra: "
            'uv pip install "ytalbum[timing]" (torch, torchaudio, demucs)')
-# the second extra: a Whisper decoder, for the cross-check and for drafting words (§9.38)
+# the second extra: a Whisper decoder, for the cross-check and for drafting words (§9, slice 38)
 WHISPER = "large-v3"
 WHISPER_SIZE = "3.09 GB on first use"
 NO_CHECK = ('the second opinion needs the other extra: uv pip install "ytalbum[timing-check]" '
@@ -93,7 +93,7 @@ class LocalTiming:
         return frozenset({ALIGN, TRANSCRIBE}) if has_whisper() else frozenset({ALIGN})
 
     def verifying(self) -> bool:
-        """Whether an alignment is checked against the second method (§9.38)."""
+        """Whether an alignment is checked against the second method (§9, slice 38)."""
         return has_whisper() if self.verify is None else bool(self.verify and has_whisper())
 
     def resolved_device(self) -> str:
@@ -171,7 +171,7 @@ class LocalTiming:
             starts.setdefault(owners[w], round(spans[token].start * seconds, 2))
             last = min(token + 1, len(spans) - 1)
             ends[owners[w]] = round(spans[last].end * seconds, 2)
-            # the aligner's own confidence in this word, which it has already computed (§9.44)
+            # the aligner's own confidence in this word, which it has already computed (§9, slice 44)
             scored.setdefault(owners[w], []).append(float(spans[token].score))
         placed = [TimedLine(text=line, start=starts.get(i), end=ends.get(i)) for i, line in enumerate(lines)]
         timed = Timed(lines=placed, provider=self.name, model=f"{BUNDLES[lang]} + {SEPARATOR}",
@@ -181,8 +181,8 @@ class LocalTiming:
         if per_line:
             timed.parameters["confidence"] = format(statistics.median(per_line), ".3f")
         # What this answer says about itself, always — not only when a second method is checking it
-        # (§9.44). It costs one pass over a waveform that is already in hand, and it is what decides
-        # whether an lrclib entry's words belong to this recording (§9.46).
+        # (§9, slice 44). It costs one pass over a waveform that is already in hand, and it is what decides
+        # whether an lrclib entry's words belong to this recording (§9, slice 46).
         sung = sung_stretches(wave.cpu(), bundle.sample_rate)
         length = wave.size(1) / bundle.sample_rate
         mine = signals_of([line.start for line in timed.lines], length=length, sung=sung,
@@ -190,7 +190,7 @@ class LocalTiming:
         timed.parameters.update(mine.to_parameters("own"))
         if not self.verifying():
             return timed
-        # The second opinion hears the **mixed** track, not the stem the CTC pass needs (§9.38).
+        # The second opinion hears the **mixed** track, not the stem the CTC pass needs (§9, slice 38).
         # Measured, not assumed: on the stem it placed 11 of 42 lines nowhere and the rest 20 s
         # early; on the same track's mix it landed within 0.7 s of a hand-checked sidecar. The
         # different front end is also what makes it a second opinion rather than a second pass.
@@ -225,7 +225,7 @@ class LocalTiming:
 
         The spike measured this as the weaker half of the job — three quarters of a clean song's
         lines, half of a harsh one's — which is why it is offered only where a track has no words at
-        all (§9.37) and why the page calls it a guess.
+        all (§9, slice 37) and why the page calls it a guess.
         """
         if not has_whisper():
             raise TimingUnavailable(
@@ -252,7 +252,7 @@ class LocalTiming:
                                  "temperature": "0"})
 
     def release(self) -> bool:
-        """Let go of every model this provider has loaded (§9.41, backlog 18).
+        """Let go of every model this provider has loaded (§9, slice 41, backlog 18).
 
         For the web service this is barely needed — a provider is built per job and dropped with it —
         but `ytalbum timing-serve` keeps one for the life of the process, and a machine that is asked
@@ -269,10 +269,10 @@ class LocalTiming:
     # -- the second opinion ----------------------------------------------------------------
 
     def _whisper_align(self, audio: Path, lines: list[str], lang: str) -> Timed:
-        """The same words, placed by a Whisper decoder hearing the mixed track (§9.38)."""
+        """The same words, placed by a Whisper decoder hearing the mixed track (§9, slice 38)."""
         self.log(f"checking the alignment against {WHISPER} …")
         # it reports the segments it could not place as a warning and nowhere else, so that is
-        # where the count has to come from (§9.44)
+        # where the count has to come from (§9, slice 44)
         with warnings.catch_warnings(record=True) as said:
             warnings.simplefilter("always")
             result = self._whisper_run(
@@ -390,7 +390,7 @@ class LocalTiming:
 
 def separated_voice(audio: Path, into: Path, log: Callable[[str], None] | None = None,
                     check: Callable[[], None] | None = None) -> Path | None:
-    """Write the track's isolated voice to `into`, or return None if that cannot be done (§9.45).
+    """Write the track's isolated voice to `into`, or return None if that cannot be done (§9, slice 45).
 
     A transcriber hears far more of a song when the band is taken off it. Measured on one real
     track against its own published lyric (`docs/qa-catalog.md`, section AF): Deepgram found 16 of
@@ -420,7 +420,7 @@ def separated_voice(audio: Path, into: Path, log: Callable[[str], None] | None =
 
 def sung_stretches(wave, rate: int, frame: float = 0.1, bridge: float = 0.4,
                    floor: float = 0.06) -> list[tuple[float, float]]:
-    """When somebody is singing, from the separated vocal the aligner already made (§9.44).
+    """When somebody is singing, from the separated vocal the aligner already made (§9, slice 44).
 
     The separation is the expensive part and it is already done, so this costs nothing: chop the
     stem into tenths of a second, take each one's RMS, and call it singing where it rises above a

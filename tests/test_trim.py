@@ -110,7 +110,7 @@ def test_trim_channel_covers_the_whole_library(tmp_path, opus_template):
     assert all(t.trimmed is None for t in saved.tracks if t.channel != channel)
 
 
-# -- the original is kept in the track's own format (DESIGN.md §9.20) --------------------
+# -- the original is kept in the track's own format (DESIGN.md §9, slice 20) --------------------
 
 
 @pytest.fixture

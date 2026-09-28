@@ -106,13 +106,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
 git clone https://github.com/smtws/ytalbum.git
 cd ytalbum
 uv sync                                             # venv + dependencies
-uv run ytalbum config                               # shows what it found: JS runtime, token helper
+uv run ytalbum config                               # shows what it found: ffmpeg, JS runtime, token helper
 ```
 
 `uv sync` needs no system Python 3.14 — uv fetches the interpreter itself.
 
-**ytalbum does not check for ffmpeg.** `ytalbum config` reports the JS runtime and the token
-helper, not ffmpeg; a missing ffmpeg is first noticed when the first download tries to use it.
+`ytalbum config` reports whether it found ffmpeg, a JavaScript runtime and the token helper.
+**ffmpeg is reported, not required:** a library can be browsed, tagged, searched and have its lyrics
+fetched without it — downloading and trimming are what stop, and they stop at the moment of use.
 
 ## First run
 

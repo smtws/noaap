@@ -237,7 +237,7 @@ class Service:
         `repair` used to ask the question once per album, against the library *as stored*, so
         an album already visited could not benefit from evidence found later: with three albums
         in three spellings the first pass left two of them and a second pass was needed
-        (§9.23). One scan settles every key instead — and one scan is also all it costs, rather
+        (§9, slice 23). One scan settles every key instead — and one scan is also all it costs, rather
         than one per album. The candidates are what the library holds: every album-level
         spelling with its provenance, plus the spelling an album's own tracks carry where
         `track_spelling`'s guards hold, which is MusicBrainz evidence.
@@ -272,7 +272,7 @@ class Service:
         better evidence, because upgrading the other albums is `ytalbum repair`'s job, not a
         side effect of fetching something. When the newcomer *is* the better evidence, one line
         says so and names both spellings. The cost, accepted: an older spelling can stand until
-        repair runs. What it buys is one folder per artist (DESIGN.md §9.23).
+        repair runs. What it buys is one folder per artist (DESIGN.md §9, slice 23).
         """
         self._adopt_track_spelling(plan)
         if plan.provenance.get("albumartist") == Provenance.USER or not self.library or not self.library.exists():
@@ -299,7 +299,7 @@ class Service:
 
         Not the evidence *this* album had: a spelling adopted while the album's own came from
         MusicBrainz used to keep the `mb` marker, so a shouted name inherited a confirmation
-        MusicBrainz never gave — and `repair` then converged on the shouting (§9.23). And never
+        MusicBrainz never gave — and `repair` then converged on the shouting (§9, slice 23). And never
         `user`, which means "the user chose this for *this* album" and would freeze it.
         """
         plan.albumartist = plan.auto["albumartist"] = name
@@ -522,7 +522,7 @@ class Service:
         """Write the words a user typed beside one track — or clear them — and retag it.
 
         This is the one door into the ownership contract from the UI side: it does by hand what
-        `reconcile` does when it finds an edited file (DESIGN.md §9.21, §9.26). Nothing is looked
+        `reconcile` does when it finds an edited file (DESIGN.md §9, slice 21, §9, slice 26). Nothing is looked
         up, so a user is never told their words were replaced by lrclib's.
         """
         found = self.find_album(source_id)
@@ -538,8 +538,8 @@ class Service:
             write_sidecar(album_dir, track, body)  # records lyrics_sha as the bytes it wrote
             track.lyrics = status_of(body)
             track.provenance["lyrics"] = Provenance.USER
-            # the words stay the user's; the *clock* may be a machine's, and says so (§9.36), and
-            # so does a draft nobody has rewritten yet (§9.37)
+            # the words stay the user's; the *clock* may be a machine's, and says so (§9, slice 36), and
+            # so does a draft nobody has rewritten yet (§9, slice 37)
             track.lyrics_timed_by = timed_by or None
             track.lyrics_words_by = words_by or None
             # kept beside the clock, not instead of it: this is the evidence, the clock is the claim
@@ -563,7 +563,7 @@ class Service:
         return Outcome("ok", plan, album_dir)
 
     def publish_lyrics(self, source_id: str, video_id: str) -> Outcome:
-        """Give one track's words back to LRCLIB (§9.42, backlog 19).
+        """Give one track's words back to LRCLIB (§9, slice 42, backlog 19).
 
         The one thing in ytalbum that makes something **public and irrevocable**, so it is the one
         thing that asks the most before doing it: the words must be the user's own (not lrclib's,
@@ -571,7 +571,7 @@ class Service:
         track. The page asks a second time, in a confirm that names everything that leaves.
 
         What is sent is the track as it is *here*: the titles the user sees and the **file's** own
-        length, because that is what the timestamps belong to (§9.35).
+        length, because that is what the timestamps belong to (§9, slice 35).
         """
         api = self.lrclib
         if api is None or not hasattr(api, "publish"):
@@ -619,11 +619,11 @@ class Service:
         return held.text if held else None
 
     def align_lyrics(self, source_id: str, video_id: str, text: str) -> dict[str, Any]:
-        """Put the words the editor is holding onto this track's clock. **Writes nothing** (§9.36).
+        """Put the words the editor is holding onto this track's clock. **Writes nothing** (§9, slice 36).
 
         The words come from the page, not from the disk, because the user may have just typed them;
         what comes back is a proposal the editor shows and the user saves — or does not. That is
-        what keeps the ownership contract (§9.21) out of this entirely: the only door to the disk is
+        what keeps the ownership contract (§9, slice 21) out of this entirely: the only door to the disk is
         still `save_lyrics`, with the user's hand on it.
         """
         found = self.find_album(source_id)
@@ -654,7 +654,7 @@ class Service:
 
         A draft, and labelled as one everywhere it appears: the spike measured transcription as the
         weaker half of the job — three quarters of a clean song's lines, half of a harsh one's — so
-        this is a starting point for someone who would otherwise face an empty editor (§9.37).
+        this is a starting point for someone who would otherwise face an empty editor (§9, slice 37).
         """
         found = self.find_album(source_id)
         if not found:
@@ -673,11 +673,11 @@ class Service:
         engine = self._timing(TRANSCRIBE, "derive words")
         audio = album_dir / track.filename
         # A transcriber hears far more of a song with the band taken off it — measured, and by a
-        # lot (§9.45) — and where the transcriber is somebody else's computer, the isolated voice
+        # lot (§9, slice 45) — and where the transcriber is somebody else's computer, the isolated voice
         # is also less of the record to send. Where no separator is installed this is the mixed
         # track, exactly as before.
         # imported here and nowhere else, so an installation with no timing extra still never
-        # touches this module (§9.36)
+        # touches this module (§9, slice 36)
         from .timing_local import separated_voice
 
         with tempfile.TemporaryDirectory(prefix="ytalbum-voice-") as tmp:
@@ -688,7 +688,7 @@ class Service:
             timed = engine.transcribe(voice or audio, check=self.check)
         timed.parameters["heard"] = heard
         # where the machine heard nothing for a long stretch, the draft says so rather than letting
-        # the next line jump a minute — and the notice counts what it actually covered (§9.45)
+        # the next line jump a minute — and the notice counts what it actually covered (§9, slice 45)
         length = track.file_length or track.duration
         timed.lines = with_gaps(timed.lines, length)
         timed.parameters.update(coverage(timed.lines, length))
@@ -701,7 +701,7 @@ class Service:
                 "placed": len(timed.lines) - len(timed.unplaced), "text": text}
 
     def _timing(self, capability: str, what: str):
-        """The provider configured for *this* capability, if it can do the thing being asked (§9.40)."""
+        """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40)."""
         engine = timing_provider(self.cfg, capability)
         if capability not in engine.capabilities():
             raise TimingUnavailable(f"the {engine.name} timing provider cannot {what}")
@@ -712,7 +712,7 @@ class Service:
     def sync_lyrics(self, source_id: str) -> Outcome:
         """Make the plan agree with the `.lrc` files beside the tracks, and the tags with the plan.
 
-        The same `reconcile` the passes run (§9.21), called for its own sake: the web UI asks for
+        The same `reconcile` the passes run (§9, slice 21), called for its own sake: the web UI asks for
         this when an album is opened and the two had drifted apart — a sidecar edited or deleted
         outside ytalbum. Nothing is looked up and nothing is downloaded.
         """
@@ -737,10 +737,10 @@ class Service:
         """An lrclib entry that is nearly this recording: is it this song's, and is its clock ours?
 
         `get` takes a candidate within three seconds and nothing else, which is right as far as the
-        length can tell (§9.27). This asks the only question the length cannot answer, by aligning
+        length can tell (§9, slice 27). This asks the only question the length cannot answer, by aligning
         the candidate's words to the file: how many of them the aligner can place says whether these
         are the song's words, and how much of the singing they span says whether the entry's timings
-        belong to *this* cut (§9.46). Measured over this library's 203 near-misses: 143 are taken
+        belong to *this* cut (§9, slice 46). Measured over this library's 203 near-misses: 143 are taken
         whole, 16 are the song's words on another cut, one is a different song.
         """
         api = self.lrclib
@@ -798,7 +798,7 @@ class Service:
             write_sidecar(album_dir, track, (entry.text or "").strip())
             track.lyrics, track.lyrics_id = status_of(entry.text or ""), entry.lrclib_id
             track.lyrics_length = theirs
-            track.provenance.pop("lyrics", None)   # lrclib's words are lrclib's (§9.21)
+            track.provenance.pop("lyrics", None)   # lrclib's words are lrclib's (§9, slice 21)
             track.lyrics_timed_by = None
             self.log(f"{track.title}: lrclib's words and timings fit this file ({span:.0%} of the singing)")
         else:  # the song's words on another cut: keep the words, use our own clock
@@ -822,7 +822,7 @@ class Service:
 
     def check_near_lyrics_all(self, refetch: bool = False, artist: str | None = None,
                               dry_run: bool = False) -> list[Outcome]:
-        """Every track with no words whose lrclib entry was refused for its length (§9.46).
+        """Every track with no words whose lrclib entry was refused for its length (§9, slice 46).
 
         The per-track check exists behind a button; this is the pass. Nothing new is decided here —
         each track goes through `check_near_lyrics`, so the verdict is the same one the panel gives.
@@ -876,7 +876,7 @@ class Service:
                 counts[(after.lyrics_fit or {}).get("decided") if after and after.lyrics_fit
                        else "no candidate"] += 1
         finally:
-            # the card goes back whether the pass finished, was cancelled or failed (§9.41)
+            # the card goes back whether the pass finished, was cancelled or failed (§9, slice 41)
             release_gpu_memory()
         self.log("near misses: " + (", ".join(f"{n} {what}" for what, n in counts.most_common())
                                     or "nothing decided"))
@@ -917,10 +917,10 @@ class Service:
     def take_plain_lyrics(self, source_id: str, video_id: str, entry_id: int) -> Outcome:
         """Put an entry's words beside a track **without** its timings, on the user's own decision.
 
-        For the cases nothing could decide (§9.46): the words are probably this song's, the
+        For the cases nothing could decide (§9, slice 46): the words are probably this song's, the
         timestamps are for a recording of another length, and a person has looked at the two numbers
         and said take them. They stay lrclib's words — the ownership contract does not change
-        because a human pressed the button (§9.21).
+        because a human pressed the button (§9, slice 21).
         """
         api = self.lrclib
         if api is None:
@@ -961,7 +961,7 @@ class Service:
         return best, (apart or 0.0)
 
     def lookup_track(self, source_id: str, video_id: str, reject: bool = False) -> Outcome:
-        """Ask lrclib about one track — or reject what it gave and ask again (DESIGN.md §9.27).
+        """Ask lrclib about one track — or reject what it gave and ask again (DESIGN.md §9, slice 27).
 
         `reject` remembers the entry on the track, so no later lookup can pick it again: not this
         one, not a `--refetch`, not a fresh pass. Rejecting is about *that entry* being the wrong
@@ -1157,7 +1157,7 @@ class Service:
                     stale.unlink()
             if took and took != t.effective_id:
                 # the original kept for the previous source is another recording: it can never be
-                # what this track is cut from, and keeping it would only shadow the new one (§9.34)
+                # what this track is cut from, and keeping it would only shadow the new one (§9, slice 34)
                 for path in originals_of(album_dir, took):
                     path.unlink()
                 self.log(f"{t.title}: audio now from {t.effective_id} (was {took})")
@@ -1166,7 +1166,7 @@ class Service:
 
 
 def _minutes(audio: Path) -> str:
-    """How much audio a request is about to send, because a per-minute bill is the user's (§9.37)."""
+    """How much audio a request is about to send, because a per-minute bill is the user's (§9, slice 37)."""
     try:
         seconds = audio_length(audio) or 0
     except Exception:
@@ -1185,7 +1185,7 @@ def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:
 
     The value matters more than the mark: `_merge_fields` decides a field is the user's by comparing
     it with `auto` and re-asserts the USER provenance on every merge, so dropping the mark alone
-    would be undone by the next update (DESIGN.md §9.29). The provenance is dropped rather than
+    would be undone by the next update (DESIGN.md §9, slice 29). The provenance is dropped rather than
     guessed at — `auto` records the derived *value*, never where it came from — and the next pass
     that touches the field writes a truthful marker again.
     """
@@ -1193,7 +1193,7 @@ def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:
         return isinstance(obj, AlbumPlan) and obj.provenance.pop("order", None) is not None
     if name == "source":
         # the way back is the playlist's own video, which `auto` does not have to remember: it is
-        # `video_id`. Going back costs what choosing cost — the track is fetched again (§9.34).
+        # `video_id`. Going back costs what choosing cost — the track is fetched again (§9, slice 34).
         return isinstance(obj, PlanTrack) and switch_source(obj, None)
     editable = EDITABLE_ALBUM if isinstance(obj, AlbumPlan) else EDITABLE_TRACK
     if name not in editable or name not in obj.auto:
@@ -1207,14 +1207,14 @@ def switch_source(track: PlanTrack, video_id: str | None) -> bool:
     """Point a track at another video — or back at the playlist's — and forget the old audio.
 
     The playlist video stays the track's identity; only where the *audio* comes from changes
-    (DESIGN.md §9.34). Everything the old file was is therefore wrong at once: the state, because
+    (DESIGN.md §9, slice 34). Everything the old file was is therefore wrong at once: the state, because
     there is another recording to fetch; the tags written from it; the trim marks, which describe
     seconds of the old recording (the UI names them before it asks); the measured length; and the
     uploader and duration, which follow the audio rather than the identity.
 
     The lyrics *status* goes with it so the next pass looks the new length up again. The words
     never do: the user's stay theirs, and a sidecar whose timings were written for the old file
-    says so in the panel until it is saved again (§9.21 is untouched by this).
+    says so in the panel until it is saved again (§9, slice 21 is untouched by this).
     """
     if (track.source_override or None) == (video_id or None):
         return False
@@ -1283,7 +1283,7 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
             # `moved` is the UI saying "the user put this row here", which a changed number cannot
             # always show: a row dragged into another disc often keeps its per-disc number by
             # coincidence (2-02 dropped at 1-02), and without the flag it would be read as a row
-            # that stayed put and end up after that disc's rows instead of among them (§9.32).
+            # that stayed put and end up after that disc's rows instead of among them (§9, slice 32).
             if wanted != t.number or te.get("moved"):
                 typed[t.video_id] = wanted
                 order_changed = True
@@ -1316,7 +1316,7 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
 def track_spelling(plan: AlbumPlan) -> str | None:
     """The spelling this album's own tracks carry, when it may speak for the album.
 
-    The guards are §9.23's: not an album artist the user chose, the same artist key (so case and
+    The guards are §9, slice 23's: not an album artist the user chose, the same artist key (so case and
     punctuation only, never a genuinely different credit), the most common track credit, and
     MusicBrainz behind that credit. A tie between two equally common spellings is settled by the
     evidence and then by `spelling_rank`, because `max(set(names), key=names.count)` would settle
@@ -1354,15 +1354,15 @@ def placed(tracks: list[PlanTrack], was_on: dict[str, int], typed: dict[str, int
     A typed number is a position, in both directions and including the last one. Sorting by the
     numbers cannot do that: a track moved *down* still sorts ahead of the track that holds the
     position below its target, so typing 5 on the first of five tracks moved it to 4 and no typed
-    number could ever move a track to the end (DESIGN.md §9.22). So the typed tracks are taken
+    number could ever move a track to the end (DESIGN.md §9, slice 22). So the typed tracks are taken
     out of the arrangement and put back at the index they asked for, lowest number first, while
     the untouched ones keep their relative order.
 
-    Which disc a number counts in depends on whether it was typed at all (§9.32). A number the
+    Which disc a number counts in depends on whether it was typed at all (§9, slice 32). A number the
     user gave counts in the disc they are putting the track on — that is what dragging a row into
     another disc means, and what typing a position after collapsing a split means. A number left
     alone counts where the track *was*, because after a disc change those numbers are the old
-    per-disc ones and reading them under the new discs would interleave the two (§9.22's collapse).
+    per-disc ones and reading them under the new discs would interleave the two (§9, slice 22's collapse).
     """
     groups: dict[int, list[PlanTrack]] = {}
     for t in tracks:
@@ -1381,7 +1381,7 @@ def arrange(plan: AlbumPlan) -> AlbumPlan:
     The arrangement is the order the tracks are in — the order the album view shows — and this
     only groups and counts it. Sorting by `(disc, number)` as well, which is what this used to
     do, reshuffles an album whenever the numbers are not unique across the discs: collapsing
-    1-01…1-03 / 2-01…2-03 back to one disc interleaved them (DESIGN.md §9.22).
+    1-01…1-03 / 2-01…2-03 back to one disc interleaved them (DESIGN.md §9, slice 22).
     """
     by_disc: dict[int, list[PlanTrack]] = {}
     for t in plan.tracks:

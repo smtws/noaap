@@ -1,4 +1,4 @@
-"""Offering an album to MusicBrainz (DESIGN.md §9.43).
+"""Offering an album to MusicBrainz (DESIGN.md §9, slice 43).
 
 Nothing here talks to musicbrainz.org, and nothing in this feature ever does: seeding is a form
 that opens in the user's own browser, signed in as them, and ytalbum holds no credentials. So what

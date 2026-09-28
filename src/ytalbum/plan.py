@@ -216,7 +216,7 @@ def name_single_after_its_song(plan: AlbumPlan) -> str | None:
     `build_plan` reads the album name off the *video* title, and enrichment then improves the
     track only — so the album kept `The Dead Don't Die (feat. @xxFEUERSCHWANZxx)` while its one
     track became MusicBrainz' `The Dead Don't Die feat. Feuerschwanz`, and the folder carried the
-    uploader's handle (DESIGN.md §9.25). Applied after enrichment, in the fetch and in `repair`.
+    uploader's handle (DESIGN.md §9, slice 25). Applied after enrichment, in the fetch and in `repair`.
 
     An album name the user chose is never touched. A track title they chose *is* followed, and the
     album's provenance is then left as it was rather than set to `user`: marking it would freeze
@@ -307,7 +307,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
                 t.mbid = f.mbid or t.mbid
             t.mb_length = f.mb_length or t.mb_length
             if not t.source_override:
-                # both describe the *video*, and a track pointed at another one (§9.34) is not
+                # both describe the *video*, and a track pointed at another one (§9, slice 34) is not
                 # taking its audio from the playlist's: its uploader decides which channel-wide
                 # trim applies to it, and its length is what the trim bar is drawn with
                 t.channel = f.channel or t.channel
@@ -449,7 +449,7 @@ def track_filename(
 # answers even when its recording was too far off to take the lyrics from). Where they
 # disagree badly the track is usually not what it claims to be — a teaser, a commentary
 # clip, or an upload with a label ident in front. Measured over 3032 comparable tracks:
-# 13% are >5s longer than MusicBrainz, so only a wide gap is worth showing (DESIGN.md §9.18).
+# 13% are >5s longer than MusicBrainz, so only a wide gap is worth showing (DESIGN.md §9, slice 18).
 
 # These four are the source of truth. The album flag below uses LENGTH_BIG, LENGTH_STUB and
 # ALBUM_SHARE; the per-track mark is drawn in the page, so `LENGTH` in webui/app.js mirrors
@@ -484,7 +484,7 @@ def trimmed_gap(track: PlanTrack, start: float | None, end: float | None) -> tup
     """What the file would be, and how far from the reference, if it were cut to these marks.
 
     The length to cut from is the **video's** duration, because trim points count from the start of
-    the video and a file already cut is played from its kept original (§9.17). Returns
+    the video and a file already cut is played from its kept original (§9, slice 17). Returns
     (kept seconds, kept minus the reference); the second is None when nobody knows the song's
     length. `webui/app.js` mirrors this in `trimTarget` — change one and change the other.
     """

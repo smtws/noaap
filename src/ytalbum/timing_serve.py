@@ -1,4 +1,4 @@
-"""`ytalbum timing-serve` — the local provider, on the machine that has the hardware (§9.36).
+"""`ytalbum timing-serve` — the local provider, on the machine that has the hardware (§9, slice 36).
 
 Fifty lines around code that exists anyway: the same `LocalTiming` the `local` provider uses, behind
 two HTTP endpoints, so the laptop can ask a different box to do the arithmetic and inherit none of
@@ -107,7 +107,7 @@ def _multipart(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
 
 
 class Idle:
-    """Knows whether anything is being served, and how long ago the last thing was (§9.41).
+    """Knows whether anything is being served, and how long ago the last thing was (§9, slice 41).
 
     A request enters it while it works, because a tidy-up on a timer that does not know the thing is
     in use will take the models out of a running alignment — which is exactly what happened the first
@@ -143,7 +143,7 @@ class Idle:
 
 def idle_release(engine: Any, minutes: float, sleep: Callable[[float], None] = time.sleep,
                  now: Callable[[], float] = time.monotonic) -> Idle:
-    """Let the models go when nothing has been asked for a while (§9.41, backlog 18).
+    """Let the models go when nothing has been asked for a while (§9, slice 41, backlog 18).
 
     Returns the `Idle` a request holds while it works. `minutes = 0` turns the whole thing off, which
     is what a machine that exists to serve this wants; the default is five, which is what a laptop

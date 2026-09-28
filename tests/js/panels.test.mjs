@@ -1,4 +1,4 @@
-// What a panel offers, which is where the ownership rules of §9.21 and §9.29 become visible.
+// What a panel offers, which is where the ownership rules of §9, slice 21 and §9, slice 29 become visible.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

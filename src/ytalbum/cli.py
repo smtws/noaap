@@ -216,6 +216,11 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         state = f" — running (v{running['version']})" if running else (" — started on demand" if cfg.pot_mode == "server" else "")
         print(f"po tokens:    {mode}{state}\n              {pot}")
     print(f"js runtime:   {' '.join(filter(None, runtime)) if runtime else 'NONE FOUND — install deno or node'}")
+    # reported, not enforced: a library can be browsed, tagged, searched and have its lyrics fetched
+    # with no ffmpeg at all. It is downloading and trimming that stop, and they stop at the moment
+    # of use, which is a bad moment to find out (docs/qa-catalog.md, AP).
+    ffmpeg = cfg.resolved_ffmpeg()
+    print(f"ffmpeg:       {ffmpeg or 'NOT FOUND — downloading and trimming will fail; apt install ffmpeg'}")
     return 0
 
 

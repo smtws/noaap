@@ -1,4 +1,4 @@
-"""Turning a transcript into lines somebody can sing along to (DESIGN.md §9.45).
+"""Turning a transcript into lines somebody can sing along to (DESIGN.md §9, slice 45).
 
 From the user's own test: Deepgram drafted eleven lines for a 3:25 song, one of them a whole verse,
 with a minute of silence in the middle that nothing on the screen mentioned. These are the rules
@@ -125,7 +125,7 @@ def test_the_pause_that_breaks_a_line_is_a_setting(gap):
     assert len(lines_from_words(spec, gap=0.5)) == (1 if gap < 0.5 else 2)
 
 
-# -- what the transcriber listens to (§9.45) ------------------------------------------------------
+# -- what the transcriber listens to (§9, slice 45) ------------------------------------------------------
 
 
 def test_a_draft_listens_to_the_separated_voice_when_there_is_one(album, tmp_path, monkeypatch):

@@ -1,4 +1,4 @@
-"""Giving words back to LRCLIB (DESIGN.md §9.42), against a server of our own.
+"""Giving words back to LRCLIB (DESIGN.md §9, slice 42), against a server of our own.
 
 Nothing here reaches lrclib.net: the fake speaks their documented publish flow — a challenge with a
 prefix and a target, a token of `prefix:nonce`, and a `POST /api/publish` that checks the proof of
@@ -228,7 +228,7 @@ def test_a_publish_records_when_and_what_and_is_then_not_offered_again(album, cl
     assert got.status == "ok"
     sent = state["published"][0]["body"]
     assert sent["trackName"] == track.title and sent["syncedLyrics"].strip() == LRC.strip()
-    assert sent["duration"] == 219.14              # the file's length, not the video's (§9.35)
+    assert sent["duration"] == 219.14              # the file's length, not the video's (§9, slice 35)
     after = load_plan(album_dir).tracks[0]
     assert after.lyrics_published["sha"] == sent_sha(LRC)
     assert after.lyrics_published["at"].startswith("20")

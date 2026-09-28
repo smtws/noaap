@@ -70,7 +70,7 @@ STATIC = {
     "/icon.svg": ("icon.svg", "image/svg+xml"),
 }
 MAX_LOG = 400
-# what a saved alignment may record about the two methods that produced it (§9.44)
+# what a saved alignment may record about the two methods that produced it (§9, slice 44)
 CHECKED_KEYS = frozenset({"first_span", "second_span", "first_piled", "second_piled", "first_placed",
                           "second_placed", "lost_method", "kept_method", "lost_why", "verified_against"})
 MAX_BODY = 1 << 20
@@ -185,7 +185,7 @@ class Jobs:
                 job.state = "failed"
             finally:
                 job.finished = time.time()
-                # nothing left to do in any lane: give the graphics card back (§9.41). It costs a
+                # nothing left to do in any lane: give the graphics card back (§9, slice 41). It costs a
                 # dictionary lookup where no model was ever loaded, and the next job reloads from a
                 # warm disk in seconds — which is the right trade for a machine somebody else is using.
                 if not self.busy():
@@ -270,7 +270,7 @@ class App:
         self.details = Details(lambda: YouTube(self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running
-        # (today: what lrclib already holds for a track, §9.42). Built once, because its lyrics cache
+        # (today: what lrclib already holds for a track, §9, slice 42). Built once, because its lyrics cache
         # is a sqlite connection and an album panel asks this per track.
         self._reader: Service | None = None
         self._reader_for: Path | None = None
@@ -331,7 +331,7 @@ class App:
                     "lyrics": sum(t.lyrics in ("synced", "plain") for t in plan.tracks),
                     "length": album_length_flag(plan),  # set only when most of the album disagrees
                     "needs_choice": sum(t.error_kind == "no_audio_stream" for t in plan.tracks),
-                    # tracks where the near-miss check ran and could not decide for you (§9.46):
+                    # tracks where the near-miss check ran and could not decide for you (§9, slice 46):
                     # the words exist and nothing was taken, so they wait for a person
                     "needs_you": sum(needs_you(t) for t in plan.tracks),
                 }
@@ -350,7 +350,7 @@ class App:
         """The album as the view opens it: checked against the `.lrc` files on disk first.
 
         A sidecar edited or deleted outside the UI used to go unnoticed until some pass walked the
-        album — the row could show ♪ for words that were gone (DESIGN.md §9.30). Opening the album
+        album — the row could show ♪ for words that were gone (DESIGN.md §9, slice 30). Opening the album
         now applies the same `reconcile` rules the passes apply, so the view tells the truth at
         once; when they found something, a write job makes it durable and brings the tags along.
         """
@@ -385,16 +385,16 @@ class App:
             return None
         return {"status": track.lyrics, "lrclib_id": track.lyrics_id, "text": read_sidecar(album_dir, track) or "",
                 "owner": track.provenance.get("lyrics"), "state": track.state,
-                # who put the stamps there, when it was not a person (§9.36)
+                # who put the stamps there, when it was not a person (§9, slice 36)
                 "timed_by": track.lyrics_timed_by, "words_by": track.lyrics_words_by,
                 # timestamps written for another file point at the wrong seconds; the panel says so
-                # until the words are saved again, and never re-times anything itself (§9.34)
+                # until the words are saved again, and never re-times anything itself (§9, slice 34)
                 "timings": timings_stale(track),
                 # whether these words may be given back to lrclib, and why not when they may not
-                # (§9.42). The reason is shown, because "no button" is a worse answer than "no,
+                # (§9, slice 42). The reason is shown, because "no button" is a worse answer than "no,
                 # because these are lrclib's own words".
                 "publish": self._publish_state(album_dir, plan, track),
-                # an entry that is nearly this recording, and what was made of it (§9.46)
+                # an entry that is nearly this recording, and what was made of it (§9, slice 46)
                 "fit": track.lyrics_fit,
                 "can_check": bool(track.state == "done" and track.file_length
                                   and (track.lyrics or "none") == "none" and ALIGN in capabilities_of(self.cfg))}
@@ -457,7 +457,7 @@ class App:
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
             "musicbrainz": self.cfg.musicbrainz,
-            # Two slots, one per capability (§9.40), and everything that depends on *which* provider
+            # Two slots, one per capability (§9, slice 40), and everything that depends on *which* provider
             # is answered per slot: what it can do, whether it sends the audio away, what it charges.
             "timing": {"provider": self.cfg.timing_provider,
                        "align_provider": kind_for(self.cfg, ALIGN),
@@ -466,20 +466,20 @@ class App:
                        # asked of the provider, not of the config: an endpoint that is down, or an
                        # extra that is not installed, offers nothing and the page shows nothing
                        "capabilities": sorted(capabilities_of(self.cfg)),
-                       # whether a key is set, never the key itself (§9.37)
+                       # whether a key is set, never the key itself (§9, slice 37)
                        "keys": {v: bool(getattr(self.cfg, f"timing_{v}_key", "")) for v in VENDORS},
                        "vendors": list(VENDORS),
                        # which kinds may be chosen for which slot, so the panel offers no
-                       # provider that could never do that job (§9.40)
+                       # provider that could never do that job (§9, slice 40)
                        "offers": {kind: list(what) for kind, what in OFFERS.items()},
                        "price": {what: list(PRICES.get(kind_for(self.cfg, what), ("", "")))
                                  for what in (ALIGN, TRANSCRIBE)},
                        "sends_audio": {what: kind_for(self.cfg, what) in VENDORS
                                        for what in (ALIGN, TRANSCRIBE)},
-                       # whether every alignment is checked against a second method (§9.38): it is
+                       # whether every alignment is checked against a second method (§9, slice 38): it is
                        # the provider's answer, and it costs the user time, so the panel says so
                        "verifies": verifies_with(self.cfg)},
-            # where MusicBrainz lives, so the page can link to a recording it cannot seed (§9.43)
+            # where MusicBrainz lives, so the page can link to a recording it cannot seed (§9, slice 43)
             "musicbrainz_web": MB_WEB,
             "pot_mode": self.cfg.pot_mode,
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
@@ -520,7 +520,7 @@ class App:
             if slot not in body:
                 continue
             chosen = str(body[slot])
-            # an empty slot is legal and means "whatever timing_provider says" (§9.40)
+            # an empty slot is legal and means "whatever timing_provider says" (§9, slice 40)
             if chosen not in PROVIDERS and not (chosen == "" and slot != "timing_provider"):
                 raise ValueError(f"the timing provider must be one of {', '.join(PROVIDERS)}")
             changes[slot] = chosen
@@ -671,7 +671,7 @@ class App:
                 text = str(body.get("text", ""))
                 timed_by = str(body.get("timed_by", ""))[:120]
                 words_by = str(body.get("words_by", ""))[:120]
-                # the two methods' own figures, if this alignment was cross-checked (§9.44): only
+                # the two methods' own figures, if this alignment was cross-checked (§9, slice 44): only
                 # the handful that are evidence, only as short strings, and only from our own keys
                 sent = body.get("checked") if isinstance(body.get("checked"), dict) else {}
                 checked = {k: str(v)[:40] for k, v in sent.items() if k in CHECKED_KEYS}
@@ -725,7 +725,7 @@ class App:
                 if not track:
                     raise ValueError("no such track in this album")
                 # the same gate the page uses, asked again here: a button is a suggestion, and this
-                # one cannot be taken back (§9.42)
+                # one cannot be taken back (§9, slice 42)
                 text = (read_sidecar(found[0], track) or "").strip()
                 if why := publishable(track, text, self.reader.their_words(track)):
                     raise ValueError(f"these words cannot be published: {why}")
@@ -743,7 +743,7 @@ class App:
                     raise ValueError("no timing provider can align words — see `timing_provider` in the config")
                 text = str(body.get("text", ""))
                 # the read lane: this writes nothing, so it may run beside a download, and it can
-                # take minutes on a machine without a GPU (§9.36)
+                # take minutes on a machine without a GPU (§9, slice 36)
                 return self.jobs.submit("align", f"Align the words of {track.title}",
                                         lambda s: s.align_lyrics(source_id, video_id, text), target=source_id)
             case "lyrics_track":
@@ -878,7 +878,7 @@ class _Handler(BaseHTTPRequestHandler):
             case "/api/tracks":
                 return self._json(self.app.track_index())
             case "/api/mbseed":
-                # the fields for MusicBrainz's own release editor (§9.43). Nothing is sent from
+                # the fields for MusicBrainz's own release editor (§9, slice 43). Nothing is sent from
                 # here: the page builds a form with these and the person submits it themselves.
                 found = self.app.album(q.get("id", ""))
                 if not found:

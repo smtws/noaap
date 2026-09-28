@@ -6,7 +6,7 @@ Clearing the trim restores the original byte for byte.
 The original is kept in the track's **own** format. It used to be named `.opus` whatever the
 track was, so a track switched to the combined stream was re-cut from the previous format's
 original: ffmpeg copied Opus into a file named `.m4a` and the tagger then choked on it
-(DESIGN.md §9.20). An original whose format does not match the track is never used as a
+(DESIGN.md §9, slice 20). An original whose format does not match the track is never used as a
 source — and never invented either: it is only replaced when the file on disk is still the
 untouched download.
 """
@@ -40,7 +40,7 @@ def signature(track: PlanTrack) -> str:
 def original_path(album_dir: Path, track: PlanTrack) -> Path:
     """Where this track's untouched download is kept, in the track's own format.
 
-    Keyed by the **effective** id: a track pointed at another video (§9.34) holds another
+    Keyed by the **effective** id: a track pointed at another video (§9, slice 34) holds another
     recording, and the two must never be cut from each other's original.
     """
     return album_dir / ORIGINALS / f"{track.effective_id}.{track.ext}"

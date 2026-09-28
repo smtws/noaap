@@ -28,7 +28,7 @@ MISS_TTL = 3600
 
 
 # The site, not the web service: seeding and editing are pages a person opens, not API calls
-# (§9.43). `YTALBUM_MUSICBRAINZ_WEB=http://127.0.0.1:8796` points them at a local stand-in, which is
+# (§9, slice 43). `YTALBUM_MUSICBRAINZ_WEB=http://127.0.0.1:8796` points them at a local stand-in, which is
 # how the seeding was verified without opening a real edit form.
 WEB = (os.environ.get("YTALBUM_MUSICBRAINZ_WEB") or "https://musicbrainz.org").rstrip("/")
 # what a YouTube playlist is to a release, in their vocabulary. Left for the editor to choose: the
@@ -89,7 +89,7 @@ def seed_release(plan: Any, lengths: dict[str, float] | None = None) -> dict[str
 
 
 def seedable(plan: Any) -> str:
-    """Empty when this album may be offered to MusicBrainz; otherwise why not (§9.43)."""
+    """Empty when this album may be offered to MusicBrainz; otherwise why not (§9, slice 43)."""
     if plan.mbid:
         return "MusicBrainz already has this release"
     if plan.is_compilation:
@@ -107,7 +107,7 @@ def length_disagreement(track: Any, by: float = 10.0) -> dict[str, float] | None
     """Where the file and the recording disagree about how long the song is, by more than `by`.
 
     Seeding cannot fix this: the format covers releases, not recordings. What is possible is a link
-    to the recording's own edit page and the two numbers, so the person can decide (§9.43).
+    to the recording's own edit page and the two numbers, so the person can decide (§9, slice 43).
     """
     ours = track.file_length or track.duration
     if not (track.mbid and ours and track.mb_length):

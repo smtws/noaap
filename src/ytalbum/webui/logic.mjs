@@ -4,7 +4,7 @@
 //
 // Nothing in here touches `document`. Where a rule has a twin in Python, the twin is named in the
 // comment and `tests/shared/*.json` holds the table both sides are tested against, so the two
-// cannot drift apart (DESIGN.md §9.33).
+// cannot drift apart (DESIGN.md §9, slice 33).
 
 // -- text: folding for the library filter ------------------------------------------------
 
@@ -99,7 +99,7 @@ export function numberByDisc(discs) {
 // A row dropped among another disc's rows joins that disc, at that position. `rows` is
 // [{id, disc}] in the order they stand; the result is the new order, with the moved row's disc
 // taken from whichever neighbour it now sits beside (the one above, or the one below when it
-// landed first). What the server then does with it is service.placed (§9.32).
+// landed first). What the server then does with it is service.placed (§9, slice 32).
 export function movedRow(rows, id, overId) {
   const from = rows.findIndex((r) => r.id === id);
   const to = rows.findIndex((r) => r.id === overId);
@@ -114,7 +114,7 @@ export function movedRow(rows, id, overId) {
   return rest;
 }
 
-// -- where a track's audio comes from (§9.34) -----------------------------------------------
+// -- where a track's audio comes from (§9, slice 34) -----------------------------------------------
 
 // Twin of youtube.one_video; tests/shared/video_ids.json is the table both are tested against.
 // A playlist, a channel or anything unrecognised is not one video, and the page refuses it here
@@ -158,7 +158,7 @@ export function sourceChange(track, wanted) {
   return { to, marks, back: !wanted, lines };
 }
 
-// The panel's notice when the words beside a track were timed against another file (§9.34).
+// The panel's notice when the words beside a track were timed against another file (§9, slice 34).
 // The two lengths are only named when they really differ: a file measured again after the same
 // song was fetched from another upload can read 3:50 against 3:49 purely from rounding, and a
 // pair of numbers that look the same invites "so what?" rather than saying anything.
@@ -171,9 +171,9 @@ export function timingNotice(d) {
   return `these timings were written for a different file${drift ? `, ${fmt(t.was)} \u2192 ${fmt(t.now)}` : ""}`;
 }
 
-// -- the two clocks, and stamping to them (§9.35) -------------------------------------------
+// -- the two clocks, and stamping to them (§9, slice 35) -------------------------------------------
 //
-// A trimmed track is played from its untouched **original** (§9.15: the trim marks count from the
+// A trimmed track is played from its untouched **original** (§9, slice 15: the trim marks count from the
 // start of the video, so the player must hear the file those numbers describe), while a lyric
 // stamp counts from the start of the file on disk. The two clocks differ by exactly what was cut
 // off the front — and by the *saved* mark, not one being edited: the `.lrc` belongs to the file
@@ -321,7 +321,7 @@ export function alignNotice(timed, result) {
   const left = result.unplaced.length;
   const kept = result.kept || 0;
   // the check is an extra: when it could not run at all the alignment still stands, and saying so is
-  // the difference between "checked and agreed" and "nobody looked" (§9.38)
+  // the difference between "checked and agreed" and "nobody looked" (§9, slice 38)
   const checked = whole || (p.unchecked
     ? ` It could not be checked against a second method (${p.unchecked}), so this is one method's word.`
     : p.disagreed && Number(p.disagreed) > 0
@@ -370,7 +370,7 @@ export function draftNotice(timed) {
 // -- what a panel offers --------------------------------------------------------------------
 
 // The lyrics panel, from what /api/lyrics answered: what the header says, whose the words are,
-// and which actions may be offered. The rules are §9.21's — the user's words are not lrclib's to
+// and which actions may be offered. The rules are §9, slice 21's — the user's words are not lrclib's to
 // replace, and there is nothing to reject when no entry was matched.
 export function lyricsPanelState(d) {
   const mine = d.owner === "user";
@@ -527,7 +527,7 @@ export function fixConfirm(track, fix) {
 
 // The badge on a field: a button back to what ytalbum derived, a plain badge, or nothing.
 // Nothing is offered where nothing was derived — an album from before `auto` was recorded has
-// no value to go back to (§9.29).
+// no value to go back to (§9, slice 29).
 export function resetKind(provenance, derived) {
   if (provenance !== "user") return provenance ? "badge" : null;
   return derived === undefined || derived === null || derived === "" ? "badge" : "button";

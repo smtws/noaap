@@ -1,6 +1,6 @@
 {
  "_source": "a real POST /v1/listen for one 3:38 track, 2026-09-27 — the SHAPE, trimmed to twelve words around the largest hole. The full transcript is a record's lyrics and is not kept here.",
- "_note": "the 57 s gap in the middle is the point: lines are built from the word timings (§9.45), a pause ends a line, and a hole this long becomes a marker line in the draft instead of the next line quietly jumping a minute.",
+ "_note": "the 57 s gap in the middle is the point: lines are built from the word timings (§9, slice 45), a pause ends a line, and a hole this long becomes a marker line in the draft instead of the next line quietly jumping a minute.",
  "metadata": {
   "model_info": {
    "name": "nova-3"

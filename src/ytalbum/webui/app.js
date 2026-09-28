@@ -112,7 +112,7 @@ function renderActivity() {
 
 // A job in the read lane changes nothing on disk, so the album panel must NOT be rebuilt when one
 // finishes: an alignment's or a draft's whole purpose is to put text into the open editor, and a
-// rebuild would throw that text away before the user could look at it (§9.36). The lane comes from
+// rebuild would throw that text away before the user could look at it (§9, slice 36). The lane comes from
 // the server with every job, so this cannot drift from the list the server actually uses.
 let ranWrite = false;
 
@@ -265,7 +265,7 @@ $("#length-filter").addEventListener("click", () => {
   renderLibrary();
 });
 
-// The near-miss check hands two verdicts back to a person (§9.46). Before this there was no way to
+// The near-miss check hands two verdicts back to a person (§9, slice 46). Before this there was no way to
 // find them: 42 tracks across 246 albums, and nothing listed them.
 let needsYouOnly = false;
 
@@ -559,7 +559,7 @@ function provBadge(p) {
 }
 
 // A value you overrode is yours until you say otherwise — so the badge that says "you" is also the
-// way back to what ytalbum found. Nothing is offered where nothing was derived (DESIGN.md §9.29).
+// way back to what ytalbum found. Nothing is offered where nothing was derived (DESIGN.md §9, slice 29).
 function resetMark(plan, track, name, label = null) {
   const owner = track || plan;
   const derived = owner.auto?.[name];
@@ -577,7 +577,7 @@ function resetMark(plan, track, name, label = null) {
 
 async function resetField(plan, track, name, button, what) {
   if (name === "source") {
-    // going back is a source change like any other, and costs the same (§9.34)
+    // going back is a source change like any other, and costs the same (§9, slice 34)
     const change = sourceChange(track, null);
     if (change && !confirm(change.lines.join("\n"))) return;
   }
@@ -590,7 +590,7 @@ async function resetField(plan, track, name, button, what) {
   await refreshAlbumPanel();
 }
 
-// -- where a track's audio comes from (§9.34) ---------------------------------------------
+// -- where a track's audio comes from (§9, slice 34) ---------------------------------------------
 //
 // The playlist's video stays the track's identity — its place, its name, its match. This only
 // says which recording to take the audio from, for the case the playlist holds the film cut and
@@ -669,7 +669,7 @@ const HAS_WORDS = (t) => t.lyrics === "synced" || t.lyrics === "plain";
 const openLyrics = new Set(); // video ids whose lyrics panel is open, so a refresh keeps them
 
 // A near-miss the check handed back: the words exist, nothing was taken, and only a person can
-// settle it (§9.46). The row says so, because the panel is two clicks away and 42 of these were
+// settle it (§9, slice 46). The row says so, because the panel is two clicks away and 42 of these were
 // sitting in this library with nothing pointing at them.
 const NEEDS_YOU = (t) => !HAS_WORDS(t)
   && ["unclear", "shown"].includes((t.lyrics_fit || {}).decided);
@@ -746,7 +746,7 @@ async function reopenLyrics() {
 async function lyricsRow(p, t, editing = false, draft = null) {
   const d = await api(`/api/lyrics?id=${encodeURIComponent(p.source_id)}&v=${encodeURIComponent(t.video_id)}`);
   // a draft is not on the disk and must not look as if it were: it opens the editor over whatever
-  // the server has, and only a Save puts it anywhere (§9.37)
+  // the server has, and only a Save puts it anywhere (§9, slice 37)
   if (draft) Object.assign(d, { text: draft.text, words_by: draft.by, draft: draft.notice });
   return h("tr", { class: "lyrics", "data-id": t.video_id }, h("td", { colspan: "8" }, lyricsPanel(p, t, d, editing)));
 }
@@ -877,7 +877,7 @@ async function lyricsTrack(button, p, t, reject) {
   await refreshAlbumPanel(); // the panel comes back with whatever lrclib answered this time
 }
 
-// The words being edited are what playback follows while the editor is open (§9.39), so the list
+// The words being edited are what playback follows while the editor is open (§9, slice 39), so the list
 // beside the textarea is drawn from the textarea and redrawn as it changes. `input` does not fire for
 // an assignment to `.value`, which is how every tool in here writes, so they all go through
 // `editorText` and the listener sees their work too.
@@ -948,7 +948,7 @@ function lyricsEditor(p, t, d) {
       h("span", { class: "muted" }, "A line like [01:23.4] Words becomes clickable and follows the song.")));
 }
 
-// -- stamping the words to the file's clock (§9.35) ------------------------------------------
+// -- stamping the words to the file's clock (§9, slice 35) ------------------------------------------
 //
 // A trimmed track plays from its untouched original, so the player's display is the video's clock
 // while a stamp belongs to the file on disk. Nobody should read one clock and type the other: the
@@ -1001,8 +1001,8 @@ function shiftStamps(area, by) {
 }
 
 // Only offered where a provider says it can do it; with the default provider (`none`) there is no
-// button at all and the page is what it was before any of this existed (§9.36). Each capability asks
-// its own slot (§9.40): aligning and drafting can be two different providers, and everything that
+// button at all and the page is what it was before any of this existed (§9, slice 36). Each capability asks
+// its own slot (§9, slice 40): aligning and drafting can be two different providers, and everything that
 // follows from *which* — the name in the confirm, whether the audio leaves, the price — follows the
 // slot, never "the provider".
 const canAlign = () => (state.settings?.timing?.capabilities || []).includes("align");
@@ -1063,7 +1063,7 @@ async function alignWords(button, p, t, area, notice, timing) {
   editorText(area, got.text);
   timing.by = job.result.by || "";
   // what the two methods said about themselves, carried to the Save so the library keeps the
-  // evidence and not only the verdict (§9.44)
+  // evidence and not only the verdict (§9, slice 44)
   timing.checked = timed.parameters || null;
   notice.textContent = `⚠ ${alignNotice(timed, got)}`;
   area.focus();
@@ -1160,7 +1160,7 @@ async function seekLyric(p, t, at) {
   const playing = queue[qi];
   // the lyrics were matched against the file as it is on disk; when that file was cut, the
   // player is holding the original, so the trim has to be added back to reach the same spot —
-  // the trim the file was *cut* to, not a mark someone is still placing (§9.35)
+  // the trim the file was *cut* to, not a mark someone is still placing (§9, slice 35)
   const target = at + trimOffset(playing);
   const go = () => { audio.currentTime = target; audio.play().catch(() => {}); };
   if (audio.readyState >= 1) go();
@@ -1251,7 +1251,7 @@ function renderAlbum() {
 // Pointer events, not HTML5 drag-and-drop, because the latter does not exist on touch. The row
 // is moved in the table as the pointer passes other rows, so what you see is the arrangement
 // you will get; the position column is renumbered on every move, per disc, and a row dropped
-// among another disc's rows takes that disc (DESIGN.md §9.32). Nothing is saved until the
+// among another disc's rows takes that disc (DESIGN.md §9, slice 32). Nothing is saved until the
 // album's save, exactly as a typed position is not.
 let rowDrag = null;  // NB the trim handles have their own `dragging`
 const movedRows = new Set();  // rows the user has put somewhere since the last save
@@ -1391,7 +1391,7 @@ function lengthChip(t) {
   const label = Math.round(Math.abs(gap)) === 0 ? "0:00" : `${gap > 0 ? "+" : "−"}${asTime(Math.round(Math.abs(gap)))}`;
   const title = `${sources.filter(Boolean).join(" · ")} · this file ${asTime(ours)}${why}`;
   // Where the gap is large and MusicBrainz knows this recording, the chip is also the way to their
-  // page (§9.43). One place for one fact: a second badge would have printed the same two numbers
+  // page (§9, slice 43). One place for one fact: a second badge would have printed the same two numbers
   // beside it with the opposite implication, which is how the first version of this looked.
   const fix = lengthFix(t);
   if (!fix) return h("span", { class: `len ${klass}`, title }, label);
@@ -1483,7 +1483,7 @@ function showResult(job) {
 }
 
 // What a fetch would write, before anything is downloaded: the same plan the fetch then writes,
-// because it comes from the same code path with `dry` set (DESIGN.md §9.28).
+// because it comes from the same code path with `dry` set (DESIGN.md §9, slice 28).
 function previewView(p, close, known) {
   const gone = p.tracks.filter((t) => t.in_source === false);
   const rows = p.tracks.map((t) => h("tr", { class: t.in_source === false ? "muted" : "" },
@@ -1631,8 +1631,8 @@ const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromiu
 function renderSettings() {} // the panel is built when opened, so polling never overwrites what you type
 
 // What each provider row says under its label: what that choice means for the audio, and — for the
-// ones that charge — their list price with the date it was read (§9.37). One row per capability
-// (§9.40), because the two can be different providers and each has its own answer.
+// ones that charge — their list price with the date it was read (§9, slice 37). One row per capability
+// (§9, slice 40), because the two can be different providers and each has its own answer.
 function timingHelp(st, what) {
   const base = what === "align"
     ? "who may place timestamps on the words you have: nobody, a model on this machine (the "
@@ -1640,7 +1640,7 @@ function timingHelp(st, what) {
     : "who may write down the words of a track that has none — a guess, offered only where there is "
       + "nothing to lose";
   // whether a second method checks every alignment is worth a sentence: it changes what the user
-  // gets (fewer stamps, and only agreed ones) and how long they wait (§9.38)
+  // gets (fewer stamps, and only agreed ones) and how long they wait (§9, slice 38)
   const second = what === "align" && st.timing?.verifies
     ? " Every alignment is checked against a second method here, which takes about half again as long;"
       + " lines the two disagree about come back without a stamp."
@@ -1709,7 +1709,7 @@ async function saveSettings(ev) {
       library: f.library.value, cookies_from_browser: f.cookies_from_browser.value, musicbrainz: f.musicbrainz.checked,
       pot_mode: f.pot_mode.value, pot_idle_minutes: Number(f.pot_idle_minutes.value), concurrency: Number(f.concurrency.value),
       // the two slots are what the page writes now; `timing_provider` stays in the config as the
-      // fallback for whatever was there before, and is not touched from here (§9.40)
+      // fallback for whatever was there before, and is not touched from here (§9, slice 40)
       timing_align_provider: f.timing_align_provider.value,
       timing_draft_provider: f.timing_draft_provider.value,
       timing_endpoint: f.timing_endpoint.value.trim(),

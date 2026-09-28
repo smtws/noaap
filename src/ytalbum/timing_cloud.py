@@ -1,4 +1,4 @@
-"""Timing providers that are somebody else's computer (DESIGN.md §9.37).
+"""Timing providers that are somebody else's computer (DESIGN.md §9, slice 37).
 
 Two of them, because the two capabilities have two different markets:
 
@@ -203,7 +203,7 @@ class DeepgramTiming(CloudTiming):
             check()
         alternative = (((body.get("results") or {}).get("channels") or [{}])[0].get("alternatives") or [{}])[0]
         words = alternative.get("words") or []
-        # **Lines come from the word timings, never from the sentences** (§9.45). Their sentences are
+        # **Lines come from the word timings, never from the sentences** (§9, slice 45). Their sentences are
         # punctuation, and a song's lines are pauses: the user's first real draft came back as eleven
         # lines for a 3:25 song, one of them a whole verse, because a full stop was the only break
         # the vendor offered. The sentences are still asked for — they are the fallback when a model

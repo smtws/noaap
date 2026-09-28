@@ -57,10 +57,10 @@ class Config:
     pot_mode: str = "server"
     pot_port: int = 4416
     pot_idle: int = 300
-    # who may put words on a clock (DESIGN.md §9.36). "none" is the default and the app is exactly
+    # who may put words on a clock (DESIGN.md §9, slice 36). "none" is the default and the app is exactly
     # what it was without it; "local" needs the `ytalbum[timing]` extra; "http" is another machine
     # running `ytalbum timing-serve`. Nothing is imported until one of the other two is chosen.
-    # Two slots, because the two capabilities are bought in different places (§9.40): the machine
+    # Two slots, because the two capabilities are bought in different places (§9, slice 40): the machine
     # that aligns best is rarely the one that transcribes best. `timing_provider` is still read and
     # still means both, so nobody's config file breaks.
     timing_provider: str = "none"
@@ -68,16 +68,16 @@ class Config:
     timing_draft_provider: str = ""
     timing_endpoint: str | None = None
     timing_device: str = "auto"  # "auto" | "cpu" | "cuda", for the local provider
-    # keys for the providers that are somebody else's computer (§9.37). They are never sent to the
+    # keys for the providers that are somebody else's computer (§9, slice 37). They are never sent to the
     # page, never logged, and only needed by the provider that is actually configured.
     timing_elevenlabs_key: str = ""
     timing_deepgram_key: str = ""
     # check an alignment against a second method when the `timing-check` extra is installed
-    # (§9.38). None = do it whenever it is available; false = never; true = and complain if it is not.
+    # (§9, slice 38). None = do it whenever it is available; false = never; true = and complain if it is not.
     timing_verify: bool | None = None
     timing_verify_threshold: float = 2.0  # seconds two methods may differ by and still agree
     timing_verify_lost: float = 5.0  # seconds past which one of them has lost the song, not drifted
-    # how long `ytalbum timing-serve` keeps its models loaded with nothing to do (§9.41). 0 = for
+    # how long `ytalbum timing-serve` keeps its models loaded with nothing to do (§9, slice 41). 0 = for
     # ever, which is what a machine dedicated to this wants; the app's own service needs no timer,
     # because it builds a provider per job.
     timing_idle_minutes: float = 5.0
@@ -92,6 +92,15 @@ class Config:
         """The bgutil `server` dir with a built generate_once.js: configured, or inside the project."""
         candidates = [self.pot_provider_home] if self.pot_provider_home else [PROJECT_POT_HOME]
         return next((c for c in candidates if c and (c / "build" / "generate_once.js").is_file()), None)
+
+    def resolved_ffmpeg(self) -> str | None:
+        """Where ffmpeg is, or None.
+
+        Nothing in ytalbum can be configured to point elsewhere: `trim.py` runs the bare name and
+        yt-dlp looks it up the same way, so `PATH` is the whole answer. It is reported rather than
+        enforced, because everything except downloading and trimming works without it.
+        """
+        return shutil.which("ffmpeg")
 
     def resolved_js_runtime(self) -> tuple[str, str | None] | None:
         """(name, path) of the runtime to hand to yt-dlp, or None if none is available."""

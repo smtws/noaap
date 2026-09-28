@@ -1,4 +1,4 @@
-// Tracks the near-miss check handed back to a person (§9.46). Before P41 nothing listed them:
+// Tracks the near-miss check handed back to a person (§9, slice 46). Before P41 nothing listed them:
 // 42 across 246 albums, each two clicks inside an album nobody had a reason to open.
 import { test } from "node:test";
 import assert from "node:assert/strict";

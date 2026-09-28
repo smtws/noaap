@@ -94,7 +94,7 @@ def one_video(text: str) -> str | None:
 
     Deliberately strict: a playlist, a channel, a search or anything unrecognised is **not** one
     video and comes back as None, because the caller is choosing *which recording to download*
-    (DESIGN.md §9.34). A watch URL that also carries `list=` is still one video — that is the
+    (DESIGN.md §9, slice 34). A watch URL that also carries `list=` is still one video — that is the
     link YouTube hands you from inside a playlist — and the playlist part is ignored.
     """
     value = (text or "").strip()
@@ -373,7 +373,7 @@ class YouTube:
 
         A track whose audio comes from another video (`source_override`) needs them: the uploader
         decides which channel-wide trim applies to it, and the length is what the page draws the
-        trim bar with until the file has been measured (DESIGN.md §9.34).
+        trim bar with until the file has been measured (DESIGN.md §9, slice 34).
         """
         self.check()
         with YoutubeDL(self._params(noplaylist=True)) as ydl:

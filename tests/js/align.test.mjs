@@ -1,5 +1,5 @@
 // Putting a provider's proposal into the editor: the walk down the lines, and what it says about
-// itself. The provider is on the other side of a boundary (DESIGN.md §9.36) — this is the page's
+// itself. The provider is on the other side of a boundary (DESIGN.md §9, slice 36) — this is the page's
 // half, and it is pure.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -114,7 +114,7 @@ test("and says nothing it cannot know", () => {
   assert.doesNotMatch(text, /listened to/);
 });
 
-// -- a second opinion (§9.38) -----------------------------------------------------------------
+// -- a second opinion (§9, slice 38) -----------------------------------------------------------------
 
 const checked = (p, lines) => ({ provider: "local", model: "wav2vec2 + large-v3", parameters: p, lines });
 

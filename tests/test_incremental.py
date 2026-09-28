@@ -34,7 +34,7 @@ class FakeYouTube:
         return out
 
     def probe(self, video_id: str) -> Entry:
-        """What the real client answers about one video: enough to follow an uploader (§9.34)."""
+        """What the real client answers about one video: enough to follow an uploader (§9, slice 34)."""
         return Entry(video_id=video_id, position=1, title=video_id, channel="Napalm Records", duration=1.0)
 
     def fetch_bytes(self, url: str) -> bytes:

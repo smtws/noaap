@@ -1,4 +1,4 @@
-// Giving the words back: what the page says before anything leaves (DESIGN.md §9.42). The server
+// Giving the words back: what the page says before anything leaves (DESIGN.md §9, slice 42). The server
 // decides whether it may be offered at all; this half is only how it is put to the user.
 import { test } from "node:test";
 import assert from "node:assert/strict";

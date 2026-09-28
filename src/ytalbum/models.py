@@ -152,25 +152,25 @@ class PlanTrack:
     lyrics_rejected: list[int] = field(default_factory=list)  # lrclib entries the user said are not this song
     file_length: float | None = None  # seconds of audio actually on disk, after any trim
     # another video to take the audio from, when the playlist's is not the recording you want
-    # (a film cut, a live intro). The playlist video stays the track's identity (DESIGN.md §9.34).
+    # (a film cut, a live intro). The playlist video stays the track's identity (DESIGN.md §9, slice 34).
     source_override: str | None = None
     lyrics_for_source: str | None = None  # the video the sidecar's timings were written against
     lyrics_for_length: float | None = None  # and the length of the file at that moment
-    lyrics_timed_by: str | None = None  # "local/WAV2VEC2…" when a provider placed the stamps (§9.36)
-    lyrics_words_by: str | None = None  # and when a provider *drafted the words* themselves (§9.37)
-    # what was given back to lrclib, and when: {"at": ISO, "sha": of the bytes sent} (§9.42). Kept so
+    lyrics_timed_by: str | None = None  # "local/WAV2VEC2…" when a provider placed the stamps (§9, slice 36)
+    lyrics_words_by: str | None = None  # and when a provider *drafted the words* themselves (§9, slice 37)
+    # what was given back to lrclib, and when: {"at": ISO, "sha": of the bytes sent} (§9, slice 42). Kept so
     # the same words are never offered for publishing twice — a publish cannot be taken back.
     lyrics_published: dict[str, str] | None = None
     # what the two methods' own answers looked like when a cross-checked alignment was saved
-    # (§9.44): both spans, both piling figures, and which method lost the song if either did. The
+    # (§9, slice 44): both spans, both piling figures, and which method lost the song if either did. The
     # library then accumulates the evidence sixteen tracks cannot give, one saved alignment at a time.
     lyrics_checked: dict[str, str] | None = None
-    # an lrclib entry that is nearly this recording, and what an alignment made of it (§9.46):
+    # an lrclib entry that is nearly this recording, and what an alignment made of it (§9, slice 46):
     # {entry, ours, theirs, span, unplaced, decided, why}. Kept so a pass never asks twice and a
     # user who disagrees with a verdict has the numbers in front of them.
     lyrics_fit: dict[str, str] | None = None
     # the date a near-miss pass asked lrclib and was told there is nothing else for this title
-    # (§9.46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
+    # (§9, slice 46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
     # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —
     # 878 of this library's 1089 wordless tracks are in this state, and they were asked every run.
     lyrics_no_entry: str | None = None

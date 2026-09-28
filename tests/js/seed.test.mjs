@@ -1,4 +1,4 @@
-// Offering an album to MusicBrainz, the page's half (DESIGN.md §9.43). ytalbum submits nothing:
+// Offering an album to MusicBrainz, the page's half (DESIGN.md §9, slice 43). ytalbum submits nothing:
 // these functions decide when to offer, and what is said before their form opens.
 import { test } from "node:test";
 import assert from "node:assert/strict";

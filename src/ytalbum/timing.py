@@ -1,4 +1,4 @@
-"""Putting words on a clock — the boundary, not the machinery (DESIGN.md §9.36).
+"""Putting words on a clock — the boundary, not the machinery (DESIGN.md §9, slice 36).
 
 Two capabilities, because they are two jobs with two different markets: **transcribe** derives words
 from audio, **align** places words you already have. ytalbum wants the second far more often —
@@ -36,7 +36,7 @@ VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the au
 # What a kind of provider can ever be asked for, which is not the same as what it can do today: the
 # two local ones depend on what is installed or on the machine at the other end, and `capabilities()`
 # answers that at runtime. This is for the settings panel, so that the slot for drafting words does
-# not offer a provider that only aligns, and the slot for aligning does not offer Deepgram (§9.40).
+# not offer a provider that only aligns, and the slot for aligning does not offer Deepgram (§9, slice 40).
 OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE), "http": (ALIGN, TRANSCRIBE),
           "elevenlabs": (ALIGN, TRANSCRIBE), "deepgram": (TRANSCRIBE,)}
 
@@ -52,7 +52,7 @@ class TimingUnavailable(RuntimeError):
 
 @dataclass
 class TimedLine:
-    """One line of words and where it starts, in the **file's** clock (§9.35).
+    """One line of words and where it starts, in the **file's** clock (§9, slice 35).
 
     `start is None` means the provider would not place it. That is a first-class answer: every
     method measured in the spike fails on some tracks, and a guess would be indistinguishable from
@@ -167,12 +167,12 @@ def plain_lines(text: str) -> list[str]:
     """The words an aligner should be given: no blank lines, no stamps already on them.
 
     Blank lines are dropped rather than passed through as empty ones, because "could not place"
-    should mean what it says; the page puts the stamps back on the lines it sent (§9.36).
+    should mean what it says; the page puts the stamps back on the lines it sent (§9, slice 36).
     """
     return [STAMP.sub("", line).strip() for line in (text or "").splitlines() if STAMP.sub("", line).strip()]
 
 
-# -- two methods, checked against each other (§9.38) -----------------------------------------
+# -- two methods, checked against each other (§9, slice 38) -----------------------------------------
 
 # Seconds two methods may differ by and still count as agreeing. 2.0, from the 16-track run in
 # catalog Y and not from taste: the distances come in two shapes — jitter under ~1.5 s, where the CTC
@@ -188,9 +188,9 @@ VERIFY_LOST = 5.0
 MOSTLY = 0.5  # more than half the lines LOST means the two are not disagreeing, they are elsewhere
 
 
-# -- how much a method's own output believes itself (§9.44) -----------------------------------
+# -- how much a method's own output believes itself (§9, slice 44) -----------------------------------
 #
-# When two aligners place a track 30-120 s apart, one of them has lost the song and §9.38 had no way
+# When two aligners place a track 30-120 s apart, one of them has lost the song and §9, slice 38 had no way
 # to say which, so it kept the primary by policy. These are the signals that decide it by evidence.
 # Three of them are method-independent arithmetic on the stamps; two are what each method already
 # says about itself; the strongest is the one that asks the audio.
@@ -283,7 +283,7 @@ def _at_onset(at: float, sung: list[tuple[float, float]], within: float = ONSET_
 
 
 def lost(signals: Signals) -> str:
-    """Why this method looks like it lost the song, or empty if it does not (§9.44).
+    """Why this method looks like it lost the song, or empty if it does not (§9, slice 44).
 
     Deliberately not a score: each rule is a sentence a person can check against the track, and the
     first one that fires is the one the notice says.
@@ -306,7 +306,7 @@ def which_lost(first: Signals, second: Signals) -> tuple[str, str]:
     """Which of the two lost the song: ("first"|"second"|"", reason).
 
     **Only when exactly one of them looks lost.** If both do, or neither, there is no evidence here
-    to prefer one over the other and the caller falls back to the policy it had before (§9.38) —
+    to prefer one over the other and the caller falls back to the policy it had before (§9, slice 38) —
     which is the whole discipline of this: a signal that cannot tell says so.
     """
     why_first, why_second = lost(first), lost(second)
@@ -329,7 +329,7 @@ def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
 
     **One of them has lost the song** (more than half the lines that far apart). Then the per-line
     rule is switched off and one method's stamps are kept whole. *Which* one is decided by
-    `evidence` when it can decide (§9.44): each method's own answer carries signals — stamps where
+    `evidence` when it can decide (§9, slice 44): each method's own answer carries signals — stamps where
     nobody sings, stamps going backwards, stamps past the end of the file — and when exactly one
     method looks lost by them, **the other one's stamps are kept** and the notice says which lost
     and why. When the signals cannot tell, or there are none, the primary is kept as before.
@@ -356,7 +356,7 @@ def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
         if apart > lost_beyond:
             gone += 1
     elsewhere = comparable > 0 and gone > comparable * MOSTLY
-    # which of them lost it, when the evidence can say (§9.44)
+    # which of them lost it, when the evidence can say (§9, slice 44)
     loser, why = which_lost(*evidence) if (elsewhere and evidence) else ("", "")
     winner = second if loser == "first" else primary
     source = list(winner.lines)
@@ -387,7 +387,7 @@ def verified(primary: Timed, second: Timed, threshold: float = VERIFY_THRESHOLD,
     elif elsewhere:
         parameters["one_method"] = "a second method disagreed about the whole track"
     # the stamps are the kept method's, so the record of whose clock this is says that method —
-    # otherwise a sidecar would claim a clock it does not carry (§9.44)
+    # otherwise a sidecar would claim a clock it does not carry (§9, slice 44)
     model = f"{primary.model} + {second.model}" if second else primary.model
     if elsewhere and loser:
         model = f"{winner.model} (the other method lost the song)"
@@ -433,7 +433,7 @@ def line_starts(owners: list[int], wanted: list[str], got: list[dict[str, Any]])
 SENTENCE_END = re.compile(r"[.!?…]$")
 
 
-# A lyric line is a phrase between two pauses, not a sentence between two full stops (§9.45). The
+# A lyric line is a phrase between two pauses, not a sentence between two full stops (§9, slice 45). The
 # user's own test showed what the difference costs: one "line" of a draft was a whole verse of three
 # sung lines, because the vendor's punctuation put a full stop there and nowhere else.
 LINE_GAP = 0.6        # a pause this long between two words ends the line
@@ -503,7 +503,7 @@ def lines_from_words(words: list[dict[str, Any]], gap: float = LINE_GAP,
 
 def with_gaps(lines: list[TimedLine], length: float | None = None,
               gap: float = SILENCE_GAP) -> list[TimedLine]:
-    """Say where the machine heard nothing, instead of letting the next line jump a minute (§9.45).
+    """Say where the machine heard nothing, instead of letting the next line jump a minute (§9, slice 45).
 
     A draft that goes from 0:23 to 1:16 without a word looks, in the editor, exactly like a song
     with a long instrumental — and exactly like a transcriber that missed the whole chorus. It was
@@ -614,7 +614,7 @@ class HttpTiming:
 
 
 def kind_for(cfg: Any, what: str = "") -> str:
-    """Which provider is configured for a capability (§9.40).
+    """Which provider is configured for a capability (§9, slice 40).
 
     Two slots — `timing_align_provider` and `timing_draft_provider` — because the two capabilities
     are bought in different places: the machine that aligns best (`local`, free, needs the models) is
@@ -667,7 +667,7 @@ def capabilities_of(cfg: Any) -> frozenset[str]:
 
 
 def release_gpu_memory() -> bool:
-    """Give the graphics card back when nothing is running (§9.41, backlog 18).
+    """Give the graphics card back when nothing is running (§9, slice 41, backlog 18).
 
     A provider is built per job and dropped with it, so the model weights go by themselves — but
     torch keeps what it allocated in its own pool, and a desktop app sitting on 3 GB of an 8 GB card
@@ -694,7 +694,7 @@ def release_gpu_memory() -> bool:
 
 
 def verifies_with(cfg: Any) -> bool:
-    """Whether an alignment from this provider is checked against a second method (§9.38).
+    """Whether an alignment from this provider is checked against a second method (§9, slice 38).
 
     Asked of the provider, because the answer belongs to the machine doing the work: `local` says yes
     when the second extra is installed, `http` repeats what the serving machine reported, and a vendor

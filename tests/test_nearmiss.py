@@ -1,4 +1,4 @@
-"""An lrclib entry that is nearly this recording (DESIGN.md §9.46).
+"""An lrclib entry that is nearly this recording (DESIGN.md §9, slice 46).
 
 The fixture is the measurement itself: 203 real candidates from this library, each with the two
 numbers an alignment produced for it. No model runs here — the decision is a function of those two

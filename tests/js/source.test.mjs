@@ -1,5 +1,5 @@
 // Where a track's audio comes from: the parser the page refuses a bad paste with, and the words
-// it asks the user to confirm before a switch throws the old file's work away (DESIGN.md §9.34).
+// it asks the user to confirm before a switch throws the old file's work away (DESIGN.md §9, slice 34).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

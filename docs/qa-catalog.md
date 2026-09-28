@@ -2590,14 +2590,50 @@ never the real library.
 
 ### What this pass did not cover
 
-Only `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `DESIGN.md` and `docs/`. **Code comments still
-write `§9.44`**, which the docs no longer do — changing them is a code edit and this package is
-documentation only. No screenshot was retaken: nothing the fixes describe is visible in one.
+Only `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `DESIGN.md` and `docs/`. Code comments were
+left writing the old form, which is a code edit — **done in P45 (AP), 204 references across 40
+files, with a test that keeps the two in step.** No screenshot was retaken: nothing the fixes
+describe is visible in one.
+
+## AP. The half of the cold read that was a code change (P45)
+
+Two items from AO that could not go in a documentation-only package.
+
+- [x] **AP1 · M** — `ytalbum config` checks ffmpeg
+
+  `Config.resolved_ffmpeg()` is `shutil.which("ffmpeg")` and nothing more, because nothing in
+  ytalbum can be pointed elsewhere: `trim.py` runs the bare name and yt-dlp looks it up the same
+  way, so `PATH` is the whole answer.
+
+  It is **reported, not required**. A library can be browsed, tagged, searched and have its lyrics
+  fetched with no ffmpeg at all; downloading and trimming are what stop, and they stopped at the
+  moment of use before this. So `config` still exits 0 and the line says which two things break and
+  how to fix it, alongside the JS runtime, which has always been reported the same way.
+  - `ffmpeg:       /usr/bin/ffmpeg`
+  - `ffmpeg:       NOT FOUND — downloading and trimming will fail; apt install ffmpeg`
+  - **result:** pass, both observed with `shutil.which` patched and once for real with ffmpeg off `PATH`
+
+- [x] **AP2 · M** — the code writes slice references the way the docs do
+
+  **204 references across 40 files** — `src/`, `webui/`, `tests/`, and two fixture `_note` strings —
+  rewritten from the bare section-dot-number form to `§9, slice N`. A test now fails on the old form
+  anywhere in the tree, so the docs and the code cannot drift apart again.
+  - **result:** pass, and the guard verified by adding an offending comment and watching it fail
+
+### One mistake worth recording
+
+The guard's first version failed on **its own docstring**, which spelled the bad form out as an
+example. That is the `pkill -f` mistake in another costume — a scanner that matches its own
+description — and the catalog already carries the original. The docstring now describes the form in
+words. Separately, `git checkout <file>` was used twice to undo a test edit and threw away an
+uncommitted fix in the same file both times; it is not an undo for a working tree with real work in
+it.
 
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AP cases (P45: the half of the cold read that was code) | 2 | 0 in the software; 1 of my own (a scanner that matched its own docstring) | `ytalbum config` now reports ffmpeg — found, or NOT FOUND with the two things that break — and still exits 0, because ffmpeg is reported and not required. 204 slice references across 40 files brought into line with the docs, with a test that keeps them there. 786 pytest + 91 node. |
 | 2026-09-28 | the AO cases (P44: a cold reader on a fresh clone) | 3 | 24 documentation faults found, 24 fixed | A throwaway session installed v0.7.0 from the README and read it cold. Five stale, nine missing, ten unclear. One number in the brief was wrong: **213 tests skip without ffmpeg**, not 4 — measured, and it explains why CONTRIBUTING said the suite takes "a few seconds". Docs only; no code changed. 780 pytest + 91 node. |
 | 2026-09-28 | the AN cases (P43: the plan format, pinned) | 4 | 0 | Twelve real plans, 20 shapes, 55 cases. Over 246 real plans a round trip is **additive only** — 140 byte-identical, 106 gaining defaults, 0 losing or changing anything. An unknown field used to raise `TypeError` and is now carried through; an unknown schema is still refused. `ytalbum plan --verify` writes nothing, verified by hashing the plans before and after. 780 pytest + 91 node. |
 | 2026-09-28 | the AM cases (P42: where YouTube is assumed) | 3 | n/a — read-only inventory, no code under test | 895 marked lines in 49 files (423 src, 472 tests). `youtube.py` is already a seam only four modules import; the real coupling is `video_id` as identity, the `yt_*` provenance names, and a classifier that reads a channel. Everything downstream of the plan — lyrics, timing, MB, trim, tags, the editor — is already source-neutral. Seven disk leaks, one expensive (`youtube_id` in every audio file). |

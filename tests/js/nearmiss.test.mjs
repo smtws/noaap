@@ -1,4 +1,4 @@
-// What the panel says about an entry that is nearly this recording (DESIGN.md §9.46). The server
+// What the panel says about an entry that is nearly this recording (DESIGN.md §9, slice 46). The server
 // decides; these sentences only report what it decided, including when it decided nothing.
 import { test } from "node:test";
 import assert from "node:assert/strict";

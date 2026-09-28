@@ -1,5 +1,5 @@
 // The editor's own clock: while the words are being edited, the textarea is what playback follows
-// (DESIGN.md §9.39). Both halves are pure — the page's half is a list drawn from these.
+// (DESIGN.md §9, slice 39). Both halves are pure — the page's half is a list drawn from these.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

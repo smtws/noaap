@@ -1,4 +1,4 @@
-"""The page's own logic, run by node. One command still runs everything (DESIGN.md §9.33).
+"""The page's own logic, run by node. One command still runs everything (DESIGN.md §9, slice 33).
 
 `src/ytalbum/webui/logic.mjs` holds what the page computes rather than draws; `tests/js/` checks
 it with node's built-in runner — no npm dependency, no build step. This file is the bridge: it

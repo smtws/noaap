@@ -151,7 +151,7 @@ def test_elevenlabs_transcribes_words_and_leaves_out_the_noise(audio):
 
 
 def test_deepgram_lines_come_from_the_word_timings_not_the_sentences(audio):
-    """A song's lines are pauses, not full stops (§9.45).
+    """A song's lines are pauses, not full stops (§9, slice 45).
 
     Here the two agree — the fixture's sentences and its 0.6 s pause fall in the same place — and
     what matters is that the *pause* is what produced the break: `grouped_by` says words, and the
@@ -296,7 +296,7 @@ def test_a_key_never_reaches_the_page_or_the_log(album, tmp_path, monkeypatch):
     settings = app.settings()
     assert settings["timing"]["keys"] == {"elevenlabs": True, "deepgram": False}
     assert "super-secret" not in json.dumps(settings)
-    # per capability now (§9.40): one provider in both slots answers for both
+    # per capability now (§9, slice 40): one provider in both slots answers for both
     assert settings["timing"]["price"]["align"][0].startswith("$")  # the list price, with its date
     assert settings["timing"]["price"]["transcribe"][0].startswith("$")
     assert settings["timing"]["sends_audio"] == {"align": True, "transcribe": True}

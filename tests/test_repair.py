@@ -431,7 +431,7 @@ def test_a_length_read_from_another_recording_is_given_up(tmp_path, opus_templat
     assert saved.tracks[1].mb_length == 208.2  # the accepted one keeps it
 
 
-# -- a single is named after its song (DESIGN.md §9.25) -----------------------------------
+# -- a single is named after its song (DESIGN.md §9, slice 25) -----------------------------------
 
 
 def a_single(tmp_path, opus_template, album, title, album_prov=Provenance.PLAYLIST):

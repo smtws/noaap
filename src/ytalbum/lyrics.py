@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 
 # `YTALBUM_LRCLIB_BASE=http://127.0.0.1:8794/api` points this at another host: a mirror, or — which
 # is what it exists for — a server that speaks lrclib's documented shapes, so that publishing can be
-# exercised end to end without putting test words into a public database (§9.42).
+# exercised end to end without putting test words into a public database (§9, slice 42).
 BASE = (os.environ.get("YTALBUM_LRCLIB_BASE") or "https://lrclib.net/api").rstrip("/")
 USER_AGENT = "ytalbum/0.1 ( https://github.com/smtws/ytalbum )"
 HIT_TTL = 30 * 24 * 3600
@@ -205,7 +205,7 @@ class Lrclib:
         Without a length nothing is accepted: the length is the only thing that tells a
         recording apart from its covers. `skip` holds entries the user has rejected for this
         track: they are dropped before anything is judged, words and length alike, because an
-        entry that is not this song is no evidence about how long this song is either (§9.27).
+        entry that is not this song is no evidence about how long this song is either (§9, slice 27).
         """
         if length is None:
             return None
@@ -244,7 +244,7 @@ class Lrclib:
         return Lyrics(length=agreed) if agreed is not None else None
 
     def candidates(self, artist: str, title: str) -> list[Lyrics]:
-        """Every same-artist entry with words for this title, however far its length is (§9.46).
+        """Every same-artist entry with words for this title, however far its length is (§9, slice 46).
 
         `get` answers "is there a match"; this answers "what is there at all", which is the question
         the near-miss check asks before deciding with an alignment rather than with a length.
@@ -267,7 +267,7 @@ class Lrclib:
         return _lyrics(found) if isinstance(found, dict) else None
 
     def cached_by_id(self, lrclib_id: int) -> Lyrics | None:
-        """What we already hold for an entry, **without asking** (§9.42).
+        """What we already hold for an entry, **without asking** (§9, slice 42).
 
         The publish button needs to know whether lrclib's words and the user's are the same text,
         and that question is asked for every track of an album as a panel opens. A lookup each time
@@ -322,7 +322,7 @@ class Lrclib:
             return body
         return None
 
-    # -- giving words back (§9.42) -------------------------------------------------------
+    # -- giving words back (§9, slice 42) -------------------------------------------------------
 
     def publish(self, *, track_name: str, artist_name: str, album_name: str, duration: float,
                 plain: str, synced: str, log_to: Callable[[str], None] | None = None) -> None:
@@ -471,7 +471,7 @@ def write_sidecar(album_dir: Path, track: PlanTrack, text: str, length: float | 
 
     Also remembers *which audio* these words were written against — the video they were timed to
     and how long that file was — so a later change of either can say so instead of leaving
-    timestamps that quietly point at the wrong seconds (§9.34).
+    timestamps that quietly point at the wrong seconds (§9, slice 34).
     """
     path = sidecar_path(album_dir, track.filename)
     path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
@@ -489,7 +489,7 @@ def timings_stale(track: PlanTrack) -> dict[str, Any] | None:
 
     Only timestamps can be wrong in this way, so plain words never raise it. A sidecar from before
     this was recorded says nothing either — we do not know what it was written for, and guessing
-    would put a notice on every old track (§9.34).
+    would put a notice on every old track (§9, slice 34).
     """
     if track.lyrics != SYNCED or not track.lyrics_for_source:
         return None
@@ -522,7 +522,7 @@ def reconcile(album_dir: Path, track: PlanTrack, audio: Path) -> tuple[str | Non
     a sidecar that differs from the tag was edited since the last pass and is the user's. That
     catches recent edits only — an older edit was already written into the tag by a later pass —
     so the case a `--refetch` would destroy is caught in `update_track` instead, by asking
-    lrclib what the entry we stored actually says (DESIGN.md §9.21).
+    lrclib what the entry we stored actually says (DESIGN.md §9, slice 21).
     """
     text = read_sidecar(album_dir, track)
     if text is None:
@@ -581,7 +581,7 @@ def sent_sha(text: str) -> str:
     return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:16]
 
 
-# -- an entry that is nearly this recording (§9.46) -------------------------------------------
+# -- an entry that is nearly this recording (§9, slice 46) -------------------------------------------
 #
 # `get` accepts a candidate within TOLERANCE and nothing else, and it is right to: the length is all
 # it has to tell a recording from its cover. But a measurement over this library's 203 near-misses
@@ -626,7 +626,7 @@ def fit_verdict(span: float | None, unplaced: float) -> str:
 
 
 # The two verdicts that hand the question back: the words exist, nothing was taken, and only a
-# person can settle it (§9.46). Everything else is decided — taken, rejected, or never looked at.
+# person can settle it (§9, slice 46). Everything else is decided — taken, rejected, or never looked at.
 WAITING = ("unclear", "shown")
 
 
@@ -642,7 +642,7 @@ def fit_reason(ours: float, theirs: float) -> str:
 
 
 def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
-    """Empty when these words may be given to lrclib; otherwise the reason they may not (§9.42).
+    """Empty when these words may be given to lrclib; otherwise the reason they may not (§9, slice 42).
 
     The rules are all one idea: **only offer what is the user's own work and would be new to them.**
     A publish cannot be taken back, so every doubt resolves to "no".

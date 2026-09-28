@@ -379,7 +379,7 @@ def test_deleting_the_sidecar_takes_the_tag_and_the_status_with_it(tmp_path, yt)
     assert load_plan(album_dir).tracks[0].lyrics == "none"  # saved, not just held in memory
 
 
-# -- whose lyrics are these? (DESIGN.md §9.21) -------------------------------------------
+# -- whose lyrics are these? (DESIGN.md §9, slice 21) -------------------------------------------
 
 
 def edited(album_dir, track, text="mine, not lrclib's\n"):

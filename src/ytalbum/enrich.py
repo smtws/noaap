@@ -34,7 +34,7 @@ _GROUP = re.compile(r"\s*[(\[]([^()\[\]]*)[)\]]")
 # ("Deluxe Edition", "Tour Edition", "Collector's Cut") names the same songs and MusicBrainz
 # is right to drop it; these do not. Measured on 35 library albums: 5 carried an edition
 # marker YouTube had and MusicBrainz lacked, 1 a version marker — "OPVS NOIR Vol. 1
-# (Instrumental)", which had been filed as the ordinary album (DESIGN.md §9.19).
+# (Instrumental)", which had been filed as the ordinary album (DESIGN.md §9, slice 19).
 VERSION_MARKERS = (
     "instrumental", "instrumentals", "karaoke", "acoustic", "unplugged", "live", "demo", "demos",
     "commentary", "remix", "remixes", "a cappella", "acapella", "orchestral", "symphonic",

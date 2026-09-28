@@ -1,5 +1,5 @@
 // Stamping lyrics to the file's clock: the arithmetic behind tap, nudge and shift, and the
-// conversion that makes a trimmed track's numbers mean the same thing (DESIGN.md §9.35).
+// conversion that makes a trimmed track's numbers mean the same thing (DESIGN.md §9, slice 35).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

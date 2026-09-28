@@ -281,15 +281,15 @@ tr.lyrics .lyrics-panel { display: grid; gap: .4rem; }
 tr.lyrics .lyrics-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 tr.lyrics .lyrics-actions > button { margin-left: 0; }
 tr.lyrics .lyrics-actions .muted { font-size: .85em; }
-/* The editor's preview (§9.39): the same list as the read-only panel's, drawn from the textarea.
+/* The editor's preview (§9, slice 39): the same list as the read-only panel's, drawn from the textarea.
    It is shorter, because the textarea above it is the thing being worked in and the preview is
    there to be watched — and it keeps the panel from growing past a screen with both of them open. */
-/* the line where the "Add to MusicBrainz" button would be, when it is not offered (§9.43) */
+/* the line where the "Add to MusicBrainz" button would be, when it is not offered (§9, slice 43) */
 .panel-head .seed-why { font-size: .8em; max-width: 22rem; text-align: right; align-self: center; }
-/* the length chip is also a button where MusicBrainz's own number looks wrong (§9.43): it must
+/* the length chip is also a button where MusicBrainz's own number looks wrong (§9, slice 43): it must
    still read as the chip it has always been, so it takes the chip's own painting and only the
    cursor and the underline say it can be pressed */
-/* a track waiting for a person's decision about an lrclib entry (§9.46) */
+/* a track waiting for a person's decision about an lrclib entry (§9, slice 46) */
 button.lyr.needs-you { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 button.len.fix { cursor: pointer; font: inherit; color: inherit; border: 0; background: none; padding: 0;
                  text-decoration: underline dotted; text-underline-offset: .2em; }
@@ -336,7 +336,7 @@ tr.dragging td { background: var(--panel); }
 .lyr.empty { opacity: .45; }
 .lyr.empty:hover, .lyr.empty:focus-visible { opacity: 1; }
 
-/* -- where a track's audio comes from (§9.34) ------------------------------------- */
+/* -- where a track's audio comes from (§9, slice 34) ------------------------------------- */
 /* The panel sits under its row like the lyrics one, and a row may carry both. */
 tr.source > td { padding: .2rem .5rem .6rem; }
 .source-panel { display: grid; gap: .4rem; }
@@ -355,7 +355,7 @@ button.src-pick.on { border-color: var(--accent); color: var(--accent); }
 .timing-note { font-size: .85rem; color: var(--ink); border-left: 3px solid var(--warn);
   padding: .15rem .5rem; border-radius: 4px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
 
-/* -- stamping the words to the file's clock (§9.35) -------------------------------- */
+/* -- stamping the words to the file's clock (§9, slice 35) -------------------------------- */
 .stamp-tools { margin-top: .35rem; }
 .stamp-tools button { font-variant-numeric: tabular-nums; }
 .stamp-clock { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }

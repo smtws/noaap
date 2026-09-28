@@ -208,7 +208,7 @@ def run(
 
 
 def _follow_source(yt: YouTube, track: PlanTrack) -> None:
-    """Take the uploader and the length from the video the audio actually comes from (§9.34).
+    """Take the uploader and the length from the video the audio actually comes from (§9, slice 34).
 
     Two things follow the *audio* rather than the identity: the channel, because "trim everything
     from this uploader" must not apply another channel's cut to this file, and the duration the

@@ -1,4 +1,4 @@
-"""A track may take its audio from another video, without changing what it is (DESIGN.md §9.34).
+"""A track may take its audio from another video, without changing what it is (DESIGN.md §9, slice 34).
 
 The playlist's video stays the identity — the order, `in_source`, the merge, the MusicBrainz
 match. Only the audio moves, and everything the old file carried moves out of the way with it.
