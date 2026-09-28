@@ -136,14 +136,26 @@ def test_a_lossless_container_is_not_evidence():
     assert "lossless" in found.why and "same audio" in found.why
 
 
-def test_a_clearly_higher_bitrate_replaces_when_the_band_agrees():
-    found = judge(pair_of(), facts(cutoff=20, codec="mp3", bitrate=320_000), facts(cutoff=20, bitrate=128_000))
+def test_a_clearly_higher_bitrate_replaces_when_the_band_and_the_codec_agree():
+    found = judge(pair_of(), facts(cutoff=20, codec="mp3", bitrate=320_000),
+                  facts(cutoff=20, codec="mp3", bitrate=128_000))
 
     assert found.verdict is Verdict.REPLACE and "320 against 128" in found.why
 
 
+def test_across_codecs_a_bitrate_says_nothing():
+    """R-170: Opus at 125 kbps and MP3 at 320 are not ranked by their numbers, and that is this
+    material exactly — an Opus library meeting MP3s and FLACs."""
+    found = judge(pair_of(), facts(cutoff=20, codec="mp3", bitrate=320_000),
+                  facts(cutoff=20, codec="opus", bitrate=125_000))
+
+    assert found.verdict is Verdict.KEEP
+    assert found.why == "same band, different codecs: the rates do not compare"
+
+
 def test_a_slightly_higher_bitrate_is_not_a_reason():
-    found = judge(pair_of(), facts(cutoff=20, codec="mp3", bitrate=140_000), facts(cutoff=20, bitrate=128_000))
+    found = judge(pair_of(), facts(cutoff=20, codec="mp3", bitrate=140_000),
+                  facts(cutoff=20, codec="mp3", bitrate=128_000))
 
     assert found.verdict is Verdict.KEEP and found.why == "nothing to choose between them"
 

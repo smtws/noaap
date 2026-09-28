@@ -167,6 +167,11 @@ def judge(pair: Pair, new: Facts, old: Facts | None, reference: float | None = N
                          f"{keeper} is lossless and {other} is not, but they hold the same audio",
                          new, old)
 
+    if new.codec != old.codec:
+        # A rate only means something against the same encoder. Opus at 125 kbps and MP3 at 320
+        # are not ranked by their numbers, and that is exactly this material: an Opus library
+        # meeting MP3s and FLACs (R-170).
+        return Judgement(Verdict.KEEP, "same band, different codecs: the rates do not compare", new, old)
     if new.bitrate and old.bitrate and new.bitrate >= old.bitrate * CLEARLY:
         return Judgement(Verdict.REPLACE,
                          f"same band, clearly higher rate ({round(new.bitrate/1000)} against {round(old.bitrate/1000)} kbps)",

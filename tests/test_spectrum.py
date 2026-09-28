@@ -162,3 +162,19 @@ def test_a_tag_that_is_not_utf8_does_not_stop_the_measurement(tmp_path):
     found = measure(path)
 
     assert found.known, "the file is perfectly readable; only its tag was not UTF-8"
+
+
+def test_a_file_that_will_not_answer_does_not_stop_the_pass(tmp_path, monkeypatch):
+    """A damaged file can keep ffmpeg busy for ever. A pass over thousands of files must not."""
+    import subprocess
+
+    from noaap import spectrum
+
+    def hangs(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=kw.get("timeout", 0))
+
+    monkeypatch.setattr(spectrum.subprocess, "run", hangs)
+
+    found = measure(tmp_path / "whatever.flac")
+
+    assert found.why == "not measurable" and not found.known

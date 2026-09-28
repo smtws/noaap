@@ -37,6 +37,10 @@ PICTURE_KEY = "metadata_block_picture"
 MP4_SUFFIXES = (".m4a", ".mp4")
 CODECS = {"mp4": "aac", "flac": "flac", "mp3": "mp3", "opus": "opus"}
 
+# how long any one file may take to answer. A damaged file can keep ffmpeg busy for ever, and a
+# pass over thousands of them must not stop for one of them (§9, slice 54).
+PATIENCE = 120
+
 
 def kind(path: Path) -> str:
     """Which container this is, by name. The only place a suffix decides anything."""
@@ -92,8 +96,8 @@ def decoded_length(path: Path) -> float | None:
     """
     try:
         done = subprocess.run(["ffmpeg", "-v", "error", "-stats", "-i", str(path), "-f", "null", "-"],
-                              capture_output=True, text=True, errors="replace")
-    except (OSError, subprocess.SubprocessError):
+                              capture_output=True, text=True, errors="replace", timeout=PATIENCE)
+    except (OSError, subprocess.SubprocessError):  # including a timeout: no answer is an answer
         return None
     if not (found := TIMESTAMP.findall(done.stderr)):
         return None

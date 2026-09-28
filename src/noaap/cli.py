@@ -116,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--older-than", type=float, metavar="DAYS",
                     help="empty: only entries older than this many days")
 
+    mr = sub.add_parser("merge", help="take the better copies out of another library (shows first)")
+    mr.add_argument("source", help="the library to take from — it is never written to")
+    mr.add_argument("--library", type=Path, help="the library to merge into (overrides the config)")
+    mr.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
+    mr.add_argument("--undecided", action="store_true", help="list only what it will not decide")
+
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
     mg.add_argument("--uninstall-old", action="store_true",
@@ -171,6 +177,17 @@ def main(argv: list[str] | None = None) -> int:
                 return _systemd(args, cfg)
             case "app":
                 return _app(args)
+            case "merge":
+                library = _library(args, cfg, required=True)
+                if library is None:
+                    return 2
+                from . import merge as merge_pass
+                from .ranking import Verdict
+                found = merge_pass.survey(Path(args.source).expanduser(), library, log=print)
+                wanted = [Verdict.UNDECIDED] if args.undecided else None
+                for line in merge_pass.report(found, verdicts=wanted):
+                    print(line)
+                return 0
             case "migrate":
                 from . import migrate
                 for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old):

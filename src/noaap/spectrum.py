@@ -24,7 +24,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from .tag import audio_quality
+from .tag import PATIENCE, audio_quality
 
 BANDS = (14, 15, 16, 17, 18, 19, 20, 21, 22, 23)  # kHz, each one 1 kHz wide
 EMPTY = -150.0   # below this there is no signal at all: the band is above the file's Nyquist
@@ -79,7 +79,7 @@ def profile(path: Path, window: tuple[float, float] = WINDOW) -> list[float] | N
         done = subprocess.run(
             ["ffmpeg", "-v", "info", "-ss", str(window[0]), "-t", str(window[1]), "-i", str(path),
              "-filter_complex", ";".join(chain), *maps],
-            capture_output=True, text=True, errors="replace")
+            capture_output=True, text=True, errors="replace", timeout=PATIENCE)
     except (OSError, subprocess.SubprocessError):
         return None
     # the filters report in whatever order they finish; the astats index says which band it was

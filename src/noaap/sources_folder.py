@@ -27,7 +27,7 @@ from typing import Any
 from . import sources
 from .config import Config
 from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
-from .tag import audio_length, audio_quality, decoded_length, measured_length
+from .tag import PATIENCE, audio_length, audio_quality, decoded_length, measured_length
 from .text import key as text_key
 from .text import split_feat
 
@@ -241,7 +241,7 @@ def stream_sha(path: Path) -> str | None:
     try:
         done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
                                "-c", "copy", "-f", "md5", "-"],
-                              capture_output=True, text=True, errors="replace")
+                              capture_output=True, text=True, errors="replace", timeout=PATIENCE)
     except (OSError, subprocess.SubprocessError):
         return None
     out = done.stdout.strip()
