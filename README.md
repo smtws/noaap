@@ -194,8 +194,9 @@ titles and MusicBrainz one track at a time.
 ```
 address ─► resolve ─► inspect ─► classify ─► enrich ─► plan ─► [you edit] ─► download ─► tag
    │
-   ├─ youtube: the only thing that knows what a video id or a watch link looks like
-   └─ folder:  a path on this machine — it copies, and never writes where it read
+   ├─ youtube:    the only thing that knows what a video id or a watch link looks like
+   ├─ soundcloud: a set is an album — for music that is not on YouTube
+   └─ folder:     a path on this machine — it copies, and never writes where it read
 ```
 
 **Where the audio comes from is one small interface.** A *source provider* answers four questions —
@@ -205,6 +206,24 @@ carry conventions worth stripping. YouTube is one such provider, and nothing out
 video id, a watch link or a channel; a test in the suite greps for exactly that and fails if it
 leaks. Each album's plan records which provider it came from, and each track records which one its
 audio comes from — so one album can hold tracks from two.
+
+**SoundCloud is the third, and it is for music that is not on YouTube — not for better copies.**
+That is not a preference, it is what the site gives: without an account the best it offers is
+**160 kbps AAC**, which measures out at 16 kHz where a YouTube Opus of the same song reaches 20–21,
+so the "which copy is better" rule will keep what you already have nearly every time. And the
+commercial releases this library is largely made of are **DRM protected** there: yt-dlp is handed no
+stream at all, that track says so and is skipped, and nothing in noaap goes near the protection.
+What SoundCloud is good for is the rest — independent artists, soundtracks, remixes, things that
+exist nowhere else.
+
+`noaap fetch https://soundcloud.com/<artist>/sets/<album>` takes a set; a set published on the
+artist's **albums** tab is read as a release and any other set as a playlist, which is the site's own
+statement about it. `noaap fetch https://soundcloud.com/<artist>` lists what they publish and asks
+which. Typing a bare artist name does **not** search SoundCloud — its search finds tracks and never
+sets, so the provider does not claim to, and noaap says which providers can. A set's own name is its
+album name (the genre an uploader writes into it for the search box is stripped), the year is the
+set's, the track numbers are the running order, and a "(snip)" is marked as the preview it is rather
+than planned as the song.
 
 **A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
 own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath

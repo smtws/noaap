@@ -3312,6 +3312,77 @@ not a verdict.
     against a true number. The value is prospective, and this row exists so nobody later reads the
     556 as an improvement that was seen.
 
+## AZ. SoundCloud, and what a provider may decline (P53, DESIGN §9, slice 57)
+
+The purpose had to be settled before the design, and the probes settled it. Everything below is
+measured on public pages; nothing here touches DRM.
+
+- [x] **AZ1 · M** — what SoundCloud actually gives
+
+  Probed before a line was written: one search, three track reads, six tab reads, one set read.
+  - **result:** the label uploads this library is made of are **DRM protected** — 3 of 3 tested
+    return no formats at all — and that artist's page has **0 albums, 0 sets and 2 tracks, both
+    "(snip)"**. Eight ordinary independent tracks: **8 playable, 0 refused**, every one offering the
+    same ladder, `mp3 128` and `aac 96/160`. **The ceiling without an account is 160 kbps AAC.**
+  - the one file fetched live measures **16 kHz** against 20–21 for this library's Opus, so slice
+    54's rule keeps the incumbent nearly every time. **This provider is for music that is not on
+    YouTube**, and the README says so in those words.
+
+- [x] **AZ2 · R** — a shared client that cannot name a site
+
+  `ytdlp.py` holds what both providers need. A case greps it for every site shape, and the province
+  guard runs three ways instead of one.
+  - **result:** pass. Cookies are an argument, never a lookup — the case greps for the *import*,
+    because the docstring beside it explains what must not happen and a scanner that matches its own
+    explanation is the mistake this suite keeps re-learning.
+  - YouTube unchanged, as ruled: `update --dry-run` on beta read **158 albums** against real
+    YouTube — 139 unchanged, 19 in full with their MusicBrainz lookups — and **wrote nothing**.
+
+- [x] **AZ3 · R** — a provider does not declare what it cannot do
+
+  SoundCloud's own search finds tracks, never sets, so `LISTING` split from `SEARCH`.
+  - **result:** YouTube declares both, SoundCloud LISTING/CHANGES/CLEAN, a folder neither. **There
+    is no `find` that raises — the method does not exist**, and the refusal names the providers that
+    can. One fix it exposed: `known()` did not load the providers, so asking what exists before
+    anything had been fetched answered "none".
+
+- [x] **AZ4 · R** — a set is read twice, on purpose
+
+  One request more than it needs.
+  - **result:** it buys what one request cannot. With a track removed from the full read, **eleven
+    go in and eleven come out**: the flat list still knows the id and the place, so the entry is
+    skipped *by name* instead of the album failing or a track silently vanishing.
+
+- [x] **AZ5 · R** — its titles, and the parentheses that stay
+
+  Three rules, each from a real page: a genre written for the search box, an `Artist - Title`
+  prefix, `(snip)`.
+  - **result:** pass. `(Live)`, `(Acoustic)`, `(Remix)` and `(feat. …)` are kept — **dropping those
+    is how two different recordings become one.** The set's own name is cleaned in the provider,
+    because the core's album-name hygiene is YouTube's.
+
+- [x] **AZ6 · M** — the live smoke: one public set, 11 tracks
+
+  `~/Musik/noaap-sc-smoke`, an independent artist's album. Dry run first: 11 tracks, read as an
+  `official_album`, and **MusicBrainz matched the release**.
+  - **result:** **11/11 downloaded, tagged and placed in 1 m 57 s.** The file decided its own
+    extension (`.m4a`, not the plan's guess), `aac 160 kbps / 44.1 kHz`, 8.5 MB, length read from the
+    header. `update` twice afterwards: **1.3 s each**, "unchanged (11 videos, unchanged since
+    20211104)" — the cheap check is one flat request and needed no new shape in `_unchanged`.
+  - nothing outside that scratch library was touched.
+
+### Two defects only running it could find
+
+1. **Every download failed `401 Unauthorized`.** The address was yt-dlp's own listing URL with its
+   escapes decoded — `/tracks/soundcloud:tracks:<id>` — and **no SoundCloud extractor claims that
+   spelling**. It falls through to the *generic* extractor, which asks the API host without a client
+   id and is refused. Nothing in the message says so; the only tell is `[generic]` in front of it.
+   The case now asks the extractor itself whether it claims what we build, offline.
+2. **A preview planned as the song.** `clean_title` takes "(snip)" off, so a label's 40-second
+   teaser became a single carrying the full song's name. The entry is marked unusable now and the
+   fetch says so instead of writing a plan. **A cleaner that removes a marker must not remove the
+   fact.**
+
 ### Open, queued behind this package
 
 **The real library has 574 of these**, untouched: this package ran on the disposable copy only.
@@ -3322,6 +3393,7 @@ One `noaap repair` closes it.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AZ cases (P53: SoundCloud) | 6 | 0 in the design; 2 defects found by running it, both fixed | The third provider, and the first whose purpose had to be settled before the design: **SoundCloud is for music that is not on YouTube, not for better copies.** Measured, not assumed — label uploads are DRM protected (3 of 3), ordinary tracks cap at 160 kbps AAC (8 of 8), and the one file fetched live reads **16 kHz** against this library's 20–21. A shared `ytdlp.py` that may not name a site, cookies as an argument, and a province guard that runs three ways. `LISTING` split from `SEARCH`, because a provider does not declare what it cannot do. Live: 11/11 tracks in 1 m 57 s, MusicBrainz matched the release, `update` 1.3 s. Defects: an address no extractor claimed (401 from the *generic* one), and a preview that planned as the song. **CI ran once on the head of commits 1–4**, which it covers. 1121 pytest + 102 node. |
 | 2026-09-28 | the AY cases (P52e: lengths nobody asked for) | 5 | 0 | 574 finished tracks with a file and no length, and the reason is the shape of the pass: `repair` skips an album whose names are already right **before** it measures anything, so a tidy library could never close the gap. The measuring moved in front of the skip; `update` does the albums it touches; `--dry-run` on either writes nothing, which meant giving `repair` a real dry run. `file_length_by` records header vs decoded. Live on the disposable library: 556 measured in 16.8 s, all from the header, 0 left, `plan --verify` 0 changed. **What it turned on: nothing visible.** All 556 already fell back to the video duration, median 0.24 s away, so no ⏱ verdict and no album flag changed, and all 556 already have words so none gains the near-miss check. What it removes is a fallback standing in for a measurement. 1070 pytest + 102 node. |
 | 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. No screenshot: the panel can only be shown on an artist this repository does not publish. 1059 pytest + 102 node. |
 | 2026-09-28 | the AX cases (P52c: the copy nobody could choose) | 6 | 0 in the design; 1 defect the counting exposed, fixed | The gap the AW run left: **288 of 762 undecided verdicts existed nowhere but in the report**, so a decision handed to a person could not be taken. `--apply` now lists the other copy on the track — not chosen, nothing copied — with the verdict's sentence and both files' numbers; *take this one* and *not this one* end it, and the library page counts what is waiting the way it counts "needs you". Live: 1313 pairs, **0 replace / 0 fill / 1050 keep / 263 undecided**, 178 copies listed on 175 tracks, 0 binned, `plan --verify` 329 plans 0 changed, and one copy taken through the UI end to end. Defect found by the counting: one track could be replaced twice in a pass. 1052 pytest + 102 node. |

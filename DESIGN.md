@@ -1539,6 +1539,41 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    re-timing has a true number to compare against instead of one that is right until the file is
    cut. That is the whole value, and it is worth saying that it is prospective.
 
+57. ✅ **SoundCloud, and what a provider may decline** (2026-09-28, P53). The third provider, and
+   the first whose **purpose had to be settled before the design**: SoundCloud is for music that is
+   not on YouTube, not for better copies. Probed before a line was written — the label uploads this
+   library is made of are **DRM protected** (yt-dlp is handed no formats at all; three of three
+   tested), and an ordinary track offers **160 kbps AAC at best** (eight of eight). The one file
+   fetched live measures **16 kHz**, against 20–21 for the same library's Opus, so slice 54's rule
+   will keep the incumbent nearly every time. Nothing here touches DRM, ever.
+   **What they share is a client that knows no site.** `ytdlp.py` holds the option dict, the logger
+   and the first cut at an error message, and may not name a host, an id shape or an extractor.
+   **Cookies are an argument there, never a lookup** — a shared helper reading `cfg.cookies_file`
+   would hand one site's credentials to another the first time a second provider called it. The
+   grep guard became three provinces, and SoundCloud's shapes were fenced off before a line of it
+   existed. An error is shortened in **two** steps, because a provider reads the whole string for
+   the phrases it knows and cuts it afterwards; one step would hide an age gate behind a sentence.
+   **`LISTING` is not `SEARCH`.** SoundCloud can say what is on an artist's page and cannot find
+   that page from a name — its own search returns tracks, never sets. **A provider does not declare
+   what it cannot do**, so the capability split in two, and the refusal names the providers that
+   can. There is no `find` here that raises; the method does not exist.
+   **A set is read twice**, flat then full: one request more, and it buys what one cannot — when a
+   track cannot be read, the flat list still knows its id and its place, so the entry is skipped by
+   name instead of the album failing or a track vanishing. A SoundCloud track carries no album, no
+   number and no year; the set is the only place they exist. A set on the owner's **albums** tab is
+   a release and any other set is a playlist, which is the site's own statement about it.
+   **Its titles are three rules**, each from a real page: a genre written for the search box, an
+   `Artist - Title` prefix, and `(snip)`. `(Live)`, `(Acoustic)`, `(Remix)`, `(feat. …)` are kept —
+   dropping those is how two different recordings become one. The set's *own* name is cleaned in the
+   provider, because the core's album-name hygiene is YouTube's.
+   **Two things only running it could say.** Every download failed `401 Unauthorized` because the
+   address — yt-dlp's own listing URL with its escapes decoded — is claimed by **no** SoundCloud
+   extractor and falls through to the generic one; nothing in the message says so, and the only tell
+   is `[generic]`. And a preview is not the work: cleaning takes "(snip)" off, so a 40-second teaser
+   planned as the song until the entry was marked unusable instead.
+   **The ref is the numeric track id** and `url_for` answers None: a permalink can be renamed by its
+   uploader, and the protocol would rather have nothing than a link that 404s.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
