@@ -111,6 +111,10 @@ class Config:
     # refreshed cookies back into cookies_file.
     cookies_file: Path | None = None
     cookies_from_browser: str | None = None  # "firefox", "chrome", "chrome:Profile 1", …
+    # SoundCloud's own, and **only** SoundCloud's (§9, slice 57). Free tracks need no account at
+    # all, so these default to none; one site's credentials are never handed to another's.
+    soundcloud_cookies_file: Path | None = None
+    soundcloud_cookies_from_browser: str | None = None
     # bgutil PO-token generator, needed for some streams (DESIGN.md §3.9).
     # "server": local HTTP server started on demand, stops after pot_idle seconds idle
     # (script mode stays configured as fallback); "script": a Node process per request; "off".
@@ -190,6 +194,9 @@ def load(path: Path | None = None) -> Config:
     if cookies := data.get("cookies_file"):
         cfg.cookies_file = Path(cookies).expanduser()
     cfg.cookies_from_browser = data.get("cookies_from_browser") or None
+    if cookies := data.get("soundcloud_cookies_file"):
+        cfg.soundcloud_cookies_file = Path(cookies).expanduser()
+    cfg.soundcloud_cookies_from_browser = data.get("soundcloud_cookies_from_browser") or None
     if pot := data.get("pot_provider_home"):
         cfg.pot_provider_home = Path(pot).expanduser()
     cfg.pot_mode = str(data.get("pot_mode", "server"))

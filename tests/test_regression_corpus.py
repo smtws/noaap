@@ -91,7 +91,9 @@ def test_no_fixture_carries_a_filesystem_path() -> None:
     import re
 
     looks_like_a_path = re.compile(r"~/|/home/|/Users/|[A-Za-z]:\\\\|\.cache/|/tmp/")
-    for path in sorted(FIXTURES.glob("*.json")):
+    # every fixture, not only this corpus: the recorded SoundCloud pages live in a sub-folder and
+    # are recordings of somebody's real session, which is exactly what this guard is for (P53)
+    for path in sorted(FIXTURES.rglob("*.json")):
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             assert not looks_like_a_path.search(line), f"{path.name}:{n} carries a path: {line[:100]}"
 
