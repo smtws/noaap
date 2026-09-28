@@ -4,6 +4,10 @@ Hand-run checks from a user's point of view, aimed at the places where **feature
 trimming a track that has lyrics, renaming one that MusicBrainz matched, pruning an album whose
 order you set yourself. The pytest suite covers the pieces; this covers the seams.
 
+**The program was called `ytalbum` until 1.0.0.** This file is evidence — what was run and what
+came back — so a command recorded here is spelled the way it was typed on the day. Nothing in it has
+been rewritten to the new name (see DESIGN §9, slice 52).
+
 Derived from the code as of 2026-09-26 and kept up with it since (379 tests when it was written,
 780 pytest plus 91 under node after the fixes it produced and the packages that followed; 246 albums
 in the reference library). Sections A–J are the original catalog; K onwards were each added with the

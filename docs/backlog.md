@@ -38,7 +38,7 @@ up, so the editor can never replace your words with LRCLIB's.
 
 ## 2. The UI sends people to a terminal — DONE (P10: repair; P11: the preview)
 
-The fetch log says "`ytalbum repair` unifies them", but `repair` does not exist in the web UI:
+The fetch log says "`noaap repair` unifies them", but `repair` does not exist in the web UI:
 no button, no API route. A dry run exists only on the command line too. A UI user who follows
 the hint has nowhere to click.
 
@@ -85,7 +85,7 @@ counts in the disc the track is being put on.
 ## 5. No way back from an edit — DONE (P12, DESIGN §9, slice 29)
 
 The plan keeps the derived value (`auto`) for every field a user overrides, but the UI offers
-no "reset to what ytalbum found". An edited album artist is frozen out of harmonisation and
+no "reset to what noaap found". An edited album artist is frozen out of harmonisation and
 repair with no visible way to opt back in.
 
 Wanted: a reset affordance per edited field, shown where the "from" column already says `user`.
@@ -111,7 +111,7 @@ current words even when the row's ♪ is stale — which shrinks this item to th
 counts rather than the words themselves.
 
 **Done in P13:** opening an album reconciles its lyrics against the disk before the view is drawn,
-so a sidecar edited or deleted outside ytalbum is recognised at once; a write job then makes it
+so a sidecar edited or deleted outside noaap is recognised at once; a write job then makes it
 durable and rewrites the tag. When plan and files agree nothing is written and no job exists. The
 grid is deliberately not reconciled (246 albums per render); its counts catch up when an album is
 opened. Measured cost on a 56-track album: about 2 ms added to the open.
@@ -164,7 +164,7 @@ directory does not belong in a public README. The first capture found the invisi
 
 ## 10. JavaScript test harness for `app.js` — DONE (P19, DESIGN §9, slice 33)
 
-`src/ytalbum/webui/app.js` is around 1,500 lines and carries real logic: the length target while
+`src/noaap/webui/app.js` is around 1,500 lines and carries real logic: the length target while
 trimming, the drag-and-drop arrangement and its live renumbering, the lyrics panel and its ownership
 display, the reset affordance, the player's trim marks and the filter's folding. None of it has a
 unit test. What holds today is that the arithmetic lives in Python where it is tested
@@ -336,8 +336,8 @@ before building anything behind it.
 
 **Decided and done 2026-09-27 (P25).** The boundary is a `Timing` Protocol with `capabilities()`,
 `align()` and `transcribe()`; `none` is the default and the app is byte-for-byte what it was under
-it. Two providers ship: **`local`** (the `ytalbum[timing]` extra — torch, torchaudio, demucs;
-~1.5 GB with the CPU build of torch, no Whisper) and **`http`** with `ytalbum timing-serve`, which
+it. Two providers ship: **`local`** (the `noaap[timing]` extra — torch, torchaudio, demucs;
+~1.5 GB with the CPU build of torch, no Whisper) and **`http`** with `noaap timing-serve`, which
 is the one this household will use, because the app then needs no machine-learning dependency at
 all. Alignment fills the editor's textarea and the user saves it: the words stay theirs,
 `lyrics_timed_by` records whose clock it is, and the panel says "timed by local" beside "yours".
@@ -389,14 +389,14 @@ human in the loop.
 **The cost is the reason it is not in P25:** the second aligner is faster-whisper `large-v3`,
 **3.09 GB** — seven times the models the whole local provider needs today, and the thing the
 architecture exists to keep out of the baseline. So it belongs as its own optional extra
-(`ytalbum[timing-check]`), off by default, for someone who wants a library-wide pass without
+(`noaap[timing-check]`), off by default, for someone who wants a library-wide pass without
 listening to every track.
 
 What P25 ships instead is option 1 of the spike's three: one aligner, `unplaced` honoured, the
 stamps labelled as a machine's proposal, and P23's ▶ on the first line as the check — which takes a
 second and catches exactly the failure mode that occurs (out by half a song, never by half a second).
 
-**Done 2026-09-27 (P27)** as its own extra, `ytalbum[timing-check]`, off unless installed. The build
+**Done 2026-09-27 (P27)** as its own extra, `noaap[timing-check]`, off unless installed. The build
 corrected one assumption from the spike and paid for three defects that only running it could find
 (catalog Y): the second model has to hear the **mixed** track — on the separated stem it left 11 of 42
 lines unplaced and put the rest 20 s early — and a failure of the check must never take the alignment
@@ -435,7 +435,7 @@ disk, which is the right trade for a machine someone is also using for something
 **Done 2026-09-27 (P30).** Measured first: the idle figure was exactly the peak — **3314 MiB** held
 with an empty queue, nothing given back at all. The app's own service builds a provider per job, so
 its models were already gone and what lingered was torch's pool; it is emptied the moment no lane is
-busy, and the card drops to **180 MiB**, the CUDA context. `ytalbum timing-serve` keeps one engine
+busy, and the card drops to **180 MiB**, the CUDA context. `noaap timing-serve` keeps one engine
 alive, so it lets go of the models after `timing_idle_minutes` of quiet (default 5, `0` = never), and
 the next request reloads for nothing measurable (11.2 s against 11.8 s). The release never imports
 torch — it is a `sys.modules` lookup where no model was loaded. One defect of my own on the way, found
@@ -467,7 +467,7 @@ Decided by the user 2026-09-27, the other half of giving back. Where an album ha
 all, **"Add to MusicBrainz"** opens MusicBrainz's own release editor in the user's browser, pre-filled
 by the documented form-seeding mechanism: artist credit, title, type, a Digital Media medium, the
 tracklist with the lengths measured from the files, the playlist URL as a relationship, and an edit
-note naming ytalbum. **ytalbum submits nothing** — the user reviews and submits, logged in as
+note naming noaap. **noaap submits nothing** — the user reviews and submits, logged in as
 themselves, and no credentials ever enter this program. Where a matched recording's length disagrees
 with the file's, a **"Correct on MusicBrainz"** deep link with the numbers in the confirm, because the
 seeding mechanism does not cover recording edits and pretending otherwise would be worse than saying
@@ -484,7 +484,7 @@ a real edit waiting to be submitted.
 ## 21. Verify mode cannot tell which method is lost — DONE (P33, DESIGN §9, slice 44)
 
 Added 2026-09-27 out of catalog Y. When two aligners place a track 30–120 s apart, one of them has
-lost the song and ytalbum has no way to say which, so §9, slice 38 trusts the primary **by policy**. That
+lost the song and noaap has no way to say which, so §9, slice 38 trusts the primary **by policy**. That
 policy is right on the evidence — the condition fired on five of sixteen tracks and the primary was
 the accurate one every time:
 

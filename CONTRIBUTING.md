@@ -14,9 +14,9 @@ much to me.
 The useful ones say what the source was and what came out:
 
 - the URL you gave it (playlist, video, channel) or the artist you searched for,
-- what ytalbum produced — the artist/title it chose, the folder, the error,
+- what noaap produced — the artist/title it chose, the folder, the error,
 - what it should have been,
-- the output of `ytalbum config` if it looks like a setup problem (it prints no secrets).
+- the output of `noaap config` if it looks like a setup problem (it prints no secrets).
 
 A wrong name is the most valuable report this project gets: every one of them so far
 uncovered a rule that was wrong for a whole class of videos, not just that one.
@@ -48,7 +48,7 @@ such a bump — the tests answer from recorded fixtures, so a green run proves t
 we call still exists, **not** that YouTube still works. That needs one real fetch:
 
 ```sh
-uv run ytalbum fetch "https://www.youtube.com/playlist?list=…" --dry-run --no-mb
+uv run noaap fetch "https://www.youtube.com/playlist?list=…" --dry-run --no-mb
 ```
 
 ## The rules this codebase follows

@@ -1,7 +1,11 @@
-<h1><img src="src/ytalbum/webui/icon.svg" alt="" height="30" align="top"> ytalbum</h1>
+<h1><img src="src/noaap/webui/icon.svg" alt="" height="30" align="top"> noaap</h1>
 
-[![tests](https://github.com/smtws/ytalbum/actions/workflows/tests.yml/badge.svg)](https://github.com/smtws/ytalbum/actions/workflows/tests.yml)
+[![tests](https://github.com/smtws/noaap/actions/workflows/tests.yml/badge.svg)](https://github.com/smtws/noaap/actions/workflows/tests.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-6b4fd8)](LICENSE)
+
+**Not Officially An Audio Player.** This program was called **ytalbum** up to and including 0.9.0;
+1.0.0 is the same program under a new name, in a new repository, and a machine set up as ytalbum
+keeps working without being told anything — see [Coming from ytalbum](#coming-from-ytalbum).
 
 Turn YouTube playlists into properly tagged albums: correct artist and title per track,
 album art, MusicBrainz data where it exists, and the audio copied without re-encoding.
@@ -43,11 +47,11 @@ Comes with a command line and a small web app for the library.
   you hear.
 - **Every value knows where it came from** (MusicBrainz, YouTube Music, the video title,
   or you), and anything you edit yourself is never overwritten by a later update — and can be
-  handed back: the badge that says "you" restores what ytalbum derived.
+  handed back: the badge that says "you" restores what noaap derived.
 - **You can fix an album where you can see it.** Drag rows to reorder (or Alt+↑/↓), set trim
   points from what you are hearing and watch the length come right before you save, write or
   correct lyrics in the panel that shows them, and run the offline tidy-up from a button.
-- **Or let a model place them, if you want one.** Off by default and no dependency of ytalbum: with
+- **Or let a model place them, if you want one.** Off by default and no dependency of noaap: with
   a *timing provider* configured, **"⚖ align these words"** in the editor puts every line on the
   file's clock. It
   writes nothing — the stamps appear in the editor, you play a line to check them and press Save, and
@@ -84,7 +88,7 @@ Comes with a command line and a small web app for the library.
   own timed words that LRCLIB has no equal of.
 - **An album MusicBrainz has never heard of can be offered to them.** **"Add to MusicBrainz"** opens
   *their* release editor with the boxes filled in — the tracklist, the lengths measured from your
-  files, the playlist's URL. ytalbum submits nothing: you are signed in as yourself and you press
+  files, the playlist's URL. noaap submits nothing: you are signed in as yourself and you press
   their button.
 - **Re-runs are cheap.** An update checks each album with a single request and only does
   real work when the playlist actually changed.
@@ -105,42 +109,42 @@ sudo apt install ffmpeg                             # brew install ffmpeg on mac
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs
 curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
 
-git clone https://github.com/smtws/ytalbum.git
-cd ytalbum
+git clone https://github.com/smtws/noaap.git
+cd noaap
 uv sync                                             # venv + dependencies
-uv run ytalbum config                               # shows what it found: ffmpeg, JS runtime, token helper
+uv run noaap config                               # shows what it found: ffmpeg, JS runtime, token helper
 ```
 
 `uv sync` needs no system Python 3.14 — uv fetches the interpreter itself.
 
-`ytalbum config` reports whether it found ffmpeg, a JavaScript runtime and the token helper.
+`noaap config` reports whether it found ffmpeg, a JavaScript runtime and the token helper.
 **ffmpeg is reported, not required:** a library can be browsed, tagged, searched and have its lyrics
 fetched without it — downloading and trimming are what stop, and they stop at the moment of use.
 
 ## First run
 
 ```sh
-uv run ytalbum config --library ~/Music/YouTube        # once
-uv run ytalbum fetch "https://www.youtube.com/playlist?list=…"
-uv run ytalbum serve                                   # web UI on http://localhost:8765
+uv run noaap config --library ~/Music/YouTube        # once
+uv run noaap fetch "https://www.youtube.com/playlist?list=…"
+uv run noaap serve                                   # web UI on http://localhost:8765
 ```
 
 To have the web UI always there without a terminal (Linux):
 
 ```sh
-uv run ytalbum service install    # systemd user socket: starts on the first request, idles out
-uv run ytalbum app install        # menu entry with its own window and icon
+uv run noaap service install    # systemd user socket: starts on the first request, idles out
+uv run noaap app install        # menu entry with its own window and icon
 ```
 
-The library, the CLI and the web UI are platform-independent; `ytalbum service` (systemd)
-and `ytalbum app` (freedesktop launcher) are Linux-only.
+The library, the CLI and the web UI are platform-independent; `noaap service` (systemd)
+and `noaap app` (freedesktop launcher) are Linux-only.
 
 **Cookies: the bot check, and age-restricted videos.** After a few hundred requests YouTube starts
 refusing everything ("Sign in to confirm you're not a bot"), and some videos are age-restricted in
 any case. Both are fixed by the same thing — a logged-in YouTube session, which yt-dlp reads at request time. It does two things: it gets past the bot check, and it unlocks age-restricted videos:
 
 ```sh
-uv run ytalbum config --cookies-from-browser firefox   # or chrome, or --cookies-file cookies.txt
+uv run noaap config --cookies-from-browser firefox   # or chrome, or --cookies-file cookies.txt
 ```
 
 **Proof-of-origin tokens.** Some videos only hand out their audio streams when the client
@@ -160,9 +164,9 @@ git clone --single-branch --branch 2.0.0 https://github.com/Brainicism/bgutil-yt
 (cd .pot-provider/server && npm ci && npx tsc)
 ```
 
-ytalbum finds it, starts a local token server when it needs one and stops it after five
-idle minutes. `pot_provider_home` defaults to `.pot-provider/server` **relative to the ytalbum
-clone** — not to your working directory — so the command above puts it exactly where ytalbum looks.
+noaap finds it, starts a local token server when it needs one and stops it after five
+idle minutes. `pot_provider_home` defaults to `.pot-provider/server` **relative to the noaap
+clone** — not to your working directory — so the command above puts it exactly where noaap looks.
 Set the key to an absolute path if you keep it elsewhere.
 
 ## Screenshots
@@ -172,7 +176,7 @@ Set the key to an absolute path if you keep it elsewhere.
 | ![Album view](docs/screenshots/album.jpg) | ![The lyrics editor](docs/screenshots/editor.jpg) |
 | **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the ⏱ column says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what may be done with them — here, that these are LRCLIB's words and so not yours to give back. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing, the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. Nothing is written until Save. |
 | ![Settings](docs/screenshots/settings.jpg) | ![Channel listing](docs/screenshots/search.jpg) |
-| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. A key that is set reads `•••••••• (set)` and is never shown again. Below: what ytalbum found — config file, JS runtime, token generator. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
+| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. A key that is set reads `•••••••• (set)` and is never shown again. Below: what noaap found — config file, JS runtime, token generator. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
 | ![Library](docs/screenshots/library.jpg) | |
 | **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | |
 
@@ -206,7 +210,12 @@ track should be called, where every value came from, what has been downloaded, a
 trim points apply. The plan is the only state — delete it and the album is just files;
 keep it and everything is repeatable.
 
-- **Your edits win.** The plan records the value ytalbum derived. A value that differs from
+That file name is deliberate. It is the **format's** name, not the program's, so it did not change
+with the rename: a library written by noaap still opens in ytalbum 0.9.0, and one written by ytalbum
+opens here. Renaming it would have made every album invisible to the older program, which would then
+have re-fetched each one into a second folder beside the first.
+
+- **Your edits win.** The plan records the value noaap derived. A value that differs from
   it is yours and survives every update; untouched values follow better data when it
   appears.
 - **Nothing is decided on half-knowledge.** If any video can't be read (bot check, network),
@@ -235,7 +244,7 @@ Library/
         │                                             ↑ "1-01" on an album with several discs
         ├── …
         ├── My Dark Lullabies - Vol. 1 - … - 01 - Enemy Inside - Lullaby.lrc   # the lyrics
-        ├── cover.jpg              # replace it with your own and ytalbum keeps it
+        ├── cover.jpg              # replace it with your own and noaap keeps it
         ├── .ytalbum.json          # the plan
         └── .originals/            # only when trims are in use
 ```
@@ -263,8 +272,8 @@ keep.** Nothing else in the tags identifies where the audio came from, and nothi
 
 ### Editing a plan by hand
 
-`ytalbum plan <url>` writes `.ytalbum.json` and stops. It is ordinary JSON; edit it and run
-`ytalbum download <folder>`.
+`noaap plan <url>` writes `.ytalbum.json` and stops. It is ordinary JSON; edit it and run
+`noaap download <folder>`.
 
 | field | safe to edit | what happens |
 |---|---|---|
@@ -281,11 +290,11 @@ keep.** Nothing else in the tags identifies where the audio came from, and nothi
 **`candidates` is derived, `source_override` is the truth.** Each track lists every place its audio
 can be had from, and `chosen` says which is in use — but both are worked out from `video_id` and
 `source_override` every time the plan is loaded. Where they disagree, the old two win and the list is
-rebuilt from them. That is deliberate: an older ytalbum sharing the same library writes
+rebuilt from them. That is deliberate: an older noaap sharing the same library writes
 `source_override` and knows nothing about candidates, and it must not be silently overruled. So to
 change a track's audio by hand, set `source_override`.
 
-**Why `auto` and `provenance` are not yours to edit.** `auto` holds the value ytalbum derived for
+**Why `auto` and `provenance` are not yours to edit.** `auto` holds the value noaap derived for
 each field; `provenance` says where that value came from. A field whose value differs from `auto` is
 treated as *yours* and is never overwritten by a later update — that is the whole mechanism. So
 editing a value is how you take ownership, and editing `auto` to match only throws your edit away at
@@ -295,21 +304,21 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 
 | Command | What it does |
 |---|---|
-| `ytalbum fetch <url>` | Plan and download a playlist, video or channel. `--dry-run` prints the plan only, `--pick 1,3-5` / `--all` choose from a channel, `--no-mb` skips MusicBrainz, `--library PATH` overrides the library, `--dump-collection FILE` also saves what YouTube returned (for test fixtures), `--no-lyrics` skips the lyrics lookup. |
-| `ytalbum search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`, `--library`, `--no-mb`, `--no-lyrics`). |
-| `ytalbum plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer ytalbum left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
-| `ytalbum download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
-| `ytalbum update` | Re-check every album against its source. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
-| `ytalbum prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
-| `ytalbum delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
-| `ytalbum serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
-| `ytalbum service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
-| `ytalbum app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
-| `ytalbum repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. |
-| `ytalbum lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
-| `ytalbum timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
-| `ytalbum recycle list\|restore\|empty` | What ytalbum moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
-| `ytalbum config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
+| `noaap fetch <url>` | Plan and download a playlist, video or channel. `--dry-run` prints the plan only, `--pick 1,3-5` / `--all` choose from a channel, `--no-mb` skips MusicBrainz, `--library PATH` overrides the library, `--dump-collection FILE` also saves what YouTube returned (for test fixtures), `--no-lyrics` skips the lyrics lookup. |
+| `noaap search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`, `--library`, `--no-mb`, `--no-lyrics`). |
+| `noaap plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer noaap left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
+| `noaap download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
+| `noaap update` | Re-check every album against its source. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
+| `noaap prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
+| `noaap delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
+| `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
+| `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
+| `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
+| `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. |
+| `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
+| `noaap timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
+| `noaap recycle list\|restore\|empty` | What noaap moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
+| `noaap config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
 
 `-v` / `--verbose` before the subcommand turns on debug logging for any of them.
 
@@ -318,14 +327,14 @@ requests, `130` interrupted.
 
 ## Web UI and HTTP API
 
-`ytalbum serve` listens on `127.0.0.1:8765`, serves the app and a small JSON API. The app
+`noaap serve` listens on `127.0.0.1:8765`, serves the app and a small JSON API. The app
 is a single HTML page with no build step, and it can be installed as a PWA.
 
 Installing it from the browser works, but the window keeps the browser's window class
 (Chrome reports `WM_CLASS = "crx_<app-id>", "Google-chrome"`), and desktops group the
 taskbar by that class — so it appears as another browser window, with the browser's icon.
-No manifest setting changes this; the class comes from the browser process. `ytalbum app
-install` writes a launcher that starts the browser with `--class=ytalbum` and a profile
+No manifest setting changes this; the class comes from the browser process. `noaap app
+install` writes a launcher that starts the browser with `--class=noaap` and a profile
 directory of its own (the flag is only honoured by a browser process of its own), giving
 the app its own taskbar entry and icon.
 
@@ -359,7 +368,7 @@ playerctl --player=playerctld play-pause   # next, previous, stop accordingly
 `playerctld` starts on demand over D-Bus; add it to your session's autostart so it sees
 players from the beginning.
 
-**Safety:** localhost only by default; writing calls need the header `X-Ytalbum: 1` and a
+**Safety:** localhost only by default; writing calls need the header `X-Noaap: 1` and a
 JSON content type (so other websites cannot use it through your browser); the `Host` header
 must be ours (DNS rebinding); files are only ever served by album and video id, never by a
 path from the request; strict CSP, and thumbnails are fetched by the server so the page
@@ -380,14 +389,14 @@ network.
 | `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours), `words_by` and `timed_by` (who drafted and who timed them, when it was not a person), `timings` — set when the timestamps were written against a different file than the one on disk — `publish` (whether they may be given back to LRCLIB, and why not when they may not), `fit` (what was made of an entry that was nearly this recording) and `can_check` (whether ⚖ can be offered). |
 | `GET /api/mbseed?id=<source-id>` | The fields for MusicBrainz's own release editor, and its URL. Nothing is sent from here — the page builds their form with these and you submit it yourself. Refused, with the reason, for an album that is not one to offer. |
 
-### Writing (POST, JSON body, header `X-Ytalbum: 1`)
+### Writing (POST, JSON body, header `X-Noaap: 1`)
 
 | Endpoint | Body | Effect |
 |---|---|---|
 | `/api/open` | `{q}` | A URL or an artist name: preview, channel listing or search (the **read lane** — see [the two lanes](#the-two-lanes) below). A preview is a dry run — it reads from YouTube (and MusicBrainz, if that is on) exactly as a fetch does, so it costs the same requests, and it writes nothing. |
 | `/api/fetch` | `{urls: […]}` | Plan and download those sources. |
 | `/api/update` | `{artist?, deep?}` | Re-check the library, or one artist's albums. |
-| `/api/repair` | `{}` | Run `ytalbum repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
+| `/api/repair` | `{}` | Run `noaap repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
 | `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
 | `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
 | `/api/prune` | `{id}` | Delete tracks that left the playlist. |
@@ -400,7 +409,7 @@ network.
 | `/api/publish_lyrics` | `{id, video_id}` | Give your own timed words back to LRCLIB. One press is one request, it is never retried, and it is refused for anything that is not your own timed words that LRCLIB has no equal of. |
 | `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
 | `/api/delete_track` | `{id, video_id}` | Delete one track. |
-| `/api/delete_album` | `{id}` | Delete an album (files ytalbum owns; anything else is kept). |
+| `/api/delete_album` | `{id}` | Delete an album (files noaap owns; anything else is kept). |
 | `/api/details` | `{refs: [{id, url}]}` | Ask for track counts and covers of search hits; a background runner fills them in. |
 | `/api/cancel` | `{id}` | Cancel a job; it stops at the next point where nothing is half-done. |
 | `/api/settings` | see below | Change settings at runtime. |
@@ -414,7 +423,7 @@ and two things can never rename the same album at once.
 ## Optional: placing lyrics on the clock
 
 Entirely optional, and **nothing below is installed or imported unless you ask for it**. With no
-provider configured — the default — ytalbum has no machine-learning dependency, the editor shows no
+provider configured — the default — noaap has no machine-learning dependency, the editor shows no
 alignment action, and everything else works exactly as it does now.
 
 **Two jobs, two settings.** Placing your words on the clock (`timing_align_provider`) and writing
@@ -429,29 +438,29 @@ Five providers, and the first choice is whether the audio may leave the machine
 | provider | what it needs | where the audio goes | can it | what it costs |
 |---|---|---|---|---|
 | `none` (default) | nothing | nowhere | — | — |
-| `local` | the `ytalbum[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | align | ~12 s a track with a GPU, ~2 min without |
+| `local` | the `noaap[timing]` extra, ~1.5 GB with the CPU build of torch | nowhere | align | ~12 s a track with a GPU, ~2 min without |
 | `local` + `timing-check` | and the second extra, **+3.09 GB of model** | nowhere | align (checked against a second method) **and** draft words | about +60%: 11 s → 18 s a track with a GPU, 2:46 → 4:29 without |
 | `http` | nothing on this machine | to the machine you name, and no further | align | the same, plus a second |
 | `elevenlabs` | an API key | **to ElevenLabs** | align **and** draft words | $0.22 per audio hour¹ |
 | `deepgram` | an API key | **to Deepgram** | draft words only | $0.0043 per audio minute¹ |
 
-¹ the vendors' list prices, read on 2026-09-27 — check them before relying on them; ytalbum never
+¹ the vendors' list prices, read on 2026-09-27 — check them before relying on them; noaap never
 looks a price up. For scale: this library holds 262 hours of audio, so a pass over every track that
 has words but no timings (39 hours) costs about **$8.60** at ElevenLabs' rate, and one track from the
 editor costs about **1.5 cents**.
 
 ```sh
 # On a machine with no usable GPU, install the CPU build of torch FIRST. Order matters: on its own,
-# `ytalbum[timing]` resolves the CUDA build and pulls in cuda-toolkit — about 4 GB rather than 200 MB.
+# `noaap[timing]` resolves the CUDA build and pulls in cuda-toolkit — about 4 GB rather than 200 MB.
 uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # then, on the machine that will do the work (it may be this one)
-uv pip install "ytalbum[timing]"
+uv pip install "noaap[timing]"
 
-ytalbum timing-serve --port 8770          # ... if it is a different machine
+noaap timing-serve --port 8770          # ... if it is a different machine
 ```
 
-and in `~/.config/ytalbum/config.toml` (or from the settings panel):
+and in `~/.config/noaap/config.toml` (or from the settings panel):
 
 ```toml
 timing_align_provider = "local"                  # or "http"; `timing_provider` still means both
@@ -460,7 +469,7 @@ timing_device   = "auto"                         # "cpu" or "cuda" to force it
 ```
 
 **It gives the graphics card back.** Holding 3 GB of an 8 GB card while doing nothing would be rude
-to whatever else the machine is for — including its desktop — so ytalbum lets go as soon as there is
+to whatever else the machine is for — including its desktop — so noaap lets go as soon as there is
 nothing to do: the app's own service the moment its queue is empty, and `timing-serve` after
 `timing_idle_minutes` of quiet (set it to `0` on a machine that exists to serve this). The next
 request loads the models again off a warm disk and takes about the same time it did before.
@@ -479,7 +488,7 @@ know in a second whether it found the song.
 ### A second opinion, and words without a vendor
 
 ```sh
-uv pip install "ytalbum[timing,timing-check]"
+uv pip install "noaap[timing,timing-check]"
 ```
 
 The second extra adds a Whisper decoder — **3.09 GB of model, downloaded the first time it is used** —
@@ -508,7 +517,7 @@ and with it two things:
   a processor, and the same draft labels as any other provider — it is a guess either way.
 
 On CUDA there is a packaging trap worth knowing about: `ctranslate2` wants CUDA 12's `libcublas`
-while the installed `torch` may bring a different one. ytalbum notices, says so, and falls back to
+while the installed `torch` may bring a different one. noaap notices, says so, and falls back to
 the processor; `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` puts the GPU back. On a machine
 without a GPU none of this applies — it is simply slower.
 
@@ -522,14 +531,14 @@ timing_deepgram_key = "…"             # https://console.deepgram.com → API k
 
 Both take a key, which stays in your config file: it is never sent to the page, never written to a
 log, and the settings panel's field only ever writes it. **Both send the track's audio to the
-vendor** — the cut file, the one the timestamps belong to — and ytalbum says so in three places: here,
+vendor** — the cut file, the one the timestamps belong to — and noaap says so in three places: here,
 in the settings row beside the choice, and in a confirm before the first request of each session.
 Neither is retried: one press is one request, so one press is at most one charge.
 
 - **ElevenLabs** does both jobs. Its
   [Forced Alignment API](https://elevenlabs.io/docs/overview/capabilities/forced-alignment) places
   words you already have (29 languages, German among them), and Scribe transcribes.
-- **Deepgram** transcribes only, and ytalbum will not pretend otherwise: with Deepgram configured the
+- **Deepgram** transcribes only, and noaap will not pretend otherwise: with Deepgram configured the
   editor shows no alignment action at all.
 
 ### Drafting the words of a track that has none
@@ -537,7 +546,7 @@ Neither is retried: one press is one request, so one press is at most one charge
 Where a provider can transcribe and a track has **no words at all**, its lyrics panel offers
 **"✎ draft the words"**.
 
-**ytalbum separates the voice first** wherever the `ytalbum[timing]` extra is installed, and sends
+**noaap separates the voice first** wherever the `noaap[timing]` extra is installed, and sends
 *that* to the transcriber rather than the finished track. It is worth doing: on one real song, scored
 against its own published lyric, Deepgram found 16 of 52 lines on the mix and **32** on the voice,
 and the local decoder 28 against **38** (`docs/qa-catalog.md`, section AF). So a draft from a paid
@@ -558,36 +567,36 @@ until you save it, and what is saved remembers that the words were drafted (the 
 or yours, is better than a guess.
 
 **What the lyrics lookup sends.** Separate from any of this, and on by default: for each track
-without words ytalbum asks [LRCLIB](https://lrclib.net) with the **artist, the title, the album name
+without words noaap asks [LRCLIB](https://lrclib.net) with the **artist, the title, the album name
 and the file's duration rounded to a second**. No audio and nothing else leaves. Turn it off with
-`ytalbum config --lyrics off`.
+`noaap config --lyrics off`.
 
 **Privacy.** `none`, `local` and `http` never send anything outside your own machine or network.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
 **Four environment variables, not config keys**, all for people testing rather than listening:
-`YTALBUM_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
-`YTALBUM_MUSICBRAINZ_WEB` points the seeding form and the recording links at another MusicBrainz;
-`YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
+`NOAAP_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
+`NOAAP_MUSICBRAINZ_WEB` points the seeding form and the recording links at another MusicBrainz;
+`NOAAP_TIMING_BASE_ELEVENLABS` / `NOAAP_TIMING_BASE_DEEPGRAM` point a vendor client at another
 host — a gateway, a proxy, or a server of your own speaking their shapes, which is how this feature
 was verified without spending anything.
 
 The program reads only those four. Five more exist and are read **by the test suite alone**, never
-by ytalbum itself: `YTALBUM_LIVE_AUDIO` (which file the opt-in live vendor test may spend its one
-request on), `YTALBUM_TIMING_LIVE`, `YTALBUM_ELEVENLABS_KEY`, `YTALBUM_DEEPGRAM_KEY`, and
-`YTALBUM_CORPUS_AUDIO` / `YTALBUM_CORPUS_LIBRARY` for the end-to-end corpus
+by noaap itself: `NOAAP_LIVE_AUDIO` (which file the opt-in live vendor test may spend its one
+request on), `NOAAP_TIMING_LIVE`, `NOAAP_ELEVENLABS_KEY`, `NOAAP_DEEPGRAM_KEY`, and
+`NOAAP_CORPUS_AUDIO` / `NOAAP_CORPUS_LIBRARY` for the end-to-end corpus
 ([docs/regression.md](docs/regression.md)).
 
 ## Near misses: when LRCLIB nearly has your recording
 
-LRCLIB matches by length, and ytalbum will not take an entry whose length is more than three seconds
+LRCLIB matches by length, and noaap will not take an entry whose length is more than three seconds
 from your file: a cover, a live version and a radio edit all share a title, and the length is the only
 thing that tells them apart. But a 2% difference on a four-minute song is ordinary, and measuring this
 library found **74 tracks with no words whose entry was only seconds away** — and that **71% of the
 entries further away than that were still the right words** (`docs/qa-catalog.md`, section AG).
 
-So where a timing provider is configured, ytalbum can settle it by listening instead of by arithmetic:
+So where a timing provider is configured, noaap can settle it by listening instead of by arithmetic:
 **⚖ check them** aligns the entry's words to your file and reads two things off the result — how many
 lines it can place, which says whether these are the song's words, and how much of the singing they
 cover, which says whether the entry's timestamps belong to *your* cut. Then:
@@ -601,7 +610,7 @@ cover, which says whether the entry's timestamps belong to *your* cut. Then:
 
 Without a timing provider nothing changes and nothing is taken — but the panel now tells you the words
 exist and how far off they are, with a button to take them as plain text if you want them untimed.
-Either way the words stay LRCLIB's, and where ytalbum's own aligner placed the stamps it says whose
+Either way the words stay LRCLIB's, and where noaap's own aligner placed the stamps it says whose
 clock they are.
 
 **“♪ N need you”.** Where the check could not settle it, the track waits for you, and the library
@@ -611,10 +620,10 @@ decide whether they are this recording's*. Click through and the panel shows bot
 
 ## Giving the words back
 
-Lyrics in ytalbum come from [LRCLIB](https://lrclib.net)'s contributors. When you have timed a song
+Lyrics in noaap come from [LRCLIB](https://lrclib.net)'s contributors. When you have timed a song
 yourself — by tapping, by nudging, or by checking what a model proposed — the lyrics panel offers
 **“↑ publish to lrclib”**, which gives it back. No account and no key: their API sets a small
-cryptographic puzzle, ytalbum solves it on your machine (a few seconds) and sends the words with the
+cryptographic puzzle, noaap solves it on your machine (a few seconds) and sends the words with the
 answer.
 
 It is offered only for **your own timed words that LRCLIB has no equal of**: not their entry read
@@ -624,9 +633,9 @@ text, and never the same words twice. Where it is not offered the panel says whi
 Before anything is sent, a confirm names exactly what leaves: the artist, the title, the album, the
 **file's** length, how many lines, and that both the timed and the untimed form go. **LRCLIB is a
 public database and a publish cannot be taken back, edited or deleted by you afterwards** — so one
-press is one request, ytalbum never retries, and a refusal leaves everything here as it was.
+press is one request, noaap never retries, and a refusal leaves everything here as it was.
 
-`YTALBUM_LRCLIB_BASE` points ytalbum at another LRCLIB — a mirror, or a server of your own, which is
+`NOAAP_LRCLIB_BASE` points noaap at another LRCLIB — a mirror, or a server of your own, which is
 how this was tested without putting test words into the public one.
 
 ## Offering an album to MusicBrainz
@@ -636,7 +645,7 @@ It opens *their* release editor in a new tab with the boxes already filled in �
 one Digital Media medium, the tracklist with the lengths measured from your files, the playlist's URL
 and an edit note saying where it came from.
 
-**ytalbum submits nothing and holds no MusicBrainz account.** You are signed in as yourself, you
+**noaap submits nothing and holds no MusicBrainz account.** You are signed in as yourself, you
 check every field — the titles come from YouTube, and MusicBrainz wants releases that were really
 released — and you press their button, or you close the tab. It is not offered for a release they
 already have, for a compilation, for somebody's artist playlist, or for an album with nothing
@@ -647,11 +656,11 @@ recordings. So where your file and MusicBrainz disagree by more than ten seconds
 the track row becomes a button to that recording's page on MusicBrainz, with both numbers in the
 confirm — and the change, if there is one to make, is yours.
 
-`YTALBUM_MUSICBRAINZ_WEB` points both at another MusicBrainz (a test server, or a mirror).
+`NOAAP_MUSICBRAINZ_WEB` points both at another MusicBrainz (a test server, or a mirror).
 
 ## Configuration
 
-`~/.config/ytalbum/config.toml` (or `$XDG_CONFIG_HOME`), all keys optional:
+`~/.config/noaap/config.toml` (or `$XDG_CONFIG_HOME`), all keys optional:
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -663,18 +672,18 @@ confirm — and the change, if there is one to make, is yours.
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |
 | `pot_mode` | `"server"` | Token helper: `server` (started on demand), `script`, `off`. |
 | `pot_port`, `pot_idle` | `4416`, `300` | Token server port and idle timeout in seconds. |
-| `pot_provider_home` | `.pot-provider/server` | Where the token generator is built, **relative to the ytalbum clone**. An absolute path also works. |
+| `pot_provider_home` | `.pot-provider/server` | Where the token generator is built, **relative to the noaap clone**. An absolute path also works. |
 | `js_runtime`, `js_runtime_path` | autodetect | deno, node, bun or quickjs for yt-dlp. |
-| `timing_provider` | `"none"` | Who may do both jobs: `none`, `local` (the `ytalbum[timing]` extra), `http`, or a vendor. Read as the fallback for both slots below. |
+| `timing_provider` | `"none"` | Who may do both jobs: `none`, `local` (the `noaap[timing]` extra), `http`, or a vendor. Read as the fallback for both slots below. |
 | `timing_align_provider` | – | Who places your words on the clock. Empty = whatever `timing_provider` says. |
 | `timing_draft_provider` | – | Who writes down the words of a track that has none. Empty = the same. |
-| `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `ytalbum timing-serve` runs. |
+| `timing_endpoint` | – | For `http`: `http://thatmachine:8770`, where `noaap timing-serve` runs. |
 | `timing_device` | `"auto"` | `cpu` or `cuda` to force the local provider's device. |
 | `timing_elevenlabs_key`, `timing_deepgram_key` | – | API keys for the paid providers. Never leave this machine except to that vendor. |
 | `timing_verify` | unset | Check each alignment against a second method. Unset means "whenever the `timing-check` extra is installed". |
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
-| `timing_idle_minutes` | `5.0` | How long `ytalbum timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
+| `timing_idle_minutes` | `5.0` | How long `noaap timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
 
 The `timing_*` keys may also be written as a table, if grouping reads better — the flat key wins
 where both are present:
@@ -687,17 +696,31 @@ device = "auto"               # endpoint, elevenlabs_key, deepgram_key, verify,
 idle_minutes = 5.0            # verify_threshold, verify_lost, idle_minutes likewise
 ```
 
+## What 1.0.0 promises
+
+A major version is a promise about what will not move under you. Here it covers three things:
+
+- **the plan format** — additive only. A key is never removed and a value never rewritten by a newer
+  version, and a key a newer version wrote is carried through untouched by an older one. `noaap plan
+  --verify` checks that over a whole library and writes nothing.
+- **the command line** — the verbs and their meanings.
+- **the HTTP API** — the paths the web UI uses.
+
+It does **not** cover `sources.Source`, the interface a download provider implements. That is where
+the next releases add intake folders, SoundCloud and ranking, and it will change shape while they do.
+Nothing outside this repository implements it yet; when something does, it gets its own promise.
+
 ## Limits
 
 - **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
   uploader provided. No setting can make that better, and FLAC it will never be.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also
   withholds the audio formats now and then for videos that do have them, which looks
-  identical — so ytalbum asks twice before believing it, and the dialog says to re-check the
+  identical — so noaap asks twice before believing it, and the dialog says to re-check the
   source before accepting the fallback: copying the audio out of the combined video into an
   `.m4a` is your choice, never automatic.
 - **Some uploads need a paid tier.** YouTube Music Premium exclusives (audio plays, for
-  instance) cannot be read without a subscription. ytalbum then writes nothing at all rather
+  instance) cannot be read without a subscription. noaap then writes nothing at all rather
   than an album with no tracks, and an album already downloaded is never touched by a later
   update that can no longer read its source.
 - **The track order is yours if you change it.** Drag a row or type a position, and the album
@@ -721,7 +744,7 @@ idle_minutes = 5.0            # verify_threshold, verify_lost, idle_minutes like
   bytes, not by a flag you have to set, and kept through every later pass including `--refetch`.
   Delete your own version to let LRCLIB answer again. A wrong match can be rejected for good, so
   no later lookup offers that entry for that track.
-- **The bot check** can stop any run. ytalbum then changes nothing and asks you to try
+- **The bot check** can stop any run. noaap then changes nothing and asks you to try
   later; a browser login makes it rare.
 - **It only knows its own library.** Music you already own elsewhere is invisible to it, so
   it cannot warn you about duplicates.
@@ -729,7 +752,7 @@ idle_minutes = 5.0            # verify_threshold, verify_lost, idle_minutes like
 
 ## The documentation, and what order to read it in
 
-For using ytalbum, in this order: **What it does** → **Install** and **First run** → **How it works**
+For using noaap, in this order: **What it does** → **Install** and **First run** → **How it works**
 and **On disk** → **Command line** and **Configuration** → **Limits**. Then, only if you want a model
 to place lyrics on the clock, **Optional: placing lyrics on the clock** and the sections after it.
 [SECURITY.md](SECURITY.md) is short and worth reading before you expose anything to a network.
@@ -748,22 +771,22 @@ The rest is internal and written for whoever works on this, not for using it:
 
 ### The recycle bin
 
-**ytalbum never removes audio. It moves it to the bin.** Deleting a track, deleting an album and
+**noaap never removes audio. It moves it to the bin.** Deleting a track, deleting an album and
 pruning what left a playlist all put the file in `<library>/.recycle/` instead of unlinking it —
 with its lyrics sidecar, the untouched original kept for trimming, the tags it carried, and the plan
 entry exactly as it was, which is what lets it come back.
 
 ```sh
-ytalbum recycle list                 # what is in there, why, and how big
-ytalbum recycle restore <entry>      # put one back
-ytalbum recycle empty --older-than 90
+noaap recycle list                 # what is in there, why, and how big
+noaap recycle restore <entry>      # put one back
+noaap recycle empty --older-than 90
 ```
 
 The web UI shows the same under **Settings › Recycle bin**, with a *Put it back* button.
 
 **It never empties itself.** There is no age cap and no size limit, because a bin that quietly
-empties is one you cannot rely on; `ytalbum config` and the settings panel report how big it has
-grown, and `recycle empty` is the only thing in ytalbum that really deletes audio.
+empties is one you cannot rely on; `noaap config` and the settings panel report how big it has
+grown, and `recycle empty` is the only thing in noaap that really deletes audio.
 
 Restoring puts the file back, returns the track to its album with its numbering closed up, and
 brings the sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which
@@ -790,11 +813,11 @@ undone, and it stays exactly as it is.
 
 ### Everything else
 
-ytalbum keeps everything in four places, and nothing anywhere else.
+noaap keeps everything in four places, and nothing anywhere else.
 
 ```sh
-ytalbum service uninstall                 # the systemd user socket and unit
-ytalbum app uninstall --remove-profile    # the desktop file, its icons, and the app's browser profile
+noaap service uninstall                 # the systemd user socket and unit
+noaap app uninstall --remove-profile    # the desktop file, its icons, and the app's browser profile
 ```
 
 Then delete, if you want them gone:
@@ -802,15 +825,48 @@ Then delete, if you want them gone:
 | what | where |
 |---|---|
 | the program | the clone, including `.venv/` and `.pot-provider/` |
-| settings | `~/.config/ytalbum/config.toml` (or `$XDG_CONFIG_HOME/ytalbum/`) |
-| caches | `~/.cache/ytalbum/lyrics.sqlite3`, `~/.cache/ytalbum/musicbrainz.sqlite3`, and the token server's files in the same folder |
+| settings | `~/.config/noaap/config.toml` (or `$XDG_CONFIG_HOME/noaap/`) |
+| caches | `~/.cache/noaap/lyrics.sqlite3`, `~/.cache/noaap/musicbrainz.sqlite3`, and the token server's files in the same folder |
 | the recycle bin | `<library>/.recycle/` — see above; deleting it by hand is the same as emptying it |
 | models, only if you used the `timing` extras | `~/.cache/torch/hub/checkpoints/` (the aligner and Demucs, ~0.5 GB) and `~/.cache/huggingface/` (the Whisper decoder, ~3 GB) |
+
+If you came from ytalbum, its own four places are still there and are not listed above, because
+nothing here removes them: `~/.config/ytalbum/`, `~/.cache/ytalbum/`, its units, its launcher and
+`~/.local/share/ytalbum-browser/`. `noaap migrate` reports them all and, with `--uninstall-old`,
+removes the units and the launcher; the rest is yours to delete.
 
 **Your music is not touched by any of this.** The library folder, the audio, the covers and the
 `.lrc` files beside them are yours; deleting an album's `.ytalbum.json` leaves plain tagged files.
 The model caches are torch's and Hugging Face's own, shared with any other program that uses them —
 check before deleting.
+
+## Coming from ytalbum
+
+Nothing has to be done. noaap reads ytalbum's settings file while it has none of its own, accepts
+every `YTALBUM_*` variable, and never touched the library in the first place. Each of those says so
+once, in one line, when it happens.
+
+`noaap migrate` ends the borrowing. It **shows first** — the bare command changes nothing — and
+`--apply` then copies the settings file, any `*.env` beside it and both lookup caches (lyrics and
+MusicBrainz; the second is rate-limited, so copying it is worth a moment). It copies, never moves.
+
+Two things it leaves alone unless asked, and one it never touches:
+
+```sh
+noaap migrate                          # show what it would do
+noaap migrate --apply                  # copy the settings and the caches
+noaap migrate --apply --uninstall-old  # …and remove ytalbum's systemd units and launcher
+```
+
+`--uninstall-old` removes only a unit file and a desktop entry, both of which `ytalbum service
+install` and `ytalbum app install` write again — that is the whole of the undo, and the command
+prints it. ytalbum's **browser profile** is never removed by anything here: it holds your cookies and
+whatever you are signed into. Neither are ytalbum's own config and cache directories, so ytalbum
+still runs afterwards.
+
+One thing to know if you keep both: they default to the same port. `noaap service install` says so
+and stops rather than letting systemd answer "Address already in use" — give it `--port 8766`, or
+stop ytalbum's socket first.
 
 ## Where this comes from
 
@@ -822,7 +878,9 @@ The repository has three generations, all in its history:
    central number, the "track count", was read from a yt-dlp field that actually reports the
    size of the surrounding list — the bug that sent the project into a fix/break loop.
 3. **v3** (`main`, this code): rebuilt from scratch on 22 September 2026 after an
-   analysis of both predecessors. [DESIGN.md](DESIGN.md) records that analysis, the verified
+   analysis of both predecessors. It was called **ytalbum** until 0.9.0 and was renamed to noaap
+   for 1.0.0, with the whole history carried over; the old repository is archived. A command
+   quoted in a dated note from before then is spelled the way it was run. [DESIGN.md](DESIGN.md) records that analysis, the verified
    facts about yt-dlp and YouTube, every decision, and the ideas that were measured and
    dropped (automatic intro detection, for one).
 
@@ -853,9 +911,9 @@ a measurement contradicted the plan.
 [uv](https://docs.astral.sh/uv/)
 
 Please respect MusicBrainz' [rate limits](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting)
-(ytalbum does), keep the load on LRCLIB light (it is one request per track, cached for a
+(noaap does), keep the load on LRCLIB light (it is one request per track, cached for a
 month), and download only what you are allowed to. Lyrics come from LRCLIB's contributors,
-not from ytalbum — it puts them next to music you already have and nowhere else.
+not from noaap — it puts them next to music you already have and nowhere else.
 
 **If this saved you time, give it to the projects underneath it, not to me.** Half the names
 in your library come from MusicBrainz, whose non-profit [MetaBrainz Foundation](https://metabrainz.org/donate)
@@ -869,7 +927,7 @@ does not have to. This repository takes no donations and has no sponsor button.
 
 Two dependencies are copyleft and are installed separately by `uv`/`pip`, not shipped
 here: **mutagen** (GPL-2.0-or-later, used for tagging) and **bgutil-ytdlp-pot-provider**
-(GPL-3.0). Using and modifying ytalbum from source is unaffected — but a *bundle* that
+(GPL-3.0). Using and modifying noaap from source is unaffected — but a *bundle* that
 contains them (a PyInstaller binary, a container image) is a combined work and has to be
 distributed under the GPL.
 

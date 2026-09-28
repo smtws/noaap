@@ -19,7 +19,7 @@ body:
     id: setup
     attributes:
       label: Setup
-      description: Output of `ytalbum config` (it prints no secrets), plus your OS. Say whether it worked before.
+      description: Output of `noaap config` (it prints no secrets), plus your OS. Say whether it worked before.
       render: shell
   - type: checkboxes
     id: checks
@@ -27,4 +27,4 @@ body:
       label: Before reporting
       options:
         - label: The bot check is not the cause (the run does not say "Sign in to confirm you're not a bot")
-        - label: ffmpeg and a JavaScript runtime are installed (`ytalbum config` shows both)
+        - label: ffmpeg and a JavaScript runtime are installed (`noaap config` shows both)

@@ -1,5 +1,5 @@
 name: Wrong artist, title or album
-description: ytalbum named something wrong, filed it in the wrong folder, or picked the wrong MusicBrainz match
+description: noaap named something wrong, filed it in the wrong folder, or picked the wrong MusicBrainz match
 labels: [naming]
 body:
   - type: markdown
@@ -18,7 +18,7 @@ body:
   - type: textarea
     id: got
     attributes:
-      label: What ytalbum made of it
+      label: What noaap made of it
       description: The artist/title/album it chose, or the folder it created. Paste the line as it appears.
       placeholder: |
         xxFEUERSCHWANZxx — Das Elfte Gebot

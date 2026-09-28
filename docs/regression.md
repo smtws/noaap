@@ -12,8 +12,8 @@ rather than the summary. Two suites.
 
 ```sh
 uv run pytest                                          # the fast half, offline
-YTALBUM_CORPUS_AUDIO=1 uv run pytest -m slow -v        # the slow half
-YTALBUM_CORPUS_AUDIO=1 YTALBUM_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slow
+NOAAP_CORPUS_AUDIO=1 uv run pytest -m slow -v        # the slow half
+NOAAP_CORPUS_AUDIO=1 NOAAP_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slow
 ```
 
 ## What it protects

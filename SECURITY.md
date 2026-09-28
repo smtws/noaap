@@ -2,20 +2,20 @@
 
 ## What this program is
 
-ytalbum runs on your own machine. It reads public YouTube pages and the MusicBrainz API,
+noaap runs on your own machine. It reads public YouTube pages and the MusicBrainz API,
 writes audio files and one plan file per album into a folder you choose, and serves a web UI.
 It stores no passwords and has no accounts.
 
 ## The web UI has no authentication
 
-This is a deliberate design decision, not an oversight: `ytalbum serve` binds
+This is a deliberate design decision, not an oversight: `noaap serve` binds
 **`127.0.0.1` by default**, where the operating system already decides who may connect.
 
 `--host 0.0.0.0` removes that boundary. Anyone who can reach the port can then download into
 your library, delete albums and read every file in it. Put it behind a reverse proxy with
 authentication, or leave it on localhost.
 
-What is in place either way: writing calls need an `X-Ytalbum` header and a JSON content type
+What is in place either way: writing calls need an `X-Noaap` header and a JSON content type
 (so another website cannot drive it through your browser), the `Host` header must be ours (DNS
 rebinding), files are served by album and video id only — never by a path from the request —
 a strict CSP applies, and thumbnails are fetched by the server so the page never talks to
@@ -23,13 +23,13 @@ Google.
 
 ## The recycle bin
 
-`GET /api/recycle` lists what ytalbum moved aside instead of deleting. It reports an **entry id and
+`GET /api/recycle` lists what noaap moved aside instead of deleting. It reports an **entry id and
 the track's own names** — artist, title, album, reason, size — and **no filesystem path**, so the
 page never learns where the library is. Restoring and emptying are ordinary write calls and need the
-same header as every other one; emptying asks first, because it is the only place in ytalbum that
+same header as every other one; emptying asks first, because it is the only place in noaap that
 really deletes audio.
 
-## `ytalbum timing-serve`
+## `noaap timing-serve`
 
 The alignment service is a **separate exposure from the web UI, with its own default**: it binds
 **`0.0.0.0`** unless you say otherwise, because its whole purpose is to be reached from another
@@ -48,6 +48,6 @@ treat that file as a password, because it is one.
 
 ## Reporting a vulnerability
 
-Use **[private vulnerability reporting](https://github.com/smtws/ytalbum/security/advisories/new)**
+Use **[private vulnerability reporting](https://github.com/smtws/noaap/security/advisories/new)**
 on this repository, or write to info@smt-webservices.de. Please do not open a public issue for
 a security problem. Expect a slow but real answer: this is a personal project, not a product.

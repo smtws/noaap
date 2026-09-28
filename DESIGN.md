@@ -1,8 +1,13 @@
-# ytalbum — Design
+# noaap — Design
 
 Status: draft, 2026-09-22. Replaces `ARCHITECTURE_PLAN.md` (v2) and the v1 tree in
 `~/YT-Downloads-master`. Nothing from v1/v2 is carried over as code unless listed under
 "Salvage" at the end.
+
+**The program was called `ytalbum` up to and including 0.9.0** (slice 52). §9 and §12 are records of
+what was decided and done on a date, so a command quoted there is spelled the way it was run; the
+rest of this document describes the program as it is now. The plan file on disk is still
+`.ytalbum.json`, which is the format's name and not the program's.
 
 ## 1. Goal
 
@@ -98,14 +103,14 @@ These are the facts v1/v2 got wrong or never knew. Fixtures in `design-fixtures/
    No yt-dlp client (tv, web_safari, mweb, web_embedded) gets audio without one.
    **Fix (2026-09-22):** the bgutil PO-token generator in script mode —
    `bgutil-ytdlp-pot-provider` (plugin, in the venv) + its generator built in
-   `.pot-provider/server` (v2.0.0, Node, gitignored). ytalbum detects it and passes
+   `.pot-provider/server` (v2.0.0, Node, gitignored). noaap detects it and passes
    `youtubepot-bgutilscript:server_home`. Result: Opus 251 offered, Feuerschwanz track
    downloaded at 121 kbps. Script mode costs a Node process per request (a full 4-album
    update took 2.5 min), so the default is now **server mode** (`pot.py`): before reading
-   or downloading, ytalbum pings `127.0.0.1:4416/ping` and, if nothing answers, starts a
-   detached watchdog (`python -m ytalbum.pot`) running `node build/main.js` on localhost
+   or downloading, noaap pings `127.0.0.1:4416/ping` and, if nothing answers, starts a
+   detached watchdog (`python -m noaap.pot`) running `node build/main.js` on localhost
    only; every YouTube request and download progress touches
-   `~/.cache/ytalbum/pot-server.heartbeat`, and after `pot_idle` (300 s) without a beat the
+   `~/.cache/noaap/pot-server.heartbeat`, and after `pot_idle` (300 s) without a beat the
    watchdog stops Node and exits. Script mode stays configured as the plugin's fallback.
    `pot_mode = "script" | "off"` in the config switches. v3 never transcodes the 360p
    fallback into Opus.
@@ -237,14 +242,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   MusicBrainz — UA with the repo URL, ≤1 req/s, retry on 503 (it answers "server is busy"
   readily), sqlite cache (hits 30 d, misses 7 d). Measured 2026-09-25 on 40 random library
   tracks: 50 % synced, 22 % plain, 28 % nothing. The text is third-party and unlicensed;
-  ytalbum only puts it beside a file the user already has, and `--no-lyrics` / `config
+  noaap only puts it beside a file the user already has, and `--no-lyrics` / `config
   --lyrics off` switches it off.
 - ffmpeg only for remux (`-c:a copy`) and chapter splitting.
-- Config: one TOML file (`~/.config/ytalbum/config.toml`), overridable per run by CLI
+- Config: one TOML file (`~/.config/noaap/config.toml`), overridable per run by CLI
   flags. Holds `library_root` (**configurable, no default path baked into code**; the
   first run asks, or takes `--library`), filename template, compilation naming rules,
   MB on/off, concurrency, JS runtime.
-- UI: **CLI first** (`ytalbum fetch <url> [--dry-run] [--edit]`). Web/PWA later on top
+- UI: **CLI first** (`noaap fetch <url> [--dry-run] [--edit]`). Web/PWA later on top
   of the same library — the library never knows about the UI.
 
 ## 8. Test cases (all offline from saved fixtures, plus one opt-in live smoke test)
@@ -1346,6 +1351,42 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `titles.py` is still reached into by `plan.py` for album-name hygiene; a test names that as the
    whole remaining coupling and fails if it grows. The intake folder (P51) is what will say what a
    provider without conventions should answer there.
+
+52. ✅ **The rename to noaap** (2026-09-28, P50). New name, new repository, same history, same
+   library. `smtws/noaap` was pushed the identical commits up to v0.9.0 and the rename sits on top;
+   ytalbum gets a 0.9.1 with a deprecation notice and is archived. Version: **1.0.0**, because every
+   public handle moves at once and because what 1.0 promises — additive-only plan format, the CLI
+   verbs, the HTTP paths — is a promise slices 48 and 50 had already made keepable. `sources.Source`
+   is explicitly outside it; P51–P56 will change its shape.
+   **What the program is called, and what a thing on disk is called, are different questions.** The
+   plan file stays `.ytalbum.json`. It is the format's name; renaming it would make every album noaap
+   writes invisible to ytalbum 0.9.0, whose `iter_plans` globs for it — and an invisible album is not
+   merely unreadable, it gets re-fetched into a second folder beside the first. Slice 48 promises a
+   library reads both ways, and this is what that promise costs: a file named after a name.
+   Likewise `.recycle`, `.originals` and `.parts`, which were never branded and did not move.
+   **Three things answer to the old name, each read and never written**, so the old spelling fades
+   instead of being maintained: the settings file (`~/.config/ytalbum/config.toml`, while ours does
+   not exist — without it every command on a renamed machine says "set the library first"); the
+   `YTALBUM_*` variables (ours wins, theirs works and says so once per name per process — and this is
+   not only for the documented redirects, since the vendor keys are read from a file the user wrote);
+   and the write header, because an installed PWA serves ytalbum's `app.js` out of its own cache
+   until the service worker updates, and a 403 on every write is a poor way to find that out.
+   A save always lands in our own directory, so the first setting changed is the last read of theirs.
+   **The caches move without a fallback.** Read-both/write-new over two sqlite files is complexity
+   for nothing when one command copies them; `noaap migrate` does, with the write-ahead files, and
+   without it they refill (58 MB of lyrics, 15 MB of MusicBrainz on the reference machine, and
+   MusicBrainz is rate-limited).
+   **`noaap migrate` takes over without taking away.** Dry by default — the inverse of this
+   program's own `--dry-run`, because it is the one command that reaches into someone's configuration
+   and their systemd units. It copies and never moves, never overwrites what is already ours, and
+   `--uninstall-old` removes only a unit file and a launcher entry, both of which ytalbum writes
+   again on demand: that is the whole of the undo, and it is printed. The browser profile is never
+   removed by anything, because it holds cookies and logins.
+   **Both default to port 8765**, so `service install` checks and refuses with a sentence rather than
+   letting systemd answer "Address already in use" from inside `enable --now`.
+   Two defects were fixed on the way, both live: the MusicBrainz user agent named a repository that
+   had been renamed — a wrong contact address on every request, and the one field they ask for — and
+   both user agents claimed version `0.1` forever. They now read the installed version from one place.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

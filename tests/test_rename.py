@@ -10,6 +10,8 @@ moved in the first place because it is the format's name.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from test_incremental import opus_template  # a fixture, used by name
 from test_web import library, server  # likewise: a real server on a real library
@@ -175,3 +177,69 @@ def test_the_plan_file_keeps_the_name_the_format_was_born_with():
     would find nothing and a re-fetch would build a second folder beside the first. Slice 48 says
     a library stays readable both ways, and this is what that costs: a file named after the name."""
     assert PLAN_FILE == ".ytalbum.json"
+
+
+# -- the guard -------------------------------------------------------------------------------------
+
+
+def test_what_still_answers_to_the_old_name_is_written_down() -> None:
+    """The rename is only finished while the list of exceptions is a list, not a habit.
+
+    This is the same shape as slice 51's grep guard, and for the same reason: nothing here is a type
+    error, and a new mention of the old name reads as harmless in a diff. Two assertions —
+
+    1. **which files** may say it at all, each with a reason below;
+    2. **which identifier-like literals** exist, which is the behavioural half: `"ytalbum"` in a
+       sentence is prose, `"ytalbum-last"` is a key something reads.
+
+    `docs/` is deliberately out of scope. The catalog and DESIGN §9/§12 are records of what was run
+    on a date, and rewriting them would make the record false; each carries a header saying so.
+    """
+    import re
+
+    root = Path(__file__).parent.parent
+    src = root / "src" / "noaap"
+
+    allowed = {
+        "migrate.py":  "the command whose whole subject is ytalbum's machine",
+        "config.py":   "LEGACY, the settings fallback and the YTALBUM_* variables",
+        "systemd.py":  "LEGACY_UNIT: ytalbum's units are reported, never removed",
+        "desktop.py":  "LEGACY_APP_ID: its launcher and profile are reported, never removed",
+        "web.py":      "LEGACY_WRITE_HEADER: an installed PWA still sends the old one",
+        "download.py": "PLAN_FILE — the format's name, and it is not moving",
+        "cli.py":      "the migrate subcommand, the notice, and the plan file in one message",
+        "app.js":      "the two localStorage keys, read once under the old name",
+        "sw.js":       "a comment only — why the cache name had to change; the literals below are the promise",
+    }
+    saying = sorted(p.name for p in src.rglob("*")
+                    if p.is_file() and p.suffix in {".py", ".js", ".mjs", ".html", ".css", ".webmanifest"}
+                    and "ytalbum" in p.read_text(encoding="utf-8").lower())
+    assert saying == sorted(allowed), (
+        "a file started answering to the old name, or stopped:\n"
+        + "\n".join(f"  {name}: {allowed.get(name, '*** not written down ***')}" for name in saying))
+
+    # identifier-like: no spaces. A sentence that mentions ytalbum is prose and not a promise.
+    literals = {m for path in src.rglob("*") if path.is_file() and path.suffix in {".py", ".js", ".mjs"}
+                for m in re.findall(r'"[^"\s]*ytalbum[^"\s]*"', path.read_text(encoding="utf-8"), re.I)}
+    assert literals == {
+        '"ytalbum"',        # config.LEGACY, systemd.LEGACY_UNIT, desktop.LEGACY_APP_ID
+        '"YTALBUM_"',       # config.LEGACY_ENV
+        '".ytalbum.json"',  # download.PLAN_FILE
+        '"X-Ytalbum"',      # web.LEGACY_WRITE_HEADER
+        '"ytalbum-last"',   # app.js: which album was open
+        '"ytalbum-theme"',  # app.js: which theme was picked
+    }, f"a new thing answers to the old name by value: {sorted(literals)}"
+
+
+def test_the_workflow_and_the_issue_templates_carry_no_trace_of_it() -> None:
+    """`.github/` is instructions to a machine and to whoever files a bug: no history to preserve.
+
+    This exists because the rename missed exactly one line here — `node --check
+    src/ytalbum/webui/app.js` — so three commits were green locally and red on the remote.
+    """
+    github = Path(__file__).parent.parent / ".github"
+    offenders = [f"{p.relative_to(github)}:{n}: {line.strip()[:60]}"
+                 for p in sorted(github.rglob("*")) if p.is_file()
+                 for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+                 if "ytalbum" in line.lower()]
+    assert not offenders, "the old name is still in .github/:\n" + "\n".join(offenders)
