@@ -5,14 +5,19 @@ trimming a track that has lyrics, renaming one that MusicBrainz matched, pruning
 order you set yourself. The pytest suite covers the pieces; this covers the seams.
 
 Derived from the code as of 2026-09-26 and kept up with it since (379 tests when it was written,
-683 pytest plus 87 under node after the fixes it produced and the fourteen packages that followed;
-246 albums in the reference library). Sections A–J are the original catalog; K onwards were each
-added with the feature they cover, up to AG for v0.6.0.
+780 pytest plus 91 under node after the fixes it produced and the packages that followed; 246 albums
+in the reference library). Sections A–J are the original catalog; K onwards were each added with the
+feature they cover, up to **AO** for v0.7.0 and after.
 
 ## How to use it
 
 Tick a box when a case passes and write the one line that proves it. A case that fails gets the
 observed behaviour instead — that line is the bug report.
+
+**Not every section has a DESIGN slice.** A section's heading names one where the package changed a
+rule — AE points at §9, slice 44, AN at slice 48. **AH through AM name none on purpose:** a
+regression corpus, a remembered lookup, a filter over verdicts already defined and a read-only
+inventory each add no rule to the design. Where a heading names no slice, there is none to find.
 
 **Two halves, two directions.** The case sections run **oldest first**, A to AG, so that reading
 straight through follows the software as it grew and a newcomer meets the lyrics editor before the
@@ -248,7 +253,7 @@ is working on the same library — nothing locks them against each other (G5).
   - invariant: whatever is decided, the plan and the sidecar must not disagree afterwards
   - evidence: the sidecar diff
   - **result 2026-09-26:** **confirmed as written** — the unmarked sidecar was overwritten by `--refetch` (`f6ed83…` → `b20f39…`). Behaviour is as predicted; whether it should be is the product decision
-  - **decided and changed in P2** (DESIGN.md §9.21): a sidecar is recognised by its bytes, so the
+  - **decided and changed in P2** (DESIGN.md §9, slice 21): a sidecar is recognised by its bytes, so the
     mark no longer has to be set by hand. Three re-runs, all pass:
     - **C6a** (edit since the last pass, tag still disagrees): kept, marked `user`, status `synced`,
       tag rewritten from the kept file, no lrclib request needed
@@ -371,7 +376,7 @@ is working on the same library — nothing locks them against each other (G5).
   - invariant: whatever is decided, the tracks keep their relative order
   - evidence: numbering before/after
   - **result 2026-09-26:** **observe-only, as instructed (R-002); album restored afterwards.** The renumbering is decided by discs, not by provenance: on a **multi-disc** album prune left the gap (1, 2, 4 …), on a **single-disc** album it renumbered 1..n and closed it, rewriting the numbers the user chose. Relative order was preserved in both. Also observed: collapsing a disc split back to one disc re-sorts by (disc, number) and **reshuffles the user's arrangement**
-  - **decision (P3, DESIGN.md §9.22):** the gap closes on **every** album, per disc, and the user
+  - **decision (P3, DESIGN.md §9, slice 22):** the gap closes on **every** album, per disc, and the user
     order flag stays set. What the flag protects is the sequence against the *source*, and a
     deletion the user asked for is not the source; `delete_track` has always renumbered. What must
     never change is the relative order — and that is now what the code is built on, rather than
@@ -391,7 +396,7 @@ is working on the same library — nothing locks them against each other (G5).
   - invariant: a spelling you chose outranks MusicBrainz' when the library is harmonised
   - evidence: `ls "$QA"`; both plans' `albumartist`
   - **result 2026-09-26:** **fails as written** — a fetch does not unify the spellings: seeding produced `LORD OF THE LOST/` and `Lord Of The Lost/` side by side, and only `repair` merged them (finally onto the MusicBrainz spelling). See the phase-1 finding
-  - **re-run after P4 (DESIGN.md §9.23): pass in both directions.** Shouting into a library that
+  - **re-run after P4 (DESIGN.md §9, slice 23): pass in both directions.** Shouting into a library that
     spells it properly: the fetched album adopted `Lord of the Lost`, logged one line, and the
     `LORD OF THE LOST/` folder was gone — one folder. Into a spelling the user chose for *another*
     album: the fetched album adopted `LORD OF THE LOST`, leaving `Lord of the Lost/` only for the
@@ -635,7 +640,7 @@ the metadata, and the lyrics matcher can be asked directly.
   - invariant: only the title can separate an instrumental cut from the sung one
   - evidence: `status`; `text is None`
   - **result 2026-09-26:** **the case was wrong, not the code** — lrclib's search for a title containing *(Instrumental)* returns 0 rows, so `get()` answers `None`; the *no words* verdict is made by `update_track`. Assert end to end, not at the client
-  - **corrected expectation (P5, DESIGN.md §9.24):** no words **and** a length reference. Asking
+  - **corrected expectation (P5, DESIGN.md §9, slice 24):** no words **and** a length reference. Asking
     with the marker in the query is what returned nothing, so the marker is now stripped from the
     query alone. **Re-run from a cold cache against live lrclib: pass** — the query asked is
     *Viva Vendetta*, `text is None`, status `none`, `length` 230.0; the same search *with* the
@@ -649,7 +654,7 @@ the metadata, and the lyrics matcher can be asked directly.
   - invariant: that is what feeds the length chip for tracks MusicBrainz does not know
   - evidence: the returned object
   - **result 2026-09-26:** **the case was wrong, and found something** — the near miss is the candidate closest to *our* 471 s file (248 s), not the 230 s that eight of nine entries agree on. Expectation corrected below; the selector itself is now an open question
-  - **decided and fixed (P5, DESIGN.md §9.24):** the reference is the consensus of the same-artist
+  - **decided and fixed (P5, DESIGN.md §9, slice 24):** the reference is the consensus of the same-artist
     candidates — the commonest whole second, the median of the tied values on a tie. **Re-run from
     a cold cache against live lrclib: pass** — the nine candidates came back as 229.0, 229.8,
     229.8, 230.0 ×5 and 248.0, and the kept length is 230.0
@@ -664,7 +669,7 @@ the metadata, and the lyrics matcher can be asked directly.
 
 ---
 
-## K. The lyrics editor (P8, DESIGN §9.26)
+## K. The lyrics editor (P8, DESIGN §9, slice 26)
 
 Added 2026-09-26 with the editor itself. Run against a freshly seeded scratch library (S1 and S3)
 on a scratch server at 8799, driven through the real page with Playwright; the sidecar, the tag
@@ -696,7 +701,7 @@ and the plan were read on disk after each step.
 - [x] **K3 · M** — clear from the editor
   - do: Edit that track again, press Delete
   - expect: the `.lrc` and the tag go, the status becomes `none`, the mark is dropped
-  - invariant: a clear is the same act as deleting the file by hand (§9.21)
+  - invariant: a clear is the same act as deleting the file by hand (§9, slice 21)
   - evidence: the folder; the plan; the tag
   - **result:** pass — sidecar gone, `lyrics=none`, `lyrics_sha=None`, no `provenance.lyrics`, tag
     absent; the row's ♪ went faint and the panel offered "Write lyrics" again, with no wait for the
@@ -710,13 +715,13 @@ and the plan were read on disk after each step.
   - evidence: the status code and message; the file
   - **result:** pass — `HTTP 400: “Look up all lyrics of Sex Is Muss” is working on this album —
     wait for it, then save again`, and the user's file was untouched. Known gap, stated in
-    DESIGN §9.26: a `fetch` is named by its URL and learns the album id while it runs, so the
+    DESIGN §9, slice 26: a `fetch` is named by its URL and learns the album id while it runs, so the
     check cannot see it
 
 - [x] **K5 · M** — what a later lyrics run does to both
   - do: after K1 and K3, run `--refetch` over the album
   - expect: the words written in the editor are kept; the cleared track gets LRCLIB's back
-  - invariant: the mark protects a file, and a clear gives it up (§9.21)
+  - invariant: the mark protects a file, and a clear gives it up (§9, slice 21)
   - evidence: both sidecars and both provenance entries
   - **result:** pass — *Ketzerei* still reads `[00:12.00] Ketzerei, written by hand` with
     `provenance.lyrics=user`; *Sex is Muss* came back with LRCLIB's own first line (without the K2
@@ -740,7 +745,7 @@ and the plan were read on disk after each step.
     row. Open panels are now remembered and restored after any render, which also stops a poll
     closing lyrics you are reading while a download runs
 
-### K8–K11, the per-track actions (P9, DESIGN §9.27)
+### K8–K11, the per-track actions (P9, DESIGN §9, slice 27)
 
 Run 2026-09-26 against a scratch library seeded fresh inside the session scratchpad (S3 only),
 server on 8799, through the real page.
@@ -819,7 +824,7 @@ for real and a second copy of it under a shouted spelling of the same artist (`F
   - **result:** pass — "… 'ytalbum repair' (or “Repair library” in the web UI) unifies them on the
     better spelling", asserted in `test_web.py` as well so the two cannot drift apart
 
-## M. The fetch preview (P11, DESIGN §9.28)
+## M. The fetch preview (P11, DESIGN §9, slice 28)
 
 Added 2026-09-26. A scratch server on 8799 over an **empty** library inside the session scratchpad,
 so "writes nothing" could be seen rather than argued. Driven through the real page.
@@ -870,7 +875,7 @@ so "writes nothing" could be seen rather than argued. Driven through the real pa
     in between. Shift on a form submit is captured on the form's capture phase, since a submit event
     carries no modifier state
 
-## N. A way back from an edit (P12, DESIGN §9.29)
+## N. A way back from an edit (P12, DESIGN §9, slice 29)
 
 Added 2026-09-26. Scratch library (S3, 7 tracks) inside the session scratchpad, server on 8799,
 through the real page.
@@ -916,7 +921,7 @@ through the real page.
   - expect: the plain badge in the first case; in the second, a badge that says why
   - evidence: covered offline in `test_web.py` (the reset is a no-op and the value stays the user's)
 
-## O. Opening an album asks the disk (P13, DESIGN §9.30)
+## O. Opening an album asks the disk (P13, DESIGN §9, slice 30)
 
 Added 2026-09-26. Scratch library holding S6 (*Judas (Deluxe Digital Edition)*, 56 tracks, 30 with
 lyrics) inside the session scratchpad, server on 8799. The sidecars were changed with a shell, not
@@ -925,7 +930,7 @@ through the UI — that is the case this package is about.
 - [x] **O1 · M** — a sidecar edited on disk
   - do: `sed` a line into one track's `.lrc`, then open the album in the UI
   - expect: the words are recognised as the user's at once, and the tag catches up
-  - invariant: the same `reconcile` rules as a pass (§9.21) — the UI gets no special ones
+  - invariant: the same `reconcile` rules as a pass (§9, slice 21) — the UI gets no special ones
   - evidence: the panel badge; the plan; the tag
   - **result:** pass — the row's panel read *Priest · with timestamps* with the **yours** badge, the
     hand-added line first, and only "Edit" offered (the per-track lookups withdraw for a user's
@@ -955,7 +960,7 @@ through the UI — that is the case this package is about.
     reconcile costs about 2 ms for 56 tracks; 22 ms for the whole open measured in the page. The
     real library's largest albums are this size, so the same figure applies there
 
-## P. The ⏱ mark leads to a cut (P14, DESIGN §9.31)
+## P. The ⏱ mark leads to a cut (P14, DESIGN §9, slice 31)
 
 Added 2026-09-26. Scratch library with S3 inside the session scratchpad, server on 8799, through the
 real page. The specimen is D2's: *Sex is Muss*, a 4:44.7 file against a 3:37.6 song, +1:07.
@@ -990,7 +995,7 @@ real page. The specimen is D2's: *Sex is Muss*, a 4:44.7 file against a 3:37.6 s
   - do: play the now-cut track, press "▶ from start"
   - expect: the original is playing, the player says so, and the seek lands on the start mark
   - invariant: marks are in the video's timeline, so a cut track must be heard as the original
-    (§9.17), or a mark would mean two different places
+    (§9, slice 17), or a mark would mean two different places
   - evidence: the audio URL; the player's line; `currentTime`
   - **result:** pass — URL carries `o=1`, the player reads *"playing the untouched original · the file
     on disk is cut to 0.00-217.90"*, and ▶ from start seeked to the mark
@@ -1003,7 +1008,7 @@ real page. The specimen is D2's: *Sex is Muss*, a 4:44.7 file against a 3:37.6 s
     does for the chip. The JS mirror has no unit test: this repo has no JavaScript harness, and P14
     was not the place to add one — P1 to P4 are the evidence for it
 
-## Q. Reordering by dragging (P15, DESIGN §9.32)
+## Q. Reordering by dragging (P15, DESIGN §9, slice 32)
 
 Added 2026-09-26. Scratch library with S3 split into two discs (3 + 4) inside the session scratchpad,
 server on 8799, through the real page. Playwright's `dragTo` for the mouse case, dispatched pointer
@@ -1048,7 +1053,7 @@ events for the rest.
 practice (the drag still ran, because the moves arrive on `document` anyway) but it was an exception
 escaping an event handler, so the call is now guarded.
 
-## R. The page's logic under test (P19, DESIGN §9.33)
+## R. The page's logic under test (P19, DESIGN §9, slice 33)
 
 Added 2026-09-26 with the harness. The split moves what `app.js` computes into `webui/logic.mjs`,
 which the page imports as a module; these cases are about the page still working, since the tests
@@ -1273,7 +1278,7 @@ CT.edge(document.querySelector("button.quiet"));   // → { border: "#6f6882", o
     decision. Flagged rather than changed
   - **result:** pass, with that one gap named
 
-## U. A track's audio from another video (P22, DESIGN §9.34)
+## U. A track's audio from another video (P22, DESIGN §9, slice 34)
 
 Run 2026-09-27 against a scratch library inside the session scratchpad, seeded with **S1** — *Viva
 Vendetta (Official Video)*, 471 s of film around a 3:50 song, MusicBrainz 229.8 s — and pointed at
@@ -1357,7 +1362,7 @@ for the read-only load below. Server on 8799, everything driven through the real
     measured in the page; dark was already 7.83 / 8.61 and is untouched)
   - **result:** pass
 
-## V. Stamping the words to the file's clock (P23, DESIGN §9.35)
+## V. Stamping the words to the file's clock (P23, DESIGN §9, slice 35)
 
 Run 2026-09-27 on a scratch library in the session scratchpad (S1, *Viva Vendetta*), **trimmed to
 1:30–5:20** so the player's clock and the file's differ by exactly 90 s — the condition that made the
@@ -1415,7 +1420,7 @@ muted for the run, because the machine belongs to someone. Nothing was written t
     fixed, field 80 px, on one line with its button in both themes
   - **result:** pass
 
-## W. Words placed on a clock by a provider (P25, DESIGN §9.36)
+## W. Words placed on a clock by a provider (P25, DESIGN §9, slice 36)
 
 Run 2026-09-27 on a scratch library inside the session scratchpad: the two albums that hold the
 spike's mis-timed specimens, **Feuerschwanz — Fegefeuer** (*Berzerkermode*) and **Visions of
@@ -1497,7 +1502,7 @@ muted for the run.
     look at is named instead of left to be discovered
   - **result:** pass
 
-## X. Providers that are somebody else's computer (P26, DESIGN §9.37)
+## X. Providers that are somebody else's computer (P26, DESIGN §9, slice 37)
 
 Run 2026-09-27 against **a server of my own speaking the two vendors' documented shapes**, on a
 scratch library (one album copied out of the real one, read-only), with each web server given its
@@ -1598,7 +1603,7 @@ Written down rather than guessed at, per the task:
   `err_msg`, and falls back to the first 200 characters of the body, so a shape nobody documented
   still reaches the user as the vendor's own words.
 
-## Y. A second opinion on an alignment (P27, DESIGN §9.38)
+## Y. A second opinion on an alignment (P27, DESIGN §9, slice 38)
 
 Run 2026-09-27 on **sixteen tracks copied read-only out of the real library** into the session's own
 cache: the four the P24 spike found the two methods far apart on (Feuerschwanz *Bastard of Asgard*,
@@ -1606,7 +1611,7 @@ Lord of the Lost *Argent*, Mono Inc. *A Love That Never Dies*, Sabaton *A Lifeti
 it found them agreeing on, 731 stamped lines in all, English and German. Every track was aligned
 **twice** — once with the cross-check and once without — so the added time is measured rather than
 guessed, and a third pass recorded how far apart the two methods were per line, because the two
-constants in §9.38 should come from a distribution and not from a round number.
+constants in §9, slice 38 should come from a distribution and not from a round number.
 
 Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB), which is the
 **favourable** case; the CPU column below is the figure closer to a typical install.
@@ -1634,7 +1639,7 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
 
   The **alone** and **checked** columns are the same track aligned twice; **median/max apart** are the
   per-line distances between the two methods; **unplaced at 2 s** and **lost at 5 s** are the two rules
-  of §9.38 counted separately. Every figure is on the GPU.
+  of §9, slice 38 counted separately. Every figure is on the GPU.
   - **The distances come in two shapes**, which is what the two constants are for: eleven tracks sit
     at a median under 1.5 s (jitter), five sit at 28–120 s (one method has lost the song). There is
     nothing in between — no track has a median between 1.5 s and 28 s.
@@ -1650,7 +1655,7 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
   against the library's own `.lrc` (not ground truth — the spike found two sidecars 6.3 s out — but
   independent of both aligners).
 
-| track | \|primary − sidecar\| | \|second − sidecar\| | what §9.38 did |
+| track | \|primary − sidecar\| | \|second − sidecar\| | what §9, slice 38 did |
 |---|---|---|---|
 | Feuerschwanz — Bastard of Asgard | median 1.35 s, p90 3.94 | **median 0.60 s**, p90 2.66 | 39 placed, 22 dropped |
 | Lord of the Lost — 2000 Years a Pyre | median 0.86 s, p90 7.91 | median 0.90 s, p90 6.73 | 20 placed, 17 dropped |
@@ -1671,7 +1676,7 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
     songs.
   - **result:** the rule was changed on this evidence — see *A rule tried and overturned* below
 
-  The verdict columns in both tables are what §9.38 does **now**. They are not what it did when the
+  The verdict columns in both tables are what §9, slice 38 does **now**. They are not what it did when the
   run was made: at that point the whole-track case placed nothing, which is exactly what the run
   disproved.
 
@@ -1725,7 +1730,7 @@ Machine: the laptop of `docs/spikes/2026-09-alignment.md` (RTX 4060 Laptop, 8 GB
     checking
   - **result:** pass
 
-## Z. Two slots, two providers (P28, DESIGN §9.40, backlog 17)
+## Z. Two slots, two providers (P28, DESIGN §9, slice 40, backlog 17)
 
 Run 2026-09-27 through the real page on the same scratch copy of *Fegefeuer*, with the two slots
 holding **different** providers — `timing_align_provider = "local"`, `timing_draft_provider =
@@ -1764,7 +1769,7 @@ reach a vendor.
     confirm is for and why this case does not need a key that works
   - **result:** pass
 
-## AA. The words being edited are what plays (P29, DESIGN §9.39)
+## AA. The words being edited are what plays (P29, DESIGN §9, slice 39)
 
 Run 2026-09-27 through the real page (Playwright, a second server on `:8799` with its own
 `XDG_CONFIG_HOME`), against a **scratch copy of Feuerschwanz — Fegefeuer** taken read-only out of the
@@ -1809,7 +1814,7 @@ whole point of the case. The audio element was muted.
     and at player time `205.2 s` the highlight was following **that** file's stamps (`185.66`)
   - Save (after aligning again) → the `.lrc` on disk begins `[00:19.6] Berzerkermode ON`, and the plan
     records `provenance.lyrics = user` with `lyrics_timed_by = "local/VOXPOPULI_ASR_BASE_10K_DE +
-    htdemucs 2.11.0+cu130"` — the words the user's, the clock the provider's, as §9.36 requires
+    htdemucs 2.11.0+cu130"` — the words the user's, the clock the provider's, as §9, slice 36 requires
   - **result:** pass
 
 - [x] **AA6 · R** — what the picture said that the assertions did not
@@ -1821,7 +1826,7 @@ whole point of the case. The audio element was muted.
 
 ### A rule tried and overturned by its own measurement
 
-The most useful thing this section did. §9.38 was built with the rule the spike's numbers suggested:
+The most useful thing this section did. §9, slice 38 was built with the rule the spike's numbers suggested:
 where two aligners disagree about most of a track, place **nothing**, because a half-filled editor is
 worse than an empty one. The sixteen tracks say that rule is backwards.
 
@@ -1881,7 +1886,7 @@ the extra into a clean project venv — not visible in a working tree that has n
 Fixed by declaring it, and verified on two fresh venvs: `.[timing]` → `['align']`, both extras →
 `['align', 'transcribe']`.
 
-## AB. Giving the graphics card back (P30, DESIGN §9.41, backlog 18)
+## AB. Giving the graphics card back (P30, DESIGN §9, slice 41, backlog 18)
 
 Run 2026-09-27 on this laptop's RTX 4060 (8 GB), with `nvidia-smi
 --query-compute-apps=used_memory` sampled around real alignments of *Berzerkermode* — through the
@@ -1937,7 +1942,7 @@ It is worth saying how it was found: not by the suite, which was green, but by p
 a real server with a deliberately short timer. A timer set to a realistic five minutes would have
 hidden this for as long as nobody aligned a very long track.
 
-## AC. Giving the words back to LRCLIB (P31, DESIGN §9.42, backlog 19)
+## AC. Giving the words back to LRCLIB (P31, DESIGN §9, slice 42, backlog 19)
 
 Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, against **a server of my own
 speaking LRCLIB's documented publish flow** (`YTALBUM_LRCLIB_BASE`). **Nothing in this section
@@ -1999,7 +2004,7 @@ and was hunting a bug in my own logging. `/api/job?id=N` returns the whole log a
 lines. **A truncated view is not evidence of absence**; ask for the full record before reporting that
 something did not happen.
 
-## AD. Offering an album to MusicBrainz (P32, DESIGN §9.43, backlog 20)
+## AD. Offering an album to MusicBrainz (P32, DESIGN §9, slice 43, backlog 20)
 
 Run 2026-09-27 through the real page on a scratch copy of *Fegefeuer*, with `YTALBUM_MUSICBRAINZ_WEB`
 pointing at **a stand-in that prints what a seeded form arrived with**. Nothing here touched
@@ -2046,7 +2051,7 @@ no business anywhere near one. The album's `mbid` was cleared and two recordings
 
 The first version put a separate badge in the track row — `MB ≠ 3:23.6` — next to the length chip.
 Looking at the row showed what that meant: **the chip already prints those two numbers**, and has
-since §9.31, with the reading *"an intro or outro to cut?"* — while the new badge printed them again
+since §9, slice 31, with the reading *"an intro or outro to cut?"* — while the new badge printed them again
 with the opposite reading, *"their number may be wrong"*. Two affordances for one fact, disagreeing
 about what it means.
 
@@ -2054,7 +2059,7 @@ The fix was to make the chip itself the button where MusicBrainz knows the recor
 large, which is P14's lesson a second time: a diagnosis that is worth showing is worth acting on, and
 the place to act is where the diagnosis already is.
 
-## AE. Telling which method lost the song (P33, DESIGN §9.44, backlog 21)
+## AE. Telling which method lost the song (P33, DESIGN §9, slice 44, backlog 21)
 
 Run 2026-09-27 on the sixteen P27 tracks (copied read-only out of the real library again) plus two
 **held out**: Mono Inc. — *Princess of the Night* and Saltatio Mortis — *Seitdem du weg bist*, which
@@ -2092,7 +2097,7 @@ designed and re-designed without asking the models again.
   - **five right, none wrong, none missed.** The five methods that lost the song span **0.41–0.70**
     of the singing; all twenty-seven answers that followed it span **0.86–1.12**
   - *Bastard of Asgard*, the one track where the CTC pass was the worse of the two, comes out
-    **cannot tell** — which the task allowed, and which falls back to the policy of §9.38
+    **cannot tell** — which the task allowed, and which falls back to the policy of §9, slice 38
   - the thresholds are **0.75** of the singing and **12%** piled. Any floor from **0.70 to 0.85**
     gives these eighteen verdicts unchanged, so the number is not load-bearing; the piling rule alone
     gets four of the five, and is kept because it catches a different shape of failure
@@ -2127,7 +2132,7 @@ never applied (a self-matching `pkill` had killed the shell before the heredoc r
 otherwise, and a forty-minute run produced a file with no raw stamps in it. **Verify a patch by
 something new and unique to it** — here `"raw_stamps"` — never by a word the file could already have.
 
-## AF. A draft that reads like a song (P34, DESIGN §9.45)
+## AF. A draft that reads like a song (P34, DESIGN §9, slice 45)
 
 From the user's own test: **“draft the words” on Mr. Hurley & Die Pulveraffen — *Blackbeard*** (3:38)
 came back as **eleven lines**, one of them a whole verse of three sung lines, with a minute of silence
@@ -2181,7 +2186,7 @@ difference on a four-minute song is ordinary, so this is unlikely to be one trac
 here — a tuned constant with its own reasons does not get widened inside a package about line breaks
 — and it is queued as its own measurement-first package.
 
-## AG. An entry that is nearly this recording (P35, DESIGN §9.46)
+## AG. An entry that is nearly this recording (P35, DESIGN §9, slice 46)
 
 **The current gate has never refused something it could have matched.** Over this library's 1089
 tracks with no words at all, the number whose cached lrclib entry sits within the 3 s tolerance is
@@ -2251,7 +2256,7 @@ same artist and title was measured against the file it claims to describe.
   - so the alignment answers two questions at once, and they are different questions: *how many
     lines it can place* says whether these are the song's words, *how much of the singing they span*
     says whether the entry's clock is this recording's
-  - **result:** pass — and this is what the three outcomes in §9.46 are built on
+  - **result:** pass — and this is what the three outcomes in §9, slice 46 are built on
 
 - [x] **AG3 · M** — the outcomes, through the page, against a stand-in lrclib
 
@@ -2380,7 +2385,7 @@ title and its click handler were all correct, and it was drawn in the page backg
 ## AJ. A library-wide near-miss pass (P39)
 
 `check_near_lyrics` existed only behind one button. The library it was measured on had **1089**
-finished tracks with no words and **0** with a verdict, so the measurement of §9.46 had never been
+finished tracks with no words and **0** with a verdict, so the measurement of §9, slice 46 had never been
 applied to anything.
 
 - [x] **AJ1 · R** — what a dry run says the pass would cost, on the real library
@@ -2418,7 +2423,7 @@ applied to anything.
 
 - [x] **AJ4 · R** — the card goes back
 
-  `release_gpu_memory()` in a `finally`, so a cancelled or exploding pass releases too (§9.41).
+  `release_gpu_memory()` in a `finally`, so a cancelled or exploding pass releases too (§9, slice 41).
   Tested with an aligner that raises.
   - **result:** pass
 
@@ -2541,10 +2546,59 @@ A read-only inventory before a Source boundary is designed. No code changed.
   exit 0. The plans' combined sha was unchanged afterwards: it writes nothing.
   - **result:** pass
 
+## AO. A cold reader on a fresh clone (P44)
+
+The documentation had been edited by people who already knew the answers. So a throwaway session
+cloned v0.7.0 into a scratch tree with `XDG_*` redirected, installed it, ran the suites, and read
+the docs as somebody meeting ytalbum for the first time — touching nothing outside that tree and
+never the real library.
+
+- [x] **AO1 · R** — the install, from the README alone
+
+  `uv sync` and `uv run pytest` both worked: 725 passed, 3 skipped, 91 under node. Nothing in the
+  written instructions was wrong enough to stop a first-time reader.
+  - **result:** pass
+
+- [x] **AO2 · R** — 24 findings, all fixed here
+
+  **Five wrong or stale:** `config` was said to report ffmpeg and checks nothing (a real ffmpeg check
+  goes to the backlog, not here); test counts and catalog letters were a release out of date;
+  CONTRIBUTING said "~380 tests, a few seconds"; DESIGN was still titled *YT-Downloads v3*; and the
+  install line `apt install nodejs` gives 18.x on Ubuntu 24.04 against a requirement of ≥20, with no
+  npm, which the token generator needs two paragraphs later.
+
+  **Nine missing:** eight CLI flags absent from the table; what goes into the tags — including that
+  **the video id and the source URL are written into every file**; an uninstall section naming all
+  four places, model caches included; what the LRCLIB lookup sends; the `[timing]` table config form;
+  `timing-serve` in SECURITY.md; "♪ N need you" in prose; which fields a hand-edited plan may carry;
+  and which documents are internal, with a reading order.
+
+  **Ten unclear:** the token provider is two halves and only one is installed for you; where
+  `pot_provider_home` resolves; three different reasons given for cookies; "near miss" and "read
+  lane" used before they are defined; five environment variables counted where four are read;
+  the CPU-torch install order written as a comment rather than an instruction; `§9.44` pointing at a
+  list item; and no statement that AH–AM have no DESIGN slice on purpose.
+  - **result:** 24 of 24 fixed, each target asserted before the edit and grepped after
+
+- [x] **AO3 · R** — one number in the brief was wrong, and the artifact won
+
+  The brief said 4 tests skip silently without ffmpeg. Measured by running the suite with ffmpeg off
+  `PATH`: **220 skipped against the usual 7 — 213 more**, and the run drops from ~70 s to ~7 s. That
+  last figure also explains CONTRIBUTING's "a few seconds": it was written on a machine without
+  ffmpeg, where two thirds of the suite never ran.
+  - **result:** the measured figures are in CONTRIBUTING, with the advice to read the skip count
+
+### What this pass did not cover
+
+Only `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `DESIGN.md` and `docs/`. **Code comments still
+write `§9.44`**, which the docs no longer do — changing them is a code edit and this package is
+documentation only. No screenshot was retaken: nothing the fixes describe is visible in one.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AO cases (P44: a cold reader on a fresh clone) | 3 | 24 documentation faults found, 24 fixed | A throwaway session installed v0.7.0 from the README and read it cold. Five stale, nine missing, ten unclear. One number in the brief was wrong: **213 tests skip without ffmpeg**, not 4 — measured, and it explains why CONTRIBUTING said the suite takes "a few seconds". Docs only; no code changed. 780 pytest + 91 node. |
 | 2026-09-28 | the AN cases (P43: the plan format, pinned) | 4 | 0 | Twelve real plans, 20 shapes, 55 cases. Over 246 real plans a round trip is **additive only** — 140 byte-identical, 106 gaining defaults, 0 losing or changing anything. An unknown field used to raise `TypeError` and is now carried through; an unknown schema is still refused. `ytalbum plan --verify` writes nothing, verified by hashing the plans before and after. 780 pytest + 91 node. |
 | 2026-09-28 | the AM cases (P42: where YouTube is assumed) | 3 | n/a — read-only inventory, no code under test | 895 marked lines in 49 files (423 src, 472 tests). `youtube.py` is already a seam only four modules import; the real coupling is `video_id` as identity, the `yt_*` provenance names, and a classifier that reads a channel. Everything downstream of the plan — lyrics, timing, MB, trim, tags, the editor — is already source-neutral. Seven disk leaks, one expensive (`youtube_id` in every audio file). |
 | 2026-09-28 | the AL cases (P41: finding the tracks that wait for you) | 3 | 0 | 42 tracks across 33 albums were waiting and nothing listed them. Header chip `♪ 42 need you`, a count per card, `♪ ?` on the row. Counted on the real library read-only and it matched the pass's tally. 725 pytest + 91 node. |
@@ -2647,7 +2701,7 @@ wrong. Use these forms:
   again in the other direction when a MusicBrainz-spelled plan arrived after a repair had
   settled on the YouTube spelling. Each `repair` converged correctly (finally on
   *Lord of the Lost*), so the fault is that a fetch alone does not.
-  *Fixed in P4 (DESIGN.md §9.23): the fetched album adopts the library's spelling either way, and
+  *Fixed in P4 (DESIGN.md §9, slice 23): the fetched album adopts the library's spelling either way, and
   when it is itself the better evidence one line says so and leaves the upgrade to `repair`.*
 - **An album artist can disagree with its own track artists.** After the first repair,
   *Viva Vendetta* read `albumartist='Lord Of The Lost'` (`yt_title`, borrowed from the other

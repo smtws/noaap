@@ -14,12 +14,12 @@ live queue is kept in the reviewer's ledger, which is not part of this repositor
 Two packages have no item here because they came from the user rather than from the QA run:
 **P34** (a draft that came back as 11 lines for a 3:25 song) and **P35** (an LRCLIB entry that was
 4.4 s from the file and refused, when it held the song's words all along). Both are in
-`docs/qa-catalog.md`, sections AF and AG, and in DESIGN §9.45 and §9.46.
+`docs/qa-catalog.md`, sections AF and AG, and in DESIGN §9, slice 45 and §9, slice 46.
 
-## 1. Lyrics editor — DONE (P8, DESIGN §9.26)
+## 1. Lyrics editor — DONE (P8, DESIGN §9, slice 26)
 
 The lyrics panel is read-only ("click to read") while the whole ownership contract
-(DESIGN §9.21) is about files a user writes by hand. To fix one line or add words LRCLIB lacks,
+(DESIGN §9, slice 21) is about files a user writes by hand. To fix one line or add words LRCLIB lacks,
 a user must find the audio file on disk, create a sidecar with the same stem plus `.lrc`, write
 LRC syntax by hand, and run a pass before the UI shows the words as theirs.
 
@@ -53,7 +53,7 @@ library instead of showing a fresh reading (so it no longer promises names a fet
 says whether the album is already here, marks tracks that have left the source, and can be skipped
 with Shift+click on Go so it never becomes a compulsory click.
 
-## 3. Refetching lyrics is all or nothing — DONE (P9, DESIGN §9.27)
+## 3. Refetching lyrics is all or nothing — DONE (P9, DESIGN §9, slice 27)
 
 Shift-click on "Fetch lyrics" refetches the whole album. After fixing one track's title the
 natural wish is "look this one up again", and the only way to reject a bad match is deleting
@@ -68,7 +68,7 @@ a `--refetch` included, which deleting the file never achieved. The next best ca
 straight away if one fits. Neither action is offered for words marked as yours; the editor's Delete
 is that path.
 
-## 4. Reordering by typing numbers — DONE (P15, DESIGN §9.32)
+## 4. Reordering by typing numbers — DONE (P15, DESIGN §9, slice 32)
 
 Typed positions land correctly since P3, but typing numbers into 56 rows is a poor way to
 reorder an album. No drag and drop; the other rows renumber only after save, so mid-edit the
@@ -82,7 +82,7 @@ mid-edit; Escape cancels; Alt+↑ / Alt+↓ is the keyboard equivalent. Nothing 
 album's save. A cross-disc drop needed one correction on the server: a number the user typed now
 counts in the disc the track is being put on.
 
-## 5. No way back from an edit — DONE (P12, DESIGN §9.29)
+## 5. No way back from an edit — DONE (P12, DESIGN §9, slice 29)
 
 The plan keeps the derived value (`auto`) for every field a user overrides, but the UI offers
 no "reset to what ytalbum found". An edited album artist is frozen out of harmonisation and
@@ -96,10 +96,10 @@ resets too, lifting the flag without renumbering anything now. Lyrics are not in
 editor's Delete is their way back. In this library 59 of 246 albums and 83 tracks would show the
 affordance.
 
-## 6. Two silent-lag spots — DONE (P13, DESIGN §9.30)
+## 6. Two silent-lag spots — DONE (P13, DESIGN §9, slice 30)
 
 Ownership of an edited sidecar and the status of a deleted one update only when a pass walks
-the album (documented in DESIGN §9.21). Between passes the UI can show a ♪ for lyrics that are
+the album (documented in DESIGN §9, slice 21). Between passes the UI can show a ♪ for lyrics that are
 gone. Safe, but a user would call it a bug.
 
 Wanted: reconcile the album's lyrics state when the album view is opened (read-only check,
@@ -116,10 +116,10 @@ durable and rewrites the tag. When plan and files agree nothing is written and n
 grid is deliberately not reconciled (246 albums per render); its counts catch up when an album is
 opened. Measured cost on a 56-track album: about 2 ms added to the open.
 
-## 7. The ⏱ chip is a diagnosis, not an action — DONE (P14, DESIGN §9.31)
+## 7. The ⏱ chip is a diagnosis, not an action — DONE (P14, DESIGN §9, slice 31)
 
 The chip says a track is too long against its reference, never where to cut (a data limit,
-DESIGN §9.8). The trim inputs are bare seconds fields.
+DESIGN §9, slice 8). The trim inputs are bare seconds fields.
 
 Wanted: "play from here / set start / set end" next to the player, so the chip leads to a trim
 instead of to arithmetic.
@@ -162,7 +162,7 @@ rewritten in the DOM before the shot, as the previous one did: nothing is saved,
 directory does not belong in a public README. The first capture found the invisible reset badge
 (fixed in 914a22a) and a second cosmetic defect, reported separately.
 
-## 10. JavaScript test harness for `app.js` — DONE (P19, DESIGN §9.33)
+## 10. JavaScript test harness for `app.js` — DONE (P19, DESIGN §9, slice 33)
 
 `src/ytalbum/webui/app.js` is around 1,500 lines and carries real logic: the length target while
 trimming, the drag-and-drop arrangement and its live renumbering, the lyrics panel and its ownership
@@ -177,7 +177,7 @@ into importable pieces or given an export shim, which is a refactor of a file th
 build step at all — a property worth keeping.
 
 **The user's call**, not the reviewer's and not mine. Raised by the assistant at the end of the
-backlog; deliberately left open rather than decided quietly in a feature package (DESIGN §9.31).
+backlog; deliberately left open rather than decided quietly in a feature package (DESIGN §9, slice 31).
 
 **Approved and done:** `webui/logic.mjs` holds what the page computes rather than draws and is
 imported by `app.js` as a module — no build step, no npm. 23 tests under `node --test`, run by
@@ -274,9 +274,9 @@ trim handles, whose `--panel` ring separates them from the track line while the 
 accent on panel at 5.71 / 5.62; and `.card` and `.pick`, which are identified by a cover and a title
 rather than by an edge. All four screenshots were retaken on the new edges.
 
-## 13. Re-timing the lyrics you already wrote — DONE (P23, DESIGN §9.35)
+## 13. Re-timing the lyrics you already wrote — DONE (P23, DESIGN §9, slice 35)
 
-Added 2026-09-27 out of P22. A track pointed at another video (§9.34) keeps the user's words, and
+Added 2026-09-27 out of P22. A track pointed at another video (§9, slice 34) keeps the user's words, and
 the panel says when their timestamps were written against the old file — but it cannot fix them, and
 P22 deliberately did not try: shifting someone's stamps is a change to their work, and a silent one
 would be worse than the notice. What is missing is a **shift**: "move every timestamp by −2.4 s",
@@ -302,7 +302,7 @@ is done by ear; and a readout shows the position **in the file**, beside the pla
 whenever the two differ. Nothing is saved until Save, and a stamp written this way is byte-for-byte
 what a hand-typed one would be. Catalog section V.
 
-## 14. Automatic lyric timing — DONE (P25, DESIGN §9.36, measured in `docs/spikes/2026-09-alignment.md`)
+## 14. Automatic lyric timing — DONE (P25, DESIGN §9, slice 36, measured in `docs/spikes/2026-09-alignment.md`)
 
 Added 2026-09-27 out of the P24 spike, which measured it on twenty tracks of the real library rather
 than arguing about it. The short of it: **forced alignment works**. wav2vec2 CTC alignment on a
@@ -321,7 +321,7 @@ Three things the spike says any such feature must do, all of them measured rathe
   is the best arm there is. The same separation does *not* reliably help transcription.
 - **Write into the editor, not to the disk.** P23's editor already holds the text, plays a stamp,
   nudges it and saves it; an align action that fills the textarea needs no new write path and leaves
-  the ownership contract (§9.21) exactly as it is — the words stay the user's, the user presses Save.
+  the ownership contract (§9, slice 21) exactly as it is — the words stay the user's, the user presses Save.
 
 **Transcription is the weaker half** and is a separate decision: three quarters of a clean song's
 lines, half of a harsh one's, seven times the cost, always needing a human afterwards.
@@ -345,9 +345,9 @@ Measured in catalog W: 12.2 s per track with a GPU, 108.4 s without, and both of
 the spike found to be six seconds early were corrected. Transcription, a library-wide pass and the
 automatic two-aligner cross-check were deliberately left out — items 15 and 16.
 
-## 15. A commercial timing provider — DONE (P26, DESIGN §9.37)
+## 15. A commercial timing provider — DONE (P26, DESIGN §9, slice 37)
 
-Added 2026-09-27 out of P25. The boundary (§9.36) makes this a small piece of code: an
+Added 2026-09-27 out of P25. The boundary (§9, slice 36) makes this a small piece of code: an
 `ElevenLabsTiming` with the same three methods, a key in the config, and the audio posted to their
 [Forced Alignment API](https://elevenlabs.io/docs/overview/capabilities/forced-alignment) — 29
 languages including German, **$0.22 per audio hour**, which is **$8.60** for every track in this
@@ -377,7 +377,7 @@ never offered where words exist, and remembered on save as `lyrics_words_by` so 
 settings row with the vendor's dated list price, and in a confirm before the first request of a
 session; nothing is ever retried, because a retry on a metered endpoint is a second invoice.
 
-## 16. A second aligner, for an automatic cross-check — DONE (P27, DESIGN §9.38)
+## 16. A second aligner, for an automatic cross-check — DONE (P27, DESIGN §9, slice 38)
 
 Added 2026-09-27 out of P25, deferred from P24's recommendation. The spike's strongest safety result
 was that **two independent aligners agree where they are right**: a Whisper-based aligner and the
@@ -405,7 +405,7 @@ agree within `timing_verify_threshold`, drops it where they do not, and places n
 they disagree about most of a track. The same extra makes transcription local, so a draft no longer
 needs a vendor.
 
-## 17. One provider for two jobs — DONE (P28, DESIGN §9.40)
+## 17. One provider for two jobs — DONE (P28, DESIGN §9, slice 40)
 
 Added 2026-09-27 out of P26/P27. `timing_provider` is a single setting, but the two capabilities are
 bought in different places: the machine that aligns best (`local`, free, needs the models) is rarely
@@ -423,7 +423,7 @@ no Deepgram in the aligning list, an alignment ran locally in 8 s with no confir
 draft button on the same album warned that the audio goes to Deepgram. Nothing was sent: the confirm
 was cancelled, which is also what the case is for.
 
-## 18. The service parks 3 GB of VRAM after one alignment — DONE (P30, DESIGN §9.41)
+## 18. The service parks 3 GB of VRAM after one alignment — DONE (P30, DESIGN §9, slice 41)
 
 Found 2026-09-27 while measuring P27: the installed service, having aligned one track for the user,
 was still holding **2.9 GB** of the laptop's 8 GB card minutes later with nothing queued — enough to
@@ -442,7 +442,7 @@ torch — it is a `sys.modules` lookup where no model was loaded. One defect of 
 by running it against a real server with a deliberately short timer: the watcher took the models out
 of a request that was still being served (catalog AB).
 
-## 19. Publish lyrics to LRCLIB — DONE (P31, DESIGN §9.42)
+## 19. Publish lyrics to LRCLIB — DONE (P31, DESIGN §9, slice 42)
 
 Decided by the user 2026-09-27. Timing lyrics by hand or checking a machine's proposal is work, and
 LRCLIB is where this project takes its lyrics from; giving corrected ones back costs one request. A
@@ -450,7 +450,7 @@ LRCLIB is where this project takes its lyrics from; giving corrected ones back c
 = user`) and synced, whose text is not byte-identical to an LRCLIB entry already held — never send
 LRCLIB its own words back — and never for a draft nobody has edited or for an instrumental. It uses
 the public publish API with its proof-of-work challenge, so no account and no key; it sends the
-**file's** duration, because the stamps belong to the cut file (§9.35). One press is one publish, with
+**file's** duration, because the stamps belong to the cut file (§9, slice 35). One press is one publish, with
 a confirm naming everything that leaves the machine and saying that it is public and irrevocable, and
 `lyrics_published` recorded so the same bytes are never offered twice.
 
@@ -461,7 +461,7 @@ missing button explains nothing. Verified end to end through the page against a 
 documented shapes (catalog AC) — nothing reached lrclib.net, and the only live request in the package
 was a single `request-challenge`, which publishes nothing.
 
-## 20. Seed MusicBrainz — DONE (P32, DESIGN §9.43)
+## 20. Seed MusicBrainz — DONE (P32, DESIGN §9, slice 43)
 
 Decided by the user 2026-09-27, the other half of giving back. Where an album has no release match at
 all, **"Add to MusicBrainz"** opens MusicBrainz's own release editor in the user's browser, pre-filled
@@ -481,10 +481,10 @@ both numbers — so the chip itself became the button rather than gaining a neig
 Verified against a stand-in; nothing touched musicbrainz.org, because an edit form opened for real is
 a real edit waiting to be submitted.
 
-## 21. Verify mode cannot tell which method is lost — DONE (P33, DESIGN §9.44)
+## 21. Verify mode cannot tell which method is lost — DONE (P33, DESIGN §9, slice 44)
 
 Added 2026-09-27 out of catalog Y. When two aligners place a track 30–120 s apart, one of them has
-lost the song and ytalbum has no way to say which, so §9.38 trusts the primary **by policy**. That
+lost the song and ytalbum has no way to say which, so §9, slice 38 trusts the primary **by policy**. That
 policy is right on the evidence — the condition fired on five of sixteen tracks and the primary was
 the accurate one every time:
 

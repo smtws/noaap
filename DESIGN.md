@@ -1,4 +1,4 @@
-# YT-Downloads v3 — Design
+# ytalbum — Design
 
 Status: draft, 2026-09-22. Replaces `ARCHITECTURE_PLAN.md` (v2) and the v1 tree in
 `~/YT-Downloads-master`. Nothing from v1/v2 is carried over as code unless listed under
@@ -260,6 +260,8 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 | to capture: albums titled "1984" / "1918" | normalisation never strips the year-like title |
 
 ## 9. Vertical slices (each ends with something usable)
+
+*Slices are the numbered items below; "§9, slice 44" means item 44 in this list.*
 
 1. ✅ **Paste playlist URL → tagged album folder** (any kind, metadata from YouTube only),
    plus `--dry-run` plan output. Includes JS-runtime setup (§3.5). *Done 2026-09-22:*
@@ -669,7 +671,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    nothing; the rule is for what arrives next.
 
 26. ✅ The lyrics panel writes as well as reads (2026-09-26, backlog item 1). The whole ownership
-   contract of §9.21 is about words a user writes by hand, and the only door to it was the file
+   contract of §9, slice 21 is about words a user writes by hand, and the only door to it was the file
    system: find the audio file, name a sidecar with the same stem, write LRC syntax, run a pass.
    The ♪ button now opens a panel that edits, and it appears for a track with no words at all
    (faint) and for one LRCLIB calls instrumental, since those are exactly the tracks whose words
@@ -683,7 +685,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    The retag goes through the ordinary pass (`run(..., download=False)`, no lyrics client) rather
    than a second tagging path, so there is one place that writes tags. The price is that a Save is
    not strictly local to one track: the pass walks the album, so a trim left pending on another
-   track (one whose `ffmpeg` was missing when it was set, §9.20) is applied then — the same thing
+   track (one whose `ffmpeg` was missing when it was set, §9, slice 20) is applied then — the same thing
    any other pass would have done, reached from a new direction. The write itself is a job in
    the write lane like every other library change, and jobs now carry the album they hold
    (`Job.target`), so a save is **refused** while a pass is working on that album instead of racing
@@ -692,7 +694,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    that is a known gap, not a silent one. A track that is not `done` has no file to put words
    beside and is refused too.
    Nothing about the contract needed a special case for the editor: a sidecar it wrote, then edited
-   again on disk, is still the user's, and deleted on disk it follows §9.21 like any other.
+   again on disk, is still the user's, and deleted on disk it follows §9, slice 21 like any other.
 
 27. ✅ One track can be looked up again, and a wrong entry can be rejected for good (2026-09-26,
    backlog item 3). The lyrics button was all-or-nothing: shift-click re-asked LRCLIB for a whole
@@ -707,10 +709,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    only says "not now". Rejecting immediately takes the **next** best candidate under the unchanged
    rules, or leaves the track at `none` when nothing else fits, so one click ends in an answer
    rather than in an empty panel.
-   Rejected ids are dropped from the length consensus too (§9.24), not only from the words: an entry
+   Rejected ids are dropped from the length consensus too (§9, slice 24), not only from the words: an entry
    that is not this song is no evidence about how long this song is either.
    Neither action is offered for lyrics marked as the user's — those are not LRCLIB's to replace, and
-   the editor's Delete is the way to let it answer again (§9.26). Both are write jobs with the album
+   the editor's Delete is the way to let it answer again (§9, slice 26). Both are write jobs with the album
    in `Job.target`, so they are refused while a pass holds it, and a track with no file is refused.
 
 28. ✅ The fetch preview is the outcome (2026-09-26, the other half of backlog item 2). A preview of
@@ -748,7 +750,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    The order flag resets too, and only that: nothing is renumbered at the moment of the reset, but
    the next update may put the album back in the source's order. The tooltip says so, because a
    button that silently rearranges 56 tracks would be a trap.
-   Lyrics are deliberately not in this: the editor's Delete is their way back (§9.26), and two
+   Lyrics are deliberately not in this: the editor's Delete is their way back (§9, slice 26), and two
    affordances for one thing would only be two things to explain.
    Measured read-only over the library this is for: 59 of 246 albums carry at least one overridden
    field — 38 album artists, 20 years, 15 user orders, 3 album names — and 83 tracks (73 artists,
@@ -757,7 +759,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 30. ✅ Opening an album asks the disk (2026-09-26, backlog item 6). Ownership of an edited `.lrc`
    and the status of a deleted one were only noticed when some pass walked the album, so between
    passes a row could show ♪ for words that were no longer there — safe, because `reconcile` runs
-   before anything overwrites a file (§9.21), but a user would call it a bug. `/api/album` now runs
+   before anything overwrites a file (§9, slice 21), but a user would call it a bug. `/api/album` now runs
    the same `reconcile` for every done track before it answers, so the view is the truth as soon as
    it is drawn; when it found something, one write job saves the plan and brings the tags along,
    with the album in `Job.target` so it queues behind anything already working on it. When plan and
@@ -783,20 +785,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    guessing. The arithmetic lives in `plan.trimmed_gap` and is mirrored in `app.js`'s `trimTarget`;
    the reference is the chip's own (`reference_length`), so there is no second opinion to keep in
    step. It counts from the **video's** duration, never from a file already cut, because that is what
-   trim points mean (§9.17) — the test for that case is the one that would catch a future refactor.
+   trim points mean (§9, slice 17) — the test for that case is the one that would catch a future refactor.
    **Which file you are hearing.** A cut track is played from its kept original, or the head would be
-   skipped twice (§9.17); the player now says so, and *▶ from start* plays from the start mark, which
+   skipped twice (§9, slice 17); the player now says so, and *▶ from start* plays from the start mark, which
    is the question a start mark actually raises ("does the song begin here?").
    Marks are rounded to a tenth. `audio.currentTime` carries a dozen decimals of mouse precision that
    mean nothing musically and end up in the plan and on ffmpeg's command line.
-   Deliberately not here: automatic cut detection and a waveform. §9.8 measured detection and dropped
+   Deliberately not here: automatic cut detection and a waveform. §9, slice 8 measured detection and dropped
    it, and a chip that leads to a cut does not need to guess the cut.
    The JS half has no unit tests, because this repo has no JavaScript test harness and P14 is not the
    place to introduce one; `plan.trimmed_gap` carries the arithmetic under test, and the browser
    checks in the catalog (section P) are the evidence for the rest.
 
 32. ✅ Rows are dragged, and a typed number counts in the disc you put the track on (2026-09-26,
-   backlog item 4, the last of them). Typed positions have landed correctly since §9.22, but typing
+   backlog item 4, the last of them). Typed positions have landed correctly since §9, slice 22, but typing
    numbers into 56 rows is a poor way to reorder an album. A row now has a grip (`⋮⋮`) in the position
    cell and is dragged with **pointer** events rather than HTML5 drag-and-drop, which does not exist
    on touch; the row moves through the table as the pointer passes other rows, so what is on screen
@@ -812,14 +814,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    it *came from*, so a row dragged from disc 2 into the middle of disc 1 ended up after disc 1's
    rows rather than between them (measured: dropped at 1-02, landed at 1-03). A number the user
    **typed** now counts in the disc the track is being put on; a number left alone still counts where
-   the track was, which is what keeps §9.22's collapse from interleaving the two discs. One line, one
+   the track was, which is what keeps §9, slice 22's collapse from interleaving the two discs. One line, one
    function, and the drag lands.
    One case only the browser could show: a row dragged into another disc often keeps its *per-disc*
    number by coincidence — 2-02 dropped at 1-02 is still "2" — so a changed number cannot always
    say that the user moved it, and without that knowledge it was read as a row that stayed put and
    filed after its new disc's rows. The payload now carries `moved` for rows the user has actually
    put somewhere since the last save, which is the UI stating an intent instead of the server
-   inferring one. A collapse sends no `moved`, so §9.22's case is untouched.
+   inferring one. A collapse sends no `moved`, so §9, slice 22's case is untouched.
    That also changed a case reviewed in P3: typing "1" while collapsing two discs into one used to put
    the track first of its *former* disc-2 block (seventh), and now puts it first of the album. Under
    one disc, "1" means first; the old reading was defensible only while numbers were read under the
@@ -829,7 +831,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    defects shipped green). `app.js` had grown to ~1,500 lines carrying real rules — the length
    target, the arrangement and its live renumbering, what a panel offers, the filter's folding — and
    none of it ran under a test. What it *did* have was the Python twins and the Playwright cases,
-   which is why the two defects that shipped (§9.29's invisible badge, §9.31's scattered buttons)
+   which is why the two defects that shipped (§9, slice 29's invisible badge, §9, slice 31's scattered buttons)
    were caught by looking at pictures; neither a unit test nor a DOM assertion would have found them,
    and that is the honest limit of what this slice buys.
    The split is `webui/logic.mjs` — everything that computes rather than draws, exported — and
@@ -841,8 +843,8 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    skipping quietly).
    The twins are what earn it: `tests/shared/trim_target.json` is one table of twelve cases that
    `plan.trimmed_gap` and `logic.mjs`'s `trimTarget` are both tested against, so a rule changed on one
-   side fails on the other. §9.24's rounding, §9.22's per-disc numbering, §9.32's drop semantics,
-   §9.21's panel rules and §9.29's badge decision are pinned the same way.
+   side fails on the other. §9, slice 24's rounding, §9, slice 22's per-disc numbering, §9, slice 32's drop semantics,
+   §9, slice 21's panel rules and §9, slice 29's badge decision are pinned the same way.
    Caching needed one more thing than the split: a module's import URL is inside the module, where
    the index's rewriting never reached, so a new `logic.mjs` could have sat behind a cached `app.js`
    that never asked for it. `IMPORTS` in web.py versions the import when the module is served, and
@@ -860,7 +862,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    replacement for `video_id`: the order, `in_source`, prune, the merge and the MusicBrainz match all
    keep looking at the playlist's video, and `PlanTrack.effective_id` is what the *audio* side asks —
    the download, the kept original, the uploader. Ownership rides on the existing provenance system
-   (`provenance.source = user`, `auto.source` = the playlist id), so §9.29's badge is the way back
+   (`provenance.source = user`, `auto.source` = the playlist id), so §9, slice 29's badge is the way back
    with no new mechanism behind it.
    **A source change is a re-download, and it says so first.** Everything the old file carried is
    about a different recording: the state, the tags, the trim marks, the measured length, and the
@@ -869,7 +871,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    shadow the new one — and originals are keyed by the effective id, so going back re-downloads
    cleanly. The UI confirms with the marks named in it ("The trim 1:30–5:20 belongs to the current
    file and will be cleared"), because a mark silently kept would cut the wrong seconds.
-   **The words are never touched, and the timings say what they were written for.** §9.21 stands: the
+   **The words are never touched, and the timings say what they were written for.** §9, slice 21 stands: the
    user's lyrics are theirs through any switch. But timestamps written against the old file point at
    the wrong seconds of the new one, and nothing in the file can say so — hence `lyrics_for_source`
    and `lyrics_for_length`, stamped by every sidecar write (ours or the editor's), and a notice in the
@@ -883,12 +885,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    any of YouTube's shapes, and a playlist, a channel or a search is refused. A `watch?v=…&list=…`
    link is one video — that is what YouTube hands you from inside a playlist — and the list part is
    ignored. The page refuses a bad paste before it sends it and the server refuses it again;
-   `tests/shared/video_ids.json` is the one table both are tested against (§9.33).
+   `tests/shared/video_ids.json` is the one table both are tested against (§9, slice 33).
 
 35. ✅ Stamping the words to the file's own clock (2026-09-27, P23, backlog 13). The user timed
    "Und 'n Tripper" by hand and every stamp landed up to three seconds late. Three causes, measured
    in that order: the track is trimmed from 1.6 s and **a trimmed track is played from its untouched
-   original** (§9.15 — the marks count from the start of the video, so the player must hear the file
+   original** (§9, slice 15 — the marks count from the start of the video, so the player must hear the file
    those numbers describe), which puts the player's display on the video's clock while a lyric stamp
    belongs to the *cut* file's; the display shows whole seconds; and there is the latency of hearing,
    deciding and pausing. `lyricsLines` already added the trim back when *seeking* — but a human
@@ -904,7 +906,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **The shift** (backlog 13's original ask) moves every stamped line by a typed number of seconds,
    leaves unstamped lines where they are, and is reversible by shifting back.
    **The textarea stays the only source of truth.** Every one of these rewrites its text and nothing
-   reaches the disk until Save, so the ownership contract (§9.21, §9.26) is untouched and a stamp
+   reaches the disk until Save, so the ownership contract (§9, slice 21, §9, slice 26) is untouched and a stamp
    written by the tap is byte-for-byte what a hand-typed `[mm:ss.t]` would be — verified by reading
    the saved `.lrc` back.
    **The offset is the trim the file was *cut* to, not a mark being placed.** `trimOffset` reads the
@@ -912,7 +914,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    is dragging a trim handle. The same helper now serves the seek and the sung-line highlight, which
    both used the pending mark before and were a fraction out in that one state.
    Deliberately unchanged: the player's own display and the trim bar keep the original's clock
-   (outcome 6 of the task, and §9.15's reason — the trim marks depend on it).
+   (outcome 6 of the task, and §9, slice 15's reason — the trim marks depend on it).
 
 36. ✅ Words on a clock, behind a provider boundary (2026-09-27, P25, backlog item 14). P24 measured
    what a local model can do and the answer was worth having: wav2vec2 CTC alignment on a separated
@@ -937,8 +939,8 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    network. A commercial provider is backlog 15 and waits on a decision that is the user's, not the
    code's: whether their audio may leave the house.
    **The result is a proposal, not a write.** The align action fills the editor's textarea; the user
-   plays a line, nudges it, shifts it (§9.35) and presses Save, which is `save_lyrics` exactly as
-   before. So the ownership contract (§9.21) needed no new rule: the words stay the user's, the
+   plays a line, nudges it, shifts it (§9, slice 35) and presses Save, which is `save_lyrics` exactly as
+   before. So the ownership contract (§9, slice 21) needed no new rule: the words stay the user's, the
    *clock* is recorded separately as `lyrics_timed_by`, and the panel says "timed by local" beside
    "yours" rather than claiming both. A line the provider will not place keeps its words and gets no
    stamp — `unplaced` is in the type, because every method measured in P24 fails on some track and a
@@ -952,7 +954,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    ear cheap.
 
 37. ✅ Paid providers, and a draft that says it is one (2026-09-27, P26, backlog item 15). The user
-   decided the question §9.36 left open — *the audio comes from YouTube anyway, so it may leave the
+   decided the question §9, slice 36 left open — *the audio comes from YouTube anyway, so it may leave the
    house* — with two conditions that shaped the package: **no money is spent building it, and no key
    is needed to finish it.** So it was written against the vendors' documentation and verified
    against a server of my own speaking their shapes; not one request in this repository has been
@@ -966,7 +968,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    some; the editor takes them labelled *"a machine's guess, half a song for some tracks"*, because
    that is what P24 measured. It is never offered where words exist — LRCLIB's entry or the user's
    own are both better than a guess — and the server refuses it there too. `lyrics_words_by` records
-   whose words they were, beside §9.36's `lyrics_timed_by` for whose clock, and the panel shows
+   whose words they were, beside §9, slice 36's `lyrics_timed_by` for whose clock, and the panel shows
    "words by elevenlabs" next to "yours" rather than letting one claim swallow the other.
    **The audio leaves the machine, and it is said three times**: in the README's provider section, in
    the settings row beside the choice (with the vendor's list price and the date it was read), and in
@@ -977,7 +979,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    as `TimingUnavailable` carrying the vendor's own message, and the job log names the minutes of
    audio a request is about to send *before* it sends them.
    **What is sent is the file on disk** — the cut one — because that is the file the stamps belong
-   to (§9.35). `YTALBUM_TIMING_BASE_<VENDOR>` redirects a client at another host: a gateway, a proxy,
+   to (§9, slice 35). `YTALBUM_TIMING_BASE_<VENDOR>` redirects a client at another host: a gateway, a proxy,
    or the fake that made this package testable without a bill.
 
 38. ✅ A second opinion, and words from this machine (2026-09-27, P27, backlog item 16). A second
@@ -1039,7 +1041,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **While the editor is open, the textarea is the truth for playback.** A read-only list sits below
    the textarea, drawn from the textarea's own words, and it is the thing the player marks: the line
    being sung is the last stamped line at or before the current moment, converted with the file's
-   clock exactly as a stamp is (§9.35). Clicking a line seeks to it. Nothing about the saved file
+   clock exactly as a stamp is (§9, slice 35). Clicking a line seeks to it. Nothing about the saved file
    changes — the list writes nothing, Cancel puts the file back in charge, and Save does what it
    always did.
    **Every rewrite is seen, because they all go through one door.** The tools in the editor set
@@ -1113,7 +1115,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    back, so every doubt resolves to "no"* — and each refusal says which it was, because a missing
    button explains nothing.
    **Said before it happens, in full.** The confirm names the artist, the title, the album, the
-   **file's** length (the clock the stamps belong to, §9.35), how many lines, that both the timed and
+   **file's** length (the clock the stamps belong to, §9, slice 35), how many lines, that both the timed and
    the plain form go, and that LRCLIB is public and takes no account. The job log writes the same
    sentence before the request, so a log read later says what left this machine.
    **One press is one request.** The challenge may be asked for again — asking changes nothing — but
@@ -1149,12 +1151,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **The one thing seeding cannot do** is correct a recording, because the format is for releases. So
    where the file and MusicBrainz disagree about a song's length by more than ten seconds and they
    know the recording, **the length chip itself becomes the way to their page** — the chip that has
-   always shown the two numbers (§9.31). The first version of this put a second badge in the same row
+   always shown the two numbers (§9, slice 31). The first version of this put a second badge in the same row
    printing the same numbers with the opposite implication; one place for one fact.
    `YTALBUM_MUSICBRAINZ_WEB` points both at a stand-in, which is how this was verified without
    opening a real edit form.
 
-44. ✅ Which method lost the song (2026-09-27, P33, backlog 21). §9.38 could see that two aligners
+44. ✅ Which method lost the song (2026-09-27, P33, backlog 21). §9, slice 38 could see that two aligners
    had placed a whole track differently and had no way to say **which** of them was wrong, so it kept
    the primary by policy. Now the answer comes from evidence where there is any, and the policy stays
    where there is none.
@@ -1169,7 +1171,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    are kept whole and the notice names which lost and why, in the user's words: *"the two methods
    placed the whole track differently, and large-v3 is the one that lost it: its stamps cover only
    41% of the part of the track where somebody sings."* Both or neither look lost → exactly what
-   §9.38 did, keeping the primary and saying so. The per-line rule, where the two agree about the
+   §9, slice 38 did, keeping the primary and saying so. The per-line rule, where the two agree about the
    track, is untouched.
    **Two signals were measured and thrown away**, and both are still *recorded* so nobody has to take
    that on trust: "stamps where nobody sings", which cannot work because these tracks are 55–86%
@@ -1311,30 +1313,30 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 ### Decisions of 2026-09-26 (the QA run and the backlog that came out of it)
 
 - A lyric is the user's by its **bytes**, not by a flag they set; the record of what we wrote
-  decides, and where there is no record, lrclib is asked about the entry we stored (§9.21).
-- Deleting your own lyric gives the mark up with it, so `--refetch` can answer again (§9.21).
+  decides, and where there is no record, lrclib is asked about the entry we stored (§9, slice 21).
+- Deleting your own lyric gives the mark up with it, so `--refetch` can answer again (§9, slice 21).
 - The lyrics panel **writes**, and the editor never looks anything up — a save can then never be
-  answered by replacing the words just typed (§9.26).
+  answered by replacing the words just typed (§9, slice 26).
 - A rejected lrclib entry is remembered **per track** and never offered for it again, which is what
-  a deleted file could not say (§9.27).
+  a deleted file could not say (§9, slice 27).
 - A fetch renames only the album it is fetching; the library's spelling wins and `repair` is what
-  upgrades the rest (§9.23).
-- `repair` decides each artist's spelling once, before it renames anything (§9.23).
+  upgrades the rest (§9, slice 23).
+- `repair` decides each artist's spelling once, before it renames anything (§9, slice 23).
 - A length reference lrclib contributes is the **consensus** of its candidates, not the nearest
-  one, and the query drops only the instrumental markers (§9.24).
-- A single's album name follows its own track's title (§9.25).
+  one, and the query drops only the instrumental markers (§9, slice 24).
+- A single's album name follows its own track's title (§9, slice 25).
 - **Repair is reachable from the web UI, behind a confirm rather than a preview** (P10, catalog L):
   a preview would need a pass that reports without writing, which is the fetch preview's job and
   not repair's. This decision lives nowhere else.
 - The fetch preview merges with what is in the library, so it shows what a fetch would write rather
-  than a fresh reading of YouTube; Shift+click skips it (§9.28).
+  than a fresh reading of YouTube; Shift+click skips it (§9, slice 28).
 - Resetting a field drops its provenance rather than guessing it, because `auto` records the derived
-  value and never its source (§9.29).
+  value and never its source (§9, slice 29).
 - Opening an album reconciles its lyrics with the disk; the library grid deliberately does not
-  (§9.30).
+  (§9, slice 30).
 - A number the user **typed** counts in the disc they are putting the track on; one left alone counts
-  where the track was (§9.32).
-- **No JavaScript test harness inside a feature package** (§9.31): the arithmetic lives in Python
+  where the track was (§9, slice 32).
+- **No JavaScript test harness inside a feature package** (§9, slice 31): the arithmetic lives in Python
   where it is tested and the browser cases are the evidence for the rest. Whether the repo gets one
   is open — `docs/backlog.md` item 10.
 
@@ -1351,28 +1353,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   stored state: a one-time hint that must be dismissed is a nag, and it would be the only piece of
   remembered UI state in the page (backlog 11, catalog T5/T6).
 
-### Decisions of 2026-09-27 (an alternative source per track, §9.34)
+### Decisions of 2026-09-27 (an alternative source per track, §9, slice 34)
 
-- **The playlist video is the identity; only the audio may be pointed elsewhere** (§9.34). Replacing
+- **The playlist video is the identity; only the audio may be pointed elsewhere** (§9, slice 34). Replacing
   `video_id` would have been fewer lines and would have broken `in_source`, prune, the merge and the
   MusicBrainz match, all of which are about *which entry this is*, not about which file plays.
 - **A source change clears the trim rather than keeping or converting it.** Marks are seconds of a
   particular recording; the new one has its own silence at the front. Converting them would be a
   guess, keeping them would cut the wrong audio, so they go — and the UI names them before it asks.
-- **The uploader follows the audio, not the identity** (§9.34): "trim everything from this channel"
+- **The uploader follows the audio, not the identity** (§9, slice 34): "trim everything from this channel"
   is about who encoded the file in front of you. It is re-read from the video actually used, in both
   directions, and a merge no longer overwrites it from the playlist entry.
 - **No automatic re-timing of a user's lyrics.** The notice states the problem and leaves the fix to
   them; doing it for them is P23, where it can be confirmed and undone.
 
-### Decisions of 2026-09-27 (stamping to the file's clock, §9.35)
+### Decisions of 2026-09-27 (stamping to the file's clock, §9, slice 35)
 
 - **The tools act on the line the cursor is in, not on a widget per stamp.** The editor is a
   textarea and stays one (the task pins it as the source of truth), so per-stamp buttons would mean
   a second representation of the same text and two ways for them to disagree. The cursor already
   decides the line for the tap; play, nudge and shift use the same rule.
 - **The stamp is a tenth.** `audio.currentTime` carries a dozen decimals of nothing, LRC players
-  read hundredths, and a tenth is finer than anyone can tap — the same decision §9.31 took for the
+  read hundredths, and a tenth is finer than anyone can tap — the same decision §9, slice 31 took for the
   trim marks, for the same reason.
 - **A nudge plays what it changed.** Aligning by ear means hearing the result immediately; a nudge
   that only rewrote the text would make the user press play after every tenth.
@@ -1392,13 +1394,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   implementation beside a self-hosted endpoint and commercial APIs. The spike's §5 carries the
   interface sketch and the costs of each.
 
-### Decisions of 2026-09-27 (the timing boundary, §9.36)
+### Decisions of 2026-09-27 (the timing boundary, §9, slice 36)
 
 - **Built as the spike recommended, with two providers rather than one** (P25): `local` for whoever
   has the extra, and `http` + `ytalbum timing-serve` because "run the inference on the other
   machine" is this household's actual deployment and is fifty lines around the same code.
 - **The provider never writes.** It answers with lines and a `Timed` record of itself; the editor
-  shows them and the user saves. That is what keeps §9.21 untouched and makes a wrong alignment cost
+  shows them and the user saves. That is what keeps §9, slice 21 untouched and makes a wrong alignment cost
   a "Cancel" rather than a restore.
 - **`unplaced` is part of the answer**, not an error. A provider that cannot say which lines it
   would not place cannot be trusted with the rest.
@@ -1407,7 +1409,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **No transcription and no library-wide pass in this package.** Both are decisions of their own
   (backlog 15 and 16), and the measurements do not support making them quietly.
 
-### Decisions of 2026-09-27 (paid providers, §9.37)
+### Decisions of 2026-09-27 (paid providers, §9, slice 37)
 
 - **The user decided that audio may leave the house**, having weighed that it came from YouTube in
   the first place. The code's job is to say so every time, not to relitigate it: three notices and a
@@ -1421,7 +1423,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   the page honest, and it is the reason the boundary has `capabilities()` at all.
 - **A draft is labelled everywhere it appears** and is offered only where there is nothing to lose.
 
-### Decisions of 2026-09-27 (a second opinion, §9.38)
+### Decisions of 2026-09-27 (a second opinion, §9, slice 38)
 
 - **A cross-check that costs the alignment is worse than no cross-check.** Every failure in the
   second pass degrades to "unchecked" and keeps the first answer. Three real failures proved the
@@ -1444,7 +1446,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Size decides where something lives.** 3 GB is its own extra, off unless installed, and the
   README says what it downloads before anyone types the command.
 
-### Decisions of 2026-09-27 (the editor's own clock, §9.39)
+### Decisions of 2026-09-27 (the editor's own clock, §9, slice 39)
 
 - **Two views must not be fed by two truths.** While the editor is open there is exactly one truth
   for playback, and it is the textarea. The file is the truth again the moment the editor closes.
@@ -1453,7 +1455,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A second copy of the words needs a name.** Found by looking at a screenshot, which is where the
   page's unlabelled things are always found.
 
-### Decisions of 2026-09-27 (two slots, §9.40)
+### Decisions of 2026-09-27 (two slots, §9, slice 40)
 
 - **One setting per decision, not per subsystem.** Aligning and drafting are two decisions with
   different economics; they got two settings, and the old one still reads as both.
@@ -1462,7 +1464,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A list of choices should not contain a choice that cannot work.** Deepgram is absent from the
   aligning slot, because it transcribes and says so.
 
-### Decisions of 2026-09-27 (giving the card back, §9.41)
+### Decisions of 2026-09-27 (giving the card back, §9, slice 41)
 
 - **An idle desktop app holds nothing it is not using.** The card is shared with whatever else the
   machine is doing, including the desktop itself.
@@ -1470,7 +1472,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
 
-### Decisions of 2026-09-27 (giving the words back, §9.42)
+### Decisions of 2026-09-27 (giving the words back, §9, slice 42)
 
 - **A publish is public and permanent, so the page says everything before it happens** — and says
   why, whenever it will not offer to.
@@ -1479,7 +1481,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **One press, one request, one possible copy.** The publish POST is never retried.
 - **Record a fingerprint, not the text.** It answers "these again?" and nothing else.
 
-### Decisions of 2026-09-27 (offering an album, §9.43)
+### Decisions of 2026-09-27 (offering an album, §9, slice 43)
 
 - **An edit belongs to the person making it.** Seeding a form, never submitting one: no credentials
   in ytalbum, and nothing reaches MusicBrainz that a person has not read.
@@ -1488,7 +1490,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **One place for one fact.** The length chip became the way to a recording's page rather than
   gaining a neighbour that printed its numbers again.
 
-### Decisions of 2026-09-27 (which method lost the song, §9.44)
+### Decisions of 2026-09-27 (which method lost the song, §9, slice 44)
 
 - **Evidence where there is any, policy where there is none.** The rule speaks only when exactly one
   method looks lost; otherwise it says so and falls back to what it did before.
@@ -1499,7 +1501,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Collect the cases the measurement could not have.** Saved alignments carry both methods' figures,
   so the thresholds can be widened from the library instead of from another sixteen copies.
 
-### Decisions of 2026-09-27 (a draft that reads like a song, §9.45)
+### Decisions of 2026-09-27 (a draft that reads like a song, §9, slice 45)
 
 - **Break where the singing pauses.** Punctuation is the vendor's; pauses are the song's.
 - **Say what was not heard.** A hole in a draft is invisible unless it is written down.
@@ -1508,7 +1510,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Give the transcriber the voice.** It doubles what a vendor hears on real material, and it sends
   less of the recording away.
 
-### Decisions of 2026-09-27 (an entry that is nearly this recording, §9.46)
+### Decisions of 2026-09-27 (an entry that is nearly this recording, §9, slice 46)
 
 - **Measure the thing you care about.** "Is this the same recording" is answered by aligning the
   words to the audio, not by comparing two durations.

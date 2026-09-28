@@ -96,16 +96,23 @@ and a JavaScript runtime for yt-dlp ([Node](https://nodejs.org/) ≥ 20,
 [deno](https://deno.com/) or bun).
 
 ```sh
-sudo apt install ffmpeg nodejs                      # Debian/Ubuntu; brew install ffmpeg node on macOS
+sudo apt install ffmpeg                             # brew install ffmpeg on macOS
+
+# Node ≥ 20. Ubuntu's own `nodejs` is 18.x on 24.04 and ships no npm, which the token
+# generator below needs — so take it from NodeSource, or use nvm, or install deno instead:
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs
 curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
 
 git clone https://github.com/smtws/ytalbum.git
 cd ytalbum
 uv sync                                             # venv + dependencies
-uv run ytalbum config                               # shows what it found: ffmpeg, JS runtime, token helper
+uv run ytalbum config                               # shows what it found: JS runtime, token helper
 ```
 
 `uv sync` needs no system Python 3.14 — uv fetches the interpreter itself.
+
+**ytalbum does not check for ffmpeg.** `ytalbum config` reports the JS runtime and the token
+helper, not ffmpeg; a missing ffmpeg is first noticed when the first download tries to use it.
 
 ## First run
 
@@ -125,16 +132,25 @@ uv run ytalbum app install        # menu entry with its own window and icon
 The library, the CLI and the web UI are platform-independent; `ytalbum service` (systemd)
 and `ytalbum app` (freedesktop launcher) are Linux-only.
 
-**YouTube's bot check.** After a few hundred requests YouTube starts refusing everything
-("Sign in to confirm you're not a bot"). A logged-in browser session avoids that:
+**Cookies: the bot check, and age-restricted videos.** After a few hundred requests YouTube starts
+refusing everything ("Sign in to confirm you're not a bot"), and some videos are age-restricted in
+any case. Both are fixed by the same thing — a logged-in YouTube session, which yt-dlp reads at request time. It does two things: it gets past the bot check, and it unlocks age-restricted videos:
 
 ```sh
 uv run ytalbum config --cookies-from-browser firefox   # or chrome, or --cookies-file cookies.txt
 ```
 
 **Proof-of-origin tokens.** Some videos only hand out their audio streams when the client
-presents a token. Set the generator up once (versions must match the installed
-`bgutil-ytdlp-pot-provider`, currently 2.0.0):
+presents a token. This needs **two halves**, and `uv sync` installs only the first:
+
+1. the yt-dlp **plugin**, `bgutil-ytdlp-pot-provider`, a Python package already pulled in by
+   `uv sync` — `pyproject.toml` pins `>=2.0.0`;
+2. the **Node server** that actually mints the tokens, which is a separate repository you clone
+   yourself.
+
+The two are versioned together, so clone the branch that matches the plugin you have — check with
+`uv pip show bgutil-ytdlp-pot-provider` and use that major version. With the pin at `>=2.0.0` the
+2.0.0 branch is the right one today; if the plugin ever resolves to 3.x, clone `3.0.0` instead.
 
 ```sh
 git clone --single-branch --branch 2.0.0 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git .pot-provider
@@ -142,7 +158,9 @@ git clone --single-branch --branch 2.0.0 https://github.com/Brainicism/bgutil-yt
 ```
 
 ytalbum finds it, starts a local token server when it needs one and stops it after five
-idle minutes.
+idle minutes. `pot_provider_home` defaults to `.pot-provider/server` **relative to the ytalbum
+clone** — not to your working directory — so the command above puts it exactly where ytalbum looks.
+Set the key to an absolute path if you keep it elsewhere.
 
 ## Screenshots
 
@@ -209,24 +227,68 @@ Library/
         └── .originals/            # only when trims are in use
 ```
 
+### What goes into the tags
+
+Every finished file carries these, written with [mutagen](https://mutagen.readthedocs.io/):
+
+| tag | from |
+|---|---|
+| `title`, `artist` | the track, after the name fixing above |
+| `albumartist`, `album` | the album |
+| `tracknumber`, `tracktotal`, `totaltracks` | position and size |
+| `date` | the album year, when there is one |
+| `compilation` | `1` on a compilation |
+| `discnumber` | on a multi-disc album |
+| `musicbrainz_albumid`, `musicbrainz_trackid` | when MusicBrainz matched |
+| `lyrics` | a copy of the `.lrc` beside the file |
+| **`youtube_id`** | **the video id this track came from** |
+| **`source`** | **the playlist or video URL** (the `©cmt` comment field in `.m4a`) |
+| cover | the album art, embedded |
+
+The last two are worth saying plainly: **the video id and the source URL go into every file you
+keep.** Nothing else in the tags identifies where the audio came from, and nothing strips them.
+
+### Editing a plan by hand
+
+`ytalbum plan <url>` writes `.ytalbum.json` and stops. It is ordinary JSON; edit it and run
+`ytalbum download <folder>`.
+
+| field | safe to edit | what happens |
+|---|---|---|
+| `artist`, `title`, `album`, `albumartist`, `year` | yes | the file is renamed and retagged |
+| `number`, `disc` | yes | tracks are renumbered and renamed |
+| `trim_start`, `trim_end` | yes | the cut is made from the kept original |
+| `source_override` | yes | the audio is fetched again from that video |
+| `lyrics` and the `lyrics_*` fields | no | derived from the `.lrc` beside the file; edit that instead |
+| `video_id`, `source_id`, `source_url`, `folder`, `filename` | no | identity and what is on disk |
+| `auto`, `provenance` | no | see below |
+
+**Why `auto` and `provenance` are not yours to edit.** `auto` holds the value ytalbum derived for
+each field; `provenance` says where that value came from. A field whose value differs from `auto` is
+treated as *yours* and is never overwritten by a later update — that is the whole mechanism. So
+editing a value is how you take ownership, and editing `auto` to match only throws your edit away at
+the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
+
 ## Command line
 
 | Command | What it does |
 |---|---|
 | `ytalbum fetch <url>` | Plan and download a playlist, video or channel. `--dry-run` prints the plan only, `--pick 1,3-5` / `--all` choose from a channel, `--no-mb` skips MusicBrainz, `--library PATH` overrides the library, `--dump-collection FILE` also saves what YouTube returned (for test fixtures), `--no-lyrics` skips the lyrics lookup. |
-| `ytalbum search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`). |
-| `ytalbum plan <url>` | Write the plan into the album folder without downloading, for editing by hand. `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer ytalbum left behind. |
-| `ytalbum download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. |
+| `ytalbum search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`, `--library`, `--no-mb`, `--no-lyrics`). |
+| `ytalbum plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer ytalbum left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
+| `ytalbum download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
 | `ytalbum update` | Re-check every album against its source. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
 | `ytalbum prune <album-folder>` | Delete tracks that are no longer in the source playlist (asks first, `--yes` skips). |
 | `ytalbum delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). |
-| `ytalbum serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS`. |
-| `ytalbum service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `restart` refuses while a job runs unless given `--force`. |
-| `ytalbum app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--remove-profile` on uninstall also drops the app's browser profile. |
+| `ytalbum serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
+| `ytalbum service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
+| `ytalbum app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
 | `ytalbum repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. |
-| `ytalbum lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length: for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
-| `ytalbum timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
+| `ytalbum lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
+| `ytalbum timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
 | `ytalbum config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
+
+`-v` / `--verbose` before the subcommand turns on debug logging for any of them.
 
 Exit codes: `0` fine, `1` something failed, `2` wrong usage, `3` YouTube is blocking
 requests, `130` interrupted.
@@ -299,7 +361,7 @@ network.
 
 | Endpoint | Body | Effect |
 |---|---|---|
-| `/api/open` | `{q}` | A URL or an artist name: preview, channel listing or search (read-only lane). A preview is a dry run — it reads from YouTube (and MusicBrainz, if that is on) exactly as a fetch does, so it costs the same requests, and it writes nothing. |
+| `/api/open` | `{q}` | A URL or an artist name: preview, channel listing or search (the **read lane** — see [the two lanes](#the-two-lanes) below). A preview is a dry run — it reads from YouTube (and MusicBrainz, if that is on) exactly as a fetch does, so it costs the same requests, and it writes nothing. |
 | `/api/fetch` | `{urls: […]}` | Plan and download those sources. |
 | `/api/update` | `{artist?, deep?}` | Re-check the library, or one artist's albums. |
 | `/api/repair` | `{}` | Run `ytalbum repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
@@ -310,7 +372,7 @@ network.
 | `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
 | `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
 | `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
-| `/api/check_lyrics` | `{id, video_id}` | Align LRCLIB's near-miss entry for that track against your file and decide what may be taken from it: the words and its timings, the words with our own stamps, nothing, or a rejection that is remembered. Needs a provider that can `align`. |
+| `/api/check_lyrics` | `{id, video_id}` | Align LRCLIB's [near-miss](#near-misses-when-lrclib-nearly-has-your-recording) entry for that track against your file and decide what may be taken from it: the words and its timings, the words with our own stamps, nothing, or a rejection that is remembered. Needs a provider that can `align`. |
 | `/api/take_plain_lyrics` | `{id, video_id}` | Put a near-miss entry's words beside the track without its timings. They stay LRCLIB's words. |
 | `/api/publish_lyrics` | `{id, video_id}` | Give your own timed words back to LRCLIB. One press is one request, it is never retried, and it is refused for anything that is not your own timed words that LRCLIB has no equal of. |
 | `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
@@ -320,8 +382,11 @@ network.
 | `/api/cancel` | `{id}` | Cancel a job; it stops at the next point where nothing is half-done. |
 | `/api/settings` | see below | Change settings at runtime. |
 
-Jobs run in two lanes: everything that changes the library runs strictly one at a time,
-while searches and previews run alongside.
+### The two lanes
+
+Jobs run in two lanes: everything that changes the library runs strictly one at a time, while
+searches and previews — the **read lane** — run alongside. So a long fetch never blocks a lookup,
+and two things can never rename the same album at once.
 
 ## Optional: placing lyrics on the clock
 
@@ -353,10 +418,12 @@ has words but no timings (39 hours) costs about **$8.60** at ElevenLabs' rate, a
 editor costs about **1.5 cents**.
 
 ```sh
-# on the machine that will do the work (it may be this one)
+# On a machine with no usable GPU, install the CPU build of torch FIRST. Order matters: on its own,
+# `ytalbum[timing]` resolves the CUDA build and pulls in cuda-toolkit — about 4 GB rather than 200 MB.
+uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# then, on the machine that will do the work (it may be this one)
 uv pip install "ytalbum[timing]"
-# without a usable GPU, ask for the small CPU build of torch first — 200 MB rather than some 4 GB:
-#   uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 ytalbum timing-serve --port 8770          # ... if it is a different machine
 ```
@@ -467,19 +534,29 @@ until you save it, and what is saved remembers that the words were drafted (the 
 “words by …” beside “yours”). It is never offered for a track that already has words: LRCLIB's entry,
 or yours, is better than a guess.
 
+**What the lyrics lookup sends.** Separate from any of this, and on by default: for each track
+without words ytalbum asks [LRCLIB](https://lrclib.net) with the **artist, the title, the album name
+and the file's duration rounded to a second**. No audio and nothing else leaves. Turn it off with
+`ytalbum config --lyrics off`.
+
 **Privacy.** `none`, `local` and `http` never send anything outside your own machine or network.
 `elevenlabs` and `deepgram` do, every time you use them, and that is the whole difference between
 them.
 
-**Five environment variables, not config keys**, all for people testing rather than listening:
+**Four environment variables, not config keys**, all for people testing rather than listening:
 `YTALBUM_LRCLIB_BASE` points the lyrics client (lookups *and* publishing) at another LRCLIB;
 `YTALBUM_MUSICBRAINZ_WEB` points the seeding form and the recording links at another MusicBrainz;
 `YTALBUM_TIMING_BASE_ELEVENLABS` / `YTALBUM_TIMING_BASE_DEEPGRAM` point a vendor client at another
 host — a gateway, a proxy, or a server of your own speaking their shapes, which is how this feature
-was verified without spending anything — and `YTALBUM_LIVE_AUDIO` tells the opt-in live test which
-file to spend its one request on.
+was verified without spending anything.
 
-## When LRCLIB nearly has your recording
+The program reads only those four. Five more exist and are read **by the test suite alone**, never
+by ytalbum itself: `YTALBUM_LIVE_AUDIO` (which file the opt-in live vendor test may spend its one
+request on), `YTALBUM_TIMING_LIVE`, `YTALBUM_ELEVENLABS_KEY`, `YTALBUM_DEEPGRAM_KEY`, and
+`YTALBUM_CORPUS_AUDIO` / `YTALBUM_CORPUS_LIBRARY` for the end-to-end corpus
+([docs/regression.md](docs/regression.md)).
+
+## Near misses: when LRCLIB nearly has your recording
 
 LRCLIB matches by length, and ytalbum will not take an entry whose length is more than three seconds
 from your file: a cover, a live version and a radio edit all share a title, and the length is the only
@@ -503,6 +580,11 @@ Without a timing provider nothing changes and nothing is taken — but the panel
 exist and how far off they are, with a button to take them as plain text if you want them untimed.
 Either way the words stay LRCLIB's, and where ytalbum's own aligner placed the stamps it says whose
 clock they are.
+
+**“♪ N need you”.** Where the check could not settle it, the track waits for you, and the library
+says how many: the filter and the badge count **tracks with no lyrics whose near-miss verdict was
+*unclear* or *shown*** — in the app's own words, *tracks where lrclib has words and nothing could
+decide whether they are this recording's*. Click through and the panel shows both numbers.
 
 ## Giving the words back
 
@@ -558,7 +640,7 @@ confirm — and the change, if there is one to make, is yours.
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |
 | `pot_mode` | `"server"` | Token helper: `server` (started on demand), `script`, `off`. |
 | `pot_port`, `pot_idle` | `4416`, `300` | Token server port and idle timeout in seconds. |
-| `pot_provider_home` | `.pot-provider/server` | Where the token generator is built. |
+| `pot_provider_home` | `.pot-provider/server` | Where the token generator is built, **relative to the ytalbum clone**. An absolute path also works. |
 | `js_runtime`, `js_runtime_path` | autodetect | deno, node, bun or quickjs for yt-dlp. |
 | `timing_provider` | `"none"` | Who may do both jobs: `none`, `local` (the `ytalbum[timing]` extra), `http`, or a vendor. Read as the fallback for both slots below. |
 | `timing_align_provider` | – | Who places your words on the clock. Empty = whatever `timing_provider` says. |
@@ -570,6 +652,17 @@ confirm — and the change, if there is one to make, is yours.
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
 | `timing_idle_minutes` | `5.0` | How long `ytalbum timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
+
+The `timing_*` keys may also be written as a table, if grouping reads better — the flat key wins
+where both are present:
+
+```toml
+[timing]
+align_provider = "local"      # = timing_align_provider
+draft_provider = "deepgram"   # = timing_draft_provider
+device = "auto"               # endpoint, elevenlabs_key, deepgram_key, verify,
+idle_minutes = 5.0            # verify_threshold, verify_lost, idle_minutes likewise
+```
 
 ## Limits
 
@@ -610,6 +703,46 @@ confirm — and the change, if there is one to make, is yours.
 - **It only knows its own library.** Music you already own elsewhere is invisible to it, so
   it cannot warn you about duplicates.
 - **No authentication** in the web UI (see above).
+
+## The documentation, and what order to read it in
+
+For using ytalbum, in this order: **What it does** → **Install** and **First run** → **How it works**
+and **On disk** → **Command line** and **Configuration** → **Limits**. Then, only if you want a model
+to place lyrics on the clock, **Optional: placing lyrics on the clock** and the sections after it.
+[SECURITY.md](SECURITY.md) is short and worth reading before you expose anything to a network.
+
+The rest is internal and written for whoever works on this, not for using it:
+
+| file | what it is |
+|---|---|
+| [DESIGN.md](DESIGN.md) | ~1500 lines: every decision, what was measured, and what was measured and dropped. §9 is the slice log, §12 the dated decisions. |
+| [docs/qa-catalog.md](docs/qa-catalog.md) | the hand-run checklist for the seams, and the record of what each pass found |
+| [docs/backlog.md](docs/backlog.md) | **a record, not a queue** — all 21 items are done; read it to find out *why* something works as it does |
+| [docs/regression.md](docs/regression.md) | the corpus that keeps the measurements, and the rule for adding to it |
+| [docs/spikes/](docs/spikes/) | measurements taken before a decision: alignment, and where YouTube is assumed |
+
+## Removing it
+
+ytalbum keeps everything in four places, and nothing anywhere else.
+
+```sh
+ytalbum service uninstall                 # the systemd user socket and unit
+ytalbum app uninstall --remove-profile    # the desktop file, its icons, and the app's browser profile
+```
+
+Then delete, if you want them gone:
+
+| what | where |
+|---|---|
+| the program | the clone, including `.venv/` and `.pot-provider/` |
+| settings | `~/.config/ytalbum/config.toml` (or `$XDG_CONFIG_HOME/ytalbum/`) |
+| caches | `~/.cache/ytalbum/lyrics.sqlite3`, `~/.cache/ytalbum/musicbrainz.sqlite3`, and the token server's files in the same folder |
+| models, only if you used the `timing` extras | `~/.cache/torch/hub/checkpoints/` (the aligner and Demucs, ~0.5 GB) and `~/.cache/huggingface/` (the Whisper decoder, ~3 GB) |
+
+**Your music is not touched by any of this.** The library folder, the audio, the covers and the
+`.lrc` files beside them are yours; deleting an album's `.ytalbum.json` leaves plain tagged files.
+The model caches are torch's and Hugging Face's own, shared with any other program that uses them —
+check before deleting.
 
 ## Where this comes from
 
@@ -675,7 +808,7 @@ distributed under the GPL.
 ## Tests
 
 ```sh
-uv run pytest        # 683 tests, offline, ~65 s — including the page's own 87, under node
+uv run pytest        # 780 tests, offline, ~70 s — including the page's own 91, under node
 ```
 
 They run against recorded YouTube and MusicBrainz responses in `design-fixtures/` and mock

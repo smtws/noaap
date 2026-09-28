@@ -127,7 +127,7 @@ Per line: the model's line start minus LRCLIB's stamp, in the file's clock. Two 
 and they are not the same thing:
 
 - **bias** — the median *signed* error: a constant offset of the whole set. The editor's "shift all"
-  (§9.35) removes a constant offset in one action, so a large bias with a small spread is a
+  (§9, slice 35) removes a constant offset in one action, so a large bias with a small spread is a
   near-miss, not a failure.
 - **spread** — the median absolute deviation *around* that bias. Nothing removes this; it is what
   the method actually costs you.
@@ -391,7 +391,7 @@ class Timing(Protocol):
 
 @dataclass
 class Timed:
-    lines: list[TimedLine]        # start, end, text — in the FILE's clock (§9.35)
+    lines: list[TimedLine]        # start, end, text — in the FILE's clock (§9, slice 35)
     unplaced: list[int]           # indices it would not place; the safety valve, see 5.5
     provider: str                 # "local", "http://rechenknecht:8770", "elevenlabs"
     model: str                    # "wav2vec2 voxpopuli de + htdemucs"
@@ -402,7 +402,7 @@ class Timed:
 Three things in there are load-bearing:
 
 - **The file's clock.** The provider is handed the file on disk, which is the file the `.lrc`
-  belongs to, so nothing has to know about trims. §9.35's conversion stays where it is, in the page.
+  belongs to, so nothing has to know about trims. §9, slice 35's conversion stays where it is, in the page.
 - **`unplaced`.** Every measured method fails on some tracks, and the failures are not subtle —
   they are half a song out. A provider that cannot say "I did not place these" cannot be used
   safely, so it is in the type rather than in a comment.
@@ -482,7 +482,7 @@ commercial side wins outright on a bulk pass, because it is not queued behind on
 - **Jobs.** Alignment changes a sidecar, so it is a write-lane job like `save_lyrics`: one at a time,
   cancellable at the next safe point, blocked while another job holds that album. Nothing new. A
   library-wide pass would be a write-lane job that reports per track, like `lyrics`.
-- **The ownership contract (§9.21), which is the part that needs care.** Alignment derives *stamps*
+- **The ownership contract (§9, slice 21), which is the part that needs care.** Alignment derives *stamps*
   for words that may be the user's own. The words must not change and their ownership must not
   change; only the timings are new, and they were made by a machine.
   The clean way out is the one P23 already built: **the align action writes into the editor's

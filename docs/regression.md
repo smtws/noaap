@@ -18,12 +18,12 @@ YTALBUM_CORPUS_AUDIO=1 YTALBUM_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slo
 
 ## What it protects
 
-- **Which method lost the song** (§9.44). Argent: the second is named, the first is not. Bastard of
+- **Which method lost the song** (§9, slice 44). Argent: the second is named, the first is not. Bastard of
   Asgard: neither, from span alone. The five lost methods are named and the thirteen others are not,
   including the two tracks held out until after the thresholds were fixed.
-- **The whole-track rule keeps every stamp** (§9.38), because the original rule was measured
+- **The whole-track rule keeps every stamp** (§9, slice 38), because the original rule was measured
   backwards: five for five it discarded the accurate method's work, 244 correct stamps.
-- **An entry that is nearly this recording** (§9.46). Gangnam Style rejected as another song; Kalte
+- **An entry that is nearly this recording** (§9, slice 46). Gangnam Style rejected as another song; Kalte
   Spuren (Live) keeps the words and loses the stamps; Ringelpietz never aligned at all; Blackbeard
   taken whole although it is 4.4 s outside the old rule; the six Feuerschwanz inconclusives decided
   by nobody; and the five population counts — 143 / 16 / 1 / 29 / 14 — derived from the recordings

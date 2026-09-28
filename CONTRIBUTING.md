@@ -25,11 +25,16 @@ uncovered a rule that was wrong for a whole class of videos, not just that one.
 
 ```sh
 uv sync
-uv run pytest        # ~380 tests, a few seconds
+uv run pytest        # 780 tests, about 70 seconds
 ```
 
-They answer from responses recorded in `design-fixtures/`, so they need **no network, no
-credentials and no ffmpeg**, and they keep working when YouTube starts refusing requests.
+They answer from responses recorded in `design-fixtures/`, so they need **no network and no
+credentials**, and they keep working when YouTube starts refusing requests.
+
+**ffmpeg is a different matter.** The suite runs without it and reports success — but **213 of the
+780 tests skip**, silently, because everything that touches real audio needs it (220 skipped against
+the usual 7, and the run drops from ~70 s to ~7 s, which is the honest tell). Read the skip count,
+not the colour. `sudo apt install ffmpeg`, or `brew install ffmpeg`.
 
 The suite covers the pieces; [docs/qa-catalog.md](docs/qa-catalog.md) is a hand-run checklist
 for the seams between them — trimming a track that has lyrics, pruning an album whose order you

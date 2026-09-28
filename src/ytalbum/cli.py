@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("config", help="show or set configuration")
     c.add_argument("--library", type=Path, help="set the library root")
-    c.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use a browser's YouTube login (for age-restricted videos); 'none' to unset")
+    c.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use a browser's YouTube login: gets past the bot check and unlocks age-restricted videos; 'none' to unset")
     c.add_argument("--cookies-file", type=Path, metavar="FILE", help="use an exported cookies.txt instead; 'none' to unset")
     c.add_argument("--lyrics", choices=("on", "off"), help="look lyrics up at lrclib.net when downloading")
 

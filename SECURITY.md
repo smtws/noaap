@@ -21,10 +21,20 @@ rebinding), files are served by album and video id only — never by a path from
 a strict CSP applies, and thumbnails are fetched by the server so the page never talks to
 Google.
 
+## `ytalbum timing-serve`
+
+The alignment service is a **separate exposure from the web UI, with its own default**: it binds
+**`0.0.0.0`** unless you say otherwise, because its whole purpose is to be reached from another
+machine. It has **no authentication**, and it **accepts audio uploads** — every alignment request
+carries the caller's audio file, which it writes to a temporary file, reads and deletes.
+
+So: run it only on a network you trust, or bind it to one interface (`--host 127.0.0.1`, or a
+private address) and reach it over SSH or a VPN. It never sends anything out, and it holds nothing
+after a request beyond the models it keeps loaded (`timing_idle_minutes`).
+
 ## Cookies
 
-`cookies_from_browser` hands yt-dlp your browser's YouTube session so age-restricted videos
-and the bot check work. That session is read at request time and never copied into the
+`cookies_from_browser` hands yt-dlp a logged-in YouTube session, which yt-dlp reads at request time. It does two things: it gets past the bot check, and it unlocks age-restricted videos. That session is read at request time and never copied into the
 library, the plan files or the logs. A `cookies.txt` you point at stays wherever you put it —
 treat that file as a password, because it is one.
 
