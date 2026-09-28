@@ -1,6 +1,6 @@
 [project]
 name = "noaap"
-version = "1.1.0"
+version = "1.2.0"
 description = "Turn YouTube playlists into properly tagged Opus albums"
 authors = [
     { name = "Tordt", email = "info@smt-webservices.de" }
