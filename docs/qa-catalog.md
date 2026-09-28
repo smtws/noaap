@@ -2810,10 +2810,68 @@ Opus**: the format is always 48 kHz and mutagen reports no per-file rate, so the
 measured to record. The first version of the case asserted a sample rate and failed — the assertion
 was wrong, not the code. An absent number is not a zero, and ranking will have to treat it that way.
 
+## AT. Where audio comes from is one interface (P49, DESIGN §9, slice 51)
+
+A pure refactor in eight commits: nothing on disk changed but additive fields, and no behaviour
+changed. The acceptance was never "it compiles".
+
+- [x] **AT1 · R** — a second provider, driven end to end
+
+  `Shelf` exists only in the tests: out of memory, refs that are file names, titles that mean what
+  they say, no channel and no conventions. Fetch → plan → download → tag → update → prune (through
+  the bin) all work through it.
+  - **result:** pass, 10 cases
+
+- [x] **AT2 · M** — one album, two providers
+
+  A YouTube album takes one track's audio from the shelf and downloads both: the track resolves by
+  **its chosen candidate's** provider (slice 50), the cover by the collection's. This is what P48's
+  shape was for and what P51 will do for real.
+  - **result:** pass
+
+- [x] **AT3 · R** — the grep guard
+
+  Outside `youtube.py`, `sources_youtube.py` and `titles.py`, no `yt_dlp` import, no youtube.com or
+  youtu.be, no `ytimg`/`ggpht`/`googlevideo`, no `watch?v=`, no album-id prefix, no
+  `parse_video_title`/`channel_artist`. A grep and not a type check, because none of what it catches
+  is a type error.
+  - **result:** pass — after it found three leaks
+
+- [x] **AT4 · R** — and what it does not cover, named rather than allowed
+
+  `titles.py` is YouTube's conventions wherever the file sits, and `plan.py` still reaches into it
+  for album-name hygiene ("SABATON - Legends (Full Album)" → "Legends"). A second case asserts
+  `plan.py` is the **whole** of that coupling and fails if it becomes two.
+  - **result:** pass, with the debt written down
+
+- [x] **AT5 · M** — live, on the disposable copy
+
+  `update --dry-run`: six albums read against real YouTube, four completed before I stopped it, all
+  *unchanged* — the cheap-check capability working over the network. One real `fetch` of a single
+  video: planned, downloaded, tagged, lyrics found, cover fetched, and the plan came back with
+  `provider: youtube` and a candidate carrying `opus / 124599 bps` measured from the file.
+  - **result:** pass
+
+### Two bugs only a second provider could show
+
+Both were invisible with one, and both were in the commit that introduced the registry.
+`source_for(None)` went to the registry instead of the Service's own provider, so a fetch through an
+injected one silently used YouTube. And a fetch never recorded **which** provider made the plan, so
+a Shelf album came back labelled `youtube`, candidates included — a `PlanTrack` synthesises those
+from `video_id` and cannot know where it came from. The plan can, and says so now.
+
+### `pkill -f`, a third time
+
+Stopping the live `update` with `pkill -f 'ytalbum update'` killed the shell running it, because the
+pattern was in that shell's own command line. The catalog has carried this warning since the P27
+measurements and I have now walked into it three times. The rule is not "be careful": it is **never
+put the pattern on the command line that kills by it** — use the recorded PID, or the port.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |
 | 2026-09-28 | the AS cases (P48: candidates) | 5 | 0 in the software; 1 of my own (a case that asserted a sample rate Opus does not report) | `candidates` / `chosen` / `refused_candidates` on a track, synthesised from `video_id` + `source_override`, which stay **the truth** where a plan disagrees with itself. `plan --verify` over 245 real plans: 0 lost, 0 changed. The library's one real override reads back unchanged. Switch and refuse driven end to end on the disposable copy. 831 pytest + 91 node. |
 | 2026-09-28 | the AR cases extended (P47c) | 2 | 0 | A deleted album is now recoverable as an album: `delete_album` bins the plan and cover as an **album entry** naming its tracks' entries, and restoring one track of a gone album rebuilds the shell first. A re-fetched album merges by video id. An interrupted delete — binning happens before the plan is saved, on purpose — is a **repair**, not a refusal. Both verified on the disposable copy. 811 pytest + 91 node. |
 | 2026-09-28 | the AR cases re-run (P47 follow-up) | 6 | 6 defects in the reviewed commit, all fixed | Run on a disposable copy of the library. Restore refused every time and said nothing (`args.library` read directly; `exit_code` never prints the message). CLI `prune` still unlinked instead of binning. A binned cover was `audio.jpg`. **Restore gave two tracks the same number.** `recycle list \| head` printed a traceback. 806 pytest + 91 node. |

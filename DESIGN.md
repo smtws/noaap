@@ -1325,6 +1325,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Nothing ranks yet and there is still one provider. The shape exists so that choosing between
    candidates, and replacing the worse, have somewhere to happen (spike §3, §4).
 
+51. ✅ Where audio comes from is one interface (2026-09-28, P49, spike
+   `docs/spikes/2026-09-sources.md`). A pure refactor: nothing changed on disk but additive fields,
+   and no behaviour changed. `sources.Source` names what the pipeline actually asks — **four
+   required calls** (`collection`, `audio`, `probe`, `art`) and capabilities it may decline
+   (`changed`, `listing`, `find`, `details`, `clean_entry`, `owner_artist`, `is_release`,
+   `art_candidates`, `url_for`, `one_ref`, `handles`). The inventory said seven calls; it was right.
+   **A ref is opaque** — only its own provider parses one — and after this nothing outside
+   `sources_youtube.py` and `youtube.py` recognises a video id, a watch link, an `i.ytimg.com`
+   thumbnail or an album-id prefix. A test greps for it.
+   **Failures are types**, not strings: `Blocked`, `NoAudio`, `NotSupported`, `SourceError`, with
+   the provider's own words as the message and `Failure` as the kind on disk. `service.py` compared
+   against a YouTube sentence in three places and does not any more.
+   **The classifier asks who owns a collection**, not which channel; the title conventions, the
+   owner-to-artist reading and "is this a release" are capabilities the provider offers.
+   Provenance keeps its strings on disk (`yt_music`, `yt_title`) under names that say what they mean.
+   **Per candidate, not per album.** A track's audio resolves by its chosen candidate's provider
+   (slice 50), the collection's own by the plan's — so one album can hold tracks from two, which a
+   test proves with a YouTube album taking one track's audio from a second provider.
+   `titles.py` is still reached into by `plan.py` for album-name hygiene; a test names that as the
+   whole remaining coupling and fails if it grows. The intake folder (P51) is what will say what a
+   provider without conventions should answer there.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

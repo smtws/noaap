@@ -188,8 +188,18 @@ titles and MusicBrainz one track at a time.
 ## How it works
 
 ```
-URL ─► resolve ─► inspect ─► classify ─► enrich ─► plan ─► [you edit] ─► download ─► tag
+address ─► resolve ─► inspect ─► classify ─► enrich ─► plan ─► [you edit] ─► download ─► tag
+   │
+   └─ a source provider: YouTube today, and the only thing that knows what YouTube looks like
 ```
+
+**Where the audio comes from is one small interface.** A *source provider* answers four questions —
+what is at this address, fetch this item's audio, what is this item, and get this picture — plus a
+few it may decline: can it search, can it say cheaply whether a collection changed, do its titles
+carry conventions worth stripping. YouTube is one such provider, and nothing outside it recognises a
+video id, a watch link or a channel; a test in the suite greps for exactly that and fails if it
+leaks. Each album's plan records which provider it came from, and each track records which one its
+audio comes from — so one album can, in principle, hold tracks from two.
 
 Each album folder holds a **plan** (`.ytalbum.json`): what the source listed, what each
 track should be called, where every value came from, what has been downloaded, and which
