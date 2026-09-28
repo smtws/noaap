@@ -62,7 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("album_dir", type=Path)
     pr.add_argument("--yes", action="store_true", help="do not ask")
 
-    rp = sub.add_parser("repair", help="tidy artist names in the library, offline (one-off)")
+    rp = sub.add_parser("repair", help="tidy artist names and measure files in the library, offline")
+    rp.add_argument("--dry-run", action="store_true", help="say what it would do, write nothing")
     rp.add_argument("--library", type=Path)
 
     ly = sub.add_parser("lyrics", help="fetch lyrics for tracks that have none yet (.lrc beside the file + tag)")
@@ -219,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
                 return _delete(args, cfg)
             case "repair":
                 library = _library(args, cfg, required=True)
-                return 2 if library is None else exit_code(_service(cfg, library).repair())
+                return 2 if library is None else exit_code(_service(cfg, library).repair(dry_run=args.dry_run))
             case "lyrics":
                 library = _library(args, cfg, required=True)
                 if library is None:

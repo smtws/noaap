@@ -59,7 +59,7 @@ from .plan import (
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
-from .tag import measured_length
+from .tag import measure, measured_length
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
@@ -432,7 +432,7 @@ class Service:
         if not albums:
             self.log(f"no albums{f' by {artist}' if artist else ''} in {self.library}")
         outcomes: list[Outcome] = []
-        skipped = 0
+        skipped = lengths = 0
         for i, (album_dir, plan) in enumerate(albums, 1):
             self.log(f"=== [{i}/{len(albums)}] {plan.albumartist} — {plan.album}")
             if not deep and (unchanged := self._unchanged(plan)):
@@ -440,13 +440,50 @@ class Service:
                 self.log(f"  unchanged ({unchanged}) — nothing to do")
                 outcomes.append(Outcome("ok", plan, album_dir, "unchanged"))
                 continue
+            # an album it touches gets its lengths, before the fetch reads the plan back off disk
+            if filled := self.measure_lengths(plan, album_dir, dry_run=report_only):
+                self.log(f"  {filled} track(s) {'would be' if report_only else 'were'} measured")
+                lengths += filled
+                if not report_only:
+                    save_plan(plan, album_dir)
             outcomes.append(self._guarded(lambda: self.fetch(plan.source_url, report_only=report_only)))
             if outcomes[-1].blocked:
                 self.log(f"stopping: YouTube is blocking requests; {len(albums) - i} album(s) not checked")
                 break
         if skipped:
             self.log(f"{skipped} of {len(albums)} albums were unchanged")
+        if lengths:
+            self.log(f"{lengths} track(s) {'would get' if report_only else 'got'} the length of their file")
         return outcomes
+
+    def measure_lengths(self, plan: AlbumPlan, album_dir: Path, *, dry_run: bool = False) -> int:
+        """Give every finished track with a file the length of that file (§9, slice 56).
+
+        The measuring was never missing — `run` does it for a track it has just written, and for one
+        it finds without a length. What was missing is a pass that *reaches* those tracks: `repair`
+        skips an album whose names are already right, before the point where anything is measured,
+        and in a tidy library that is nearly every album. **574 of the reference library's 3946
+        tracks had a file, a length nobody had ever asked for, and therefore no length chip and no
+        near-miss check** — not because the file would not answer, but because nothing asked.
+
+        Returns how many tracks were given one; with `dry_run`, how many would be asked.
+        """
+        filled = 0
+        for track in plan.tracks:
+            if track.file_length or track.state != "done" or not track.filename:
+                continue
+            audio = _inside(album_dir, track.filename)
+            if audio is None or not audio.is_file():
+                continue  # a plan that names a file that is not there is `repair`'s other business
+            if dry_run:
+                filled += 1
+                continue
+            seconds, how = measure(audio)
+            if seconds is None:
+                continue  # unknown stays unknown: a zero is not a length (§9, slice 53)
+            track.file_length, track.file_length_by = seconds, how
+            filled += 1
+        return filled
 
     def _unchanged(self, plan: AlbumPlan) -> str | None:
         """One cheap request: is this album still exactly what the source lists, and complete?
@@ -1121,12 +1158,14 @@ class Service:
 
     # -- offline repair --------------------------------------------------------------------
 
-    def repair(self) -> list[Outcome]:
-        """Tidy the library without asking YouTube: performer-only artists, one spelling.
+    def repair(self, dry_run: bool = False) -> list[Outcome]:
+        """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
-        Fixes albums downloaded before those rules existed — renames and retags only.
+        Fixes albums downloaded before those rules existed — renames and retags only. With
+        `dry_run` nothing at all is written: it says what it would do and stops there.
         """
         outcomes = []
+        lengths = 0
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
             before = (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks))
@@ -1168,14 +1207,26 @@ class Service:
             # a plan can be right while the folder is not: the album artist was unified
             # earlier without moving anything (fixed 2026-09-24, but the folders remain)
             misplaced = album_dir != self.library / wanted_folder(plan)
-            if not misplaced and not borrowed and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
+            # **before the skip, not after it.** An album whose names are already right used to be
+            # dropped here, and with it the only pass that would have measured its files — which is
+            # why a tidy library kept hundreds of tracks with no length at all (§9, slice 56).
+            filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
+            lengths += filled
+            if not misplaced and not borrowed and not filled \
+                    and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
-            self.log(f"=== {plan.albumartist} — {plan.album}")
+            self.log(f"=== {plan.albumartist} — {plan.album}"
+                     + (f" ({filled} track(s) measured)" if filled else ""))
+            if dry_run:
+                outcomes.append(Outcome("ok", plan, album_dir))
+                continue
             save_plan(plan, album_dir)
             album_dir = relocate(album_dir, plan, self.library)
             run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
-        self.log(f"{len(outcomes)} album(s) tidied up")
+        if lengths:
+            self.log(f"{lengths} track(s) {'would get' if dry_run else 'got'} the length of their file")
+        self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
         return outcomes
 
     # -- deleting (always asked for explicitly) -------------------------------------------

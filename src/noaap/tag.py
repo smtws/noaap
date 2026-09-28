@@ -105,9 +105,23 @@ def decoded_length(path: Path) -> float | None:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+def measure(path: Path) -> tuple[float | None, str | None]:
+    """Seconds, and **how they were arrived at** — `"header"` or `"decoded"` (§9, slice 56).
+
+    Worth recording because the two cost three orders of magnitude apart and because a decoded
+    answer means the file's own header would not say, which is a fact about the file: the three
+    24-bit FLAC albums in the reference collection are the only ones in 2000 files that need it.
+    """
+    if (said := audio_length(path)) is not None:
+        return said, "header"
+    if (heard := decoded_length(path)) is not None:
+        return heard, "decoded"
+    return None, None
+
+
 def measured_length(path: Path) -> float | None:
     """What the file says, and what it sounds like when it will not say (§9, slice 53)."""
-    return audio_length(path) or decoded_length(path)
+    return measure(path)[0]
 
 
 def audio_quality(path: Path) -> dict[str, Any]:

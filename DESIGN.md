@@ -1516,6 +1516,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the plan's folder rather than passed, because a parameter eight call sites can forget is not a
    rule.
 
+56. ✅ **A file whose length nobody ever asked for** (2026-09-28, P52e). 574 of the reference
+   library's 3946 finished tracks had a file on the disk and no `file_length` in the plan. Not
+   because the file would not answer — every one of them answers from its own header in
+   microseconds — but because **nothing ever asked**. `run` measures a track it has just written,
+   and a track it finds without a length; `repair` is what would have reached the rest, and it
+   `continue`s past an album whose names are already right *before* the point where anything is
+   measured. In a tidy library that is nearly every album, so the gap could never close on its own.
+   **The measuring moves in front of the skip**, and `update` does the albums it touches, saving
+   before the fetch reads the plan back off the disk. `--dry-run` on either says how many and
+   writes nothing — which for `repair` meant making the whole pass dry, since a run that writes
+   "nothing except the renames" is not a dry run.
+   **How it was measured is recorded too** (`file_length_by`: `header` or `decoded`). The two cost
+   three orders of magnitude apart, and a decoded answer is a fact about the file — its own header
+   would not say, which in 2000 files is three 24-bit FLAC albums and nothing else.
+   **What it changed, honestly: nothing that is visible today.** All 556 such tracks in the
+   disposable library already had the video's `duration` to fall back on, and the measured length
+   differs from it by a median of 0.24 s and never more than 0.5 s — so not one ⏱ verdict changed,
+   and no album's flag. None gains the near-miss check either: it runs on tracks with no words, and
+   all 556 have them. What the pass removes is **a fallback standing in for a measurement**: the
+   plan now records what the file is rather than what the video was, so a trim, a replacement or a
+   re-timing has a true number to compare against instead of one that is right until the file is
+   cut. That is the whole value, and it is worth saying that it is prospective.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

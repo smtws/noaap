@@ -239,6 +239,7 @@ class PlanTrack:
     lyrics_sha: str | None = None  # of the sidecar bytes *we* wrote; anything else is the user's
     lyrics_rejected: list[int] = field(default_factory=list)  # lrclib entries the user said are not this song
     file_length: float | None = None  # seconds of audio actually on disk, after any trim
+    file_length_by: str | None = None  # "header", or "decoded" when the file would not say (§9, slice 56)
     # another video to take the audio from, when the playlist's is not the recording you want
     # (a film cut, a live intro). The playlist video stays the track's identity (DESIGN.md §9, slice 34).
     source_override: str | None = None

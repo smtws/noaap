@@ -3266,17 +3266,63 @@ not a verdict.
    it visible. A track is now taken at most once per pass and the second copy is **listed** against
    the one just taken, saying so in its reason.
 
+## AY. A file whose length nobody ever asked for (P52e, DESIGN §9, slice 56)
+
+- [x] **AY1 · R** — why they were never measured
+
+  Not because the file would not answer: every one of them answers from its own header. `repair`
+  `continue`s past an album whose names are already right — **before** the point where anything is
+  measured — so in a tidy library the pass that would close the gap never reached it.
+  - **result:** the measuring moved in front of the skip, and a case pins exactly that: an album
+    needing no tidying at all comes out measured.
+
+- [x] **AY2 · R** — a dry run that is actually dry
+
+  `repair` had no dry run. Adding one to the measuring alone would have been a lie, since the same
+  pass renames and retags.
+  - **result:** `--dry-run` makes the whole pass dry; a case reads every file's bytes before and
+    after and demands they are unchanged. Live on 329 albums: **every plan byte-identical**.
+
+- [x] **AY3 · R** — the plan gains fields and changes none
+
+  - **result:** pass on the step (a whole `repair` may also retag a file noaap never tagged, which
+    is its own business). Live: `plan --verify` over 329 plans, **0 lose or change anything**.
+
+- [x] **AY4 · M** — run on the disposable library
+
+  Dry: **556 would be measured**, 43 albums, 0.6 s, nothing written. Real: **556 measured, all from
+  the header**, 43 albums, 16.8 s. Afterwards **0 finished tracks in 5142 have a file and no
+  length**.
+
+- [x] **AY5 · M** — and what it turned on: **nothing that is visible today**
+
+  The question asked was how many tracks gain a chip state they did not have. The honest answer is
+  **zero**, and it is worth more than the package:
+  - all 556 already had the video's `duration` to fall back on, and `effective_length` uses it, so
+    the ⏱ chip was already comparable for every one of them. **Not one verdict changed**, and no
+    album's flag (16 before, 16 after).
+  - the measured length differs from that fallback by a **median 0.24 s, max 0.50 s** — the video
+    and the file really are the same audio here.
+  - none gains the near-miss check: it runs on tracks with no words, and **all 556 have words**
+    (425 synced, 131 plain).
+  - none reads stale either: not one of the 425 synced carries a stamp provenance to compare
+    against — those sidecars predate the field, as P52b already found.
+  - **what it does remove is a fallback standing in for a measurement.** The plan now says what the
+    file is rather than what the video was, so the next trim, replacement or re-timing compares
+    against a true number. The value is prospective, and this row exists so nobody later reads the
+    556 as an improvement that was seen.
+
 ### Open, queued behind this package
 
-**575 library tracks have a file and no `file_length`.** Nothing is missing; nobody ever asked the
-file. A pass that measures and records them — part of `update`, or `repair` — is its own small
-package (R-167).
+**The real library has 574 of these**, untouched: this package ran on the disposable copy only.
+One `noaap repair` closes it.
 
 
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AY cases (P52e: lengths nobody asked for) | 5 | 0 | 574 finished tracks with a file and no length, and the reason is the shape of the pass: `repair` skips an album whose names are already right **before** it measures anything, so a tidy library could never close the gap. The measuring moved in front of the skip; `update` does the albums it touches; `--dry-run` on either writes nothing, which meant giving `repair` a real dry run. `file_length_by` records header vs decoded. Live on the disposable library: 556 measured in 16.8 s, all from the header, 0 left, `plan --verify` 0 changed. **What it turned on: nothing visible.** All 556 already fell back to the video duration, median 0.24 s away, so no ⏱ verdict and no album flag changed, and all 556 already have words so none gains the near-miss check. What it removes is a fallback standing in for a measurement. 1070 pytest + 102 node. |
 | 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. No screenshot: the panel can only be shown on an artist this repository does not publish. 1059 pytest + 102 node. |
 | 2026-09-28 | the AX cases (P52c: the copy nobody could choose) | 6 | 0 in the design; 1 defect the counting exposed, fixed | The gap the AW run left: **288 of 762 undecided verdicts existed nowhere but in the report**, so a decision handed to a person could not be taken. `--apply` now lists the other copy on the track — not chosen, nothing copied — with the verdict's sentence and both files' numbers; *take this one* and *not this one* end it, and the library page counts what is waiting the way it counts "needs you". Live: 1313 pairs, **0 replace / 0 fill / 1050 keep / 263 undecided**, 178 copies listed on 175 tracks, 0 binned, `plan --verify` 329 plans 0 changed, and one copy taken through the UI end to end. Defect found by the counting: one track could be replaced twice in a pass. 1052 pytest + 102 node. |
 | 2026-09-28 | the AW cases re-run (P52b: the deciding margin) | 6 | 1 threshold wrong in the reviewed commit, fixed | The margin, not the floor: 1 kHz is inside Opus's own spread (20 kHz on 219 of the collection's files, 21 on 107), and it decided **37 of 88 replacements** on nothing. At 2 kHz the same 762 pairs read **51 replace, 0 fill, 423 keep, 288 undecided**, 1.93 GB added and 0.22 GB binned, 14 albums touched — and the reviewer predicted 51 before the run. Both candidates now keep what was measured; a replacement records what the binned file's timed words belong to. `--new` / `--only` / `--album` added. 1042 pytest + 95 node. |

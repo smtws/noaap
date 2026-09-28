@@ -24,6 +24,7 @@ from .plan import wanted_filename
 from .ranking import Facts, Judgement, Verdict, consider
 from .recycle import bin_track
 from .service import _inside
+from .tag import measure
 from .text import key as text_key
 
 
@@ -303,7 +304,9 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
     album_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(incoming, album_dir / wanted)
     track.filename = wanted
-    track.file_length = proposal.verdict.new.length
+    # measured from the file that is now there, so `file_length_by` describes this file and not the
+    # one that went to the bin (§9, slice 56). The header read is free next to the copy above.
+    track.file_length, track.file_length_by = measure(album_dir / wanted)
     track.tagged = None  # the ordinary pass retags it, with this album's names
 
     ref = new.track.video_id
