@@ -220,3 +220,66 @@ def test_listing_is_asked_of_a_provider_that_has_it(tmp_path):
 
     with pytest.raises(sources.NotSupported, match="cannot list what an owner publishes"):
         service.channel(str(tmp_path))
+
+
+# -- what goes wrong, and which of the four kinds it is ------------------------------------------------
+
+
+@pytest.mark.parametrize("said,kind,says", [
+    ("[soundcloud] 1470964783: This video is DRM protected", sources.NoAudio, "DRM"),
+    ("ERROR: [soundcloud] 42: HTTP Error 429: Too Many Requests", sources.Blocked, "refusing requests"),
+    ("[soundcloud] 42: rate limit exceeded, try again later", sources.Blocked, "refusing requests"),
+    ("[soundcloud] 42: This track is not available in your country", sources.NoAudio, "not available"),
+    ("[soundcloud] 42: Unable to download JSON metadata: HTTP Error 404: Not Found", sources.SourceError, "404"),
+])
+def test_yt_dlps_complaint_becomes_one_of_the_four_kinds(said, kind, says):
+    """The boundary's whole job: yt-dlp's vocabulary stops here (§9, slice 51)."""
+    from yt_dlp.utils import DownloadError
+
+    got = SoundCloud(Config())._failure(DownloadError(said))
+
+    assert isinstance(got, kind), f"{said!r} became {type(got).__name__}"
+    assert says in str(got)
+
+
+def test_a_rate_limit_is_blocked_so_a_run_stops_instead_of_asking_again():
+    """The same shape as YouTube's bot check. `update` reads `Blocked` and stops the whole pass —
+    a library of 300 albums hammering a site that has just said no is how an address gets banned."""
+    from yt_dlp.utils import DownloadError
+
+    assert isinstance(SoundCloud(Config())._failure(DownloadError("HTTP Error 429")), sources.Blocked)
+
+
+def test_drm_is_a_fact_about_the_track_not_an_error_of_ours():
+    """Every label upload probed for this package is DRM protected. It costs that track and
+    nothing else, and it is never worked around."""
+    from yt_dlp.utils import DownloadError
+
+    got = SoundCloud(Config())._failure(DownloadError("[soundcloud] 1: This video is DRM protected"))
+
+    assert isinstance(got, sources.NoAudio)
+    assert "DRM" in str(got) and "no stream" in str(got)
+
+
+def test_audio_choice_is_the_aac_or_the_one_stream_that_needs_no_assembly():
+    """R-183, ruling b. `best` is the 160 kbps AAC; the other value is the progressive MP3."""
+    from noaap.soundcloud import FORMATS
+
+    assert FORMATS["best"].startswith("bestaudio")
+    assert "acodec=mp3" in FORMATS["combined"] and "protocol^=http" in FORMATS["combined"]
+    assert FORMATS.get("nonsense") is None, "an unknown choice falls back in the caller, not here"
+
+
+def test_a_download_that_leaves_no_file_is_no_audio(tmp_path, monkeypatch):
+    """A provider that answers "fine" and writes nothing must not leave the pipeline to find out."""
+    import noaap.soundcloud as sc
+
+    class Nothing:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def extract_info(self, url, download=False): return {"id": "42"}
+
+    monkeypatch.setattr(sc, "YoutubeDL", lambda params: Nothing())
+
+    with pytest.raises(sources.NoAudio, match="no file arrived"):
+        SoundCloud(Config()).download_audio("42", tmp_path)
