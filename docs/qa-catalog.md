@@ -2443,10 +2443,39 @@ the plan to say so, so every later `--near` would have asked lrclib about all 87
   is never stuck on a stale answer.
   - **result:** pass
 
+## AL. Finding the tracks that wait for you (P41)
+
+After the real near-miss pass, **42 tracks across 33 albums** were waiting for a person — 27 the
+aligner could not decide, 15 whose entry was too far to be worth one — and nothing in the UI listed
+them. They sat two clicks inside albums nobody had a reason to open.
+
+- [x] **AL1 · R** — the rule, and what it excludes
+
+  `needs_you(track)`: `lyrics_fit.decided` in (`unclear`, `shown`) **and** the track still has no
+  words. The second half matters — a sidecar that arrives after the check leaves a stale verdict on
+  the plan, and without it the album would keep asking about a question already answered. Decided
+  verdicts (`words+stamps`, `words`, `reject`, `words by hand`) and never-checked tracks are not
+  waiting for anybody.
+  - **result:** pass
+
+- [x] **AL2 · R** — the library view
+
+  `/api/state` carries `needs_you` per album. A header chip toggles the view, `♪ 42 need you`, and
+  hides itself when nothing waits; each card carries its own count. Measured on the real library,
+  read-only, through a scratch server: **42 across 33 albums**, matching the pass's own tally.
+  - **result:** pass, `docs/screenshots/library.jpg` retaken
+
+- [x] **AL3 · R** — the album view
+
+  The row's ♪ becomes `♪ ?` in the warning colour, with a title saying what is undecided. It is one
+  click to the panel, which already shows both numbers and offers the plain-text take.
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AL cases (P41: finding the tracks that wait for you) | 3 | 0 | 42 tracks across 33 albums were waiting and nothing listed them. Header chip `♪ 42 need you`, a count per card, `♪ ?` on the row. Counted on the real library read-only and it matched the pass's tally. 725 pytest + 91 node. |
 | 2026-09-28 | the AK cases (P40: remembering that there is nothing to find) | 2 | 0 | `lyrics_no_entry` on the track, a date, not a verdict — `nearMiss` renders an unknown `decided` as *unclear*, which would have claimed the aligner was undecided about an entry that does not exist. 878 lookups a run saved. 723 pytest + 88 node. |
 | 2026-09-28 | the AJ cases (P39: a library-wide near-miss pass) | 4 | 0 in the design; 1 of my own (the summary counted from a stale copy of the plan and reported 13 "no candidate" for 13 tracks it had just written words to) | `ytalbum lyrics --near`, and `--dry-run` on the real library read-only: 1089 tracks looked at, **196 would align**, 878 have no candidate, 15 are too far. ~36 min on this GPU, ~9 h on a processor. Plans byte-identical after the dry run. 719 pytest + 88 node. |
 | 2026-09-28 | the AI cases (P38: a chip nobody could see) | 4 | 0 | `color: inherit` on `button.len.fix`. 1.00:1 → 17.04:1 light, 1.10:1 → 14.05:1 dark; 103 of 2977 tracks were in the invisible 10–20 s window. A CSS guard now forbids a button rule that drops its background without setting a colour — the P12 class, twice. album.jpg retaken. 712 pytest + 88 node. |

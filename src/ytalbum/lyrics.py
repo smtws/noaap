@@ -625,6 +625,17 @@ def fit_verdict(span: float | None, unplaced: float) -> str:
     return "unclear"
 
 
+# The two verdicts that hand the question back: the words exist, nothing was taken, and only a
+# person can settle it (§9.46). Everything else is decided — taken, rejected, or never looked at.
+WAITING = ("unclear", "shown")
+
+
+def needs_you(track: Any) -> bool:
+    """Whether this track is waiting for a person to decide about an lrclib entry."""
+    fit = getattr(track, "lyrics_fit", None) or {}
+    return fit.get("decided") in WAITING and (getattr(track, "lyrics", None) or "none") == "none"
+
+
 def fit_reason(ours: float, theirs: float) -> str:
     """Why an entry's timings do not transfer, in the two shapes the measurement found."""
     return "a clip" if ours < theirs * (1 - NOMINATE_SHARE) else "another cut"

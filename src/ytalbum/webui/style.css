@@ -289,6 +289,8 @@ tr.lyrics .lyrics-actions .muted { font-size: .85em; }
 /* the length chip is also a button where MusicBrainz's own number looks wrong (§9.43): it must
    still read as the chip it has always been, so it takes the chip's own painting and only the
    cursor and the underline say it can be pressed */
+/* a track waiting for a person's decision about an lrclib entry (§9.46) */
+button.lyr.needs-you { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
 button.len.fix { cursor: pointer; font: inherit; color: inherit; border: 0; background: none; padding: 0;
                  text-decoration: underline dotted; text-underline-offset: .2em; }
 /* `color: inherit` is load-bearing. Stripping the background without it left the button with the

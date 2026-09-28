@@ -234,6 +234,7 @@ function matchingTracks(a, terms) {
 function shownAlbums() {
   let byArtist = artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums;
   if (lengthOnly) byArtist = byArtist.filter((a) => a.length);
+  if (needsYouOnly) byArtist = byArtist.filter((a) => a.needs_you);
   if (!libFilter) return byArtist.map((a) => ({ ...a, matches: null }));
   const terms = fold(libFilter).split(" ").filter(Boolean);
   const out = [];
@@ -261,6 +262,28 @@ function renderLengthFilter() {
 
 $("#length-filter").addEventListener("click", () => {
   lengthOnly = !lengthOnly;
+  renderLibrary();
+});
+
+// The near-miss check hands two verdicts back to a person (§9.46). Before this there was no way to
+// find them: 42 tracks across 246 albums, and nothing listed them.
+let needsYouOnly = false;
+
+function renderNeedsYouFilter() {
+  const scope = artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums;
+  const waiting = scope.reduce((n, a) => n + (a.needs_you || 0), 0);
+  const button = $("#needs-you-filter");
+  if (!waiting && !needsYouOnly) {
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  button.textContent = needsYouOnly ? "\u266a show all albums" : `\u266a ${waiting} need${waiting === 1 ? "s" : ""} you`;
+  button.setAttribute("aria-pressed", String(needsYouOnly));
+}
+
+$("#needs-you-filter").addEventListener("click", () => {
+  needsYouOnly = !needsYouOnly;
   renderLibrary();
 });
 
@@ -300,6 +323,7 @@ function renderLibrary() {
   $("#empty").hidden = shownAlbums().length > 0;
   renderPlayMatches();
   renderLengthFilter();
+  renderNeedsYouFilter();
   renderRail();
 }
 
@@ -379,7 +403,10 @@ function card(a) {
         onclick: (e) => { e.stopPropagation(); showArtist(a.albumartist); } }, marked(a.albumartist)),
       h("div", { class: "info" }, a.year ? `${a.year} ` : "", status, a.mb ? h("span", { class: "badge mb" }, "MB") : null,
         a.lyrics ? h("span", { class: "badge", title: `${a.lyrics} of ${a.tracks} tracks have lyrics` }, `\u266a ${a.lyrics}`) : null,
-        lengthBadge(a)),
+        lengthBadge(a),
+        a.needs_you ? h("span", { class: "badge warn", title:
+          `${a.needs_you} track(s) where lrclib has words and nothing could decide whether they are this recording's`
+          }, `\u266a ${a.needs_you} need${a.needs_you === 1 ? "s" : ""} you`) : null),
       songs));
 }
 
@@ -641,8 +668,20 @@ function useSource(button, p, t, text, note) {
 const HAS_WORDS = (t) => t.lyrics === "synced" || t.lyrics === "plain";
 const openLyrics = new Set(); // video ids whose lyrics panel is open, so a refresh keeps them
 
+// A near-miss the check handed back: the words exist, nothing was taken, and only a person can
+// settle it (§9.46). The row says so, because the panel is two clicks away and 42 of these were
+// sitting in this library with nothing pointing at them.
+const NEEDS_YOU = (t) => !HAS_WORDS(t)
+  && ["unclear", "shown"].includes((t.lyrics_fit || {}).decided);
+
 function lyricsMark(p, t) {
   if (t.state !== "done") return null; // no file yet, so nothing to put words beside
+  if (NEEDS_YOU(t)) {
+    return h("button", { class: "quiet small lyr needs-you", type: "button",
+      title: "lrclib has words for this title and nothing could decide whether they are this "
+        + "recording's — click to see both numbers and choose",
+      onclick: (e) => toggleLyrics(e.currentTarget, p, t) }, "\u266a ?");
+  }
   const title = HAS_WORDS(t)
     ? (t.lyrics === "synced" ? "Lyrics with timestamps — click to read or edit" : "Lyrics without timestamps — click to read or edit")
     : t.lyrics === "instrumental"

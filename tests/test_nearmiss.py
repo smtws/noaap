@@ -421,3 +421,39 @@ def test_the_panel_is_told_nothing_about_it(album, tmp_path, monkeypatch):
     got = app.lyrics(after.source_id, after.tracks[0].video_id)
     assert got is not None
     assert not [k for k in got if "no_entry" in k], f"the panel is shown {sorted(got)}"
+
+
+# -- finding the tracks that wait for a person (P41) ------------------------------------------------
+
+
+def test_needs_you_is_the_two_verdicts_that_decide_nothing():
+    from ytalbum.lyrics import needs_you
+    from ytalbum.models import PlanTrack
+
+    def track(decided, lyrics="none"):
+        return PlanTrack(video_id="v", number=1, filename="f.opus", provenance={},
+                         title="t", artist="a", lyrics=lyrics,
+                         lyrics_fit={"decided": decided} if decided else None)
+
+    assert needs_you(track("unclear"))
+    assert needs_you(track("shown"))
+    for decided in ("words+stamps", "words", "reject", "words by hand"):
+        assert not needs_you(track(decided)), decided
+    assert not needs_you(track(None)), "never checked is not waiting"
+    # a sidecar that arrived after the check settles it, whatever the old verdict says
+    assert not needs_you(track("unclear", lyrics="synced"))
+
+
+def test_the_album_row_counts_the_tracks_that_wait(album, tmp_path, monkeypatch):
+    from ytalbum.web import App
+
+    album_dir, plan, yt = album
+    plan.tracks[0].lyrics_fit = {"decided": "unclear"}
+    plan.tracks[1].lyrics_fit = {"decided": "shown"}
+    plan.tracks[2].lyrics_fit = {"decided": "words+stamps"}
+    plan.tracks[3].lyrics_fit = {"decided": "unclear"}
+    plan.tracks[3].lyrics = "synced"          # decided since, by a sidecar
+    save_plan(plan, album_dir)
+
+    rows = App(Config(), tmp_path).state()["albums"]
+    assert [r["needs_you"] for r in rows] == [2]

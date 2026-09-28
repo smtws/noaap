@@ -35,7 +35,7 @@ import httpx
 from . import config as config_mod
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
-from .lyrics import publishable, read_sidecar, reconcile, timings_stale
+from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
 from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
 from .models import AlbumPlan, PlanTrack
@@ -331,6 +331,9 @@ class App:
                     "lyrics": sum(t.lyrics in ("synced", "plain") for t in plan.tracks),
                     "length": album_length_flag(plan),  # set only when most of the album disagrees
                     "needs_choice": sum(t.error_kind == "no_audio_stream" for t in plan.tracks),
+                    # tracks where the near-miss check ran and could not decide for you (§9.46):
+                    # the words exist and nothing was taken, so they wait for a person
+                    "needs_you": sum(needs_you(t) for t in plan.tracks),
                 }
             )
         # artist, then chronological, then by name. Albums with no year all tie, so compilations
