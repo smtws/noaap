@@ -1,10 +1,12 @@
-"""Artist search (DESIGN.md slice 6): find an artist's albums without knowing any URL.
+"""Artist search (DESIGN.md slice 6): find an artist's albums without knowing any address.
 
-1. YouTube Music's album search → official OLAK5uy_ albums by that artist.
-2. The channel that uploaded most of them is the artist's real channel (whatever it is
-   called, e.g. "fauntube" for Faun) → its Releases tab is the complete discography.
-3. Playlist search adds lyric-video and fan "full album" playlists as a separate group.
+1. The provider's album search → the releases it recognises as that artist's.
+2. Whoever published most of them is the artist's real owner (whatever it is called, e.g.
+   "fauntube" for Faun) → its own listing is the complete discography.
+3. A second search adds lyric-video and fan "full album" collections as a separate group.
 4. Optionally MusicBrainz' album list shows which studio albums were not found at all.
+
+Nothing here knows whose search it is: every step goes through `sources.Source` (§9, slice 51).
 """
 
 from __future__ import annotations

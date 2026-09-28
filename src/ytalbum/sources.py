@@ -111,6 +111,9 @@ class Source(Protocol):
         back to what the entries themselves say.
         """
 
+    def art_candidates(self, url: str) -> list[str]:
+        """Addresses to try for a cover, best first. A provider with nothing to add returns [url]."""
+
     def url_for(self, ref: str) -> str | None:
         """A link a person can open, or None where the provider has no web page."""
 

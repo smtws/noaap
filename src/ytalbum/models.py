@@ -341,4 +341,18 @@ class AlbumPlan:
         if d.get("schema") != PLAN_SCHEMA:
             raise ValueError(f"unsupported plan schema {d.get('schema')!r} (expected {PLAN_SCHEMA})")
         plan = keeping(cls, {**d, "tracks": [PlanTrack.from_dict(t) for t in d["tracks"]]})
+        plan.own_the_candidates()
         return plan
+
+    def own_the_candidates(self) -> None:
+        """A candidate synthesised from `video_id`/`source_override` belongs to this plan's provider.
+
+        A track alone cannot know: `PlanTrack` builds those two from fields that say nothing about
+        where they came from, and defaults them to youtube. The plan does know, and says so here.
+        Candidates added deliberately — with their own provider, from another one — are left alone,
+        which is what lets one album hold tracks from two providers (§9, slices 50 and 51).
+        """
+        for track in self.tracks:
+            for candidate in track.candidates:
+                if candidate.ref in (track.video_id, track.source_override) and candidate.added_by != "user":
+                    candidate.provider = self.provider

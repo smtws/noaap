@@ -10,7 +10,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import shutil
 import time
 from collections.abc import Callable, Iterator
@@ -246,11 +245,10 @@ def _follow_source(whose: Callable[[PlanTrack], Source], track: PlanTrack) -> No
 # -- cover -------------------------------------------------------------------------------
 
 
-def cover_candidates(url: str) -> list[str]:
-    """Best-first URLs for a cover: YouTube video thumbnails get their max-res variant first."""
-    if m := re.match(r"https://i\.ytimg\.com/vi(?:_webp)?/([\w-]{11})/", url):
-        return [f"https://i.ytimg.com/vi/{m[1]}/maxresdefault.jpg", url]
-    return [url]
+def cover_candidates(url: str, source: Source | None = None) -> list[str]:
+    """Best-first addresses for a cover — whatever the provider knows to try (§9, slice 51)."""
+    better = getattr(source, "art_candidates", None)
+    return better(url) if better else [url]
 
 
 def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True) -> bytes | None:
@@ -287,7 +285,7 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
 
 
 def _download_cover(url: str, source: Source) -> tuple[str, bytes] | None:
-    for candidate in cover_candidates(url):
+    for candidate in cover_candidates(url, source):
         try:
             data = source.art(candidate)
         except Exception as e:  # a missing cover must never stop the album

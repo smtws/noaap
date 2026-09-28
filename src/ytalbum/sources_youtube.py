@@ -6,6 +6,7 @@ conventions — is reachable only through here.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,12 @@ class YouTubeSource:
 
     def owner_artist(self, owner: str | None) -> str | None:
         return channel_artist(owner)
+
+    def art_candidates(self, url: str) -> list[str]:
+        """A video thumbnail has a max-res variant worth trying first."""
+        if m := re.match(r"https://i\.ytimg\.com/vi(?:_webp)?/([\w-]{11})/", url):
+            return [f"https://i.ytimg.com/vi/{m[1]}/maxresdefault.jpg", url]
+        return [url]
 
     def url_for(self, ref: str) -> str | None:
         return f"{WATCH}{ref}" if ref else None

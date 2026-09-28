@@ -125,8 +125,8 @@ def _without_collection_title(artist: str, playlist_title: str) -> str | None:
 def classify(collection: Collection, source: Any = None) -> Kind:
     if not collection.is_playlist:
         return Kind.SINGLE
-    # whether a collection is a release is the provider's to say: "OLAK5uy_" is a YouTube id shape
-    # and the core must not read one (§9, slice 51)
+    # whether a collection is a release is the provider's to say: it turns on an id prefix only
+    # that provider knows, and the core must not read one (§9, slice 51)
     if (released := getattr(_source(source), "is_release", None)) and released(collection):
         return Kind.OFFICIAL_ALBUM
     artists = {_key(a) for e in usable_entries(collection) if (a := named_artist(e, collection, source))}

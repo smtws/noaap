@@ -88,8 +88,14 @@ def test_image_mime():
 
 def test_cover_candidates_prefer_maxres():
     url = "https://i.ytimg.com/vi/0gr0bwQgTSo/hqdefault.jpg?sqp=abc"
-    assert cover_candidates(url) == ["https://i.ytimg.com/vi/0gr0bwQgTSo/maxresdefault.jpg", url]
-    assert cover_candidates("https://example.org/a.jpg") == ["https://example.org/a.jpg"]
+    from ytalbum.config import Config
+    from ytalbum.sources import get
+
+    yt = get(None, Config())
+    assert cover_candidates(url, yt) == ["https://i.ytimg.com/vi/0gr0bwQgTSo/maxresdefault.jpg", url]
+    assert cover_candidates("https://example.org/a.jpg", yt) == ["https://example.org/a.jpg"]
+    # a provider with nothing to add leaves the address alone
+    assert cover_candidates(url) == [url]
 
 
 def test_only_the_performer_is_taken_from_youtubes_artist_list():

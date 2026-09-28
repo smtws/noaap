@@ -175,7 +175,10 @@ class Service:
             self.log(msg)
             return Outcome("blocked" if kind == Failure.BOT_CHECK else "incomplete", message=msg)
 
-        plan = build_plan(collection, source=self.source_for())
+        source = self.source_for()
+        plan = build_plan(collection, source=source)
+        plan.provider = getattr(source, "name", sources.DEFAULT)  # whose collection this was
+        plan.own_the_candidates()
         if collection.entries and not plan.tracks:
             # every video unusable for a reason that will not pass (Music Premium only, private,
             # removed): there is no album here, and writing one leaves an empty folder behind
@@ -714,6 +717,8 @@ class Service:
         A Service holds one provider because a run is usually about one album; a plan from another
         provider gets its own. Tests inject a stand-in as `yt`, and it stands in for the default.
         """
+        if plan is None:
+            return self.yt      # a fetch has no plan yet: it is this Service's own provider
         wanted = getattr(plan, "provider", None) or sources.DEFAULT
         if wanted == getattr(self.yt, "name", sources.DEFAULT):
             return self.yt
