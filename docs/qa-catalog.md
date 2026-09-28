@@ -2871,10 +2871,87 @@ pattern was in that shell's own command line. The catalog has carried this warni
 measurements and I have now walked into it three times. The rule is not "be careful": it is **never
 put the pattern on the command line that kills by it** — use the recorded PID, or the port.
 
+## AU. The rename to noaap (P50, DESIGN §9, slice 52)
+
+The whole package is a compatibility exercise, so every case is about what a machine set up as the
+old program still does. Run against the disposable copy of the library and against this machine's
+real configuration, read-only where it was real.
+
+- [x] **AU1 · R** — a machine configured as ytalbum runs without being told anything
+
+  With no `~/.config/noaap/` at all, `noaap config` read `~/.config/ytalbum/config.toml`, printed one
+  line naming it and `noaap migrate`, and reported the library it found. `YTALBUM_LRCLIB_BASE` in the
+  environment was accepted with one line naming its new spelling.
+  - **evidence:** run with a scratch `XDG_CONFIG_HOME` holding only `ytalbum/config.toml`
+  - **result:** pass. `config file:` prints the file it **read**, which is not the one it would
+    write — the first version printed the write path, which would send someone to edit a file
+    nothing reads.
+
+- [x] **AU2 · M** — `migrate` shows before it does, against this machine
+
+  The bare command on the real home directory listed four copies (`config.toml`, `deepgram.env`,
+  `lyrics.sqlite3`, `musicbrainz.sqlite3`), named ytalbum's units and launcher as still installed,
+  named the browser profile as left alone, and ended with "nothing was changed."
+  - **evidence:** `noaap migrate` with no flags; `~/.config/noaap` still absent afterwards
+  - **result:** pass. A backup the user had made themselves (`config.toml.bak-…`) was **not** in the
+    list, and neither were `pot-server.log`/`.heartbeat`.
+
+- [x] **AU3 · R** — the five screenshots, retaken through the renamed program
+
+  Server run against the disposable copy; every path in frame rewritten to `/home/you/…` before the
+  shutter; the Deepgram key shows `•••••••• (set)` and nothing else.
+  - **result:** pass, five retaken and the social preview redrawn. Two things the retake caught:
+    the **⚖ align these words** button is absent unless the `timing` extra is installed, so the first
+    editor shot silently contradicted its own caption; and the token generator read "not set up",
+    because a fresh worktree has no `.pot-provider`. Both were environment, not code — but a
+    screenshot is a claim, and an environment that cannot make the claim true makes a false one.
+
+- [x] **AU4 · M** — the live library, through the new name
+
+  A three-album slice of the disposable copy, against real YouTube. `noaap update --dry-run`: one
+  album read fully (13/13 MusicBrainz matches, 0 new, 0 no longer in the source), two reported
+  "unchanged … nothing to do", nothing written. Then a real fetch of a single video into the same
+  slice: planned as a single, downloaded, tagged, `.lrc` written, cover fetched, `provider: youtube`,
+  one candidate (`opus`, 124599), `file_length: 282.1`.
+  - **evidence:** the first line of both runs is the settings notice, so the fallback was live
+  - **result:** pass. The first fetch attempt failed with `HTTP Error 403: Forbidden` on the stream —
+    **not** a rename fault: a fresh worktree has no `.pot-provider`, so no proof-of-origin token was
+    minted and YouTube withheld the stream. With the token server reachable it downloaded first try.
+    Worth recording because the failure looks nothing like its cause.
+
+- [x] **AU4b · M** — and ytalbum 0.9.0 still reads what noaap wrote
+
+  The promise of slice 48 is two-way, so it is checked with the installed older program rather than
+  argued. `ytalbum plan --verify` (0.9.0, from its own venv) over the same slice after noaap had
+  fetched into it: **4 plans found, 1 byte-identical, 3 would gain default fields, 0 would lose or
+  change anything.** Four found is the part that matters — its `iter_plans` globs `.ytalbum.json`,
+  so the album noaap created is visible to it rather than orphaned.
+  - **result:** pass, and this is the whole argument for not renaming the plan file.
+
+- [x] **AU5 · R** — CI is the gate, not the local suite
+
+  Three commits were green locally and red on the remote: `.github/workflows/tests.yml` still ran
+  `node --check src/ytalbum/webui/app.js`. Fixed in its own commit, and a case now demands that
+  `.github/` carries no trace of the old name at all.
+  - **result:** pass after the fix. **A commit is green when its run on the remote is green** — and
+    the path was left spelled out rather than globbed, because a glob that matches nothing passes
+    quietly, which is the same failure in the other direction.
+
+### A name in a test is a name in its temporary directory
+
+`test_with_no_ytalbum_on_the_machine_nothing_is_said` failed on `"ytalbum" not in status(...)`:
+pytest names `tmp_path` after the test, so the word the case asserted was absent appeared in the
+path the status line printed. Renamed the case and asserted the phrase instead of the word.
+
+This is the third variant of one family — `pkill -f` matching its own command line, a scanner
+matching its own docstring, and now a test matching its own name. The rule they share: **a check
+that reads its own surroundings must not be named after what it looks for.**
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.ytalbum.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
 | 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |
 | 2026-09-28 | the AS cases (P48: candidates) | 5 | 0 in the software; 1 of my own (a case that asserted a sample rate Opus does not report) | `candidates` / `chosen` / `refused_candidates` on a track, synthesised from `video_id` + `source_override`, which stay **the truth** where a plan disagrees with itself. `plan --verify` over 245 real plans: 0 lost, 0 changed. The library's one real override reads back unchanged. Switch and refuse driven end to end on the disposable copy. 831 pytest + 91 node. |
 | 2026-09-28 | the AR cases extended (P47c) | 2 | 0 | A deleted album is now recoverable as an album: `delete_album` bins the plan and cover as an **album entry** naming its tracks' entries, and restoring one track of a gone album rebuilds the shell first. A re-fetched album merges by video id. An interrupted delete — binning happens before the plan is saved, on purpose — is a **repair**, not a refusal. Both verified on the disposable copy. 811 pytest + 91 node. |
