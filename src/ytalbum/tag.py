@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from mutagen import MutagenError
 from mutagen.flac import Picture
@@ -34,6 +35,24 @@ def audio_length(path: Path) -> float | None:
         return float(audio.info.length)
     except (MutagenError, OSError):  # not readable, not audio: an unknown length means "no match"
         return None  # and nothing else is swallowed: a bug here must not read as a missing file
+
+
+def audio_quality(path: Path) -> dict[str, Any]:
+    """Codec, bitrate, sample rate and channels — what ranking will compare (§9, slice 50).
+
+    Measured from the file, never from what a source claimed. Empty when the file cannot be read,
+    because an unknown quality must not read as a bad one.
+    """
+    try:
+        audio = MP4(path) if path.suffix.lower() in (".m4a", ".mp4") else OggOpus(path)
+    except (MutagenError, OSError):
+        return {}
+    info = audio.info
+    out = {"codec": "aac" if path.suffix.lower() in (".m4a", ".mp4") else "opus",
+           "bitrate": getattr(info, "bitrate", None),
+           "sample_rate": getattr(info, "sample_rate", None),
+           "channels": getattr(info, "channels", None)}
+    return {k: v for k, v in out.items() if v}
 
 
 def tagged_lyrics(path: Path) -> str | None:

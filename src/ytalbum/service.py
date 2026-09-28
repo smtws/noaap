@@ -44,7 +44,7 @@ from .lyrics import (
 )
 from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
-from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
+from .models import AlbumPlan, Candidate, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
@@ -1238,6 +1238,12 @@ class Service:
             else:
                 shutil.move(str(words), sidecar_path(album_dir, track.filename))
 
+        # Whatever displaced this file is not offered for the track again: the user has just said
+        # they preferred what was here (spike §4). Until ranking lands (P52) `ranking` only ever
+        # holds what was measured, never a verdict.
+        if displacer := (entry.data.get("ranking") or {}).get("chosen", {}).get("ref"):
+            if (present or track).refuse(displacer):
+                self.log(f"{displacer} will not be offered for {track.title} again")
         if present is None:
             # Put it back where it stood, then let `arrange` close the numbering. Its old number
             # cannot simply be reused: the tracks left behind were renumbered when it went, so
@@ -1396,7 +1402,14 @@ def switch_source(track: PlanTrack, video_id: str | None) -> bool:
     """
     if (track.source_override or None) == (video_id or None):
         return False
+    if video_id and video_id in track.refused_candidates:
+        return False          # somebody already turned this one down for this track
     track.source_override = video_id
+    if video_id and not track.candidate(video_id):
+        track.candidates.append(Candidate(
+            ref=video_id, added_by="user", why="chosen instead of the playlist's",
+            when=datetime.now(UTC).date().isoformat()))
+    track.sync_candidates()   # `chosen` follows; the old fields stay the truth
     if video_id:
         track.provenance["source"] = Provenance.USER
         track.auto["source"] = track.video_id  # what it goes back to, which P12's badge offers
@@ -1447,6 +1460,12 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
             if wanted and chosen is None:
                 raise ValueError(f"{t.title}: “{wanted}” is not a single YouTube video")
             switch_source(t, None if chosen == t.video_id else chosen)
+        if refuse := str(te.get("refuse") or "").strip():
+            # never offered for this track again, and if it is the one in use the track goes back to
+            # the playlist's own video — refusing what you are listening to has to mean something
+            if refuse == t.source_override:
+                switch_source(t, None)
+            t.refuse(refuse)
         if (choice := te.get("audio_choice")) in ("best", "combined") and choice != t.audio_choice:
             # switching means fetching the track again, in the other form
             t.audio_choice, t.ext = choice, "m4a" if choice == "combined" else "opus"

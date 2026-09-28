@@ -57,7 +57,13 @@ def differences(before: Any, after: Any, path: str = "") -> tuple[list[str], lis
     return gone, changed
 
 
-@pytest.mark.parametrize("path", PLANS, ids=lambda p: p.stem)
+# `candidates_stale` is the one plan where a value is *meant* to change: it carries a `chosen` that
+# disagrees with its own `source_override`, and loading repairs it. That is the whole point of the
+# fixture, and it has a case of its own below.
+REPAIRED = {"candidates_stale"}
+
+
+@pytest.mark.parametrize("path", [p for p in PLANS if p.stem not in REPAIRED], ids=lambda p: p.stem)
 def test_no_field_is_lost_and_no_value_changes(path: Path) -> None:
     before = raw(path)
     after = AlbumPlan.from_dict(before).to_dict()
@@ -220,3 +226,29 @@ def test_plan_without_a_url_or_verify_is_a_usage_error(capsys: pytest.CaptureFix
 
     assert main(["plan"]) == 2
     assert "--verify" in capsys.readouterr().err
+
+
+def test_the_old_fields_win_when_a_plan_disagrees_with_itself() -> None:
+    """`candidates`/`chosen` are derived; `video_id`/`source_override` are the truth (slice 50).
+
+    Two ytalbums share a library and an older one writes `source_override` knowing nothing about
+    candidates — so a plan whose `chosen` disagrees with its own override is repaired on load, in
+    the direction of the field the older version can still write.
+    """
+    path = next(p for p in PLANS if p.stem == "candidates_stale")
+    before = raw(path)
+    track = before["tracks"][0]
+    assert track["chosen"] != track["source_override"], "the fixture no longer disagrees"
+
+    after = AlbumPlan.from_dict(before).to_dict()
+    repaired = after["tracks"][0]
+    assert repaired["chosen"] == track["source_override"]
+    assert track["source_override"] in [c["ref"] for c in repaired["candidates"]]
+    # the override was missing from the list and is added, which is the other half of the repair
+    assert len(repaired["candidates"]) == len(track["candidates"]) + 1
+
+    # and nothing else moved: no key lost, and no value changed outside those two
+    gone, changed = differences(before, after)
+    assert not gone
+    mine = ("tracks.0.chosen", "tracks.0.candidates")
+    assert [c for c in changed if not c.startswith(mine)] == [], changed

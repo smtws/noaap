@@ -1307,6 +1307,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    This is the groundwork for replacing a file with a better candidate (spike §3): nothing may be
    replaced until it can be taken back.
 
+50. ✅ A track holds candidates, not a video id (2026-09-28, P48, spike
+   `docs/spikes/2026-09-candidates.md` §1). `PlanTrack.candidates` lists every place a recording can
+   be had from — `ref` (**opaque**: only its own provider may parse one), `provider`, the length and
+   the quality measured from a file we actually have — with `chosen` naming the one in use and
+   `refused_candidates` naming the ones never to offer again (the `lyrics_rejected` shape, slice 27,
+   for the same reason: an answer somebody turned down should not keep coming back).
+   **`source_override` folds in exactly:** overriding *is* choosing a non-default candidate. The
+   reference library uses it once in 3946 done tracks, which said the idea was right and the shape
+   was not.
+   **The old fields are the truth.** `candidates`/`chosen` are derived from `video_id` and
+   `source_override` on every load, and where a plan disagrees with itself the old two win. Two
+   ytalbums share a library; the older writes `source_override` knowing nothing about candidates, and
+   must not be silently overruled. This is also the synthesis step for every plan written before this
+   slice, which is what makes the change additive (slice 48's invariant holds: 0 lost, 0 changed over
+   245 real plans).
+   Nothing ranks yet and there is still one provider. The shape exists so that choosing between
+   candidates, and replacing the worse, have somewhere to happen (spike §3, §4).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

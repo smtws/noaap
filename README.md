@@ -65,9 +65,11 @@ Comes with a command line and a small web app for the library.
   shift them all or take a provider's proposal, and the list follows at once — so "does this fit the
   song?" is a question you answer by listening, not by saving and finding out. Cancel and the file
   beside the track is in charge again.
-- **A track can take its audio from another video.** Where the playlist holds the official video —
-  theatrical bits at both ends, a spoken passage in the middle — and the song exists on YouTube as
-  its own upload, the **⇄** button in the track row points it at that one: it keeps its place, its name, its number and your
+- **A track can take its audio from another video, and remembers the others.** Where the playlist
+  holds the official video — theatrical bits at both ends, a spoken passage in the middle — and the
+  song exists on YouTube as its own upload, the **⇄** button in the track row points it at that one.
+  Every place a track's audio can be had from is listed there, with what each one measured; one you
+  turn down is marked *refused* and never offered for that track again. The track keeps its place, its name, its number and your
   lyrics, and only the audio is fetched again. What the marks and the tags described was another
   recording, so they go, and the page says which before it asks. The badge that says "you" puts the
   playlist's video back.
@@ -262,7 +264,16 @@ keep.** Nothing else in the tags identifies where the audio came from, and nothi
 | `source_override` | yes | the audio is fetched again from that video |
 | `lyrics` and the `lyrics_*` fields | no | derived from the `.lrc` beside the file; edit that instead |
 | `video_id`, `source_id`, `source_url`, `folder`, `filename` | no | identity and what is on disk |
+| `candidates`, `chosen` | no | derived — see below |
+| `refused_candidates` | carefully | a list of refs never to offer for this track again |
 | `auto`, `provenance` | no | see below |
+
+**`candidates` is derived, `source_override` is the truth.** Each track lists every place its audio
+can be had from, and `chosen` says which is in use — but both are worked out from `video_id` and
+`source_override` every time the plan is loaded. Where they disagree, the old two win and the list is
+rebuilt from them. That is deliberate: an older ytalbum sharing the same library writes
+`source_override` and knows nothing about candidates, and it must not be silently overruled. So to
+change a track's audio by hand, set `source_override`.
 
 **Why `auto` and `provenance` are not yours to edit.** `auto` holds the value ytalbum derived for
 each field; `provenance` says where that value came from. A field whose value differs from `auto` is

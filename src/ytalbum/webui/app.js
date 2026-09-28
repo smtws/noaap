@@ -639,8 +639,37 @@ function sourcePanel(p, t) {
       h("button", { class: "small use", type: "button", onclick: (e) => useSource(e.currentTarget, p, t, field.value, note) }, "Use this video"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => closeSource(e.currentTarget, t) }, "Cancel")),
     note,
+    candidateList(p, t),
     h("div", { class: "muted" }, "The track keeps its place, its name and your words \u2014 only the audio is fetched again, "
       + "from the video you name here. Its length becomes the one the \u23f1 chip is measured against."));
+}
+
+// Everywhere this track's audio can be had from (§9, slice 50). Today they are all YouTube
+// videos, and the list is short; it is here because choosing between them is what comes next.
+function candidateList(p, t) {
+  const all = t.candidates || [];
+  const refused = new Set(t.refused_candidates || []);
+  if (all.length < 2 && !refused.size) return null;
+  const id = effectiveId(t);
+  return h("div", { class: "candidates" },
+    h("div", { class: "muted" }, "known sources for this track:"),
+    ...all.map((c) => h("div", { class: "candidate" + (c.ref === id ? " on" : "") },
+      h("a", { href: `https://www.youtube.com/watch?v=${c.ref}`, target: "_blank", rel: "noopener" }, c.ref),
+      h("span", { class: "muted" },
+        (c.ref === id ? "in use" : refused.has(c.ref) ? "refused" : c.why || c.added_by)
+        + (c.bitrate ? ` · ${c.codec || ""} ${Math.round(c.bitrate / 1000)} kbps` : "")
+        + (c.length ? ` · ${asTime(c.length)}` : "")),
+      c.ref === id || refused.has(c.ref) ? null
+        : h("button", { class: "quiet small", type: "button",
+            title: "Never offer this one for this track again",
+            onclick: (e) => refuseCandidate(e.currentTarget, p, t, c.ref) }, "not this one"))));
+}
+
+async function refuseCandidate(button, p, t, ref) {
+  if (!confirm(`Never offer ${ref} as this track's audio again?\n\nIt stays listed, marked refused. `
+      + "Nothing is downloaded or deleted.")) return;
+  await submit("edit", { id: p.source_id, edits: { tracks: [{ video_id: t.video_id, refuse: ref }] } }, button);
+  await refreshAlbumPanel();
 }
 
 function useSource(button, p, t, text, note) {

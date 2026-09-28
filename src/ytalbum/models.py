@@ -121,6 +121,30 @@ def kept(obj: Any) -> dict[str, Any]:
 
 
 @dataclass
+class Candidate:
+    """One place this recording can be had from (DESIGN §9, slice 50).
+
+    `ref` is **opaque**: only the provider that minted it knows what it means. Today every ref is a
+    YouTube video id, which is why `provider` defaults to youtube — but nothing outside the provider
+    may parse one, because that is the assumption the Source boundary exists to remove.
+    """
+
+    ref: str
+    provider: str = "youtube"
+    length: float | None = None          # seconds, as measured or as the source reported
+    codec: str | None = None             # the four below are measured from a file we have
+    bitrate: int | None = None
+    sample_rate: int | None = None
+    channels: int | None = None
+    added_by: str = "source"             # source | user | pass
+    why: str = ""
+    when: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class PlanTrack:
     video_id: str
     number: int
@@ -169,18 +193,59 @@ class PlanTrack:
     # {entry, ours, theirs, span, unplaced, decided, why}. Kept so a pass never asks twice and a
     # user who disagrees with a verdict has the numbers in front of them.
     lyrics_fit: dict[str, str] | None = None
+    # Every place this recording can be had from, and which one is in use (§9, slice 50). Derived
+    # from `video_id`/`source_override` for a plan written before they existed, and kept in step
+    # with them afterwards — see `sync_candidates` for which is the truth when they disagree.
+    candidates: list[Candidate] = field(default_factory=list)
+    chosen: str | None = None            # the ref in use; None means "the first one"
+    # refs that were tried and rejected for this track, never offered or auto-chosen again. The
+    # `lyrics_rejected` shape (§9, slice 27), for the same reason: an answer somebody has already
+    # turned down should not keep coming back.
+    refused_candidates: list[str] = field(default_factory=list)
     # the date a near-miss pass asked lrclib and was told there is nothing else for this title
     # (§9, slice 46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
     # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —
     # 878 of this library's 1089 wordless tracks are in this state, and they were asked every run.
     lyrics_no_entry: str | None = None
 
+    def __post_init__(self) -> None:
+        # every track is self-consistent from birth, however it was built — from a plan on disk, by
+        # `build_plan`, or in a test — so a round trip through JSON is an identity
+        self.sync_candidates()
+
     def to_dict(self) -> dict[str, Any]:
         return {**asdict(self), **kept(self)}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> PlanTrack:
-        return keeping(cls, d)
+        return keeping(cls, {**d, "candidates": [Candidate(**c) for c in d.get("candidates") or []]})
+
+    def sync_candidates(self) -> None:
+        """Keep `candidates`/`chosen` in step with `video_id`/`source_override`.
+
+        **The old fields are the truth.** Two ytalbums share a library, and an older one writes
+        `source_override` without knowing `candidates` exists — so where they disagree the legacy
+        fields win and the candidate list is rebuilt from them. That also makes this the synthesis
+        step for every plan written before slice 50: a plan with no candidates gets one for its
+        video, and a second for its override if it has one.
+        """
+        refs = {c.ref for c in self.candidates}
+        for ref, added, why in ((self.video_id, "source", "the playlist's own video"),
+                                (self.source_override, "user", "chosen instead of the playlist's")):
+            if ref and ref not in refs:
+                self.candidates.append(Candidate(ref=ref, added_by=added, why=why))
+                refs.add(ref)
+        self.chosen = self.source_override or self.video_id or None
+
+    def candidate(self, ref: str) -> Candidate | None:
+        return next((c for c in self.candidates if c.ref == ref), None)
+
+    def refuse(self, ref: str) -> bool:
+        """Never offer this one for this track again (§9, slice 50)."""
+        if not ref or ref in self.refused_candidates:
+            return False
+        self.refused_candidates.append(ref)
+        return True
 
     @property
     def effective_id(self) -> str:

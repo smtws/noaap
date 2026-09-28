@@ -289,6 +289,10 @@ tr.lyrics .lyrics-actions .muted { font-size: .85em; }
 /* the length chip is also a button where MusicBrainz's own number looks wrong (§9, slice 43): it must
    still read as the chip it has always been, so it takes the chip's own painting and only the
    cursor and the underline say it can be pressed */
+.candidates { margin: .4rem 0; }
+.candidate { display: flex; gap: .5rem; align-items: baseline; padding: .1rem 0; font-size: .9em; }
+.candidate.on a { font-weight: 600; }
+.candidate .muted { flex: 1; }
 .recycle { margin-top: 1rem; border-top: 1px solid var(--edge); padding-top: .6rem; }
 .recycle h3 { margin: 0 0 .3rem; font-size: 1rem; }
 .recycle-row { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; padding: .2rem 0; }

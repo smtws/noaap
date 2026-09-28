@@ -23,7 +23,7 @@ from .cover import square_if_padded
 from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
 from .models import AlbumPlan, PlanTrack
 from .plan import refresh_derived, wanted_filename, wanted_folder
-from .tag import audio_length, image_mime, signature, tag_file
+from .tag import audio_length, audio_quality, image_mime, signature, tag_file
 from .trim import apply as apply_trim
 from .youtube import BOT_CHECK, NoAudioStream, YouTube, is_bot_check
 
@@ -91,6 +91,14 @@ def relocate(album_dir: Path, plan: AlbumPlan, library: Path) -> Path:
 # -- running a plan ----------------------------------------------------------------------
 
 
+def _measure_candidate(track: PlanTrack, path: Path) -> None:
+    """Record what the chosen candidate actually sounds like, from the file we now have."""
+    if candidate := track.candidate(track.effective_id):
+        candidate.length = track.file_length
+        for name, value in audio_quality(path).items():
+            setattr(candidate, name, value)
+
+
 def run(
     plan: AlbumPlan,
     album_dir: Path,
@@ -141,6 +149,7 @@ def run(
             measured = cut or track.file_length is None  # measured once, then only when it changes
             if measured:
                 track.file_length = audio_length(final)
+                _measure_candidate(track, final)
             # whose words are beside this track, and does the plan still agree with the disk?
             # Asked before the lookup, so an edited sidecar is known to be the user's by the
             # time anything would overwrite it (a trim clears the status and asks again).
@@ -173,6 +182,7 @@ def run(
                 tmp = yt.download_audio(track.effective_id, parts, track.audio_choice)
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length = audio_length(tmp)
+                _measure_candidate(track, tmp)
                 try:
                     track.tagged = tag_file(tmp, plan, track, cover, text)
                 except MutagenError as e:

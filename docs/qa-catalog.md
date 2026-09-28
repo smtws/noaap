@@ -2758,10 +2758,63 @@ made it worse by *moving* the file instead of unlinking a `.lrc`.
 explicitly and derives nothing from the plan; `sidecar_path` is only consulted when the audio name
 itself passed `_inside`, because it joins the filename without checking.
 
+## AS. A track holds candidates (P48, DESIGN §9, slice 50)
+
+The shape only — no ranking, no second provider. What matters is that the new fields are derived
+from the old ones and never ahead of them.
+
+- [x] **AS1 · R** — synthesis, and which field is the truth
+
+  A plan with no `candidates` gets one for its video, and a second for its `source_override` if it
+  has one, with `chosen` following. Where a plan disagrees with itself — an older ytalbum wrote
+  `source_override` and left `chosen` behind — **the old fields win** and the list is rebuilt from
+  them. A fixture (`candidates_stale.json`) carries exactly that disagreement, and it is the one
+  plan in the corpus where a value is *meant* to change on load; the case says so by name rather
+  than weakening the slice-48 invariant for everything else.
+  - **result:** pass
+
+- [x] **AS2 · R** — the invariant still holds on real plans
+
+  `plan --verify` over the 245 plans of the disposable copy: **0 would lose or change anything**;
+  all 245 gain the three new fields, which is additive and what slice 48 allows.
+  - **result:** pass
+
+- [x] **AS3 · M** — the one real override behaves exactly as before
+
+  *Kupfergold — Und 'n Tripper*, the library's only `source_override`, reads back as two candidates
+  — the playlist's video `added_by: source`, the override `added_by: user` — with `chosen` on the
+  override and `effective_id` unchanged. An older ytalbum reading the same plan still sees the
+  `source_override` it understands.
+  - **result:** pass
+
+- [x] **AS4 · M** — switching, and refusing
+
+  Switching adds the candidate and moves `chosen`; switching back keeps the candidate and chooses
+  the playlist's video again, because knowing about a source is not the same as using it. A refused
+  ref is never chosen again, and **refusing the one in use puts the track back on the playlist's own
+  video** — refusing what you are listening to has to mean something. Driven end to end on the
+  disposable copy: switch → refuse → back to the playlist's video, refusal persisted.
+  - **result:** pass
+
+- [x] **AS5 · M** — the bin records both, and restoring refuses the displacer
+
+  A bin entry made by choosing another candidate carries both in `ranking`; restoring it marks the
+  displacer refused for that track (spike §4). Until ranking lands, `ranking` only ever holds what
+  was measured — never a verdict.
+  - **result:** pass
+
+### One thing measured that is not there to measure
+
+`audio_quality` fills codec, bitrate and channels from the file, and leaves **`sample_rate` empty for
+Opus**: the format is always 48 kHz and mutagen reports no per-file rate, so there is nothing
+measured to record. The first version of the case asserted a sample rate and failed — the assertion
+was wrong, not the code. An absent number is not a zero, and ranking will have to treat it that way.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AS cases (P48: candidates) | 5 | 0 in the software; 1 of my own (a case that asserted a sample rate Opus does not report) | `candidates` / `chosen` / `refused_candidates` on a track, synthesised from `video_id` + `source_override`, which stay **the truth** where a plan disagrees with itself. `plan --verify` over 245 real plans: 0 lost, 0 changed. The library's one real override reads back unchanged. Switch and refuse driven end to end on the disposable copy. 831 pytest + 91 node. |
 | 2026-09-28 | the AR cases extended (P47c) | 2 | 0 | A deleted album is now recoverable as an album: `delete_album` bins the plan and cover as an **album entry** naming its tracks' entries, and restoring one track of a gone album rebuilds the shell first. A re-fetched album merges by video id. An interrupted delete — binning happens before the plan is saved, on purpose — is a **repair**, not a refusal. Both verified on the disposable copy. 811 pytest + 91 node. |
 | 2026-09-28 | the AR cases re-run (P47 follow-up) | 6 | 6 defects in the reviewed commit, all fixed | Run on a disposable copy of the library. Restore refused every time and said nothing (`args.library` read directly; `exit_code` never prints the message). CLI `prune` still unlinked instead of binning. A binned cover was `audio.jpg`. **Restore gave two tracks the same number.** `recycle list \| head` printed a traceback. 806 pytest + 91 node. |
 | 2026-09-28 | the AR cases (P47: the recycle bin) | 5 | 0 in the design; 1 of my own, caught by the existing suite (a fallback in `bin_track` reopened the path traversal `_inside` closes, and moving is worse than unlinking) | `ytalbum never removes audio, it only moves it to the bin`. Delete, delete-album and prune all route through `<library>/.recycle/`; the kept original goes with the track, which fixes the phase-5 inconsistency. Restore is deliberately asymmetric: the user's lyrics win, tags are rewritten not replayed, a track the playlist dropped comes back and is binned again. Never empties itself. 799 pytest + 91 node. |
