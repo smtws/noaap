@@ -248,3 +248,18 @@ def test_a_length_of_zero_is_unknown_and_not_a_short_track(tmp_path, monkeypatch
     monkeypatch.setattr(tag, "_open", lambda p: Silent())
 
     assert tag.audio_length(path) is None
+
+
+def test_a_local_address_is_not_written_into_the_file(tmp_path):
+    """`source` is there so whoever opens the file later can go back to where it came from. A
+    folder's address is the user's own directory — it identifies the album to nobody, and putting
+    it in every file carries a home path around. Found by reading the tags of a real intake."""
+    from noaap.tag import build_tags
+
+    plan = make_plan()
+    plan.source_url = "/home/someone/Music/legacy/A Band/An Album"
+
+    assert "source" not in build_tags(plan, plan.tracks[0])
+
+    plan.source_url = "https://www.youtube.com/playlist?list=PLx"
+    assert build_tags(plan, plan.tracks[0])["source"] == plan.source_url

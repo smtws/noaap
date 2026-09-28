@@ -183,6 +183,14 @@ def run(
         for attempt in range(1, ATTEMPTS + 1):
             try:
                 tmp = whose(track).audio(track.effective_id, parts, track.audio_choice)
+                # **the file decides what it is.** `ext` was only ever set from a YouTube audio
+                # choice — opus, or m4a for a combined stream — so a provider that hands over an
+                # mp3 or a flac would have had it filed under `.opus`, tagged as Opus (which
+                # raises) and left as a name that lies about its contents (§9, slice 53).
+                if (got := tmp.suffix.lstrip(".").lower()) and got != track.ext:
+                    track.ext = got
+                    track.filename = wanted_filename(plan, track)
+                    final = album_dir / track.filename
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length = audio_length(tmp)
                 _measure_candidate(track, tmp)

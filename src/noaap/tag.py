@@ -119,8 +119,13 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
         "tracknumber": str(track.number),
         "tracktotal": str(len(plan.tracks)),
         "totaltracks": str(len(plan.tracks)),
-        "source": plan.source_url,
     }
+    # Where the album came from, for whoever opens the file later — worth writing only when it is
+    # somewhere they could go. A folder's address is the user's own directory: it identifies the
+    # album to nobody, stops being true the moment anything moves, and puts a home path into every
+    # file (§9, slice 53). Judged by the value, so any provider with real addresses keeps it.
+    if plan.source_url.startswith(("http://", "https://")):
+        tags["source"] = plan.source_url
     # The ref only means something to the provider that minted it (§9, slice 50), so it is written
     # as an identifier only where it *is* one. A folder's ref is an absolute path: putting that in
     # every file would carry someone's home directory around and identify the track to nobody.
