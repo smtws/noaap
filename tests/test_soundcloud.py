@@ -82,7 +82,9 @@ def test_a_set_becomes_a_collection(client):
     got = client.fetch(SET_URL)
 
     assert got.is_playlist and got.source_id == "1100349598"
-    assert got.title == "Carmina Gloria (symphonic crusader power metal)"
+    # the set's name is cleaned here, where SoundCloud's conventions live: the core's album-name
+    # hygiene is YouTube's, and a set is titled for SoundCloud's search box
+    assert got.title == "Carmina Gloria"
     assert got.channel == "Antti Martikainen"
     assert len(got.entries) == 11
     assert [e.position for e in got.entries] == list(range(1, 12))
@@ -283,3 +285,62 @@ def test_a_download_that_leaves_no_file_is_no_audio(tmp_path, monkeypatch):
 
     with pytest.raises(sources.NoAudio, match="no file arrived"):
         SoundCloud(Config()).download_audio("42", tmp_path)
+
+
+# -- and the whole of it, from a recorded set to a plan ------------------------------------------------
+
+
+@pytest.fixture
+def provider(monkeypatch, client) -> SoundCloudSource:
+    """The adapter over the recorded client, with the albums tab answered from memory."""
+    source = SoundCloudSource(Config())
+    source.sc = client
+    monkeypatch.setattr(client, "released_by", lambda owner: {"1100349598"})
+    return source
+
+
+def test_a_set_on_the_albums_tab_is_a_release(provider):
+    """yt-dlp does not surface SoundCloud's own `set_type`, so the tab it is published under is the
+    site's own statement about it — the distinction YouTube draws with a Releases tab."""
+    from noaap.plan import Kind, classify
+
+    got = provider.collection(SET_URL)
+
+    assert provider.is_release(got) is True
+    assert classify(got, provider) is Kind.OFFICIAL_ALBUM
+
+
+def test_a_set_that_is_not_on_it_is_somebody_s_playlist(provider, monkeypatch):
+    from noaap.plan import Kind, classify
+
+    monkeypatch.setattr(provider.sc, "released_by", lambda owner: set())
+    got = provider.collection(SET_URL)
+
+    assert provider.is_release(got) is False
+    assert classify(got, provider) is not Kind.OFFICIAL_ALBUM
+
+
+def test_a_recorded_set_becomes_the_plan_it_should(provider):
+    """The end of the provider's job, over a real page: the album name and the year off the set,
+    the numbers off the running order, the artist off the uploader, the genres out of the titles."""
+    from noaap.plan import build_plan
+
+    plan = build_plan(provider.collection(SET_URL), source=provider)
+
+    assert plan.albumartist == "Antti Martikainen"
+    assert plan.album == "Carmina Gloria", "the genre the uploader wrote for the search box is gone"
+    assert plan.year == 2021
+    assert [t.number for t in plan.tracks] == list(range(1, 12))
+    assert plan.tracks[0].title == "Divine Alliance"
+
+
+def test_the_plan_says_where_each_value_came_from(provider):
+    """A SoundCloud plan names its own evidence, as a folder's does — a reader should see that the
+    album name came off a set and not off YouTube Music (§9, slice 53)."""
+    from noaap.plan import build_plan
+
+    plan = build_plan(provider.collection(SET_URL), source=provider)
+
+    assert plan.provenance["album"] == "sc_set"
+    assert plan.provenance["year"] == "sc_set"
+    assert plan.tracks[0].provenance["title"] == "sc_title"

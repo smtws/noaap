@@ -24,6 +24,7 @@ from yt_dlp.utils import DownloadCancelled, DownloadError
 from . import sources, ytdlp
 from .config import Config
 from .models import Collection, Entry, Music, SourceRef
+from .titles_soundcloud import clean_title
 
 log = logging.getLogger(__name__)
 
@@ -140,7 +141,12 @@ class SoundCloud:
         full = self._read(address, ignoreerrors=True)
         got = {str(e["id"]): e for e in (full.get("entries") or []) if e and e.get("id")}
         year = full.get("release_year") or order.get("release_year")
-        album = full.get("title") or order.get("title") or ""
+        # **the set's name is cleaned here, not in the planner.** The core's album-name hygiene is
+        # YouTube's ("SABATON - Legends (Full Album)"), and a set is titled for SoundCloud's search
+        # box instead ("Carmina Gloria (symphonic crusader power metal)"). Until the core asks a
+        # provider for that the way it asks for `clean_entry`, this site's rules run here, where
+        # they belong (§9, slice 57).
+        album = clean_title(full.get("title") or order.get("title") or "")
 
         entries: list[Entry] = []
         for n, ref in enumerate(ids, 1):
