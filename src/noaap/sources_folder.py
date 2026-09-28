@@ -240,7 +240,8 @@ def stream_sha(path: Path) -> str | None:
     """
     try:
         done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
-                               "-c", "copy", "-f", "md5", "-"], capture_output=True, text=True)
+                               "-c", "copy", "-f", "md5", "-"],
+                              capture_output=True, text=True, errors="replace")
     except (OSError, subprocess.SubprocessError):
         return None
     out = done.stdout.strip()

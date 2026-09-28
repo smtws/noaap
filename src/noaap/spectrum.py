@@ -74,7 +74,7 @@ def profile(path: Path, window: tuple[float, float] = WINDOW) -> list[float] | N
         done = subprocess.run(
             ["ffmpeg", "-v", "info", "-ss", str(window[0]), "-t", str(window[1]), "-i", str(path),
              "-filter_complex", ";".join(chain), *maps],
-            capture_output=True, text=True)
+            capture_output=True, text=True, errors="replace")
     except (OSError, subprocess.SubprocessError):
         return None
     # the filters report in whatever order they finish; the astats index says which band it was

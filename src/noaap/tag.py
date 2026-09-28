@@ -92,7 +92,7 @@ def decoded_length(path: Path) -> float | None:
     """
     try:
         done = subprocess.run(["ffmpeg", "-v", "error", "-stats", "-i", str(path), "-f", "null", "-"],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, errors="replace")
     except (OSError, subprocess.SubprocessError):
         return None
     if not (found := TIMESTAMP.findall(done.stderr)):

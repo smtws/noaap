@@ -141,3 +141,24 @@ def test_an_unmeasured_file_never_wins_or_loses_by_being_unmeasured():
     assert better(Spectrum(), Spectrum(cutoff=17, full=False)) == 0
     assert better(Spectrum(cutoff=22, full=True), Spectrum()) == 0
     assert better(Spectrum(), Spectrum()) == 0
+
+
+def test_a_tag_that_is_not_utf8_does_not_stop_the_measurement(tmp_path):
+    """Found by running it: the profiling pass died on file 801 of 2000 with a UnicodeDecodeError.
+    ffmpeg echoes the tags it reads, and this collection holds ID3 frames written in Latin-1, so
+    `text=True` raised on a byte in a *comment*. A measurement that crashes on what a file says
+    about itself is worse than one that cannot read it."""
+    from mutagen.id3 import ID3, TIT2
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    path = tmp_path / "latin1.mp3"
+    ffmpeg("-f", "lavfi", "-i", f"anoisesrc=d={SECONDS}:c=pink:r=44100:a=0.8",
+           "-c:a", "libmp3lame", "-b:a", "128k", str(path))
+    tags = ID3(path)
+    tags.add(TIT2(encoding=0, text=["Grüße aus München"]))  # encoding 0 is Latin-1
+    tags.save(path)
+
+    found = measure(path)
+
+    assert found.known, "the file is perfectly readable; only its tag was not UTF-8"

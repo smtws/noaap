@@ -105,7 +105,7 @@ def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
         command += ["-to", f"{track.trim_end:.3f}"]
     command += ["-i", str(original), "-c", "copy", str(cut)]
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(command, check=True, capture_output=True, text=True, errors="replace")
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         cut.unlink(missing_ok=True)
         raise RuntimeError(f"could not trim: {getattr(e, 'stderr', e)}".strip()) from e
