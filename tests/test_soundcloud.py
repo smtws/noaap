@@ -18,7 +18,8 @@ import pytest
 
 from noaap import sources
 from noaap.config import Config
-from noaap.soundcloud import SoundCloud, is_address, one_ref, owner_url, track_url
+from noaap.soundcloud import SoundCloud, art_candidates, is_address, one_ref, owner_url, track_url
+from noaap.sources_soundcloud import SoundCloudSource
 from noaap.titles_soundcloud import owner_is_artist, parse_track_title
 
 FIXTURES = Path(__file__).parent / "fixtures" / "soundcloud"
@@ -158,3 +159,64 @@ def test_the_uploader_is_not_returned_as_the_artist():
 ])
 def test_an_uploader_is_usually_the_artist_but_a_shop_sign_is_not(owner, expected):
     assert owner_is_artist(owner) == expected
+
+
+# -- the covers ----------------------------------------------------------------------------------------
+
+
+def test_the_original_artwork_is_tried_first():
+    sized = "https://i1.sndcdn.com/artworks-HjinOk0jsPMnHs0q-GodHHQ-t500x500.jpg"
+    assert art_candidates(sized)[0].endswith("-original.jpg")
+    assert art_candidates(sized)[1] == sized
+    assert art_candidates("https://example.invalid/x.jpg") == ["https://example.invalid/x.jpg"]
+
+
+# -- and what the provider declares ----------------------------------------------------------------------
+
+
+def test_it_declares_listing_and_not_search():
+    """Its own search finds tracks, never sets, so there is no honest way to answer "which albums
+    is this artist's". A provider does not declare what it cannot do (R-183, ruling a)."""
+    caps = SoundCloudSource(Config()).capabilities()
+
+    assert sources.LISTING in caps and sources.CHANGES in caps and sources.CLEAN in caps
+    assert sources.SEARCH not in caps
+    assert not hasattr(SoundCloudSource(Config()), "find"), "and there is no find that raises"
+
+
+def test_it_is_in_the_registry_under_its_own_name():
+    assert "soundcloud" in sources.known()
+    assert sources.get("soundcloud", Config()).name == "soundcloud"
+
+
+def test_a_ref_has_no_page_and_says_so():
+    """The ref is a numeric id; no address can be built from it that a person could open. The
+    protocol would rather have nothing than a link that 404s."""
+    assert SoundCloudSource(Config()).url_for("865897327") is None
+
+
+def test_a_provider_that_cannot_search_by_name_says_who_can(tmp_path):
+    """Ruling a's other half: a refusal that names the providers that *can* is the useful half."""
+    from noaap.service import Service
+
+    service = Service(Config(musicbrainz=False, lyrics=False), tmp_path,
+                      yt=SoundCloudSource(Config()), log=lambda s: None)
+
+    with pytest.raises(sources.NotSupported, match="cannot search by name"):
+        service.search("Antti Martikainen")
+    try:
+        service.search("Antti Martikainen")
+    except sources.NotSupported as e:
+        assert "youtube" in str(e), "and it says who can"
+
+
+def test_listing_is_asked_of_a_provider_that_has_it(tmp_path):
+    """A folder publishes nothing an owner could list, and says so rather than raising from inside."""
+    from noaap.service import Service
+    from noaap.sources_folder import FolderSource
+
+    service = Service(Config(musicbrainz=False, lyrics=False), tmp_path,
+                      yt=FolderSource(Config()), log=lambda s: None)
+
+    with pytest.raises(sources.NotSupported, match="cannot list what an owner publishes"):
+        service.channel(str(tmp_path))

@@ -35,7 +35,8 @@ class YouTubeSource:
         return any(host in address for host in ("youtube.com", "youtu.be"))
 
     def capabilities(self) -> frozenset[str]:
-        return frozenset({sources.SEARCH, sources.CHANGES, sources.DETAILS, sources.CLEAN})
+        return frozenset({sources.SEARCH, sources.LISTING, sources.CHANGES, sources.DETAILS,
+                          sources.CLEAN})
 
     # -- required ----------------------------------------------------------------------
 

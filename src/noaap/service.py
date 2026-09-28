@@ -523,6 +523,10 @@ class Service:
 
     def channel(self, url: str) -> list[tuple[str, list[SourceRef]]]:
         source = self.source_for_address(url)
+        if not sources.can(source, sources.LISTING):
+            raise sources.NotSupported(
+                f"{getattr(source, 'name', 'this source')} cannot list what an owner publishes — "
+                "give the address of one album instead.")
         self.log(f"reading {self._said(url, source)} …")
         refs = source.listing(url)
         groups = [
@@ -534,8 +538,21 @@ class Service:
         return [g for g in groups if g[1]]
 
     def search(self, artist: str) -> SearchResult:
-        self.log(f"searching YouTube Music for {artist!r} …")
+        """Find an artist's albums by name — from a provider that can (§9, slice 57)."""
+        self._must(sources.SEARCH, "search by name", "paste an address instead")
+        self.log(f"searching {getattr(self.yt, 'name', 'the source')} for {artist!r} …")
         return search_artist(self.yt, artist, self.mb)
+
+    def _must(self, capability: str, what: str, instead: str) -> None:
+        """Refuse with the names of the providers that *can*, which is the useful half."""
+        if sources.can(self.yt, capability):
+            return
+        able = sorted(n for n in sources.known()
+                      if sources.can(sources.get(n, self.cfg), capability))
+        mine = getattr(self.yt, "name", "this source")
+        raise sources.NotSupported(
+            f"{mine} cannot {what} — {instead}."
+            + (f" These can: {', '.join(able)}." if able else ""))
 
     def library_source_ids(self) -> set[str]:
         if not self.library or not self.library.exists():

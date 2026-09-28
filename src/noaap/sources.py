@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 # what a provider may be able to do beyond the four every one must
 SEARCH = "search"        # find collections by an artist's name
+LISTING = "listing"      # say what one owner publishes, given their address (§9, slice 57)
 CHANGES = "changes"      # say cheaply whether a collection changed
 DETAILS = "details"      # enrich a search hit with a cover and a track count
 CLEAN = "clean"          # its titles carry conventions worth stripping (DESIGN §5)
@@ -82,7 +83,12 @@ class Source(Protocol):
         """CHANGES: the collection's state now, cheaply — the caller compares it with what it stored."""
 
     def listing(self, address: str) -> list[SourceRef]:
-        """SEARCH: the collections an artist or channel publishes."""
+        """LISTING: the collections an owner publishes, from their own address.
+
+        Separate from SEARCH on purpose. SoundCloud can say what is on an artist's page and cannot
+        find that page from a name — its own search returns tracks, never sets — and **a provider
+        does not declare what it cannot do** (R-183, ruling a).
+        """
 
     def find(self, query: str, limit: int = 12) -> list[SourceRef]:
         """SEARCH: collections matching a name."""
@@ -149,6 +155,9 @@ def register(name: str, make: Any) -> None:
 
 
 def known() -> list[str]:
+    """Every provider there is. Loads them first: asking what exists before anything has been
+    fetched used to answer "none", which is only true until the first import (§9, slice 57)."""
+    _load()
     return sorted(_MAKERS)
 
 
@@ -202,4 +211,4 @@ def _load() -> None:
     if _loaded:
         return
     _loaded = True
-    from . import sources_folder, sources_youtube  # noqa: F401  — they register themselves
+    from . import sources_folder, sources_soundcloud, sources_youtube  # noqa: F401  — they register themselves
