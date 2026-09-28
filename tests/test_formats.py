@@ -231,3 +231,20 @@ def test_intake_still_writes_words_into_a_file_that_has_none(flac_file):
     tag_file(flac_file, plan, plan.tracks[0], lyrics="ours", keep_unknown=True)
 
     assert tagged_lyrics(flac_file) == "ours"
+
+
+def test_a_length_of_zero_is_unknown_and_not_a_short_track(tmp_path, monkeypatch):
+    """Three albums in the reference collection are FLACs whose STREAMINFO says `total_samples = 0`.
+    A 0 there is a gap the encoder never filled in, not a measurement — and read as a number it
+    made 52 real tracks "shorter than 30s", which is how an intro card is recognised and dropped."""
+    from noaap import tag
+
+    path = tmp_path / "t.flac"
+    path.write_bytes(b"not read: the info object is the thing under test")
+
+    class Silent:
+        info = type("info", (), {"length": 0.0})()
+
+    monkeypatch.setattr(tag, "_open", lambda p: Silent())
+
+    assert tag.audio_length(path) is None

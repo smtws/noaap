@@ -64,9 +64,16 @@ def image_mime(data: bytes) -> str | None:
 
 
 def audio_length(path: Path) -> float | None:
-    """Seconds of audio in the file — the trimmed truth, not what a source said."""
+    """Seconds of audio in the file — the trimmed truth, not what a source said.
+
+    **A zero is not a length.** Three albums in the reference collection are 24-bit FLACs whose
+    STREAMINFO carries `total_samples = 0`, which some encoders leave behind when they cannot seek
+    back to fill it in. mutagen reports that faithfully as `length = 0.0`, and a track "shorter
+    than 30s" is dropped as an intro card — so 52 real tracks of a real collection were refused
+    with "all 13 videos are unusable". Unknown is what this is, and unknown is what it now says.
+    """
     try:
-        return float(_open(path).info.length)
+        return float(_open(path).info.length) or None
     except (MutagenError, OSError):  # not readable, not audio: an unknown length means "no match"
         return None  # and nothing else is swallowed: a bug here must not read as a missing file
 

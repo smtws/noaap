@@ -582,3 +582,79 @@ def test_an_album_already_in_the_library_is_reported_and_left_alone(tmp_path, al
     assert outcome.status == "held"
     assert "already in the library" in outcome.message and "1 of 3 titles overlap" in outcome.message
     assert not (library / "Van Canto" / "Trust in Rust" / "01 - Back in the Lead.mp3").exists()
+
+
+def test_two_songs_that_share_a_track_number_stay_two_songs(tmp_path, source):
+    """Found by running the intake over the real collection: grouping by (disc, number) alone
+    merged "Subway To Sally - Kleid Aus Rosen" with "Blutengel - Seelenschmerz", both tagged as
+    track 10 of the same compilation, and the second **disappeared from the album**. A number has
+    to agree with a title before two files are one recording."""
+    folder = tmp_path / "Vol.17"
+    encode(folder / "10 - Kleid Aus Rosen.flac", title="Kleid Aus Rosen", artist="Subway To Sally",
+           album="Vol.17", track="10")
+    encode(folder / "10 - Seelenschmerz.flac", title="Seelenschmerz", artist="Blutengel",
+           album="Vol.17", track="10")
+
+    found = source.collection(str(folder))
+
+    assert len(found.entries) == 2, "a collision, not an identity"
+    assert sorted(e.title for e in found.entries) == ["Kleid Aus Rosen", "Seelenschmerz"]
+    assert all(len(e.copies) == 1 for e in found.entries)
+
+
+def test_a_title_that_differs_by_a_letter_is_not_the_same_recording(tmp_path, source):
+    """The other real one: `Looking Bach.mp3` at 320 kbps beside `Looking Back.mp3` at 128, both
+    track 10. Probably one song and a typo — but probably is not a thing to merge audio on, and
+    both digests are recorded for P52 to decide with."""
+    folder = tmp_path / "Head Under Water"
+    for title in ("Looking Bach", "Looking Back"):
+        encode(folder / f"10 - {title}.mp3", title=title, artist="Mono Inc", album="x", track="10")
+
+    assert len(source.collection(str(folder)).entries) == 2
+
+
+# -- two rules that were the core's and are the provider's ------------------------------------------
+
+
+def test_a_length_the_header_will_not_give_is_decoded(tmp_path, source, monkeypatch):
+    """Three albums in the reference collection are FLACs whose header says `total_samples = 0`.
+    Without a length they would have no length chip, no duration for LRCLIB, no near-miss check
+    and no trim reference — so the provider reads the audio rather than shrugging."""
+    from noaap import sources_folder
+
+    path = encode(tmp_path / "album" / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    monkeypatch.setattr(sources_folder, "audio_length", lambda p: None)  # a header that will not say
+
+    candidate = source.collection(str(tmp_path / "album")).entries[0].copies[0]
+
+    assert candidate.length == pytest.approx(SECONDS, abs=0.5)
+    assert candidate.length_by == "decoded", "and it says how it came by the number"
+    assert sources_folder.decoded_length(path) == pytest.approx(SECONDS, abs=0.5)
+
+
+def test_a_header_that_answers_is_not_decoded(tmp_path, source, monkeypatch):
+    from noaap import sources_folder
+
+    encode(tmp_path / "album" / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    monkeypatch.setattr(sources_folder, "decoded_length",
+                        lambda p: pytest.fail("decoded a file whose header answered"))
+
+    assert source.collection(str(tmp_path / "album")).entries[0].copies[0].length_by is None
+
+
+def test_nothing_in_a_folder_is_too_short_to_be_a_track(tmp_path, source):
+    """30 seconds is YouTube's rule about intro cards in a playlist. A short file in an album
+    folder is an interlude, a skit or a spoken intro, and it belongs to the album."""
+    from noaap.plan import build_plan, shortest_track
+
+    folder = tmp_path / "album"
+    encode(folder / "01 - intro.flac", title="Intro", artist="A", album="B", track="1")
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=4",
+                    "-c:a", "flac", str(folder / "02 - skit.flac"), "-metadata", "title=Skit"], check=True)
+
+    assert shortest_track(source) == 0.0
+    assert shortest_track() == 30, "and YouTube's rule is untouched"
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert len(plan.tracks) == 2 and plan.skipped == []

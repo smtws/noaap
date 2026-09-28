@@ -24,20 +24,32 @@ MIN_TRACK_SECONDS = 30  # shorter entries are intro cards, not songs (DESIGN.md 
 # -- which entries become tracks -----------------------------------------------------
 
 
-def skip_reason(entry: Entry, collection: Collection) -> str | None:
+def shortest_track(source: Any = None) -> float:
+    """The shortest thing this source can offer that is still a song.
+
+    30 seconds is **YouTube's** rule: a playlist opens with an intro card, and a 12-second video
+    among thirteen songs is not one of them (DESIGN §3.4). A folder has no intro cards — a short
+    file sitting in an album folder is an interlude, a skit or a spoken intro, and it belongs to
+    the album. So the number is the provider's, not the core's (§9, slice 53).
+    """
+    asked = getattr(_source(source), "shortest_track", None)
+    return asked() if asked else MIN_TRACK_SECONDS
+
+
+def skip_reason(entry: Entry, collection: Collection, source: Any = None) -> str | None:
     if entry.skipped:
         return entry.skipped
-    if entry.duration is not None and entry.duration < MIN_TRACK_SECONDS:
-        return f"shorter than {MIN_TRACK_SECONDS}s ({entry.duration:.0f}s)"
+    if entry.duration is not None and entry.duration < (least := shortest_track(source)):
+        return f"shorter than {least:.0f}s ({entry.duration:.0f}s)"
     return None
 
 
-def usable_entries(collection: Collection) -> list[Entry]:
+def usable_entries(collection: Collection, source: Any = None) -> list[Entry]:
     """Entries that become tracks. A playlist may list the same video twice — it is one track."""
     seen: set[str] = set()
     out = []
     for e in collection.entries:
-        if skip_reason(e, collection) is None and e.video_id not in seen:
+        if skip_reason(e, collection, source) is None and e.video_id not in seen:
             seen.add(e.video_id)
             out.append(e)
     return out
@@ -141,7 +153,7 @@ def classify(collection: Collection, source: Any = None) -> Kind:
     # that provider knows, and the core must not read one (§9, slice 51)
     if (released := getattr(_source(source), "is_release", None)) and released(collection):
         return Kind.OFFICIAL_ALBUM
-    artists = {_key(a) for e in usable_entries(collection) if (a := named_artist(e, collection, source))}
+    artists = {_key(a) for e in usable_entries(collection, source) if (a := named_artist(e, collection, source))}
     return Kind.ARTIST_PLAYLIST if len(artists) <= 1 else Kind.COMPILATION
 
 
@@ -150,7 +162,7 @@ def classify(collection: Collection, source: Any = None) -> Kind:
 
 def build_plan(collection: Collection, kind: Kind | None = None, source: Any = None) -> AlbumPlan:
     kind = kind or classify(collection, source)
-    entries = usable_entries(collection)
+    entries = usable_entries(collection, source)
     album_prov: dict[str, str] = {}
     named_origin = origins(source)
 
@@ -224,7 +236,7 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
     skipped = [
         {"video_id": e.video_id, "title": e.title, "reason": reason} | ({"transient": True} if e.transient else {})
         for e in collection.entries
-        if (reason := skip_reason(e, collection))
+        if (reason := skip_reason(e, collection, source))
     ]
     plan = AlbumPlan(
         source_url=collection.source_url,

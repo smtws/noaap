@@ -246,9 +246,35 @@ def stream_sha(path: Path) -> str | None:
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
+TIMESTAMP = re.compile(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
+
+
+def decoded_length(path: Path) -> float | None:
+    """Seconds, counted by decoding the file — for the ones whose header will not say.
+
+    Three albums in the reference collection are FLACs with `total_samples = 0`; ffprobe cannot
+    answer for them either without reading the audio. Decoding one costs about 0.12 s, which is
+    nothing for the 52 files it applies to and everything to them: without a length there is no
+    length chip, no duration for LRCLIB, no near-miss check and no trim reference, from the day
+    they arrive (§9, slice 53).
+    """
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "error", "-stats", "-i", str(path), "-f", "null", "-"],
+                              capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not (found := TIMESTAMP.findall(done.stderr)):
+        return None
+    hours, minutes, seconds = found[-1]
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
 def measure(path: Path) -> Candidate:
     """Everything about this file that ranking will ever want, read from the file itself."""
-    return Candidate(ref=str(path), provider=NAME, length=audio_length(path),
+    length, how = audio_length(path), None
+    if length is None and (length := decoded_length(path)) is not None:
+        how = "decoded"
+    return Candidate(ref=str(path), provider=NAME, length=length, length_by=how,
                      bytes=path.stat().st_size, stream_sha=stream_sha(path),
                      added_by="source", why=UNRANKED,
                      when=dt.date.today().isoformat(), **audio_quality(path))
@@ -309,22 +335,26 @@ class FolderSource:
             rows.sort(key=lambda r: (r[0], r[2].get("discnumber") or r[0],
                                      r[2].get("tracknumber") or r[3]["tracknumber"]))
 
-        # one recording may be in there twice — an album kept as flac *and* as mp3 is two of the
-        # 135 folders in the reference collection. Those are two copies of one track, not two
-        # tracks, which is what P48's candidates were shaped for (§9, slice 50).
-        grouped: dict[Any, list[tuple[int, Path, dict, dict]]] = {}
+        # One recording may be in there twice — the same track as flac and as mp3 — and those are
+        # two copies of one track, not two tracks (§9, slice 50). **A shared track number is not
+        # enough to say so**: a folder in the reference collection holds two different songs both
+        # numbered 10, and grouping by number alone silently dropped one of them. So a number has
+        # to agree with a title, and that is the whole of the rule here. Two files with identical
+        # audio and different names are recorded as they are, with their digests: "is this the same
+        # recording as that one" is P52's first question and it is answered there, once, for the
+        # library as well as for a folder.
+        tracks: dict[Any, list[Any]] = {}
         for row in rows:
             disc, path, tags, named = row
             known = {**named, **tags}
-            number = known.get("tracknumber")
-            grouped.setdefault((disc, number) if number else (disc, text_key(known.get("title") or path.stem)),
-                               []).append(row)
+            name = (disc, known.get("tracknumber"), text_key(known.get("title") or path.stem))
+            tracks.setdefault(name, []).append((row, measure(path)))
 
         entries = []
-        for n, group in enumerate(grouped.values(), 1):
-            copies = sorted((measure(path) for _, path, _, _ in group),
+        for n, group in enumerate(tracks.values(), 1):
+            copies = sorted((copy for _, copy in group),
                             key=lambda c: (c.codec not in LOSSLESS, -(c.bitrate or 0)))
-            disc, path, tags, named = next(row for row in group if str(row[1]) == copies[0].ref)
+            disc, path, tags, named = next(row for row, _ in group if str(row[1]) == copies[0].ref)
             known = {**named, **tags}
             entries.append(Entry(
                 video_id=copies[0].ref,
@@ -378,6 +408,10 @@ class FolderSource:
     def owner_artist(self, owner: str | None) -> str | None:
         """A folder's owner *is* the artist — there is no channel handle to see through."""
         return owner
+
+    def shortest_track(self) -> float:
+        """Nothing in a folder is too short to be part of the album it sits in."""
+        return 0.0
 
     def origins(self) -> dict[str, str]:
         """A folder's three kinds of evidence, under their own names on disk (§9, slice 53)."""
@@ -460,6 +494,17 @@ class FolderSource:
                     channel_url=str(folder.parent), count=len(files),
                     thumbnail=str(cover) if cover else None))
         return out
+
+    def collection_url(self, text: str) -> str | None:
+        """A folder that holds albums rather than audio — an artist, or a whole collection.
+
+        This is what makes `noaap fetch <a root>` list what is under it instead of refusing: the
+        same question YouTube answers with a channel's base URL (§9, slice 53).
+        """
+        folder = Path(text).expanduser()
+        if not folder.is_dir() or audio_files(folder) or disc_folders(folder):
+            return None
+        return str(folder.resolve()) if self.listing(text) else None
 
     def url_for(self, ref: str) -> str | None:
         """Nothing to open in a browser. A file manager would need a `file://`, and offering one

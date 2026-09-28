@@ -120,6 +120,14 @@ class Source(Protocol):
     def one_ref(self, text: str) -> str | None:
         """A single item's ref out of whatever the user typed, or None if it is not one."""
 
+    def shortest_track(self) -> float:
+        """The shortest item of this source that is still a song, in seconds.
+
+        YouTube's 30 is about intro cards in a playlist. A provider whose short items are part of
+        the work says so here (§9, slice 53).
+        """
+        ...
+
     def origins(self) -> dict[str, str]:
         """What this provider's evidence is called on disk: `tags`, `title`, `collection`.
 

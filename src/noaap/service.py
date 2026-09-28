@@ -171,8 +171,9 @@ class Service:
             if left := reader(url):
                 self.log("  left alone: " + ", ".join(f"{n} {kind}" for kind, n in sorted(left.items())))
         if extra := sum(max(len(e.copies) - 1, 0) for e in collection.entries):
-            self.log(f"  {extra} further cop{'y' if extra == 1 else 'ies'} of these recordings are "
-                     "in there too, kept as candidates")
+            self.log(f"  {extra} further cop{'y' if extra == 1 else 'ies'} of "
+                     f"{'a recording' if extra == 1 else 'these recordings'} in the same folder, "
+                     "kept as candidates")
         if unreadable := collection.unreadable:
             # never classify, merge or rename from a partial view (DESIGN.md §3.8)
             reason = unreadable[0].skipped or "unknown"
@@ -474,11 +475,14 @@ class Service:
     # -- discovery ---------------------------------------------------------------------
 
     def channel(self, url: str) -> list[tuple[str, list[SourceRef]]]:
-        self.log(f"reading channel {url} …")
-        refs = self.source_for().listing(url)
+        source = self.source_for_address(url)
+        self.log(f"reading {self._said(url, source)} …")
+        refs = source.listing(url)
         groups = [
             (label, [r for r in refs if r.tab == tab])
-            for tab, label in (("releases", "Releases (official albums and singles)"), ("playlists", "Playlists"))
+            for tab, label in (("releases", "Releases (official albums and singles)"),
+                               ("playlists", "Playlists"),
+                               ("folders", "Albums in this folder"))
         ]
         return [g for g in groups if g[1]]
 
@@ -1702,9 +1706,14 @@ def collection_address(text: str, cfg: Config | None = None) -> str | None:
     The core cannot tell; the provider can. This asks the default one, which is what the CLI and
     the page did through `channel_base_url` before there were providers.
     """
-    provider = sources.get(None, cfg or Config())
-    reader = getattr(provider, "collection_url", None)
-    return reader(text) if reader else None
+    settings = cfg or Config()
+    for name in [sources.DEFAULT, *sources.known()]:
+        provider = sources.get(name, settings)
+        if not provider.handles(text):
+            continue
+        if reader := getattr(provider, "collection_url", None):
+            return reader(text)
+    return None
 
 
 __all__ = ["Outcome", "Service", "apply_user_edits", "collection_address", "exit_code"]
