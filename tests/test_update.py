@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.models import Provenance
-from ytalbum.plan import build_plan, merge_plans
-from ytalbum.service import Service, apply_user_edits
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.models import Provenance
+from noaap.plan import build_plan, merge_plans
+from noaap.service import Service, apply_user_edits
 
 
 class CountingYouTube(FakeYouTube):
@@ -119,7 +119,7 @@ def test_a_failing_quick_check_falls_back_to_reading(library):
 
 
 def test_update_can_be_limited_to_one_artist(tmp_path, opus_template):
-    from ytalbum.models import Collection
+    from noaap.models import Collection
 
     first = vol1()
     plan_one = build_plan(first)
@@ -130,7 +130,7 @@ def test_update_can_be_limited_to_one_artist(tmp_path, opus_template):
     other.source_id, other.source_url, other.channel = "PLother", "https://www.youtube.com/playlist?list=PLother", "Someone Else"
     plan_two = build_plan(other)
     plan_two.albumartist = "Someone Else"
-    from ytalbum.plan import refresh_derived
+    from noaap.plan import refresh_derived
 
     refresh_derived(plan_two)
     run(plan_two, tmp_path / plan_two.folder, yt)

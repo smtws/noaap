@@ -20,11 +20,11 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config, load
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.timing import (
+from noaap.config import Config, load
+from noaap.download import load_plan, run, save_plan
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.timing import (
     ALIGN,
     HttpTiming,
     NoTiming,
@@ -36,7 +36,7 @@ from ytalbum.timing import (
     plain_lines,
     provider,
 )
-from ytalbum.timing_local import LocalTiming
+from noaap.timing_local import LocalTiming
 
 
 class FakeTiming:
@@ -124,7 +124,7 @@ def album(tmp_path, opus_template):
 
 
 def service_with(cfg, tmp_path, yt, fake, monkeypatch):
-    import ytalbum.service as service_mod
+    import noaap.service as service_mod
 
     monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": fake)
     return Service(cfg, tmp_path, yt=yt, log=lambda s: None)
@@ -191,7 +191,7 @@ def test_saving_records_whose_clock_it_is(album, tmp_path, monkeypatch):
 @pytest.fixture
 def served():
     """`ytalbum timing-serve`'s handler, with the fake behind it instead of a model."""
-    from ytalbum.timing_serve import handler_for
+    from noaap.timing_serve import handler_for
 
     fake = FakeTiming()
     fake.resolved_device = lambda: "cpu"  # type: ignore[attr-defined]
@@ -245,7 +245,7 @@ def test_the_far_end_refuses_nonsense(served, tmp_path, opus_template):
 @pytest.mark.skipif(not os.environ.get("YTALBUM_TIMING_LIVE"),
                     reason="set YTALBUM_TIMING_LIVE=1 (and install ytalbum[timing]) to run the models")
 def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
     engine = LocalTiming(device="cpu")
     assert ALIGN in engine.capabilities()
@@ -264,7 +264,7 @@ def timed_at(*starts: float | None) -> Timed:
 
 
 def test_where_two_methods_agree_the_first_ones_number_is_kept():
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     primary = timed_at(10.0, 20.0, 30.0)
     second = Timed(lines=[TimedLine("a", 10.4), TimedLine("b", 20.9), TimedLine("c", 31.5)],
@@ -278,7 +278,7 @@ def test_where_two_methods_agree_the_first_ones_number_is_kept():
 
 
 def test_a_line_only_one_method_placed_is_not_a_disagreement():
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     got = verified(timed_at(10.0, None), Timed(lines=[TimedLine("a", None), TimedLine("b", 50.0)],
                                                provider="local", model="large-v3"))
@@ -289,7 +289,7 @@ def test_a_line_only_one_method_placed_is_not_a_disagreement():
 def test_when_the_second_method_loses_the_song_the_primary_is_kept_whole():
     """The rule this shipped with placed nothing here. Catalog Y measured what that cost: on five of
     sixteen real tracks it fired, and on all five the primary was the accurate method."""
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     primary = timed_at(10.0, 20.0, 30.0, 40.0)
     second = Timed(lines=[TimedLine("a", 99.0), TimedLine("b", 98.0), TimedLine("c", 97.0), TimedLine("d", 40.2)],
@@ -305,7 +305,7 @@ def test_when_the_second_method_loses_the_song_the_primary_is_kept_whole():
 def test_jitter_on_most_lines_is_not_a_lost_track(monkeypatch):
     """The two rules are separate constants on purpose (§9, slice 38): being generous about jitter must not
     make a broken track look salvageable, and being strict about it must not condemn a good one."""
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     primary = timed_at(10.0, 20.0, 30.0, 40.0)
     # three of four lines 3 s apart: past the 2 s agreement width, nowhere near losing the song
@@ -325,7 +325,7 @@ def test_the_lost_width_is_configurable(tmp_path):
 
 
 def test_the_threshold_is_configurable():
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     primary, second = timed_at(10.0), Timed(lines=[TimedLine("a", 12.0)], provider="local", model="w")
     assert verified(primary, second, threshold=1.0).lines[0].start is None
@@ -333,12 +333,12 @@ def test_the_threshold_is_configurable():
 
 
 def test_verification_is_off_when_the_second_extra_is_not_installed(monkeypatch):
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: False)
+    monkeypatch.setattr("noaap.timing_local.has_whisper", lambda: False)
     assert LocalTiming().verifying() is False
     assert LocalTiming(verify=True).verifying() is False  # asked for, but there is nothing to ask
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setattr("noaap.timing_local.has_whisper", lambda: True)
     assert LocalTiming().verifying() is True              # the default follows the install
     assert LocalTiming(verify=False).verifying() is False  # and can be turned off
 
@@ -359,7 +359,7 @@ def whisper_without_torch(monkeypatch, loaded: list[str], device: str = "cuda"):
     `_free_vram` imports it to empty the cache. Patching both is what keeps these tests about the
     logic they are testing. CI caught the version that did not.
     """
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: True)
+    monkeypatch.setattr("noaap.timing_local.has_whisper", lambda: True)
     monkeypatch.setattr(LocalTiming, "resolved_device", lambda self: device)
     monkeypatch.setattr(LocalTiming, "_free_vram", lambda self: None)
     monkeypatch.setitem(sys.modules, "stable_whisper", types.SimpleNamespace(
@@ -379,7 +379,7 @@ def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
     Found by running the cross-check for real on this laptop: torch brought CUDA 13, ctranslate2
     wanted 12, and the guard that sat around the *load* never saw it.
     """
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
     engine, said, loaded = LocalTiming(device="cuda"), [], []
     engine.log = said.append
@@ -397,7 +397,7 @@ def test_the_cuda_trap_is_survived_where_it_actually_fires(monkeypatch):
 
 
 def test_a_failure_that_is_not_the_trap_is_not_retried(monkeypatch):
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
     engine, tries = LocalTiming(device="cuda"), []
     whisper_without_torch(monkeypatch, tries)
@@ -409,7 +409,7 @@ def test_a_failure_that_is_not_the_trap_is_not_retried(monkeypatch):
 
 def test_a_full_graphics_card_moves_the_check_and_keeps_going(monkeypatch):
     """8 GB does not hold the aligner, the separator and 3 GB of Whisper at once (section Y)."""
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
     engine, said, loaded = LocalTiming(device="cuda"), [], []
     engine.log = said.append
@@ -427,7 +427,7 @@ def test_a_full_graphics_card_moves_the_check_and_keeps_going(monkeypatch):
 
 def test_the_default_width_of_agreement_is_two_seconds():
     """Measured, not chosen: catalog Y's distances are jitter under ~1.5 s or 5 to 18 s apart."""
-    from ytalbum.timing import VERIFY_THRESHOLD, verified
+    from noaap.timing import VERIFY_THRESHOLD, verified
 
     assert VERIFY_THRESHOLD == 2.0
     primary = timed_at(10.0, 20.0)
@@ -440,7 +440,7 @@ def test_the_default_width_of_agreement_is_two_seconds():
 
 
 def test_one_provider_in_the_old_key_still_means_both():
-    from ytalbum.timing import TRANSCRIBE, kind_for
+    from noaap.timing import TRANSCRIBE, kind_for
 
     cfg = Config(timing_provider="local")
     assert kind_for(cfg, ALIGN) == "local" and kind_for(cfg, TRANSCRIBE) == "local"
@@ -449,7 +449,7 @@ def test_one_provider_in_the_old_key_still_means_both():
 
 
 def test_each_slot_wins_for_its_own_capability():
-    from ytalbum.timing import TRANSCRIBE, kind_for
+    from noaap.timing import TRANSCRIBE, kind_for
 
     cfg = Config(timing_provider="none", timing_align_provider="local", timing_draft_provider="deepgram")
     assert kind_for(cfg, ALIGN) == "local"
@@ -457,7 +457,7 @@ def test_each_slot_wins_for_its_own_capability():
 
 
 def test_an_empty_slot_falls_back_and_a_filled_one_overrides():
-    from ytalbum.timing import TRANSCRIBE, kind_for
+    from noaap.timing import TRANSCRIBE, kind_for
 
     # the shape a config takes on the way from one setting to two: one slot written, one not
     cfg = Config(timing_provider="local", timing_draft_provider="deepgram")
@@ -466,11 +466,11 @@ def test_an_empty_slot_falls_back_and_a_filled_one_overrides():
 
 
 def test_what_the_page_may_offer_is_the_union_of_both_slots(tmp_path, monkeypatch):
-    from ytalbum.timing import TRANSCRIBE, can, capabilities_of
+    from noaap.timing import TRANSCRIBE, can, capabilities_of
 
     cfg = Config(timing_align_provider="local", timing_draft_provider="deepgram",
                  timing_deepgram_key="k")
-    monkeypatch.setattr("ytalbum.timing_local.has_whisper", lambda: False)
+    monkeypatch.setattr("noaap.timing_local.has_whisper", lambda: False)
     # local can align (the extra decides at runtime; here it is faked as installed but without
     # the second one), deepgram can only transcribe — and both are true at once, which no single
     # provider could have said
@@ -490,7 +490,7 @@ def test_the_config_reads_both_slots_from_a_table_too(tmp_path):
 
 
 def test_a_slot_offers_only_what_that_kind_could_ever_do():
-    from ytalbum.timing import OFFERS, TRANSCRIBE
+    from noaap.timing import OFFERS, TRANSCRIBE
 
     assert ALIGN not in OFFERS["deepgram"]        # transcribes, and the panel must not offer it
     assert TRANSCRIBE in OFFERS["deepgram"]
@@ -516,14 +516,14 @@ class Loadable:
 def captured_watcher(monkeypatch) -> list:
     """The helper starts a daemon thread; a test wants to drive it by hand, on a fake clock."""
     watcher: list = []
-    monkeypatch.setattr("ytalbum.timing_serve.threading.Thread",
+    monkeypatch.setattr("noaap.timing_serve.threading.Thread",
                         lambda target, name=None, daemon=None:
                         types.SimpleNamespace(start=lambda: watcher.append(target)))
     return watcher
 
 
 def test_the_idle_timer_lets_go_after_the_configured_quiet(monkeypatch):
-    from ytalbum.timing_serve import idle_release
+    from noaap.timing_serve import idle_release
 
     engine, clock, sleeps = Loadable(), [0.0], []
     watcher = captured_watcher(monkeypatch)
@@ -542,7 +542,7 @@ def test_the_idle_timer_lets_go_after_the_configured_quiet(monkeypatch):
 
 
 def test_a_request_postpones_the_letting_go(monkeypatch):
-    from ytalbum.timing_serve import idle_release
+    from noaap.timing_serve import idle_release
 
     engine, clock, ticks = Loadable(), [0.0], []
     watcher = captured_watcher(monkeypatch)
@@ -564,7 +564,7 @@ def test_a_request_postpones_the_letting_go(monkeypatch):
 def test_a_request_still_running_keeps_its_models(monkeypatch):
     """The first live try took the separator out of a running alignment (catalog AB): a six-second
     window and a ten-second job. Being *in* a request is not the same as having finished one."""
-    from ytalbum.timing_serve import idle_release
+    from noaap.timing_serve import idle_release
 
     engine, clock, ticks = Loadable(), [0.0], []
     watcher = captured_watcher(monkeypatch)
@@ -587,7 +587,7 @@ def test_a_request_still_running_keeps_its_models(monkeypatch):
 
 
 def test_zero_minutes_means_never(monkeypatch):
-    from ytalbum.timing_serve import idle_release
+    from noaap.timing_serve import idle_release
 
     engine = Loadable()
     watcher = captured_watcher(monkeypatch)
@@ -599,14 +599,14 @@ def test_zero_minutes_means_never(monkeypatch):
 
 def test_releasing_without_torch_is_a_dictionary_lookup(monkeypatch):
     """An installation with no timing provider must not import 1.5 GB of torch to free nothing."""
-    from ytalbum.timing import release_gpu_memory
+    from noaap.timing import release_gpu_memory
 
     monkeypatch.delitem(sys.modules, "torch", raising=False)
     assert release_gpu_memory() is False
 
 
 def test_releasing_empties_the_pool_when_torch_is_here(monkeypatch):
-    from ytalbum.timing import release_gpu_memory
+    from noaap.timing import release_gpu_memory
 
     emptied: list[int] = []
     monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
@@ -650,7 +650,7 @@ SUNG = [(9.0, 215.0)]          # one long sung stretch, as most songs are
 
 
 def test_a_method_that_followed_the_song_looks_like_one():
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     got = signals_of(a_song(), length=220.0, sung=SUNG)
     assert got.placed == 40 and got.in_silence == 0 and got.backwards == 0 and got.past_end == 0
@@ -659,7 +659,7 @@ def test_a_method_that_followed_the_song_looks_like_one():
 
 def test_stamps_that_do_not_cover_the_singing_are_what_lost_looks_like():
     """The signal the sixteen tracks chose (§9, slice 44): a lyric spans the singing, or it is elsewhere."""
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     # the whole lyric squeezed into a minute of a three-and-a-half minute song
     got = signals_of([100.0 + i * 1.2 for i in range(40)], length=260.0, sung=SUNG)
@@ -668,7 +668,7 @@ def test_stamps_that_do_not_cover_the_singing_are_what_lost_looks_like():
 
 
 def test_stamps_piled_on_each_other_are_the_other_shape_of_lost():
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     piled = a_song(30) + [200.0 + i * 0.05 for i in range(10)]
     got = signals_of(piled, length=260.0, sung=SUNG)
@@ -679,7 +679,7 @@ def test_stamps_piled_on_each_other_are_the_other_shape_of_lost():
 def test_silence_is_recorded_and_never_judged():
     """Measured and dropped as a rule: these tracks are 55-86% singing, so a method that is
     somewhere else entirely still lands inside singing (catalog AE)."""
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     got = signals_of([216.0 + i * 0.4 for i in range(40)], length=260.0, sung=SUNG)
     assert got.in_silence == 40        # all of them, and it is still not what decides
@@ -687,7 +687,7 @@ def test_silence_is_recorded_and_never_judged():
 
 
 def test_stamps_going_backwards_are_not_a_song():
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     # a song whose stamps do span the singing, so that only the ordering is odd
     order = a_song(40)
@@ -700,7 +700,7 @@ def test_stamps_going_backwards_are_not_a_song():
 
 
 def test_stamps_past_the_end_of_the_track_are_impossible():
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     got = signals_of([100.0, 101.0, 300.0, 310.0, 320.0], length=220.0, sung=SUNG)
     assert got.past_end == 3
@@ -708,7 +708,7 @@ def test_stamps_past_the_end_of_the_track_are_impossible():
 
 
 def test_a_single_stamp_is_not_evidence_of_anything():
-    from ytalbum.timing import lost, signals_of
+    from noaap.timing import lost, signals_of
 
     got = signals_of([216.0], length=260.0, sung=SUNG)
     assert got.span is None and lost(got) == ""      # nothing spans anything on its own
@@ -716,7 +716,7 @@ def test_a_single_stamp_is_not_evidence_of_anything():
 
 
 def test_which_lost_only_answers_when_exactly_one_of_them_did():
-    from ytalbum.timing import signals_of, which_lost
+    from noaap.timing import signals_of, which_lost
 
     good = signals_of(a_song(), length=220.0, sung=SUNG)
     bad = signals_of([100.0 + i * 1.2 for i in range(40)], length=260.0, sung=SUNG)
@@ -728,7 +728,7 @@ def test_which_lost_only_answers_when_exactly_one_of_them_did():
 
 
 def test_the_whole_track_case_keeps_the_method_the_evidence_favours():
-    from ytalbum.timing import signals_of, verified
+    from noaap.timing import signals_of, verified
 
     ours = Timed(lines=[TimedLine(f"line {i}", 10.0 + i * 5) for i in range(40)],
                  provider="local", model="wav2vec2")
@@ -754,7 +754,7 @@ def test_the_whole_track_case_keeps_the_method_the_evidence_favours():
 
 
 def test_without_evidence_the_old_policy_stands():
-    from ytalbum.timing import verified
+    from noaap.timing import verified
 
     ours = Timed(lines=[TimedLine(f"line {i}", 10.0 + i * 5) for i in range(6)], provider="local", model="wav2vec2")
     theirs = Timed(lines=[TimedLine(f"line {i}", 200.0 + i) for i in range(6)], provider="local", model="large-v3")
@@ -766,7 +766,7 @@ def test_without_evidence_the_old_policy_stands():
 
 def test_a_saved_alignment_keeps_both_methods_figures(album, tmp_path, monkeypatch):
     """The library accumulates the evidence sixteen tracks cannot give (§9, slice 44)."""
-    from ytalbum.web import App
+    from noaap.web import App
 
     album_dir, plan, yt = album
     app = App(Config(), tmp_path, service_factory=lambda job: Service(Config(), tmp_path, yt=yt, log=job.log.append))

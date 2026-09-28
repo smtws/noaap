@@ -11,13 +11,13 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.lyrics import sidecar_path
-from ytalbum.plan import build_plan
-from ytalbum.recycle import RECYCLE, entries, total
-from ytalbum.service import Service
-from ytalbum.trim import ORIGINALS
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.lyrics import sidecar_path
+from noaap.plan import build_plan
+from noaap.recycle import RECYCLE, entries, total
+from noaap.service import Service
+from noaap.trim import ORIGINALS
 
 WORDS = "[00:01.0] the words that were there\n"
 
@@ -296,7 +296,7 @@ def test_an_unreadable_entry_is_skipped_rather_than_crashing(library):
 
 def test_the_bin_holds_no_filesystem_path_for_the_page(library):
     """`/api/recycle` addresses an entry by id. A path would tell the page where the library is."""
-    from ytalbum.web import App
+    from noaap.web import App
 
     tmp_path, plan, yt = library
     service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
@@ -361,7 +361,7 @@ def test_an_entry_written_before_the_rename_still_resolves(library):
 
 def test_the_cli_says_why_a_restore_was_refused(library, capsys):
     """It exited 1 and printed nothing: `exit_code` returns a number and never the message."""
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     tmp_path, plan, yt = library
     s = service(tmp_path, yt)
@@ -383,8 +383,8 @@ def test_the_cli_says_why_a_restore_was_refused(library, capsys):
 def test_the_cli_restores_without_being_told_the_library(library, capsys, monkeypatch):
     """`--library` was the only way in, because `_recycle` read `args.library` directly instead of
     falling back to the configured root the way every other command does."""
-    from ytalbum import config as config_mod
-    from ytalbum.cli import main
+    from noaap import config as config_mod
+    from noaap.cli import main
 
     tmp_path, plan, yt = library
     service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
@@ -398,8 +398,8 @@ def test_the_cli_restores_without_being_told_the_library(library, capsys, monkey
 def test_pruning_from_the_command_line_bins_too(library, capsys, monkeypatch):
     """`_service(cfg, None)` gave prune no library, so it fell back to unlinking — the one thing
     slice 49 removed. Found while fixing the restore, not reported."""
-    from ytalbum import config as config_mod
-    from ytalbum.cli import main
+    from noaap import config as config_mod
+    from noaap.cli import main
 
     tmp_path, plan, yt = library
     album_dir = tmp_path / plan.folder
@@ -414,7 +414,7 @@ def test_pruning_from_the_command_line_bins_too(library, capsys, monkeypatch):
 
 def test_listing_survives_being_piped_into_head(library, monkeypatch, capsys):
     """`ytalbum recycle list | head` closed the pipe and Python printed a traceback."""
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     tmp_path, plan, yt = library
     service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
@@ -443,8 +443,8 @@ def test_restore_repairs_a_track_the_plan_still_lists(library):
     s = service(tmp_path, yt)
 
     # exactly what an interrupted delete_track leaves behind
-    from ytalbum.recycle import bin_track
-    from ytalbum.service import _inside
+    from noaap.recycle import bin_track
+    from noaap.service import _inside
 
     bin_track(tmp_path, album_dir, plan, track, "deleted",
               audio=_inside(album_dir, track.filename), sidecar=sidecar)
@@ -472,8 +472,8 @@ def test_a_track_that_is_really_there_is_still_refused(library):
     track = plan.tracks[0]
     s = service(tmp_path, yt)
 
-    from ytalbum.recycle import bin_track
-    from ytalbum.service import _inside
+    from noaap.recycle import bin_track
+    from noaap.service import _inside
 
     bin_track(tmp_path, album_dir, plan, track, "deleted", audio=_inside(album_dir, track.filename))
     (album_dir / track.filename).write_bytes(b"a different file is here now")

@@ -18,12 +18,12 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.timing import ALIGN, TRANSCRIBE, TimingUnavailable, capabilities_of, provider
-from ytalbum.timing_cloud import DeepgramTiming, ElevenLabsTiming
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.timing import ALIGN, TRANSCRIBE, TimingUnavailable, capabilities_of, provider
+from noaap.timing_cloud import DeepgramTiming, ElevenLabsTiming
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -226,7 +226,7 @@ def album(tmp_path, opus_template):
 
 
 def service_with(tmp_path, yt, engine, monkeypatch, cfg=None):
-    import ytalbum.service as service_mod
+    import noaap.service as service_mod
 
     monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": engine)
     lines: list[str] = []
@@ -244,7 +244,7 @@ class FakeVendor:
         return frozenset({TRANSCRIBE})
 
     def transcribe(self, audio, *, language=None, check=None):
-        from ytalbum.timing import Timed, TimedLine
+        from noaap.timing import Timed, TimedLine
 
         return Timed(lines=[TimedLine(text="one two", start=1.5), TimedLine(text="three", start=None)],
                      provider=self.name, model="ears", version="1")
@@ -288,7 +288,7 @@ def test_a_draft_writes_nothing_until_it_is_saved(album, tmp_path, monkeypatch):
 
 
 def test_a_key_never_reaches_the_page_or_the_log(album, tmp_path, monkeypatch):
-    from ytalbum.web import App
+    from noaap.web import App
 
     album_dir, plan, yt = album
     cfg = Config(timing_provider="elevenlabs", timing_elevenlabs_key="super-secret")
@@ -366,7 +366,7 @@ def test_deepgram_for_real(audio, capsys):
 
 def test_the_settings_answer_per_slot(tmp_path):
     """With one provider aligning and another drafting, every answer has to name the right one."""
-    from ytalbum.web import App
+    from noaap.web import App
 
     cfg = Config(timing_align_provider="local", timing_draft_provider="deepgram",
                  timing_deepgram_key="secret-two")
@@ -382,7 +382,7 @@ def test_the_settings_answer_per_slot(tmp_path):
 
 
 def test_a_slot_that_needs_a_key_is_refused_without_one(tmp_path):
-    from ytalbum.web import App
+    from noaap.web import App
 
     app = App(Config(), tmp_path)
     with pytest.raises(ValueError, match="needs an API key"):

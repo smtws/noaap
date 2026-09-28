@@ -32,8 +32,8 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.lyrics import fit_verdict
-from ytalbum.timing import LOST_SPAN
+from noaap.lyrics import fit_verdict
+from noaap.timing import LOST_SPAN
 
 pytestmark = [
     pytest.mark.slow,
@@ -134,13 +134,13 @@ def sidecar_of(album_dir: Path, track: dict) -> list[str]:
     lrc = (album_dir / name).with_suffix(".lrc") if name else None
     if not lrc or not lrc.is_file():
         pytest.skip("no .lrc beside this track to align")
-    from ytalbum.timing import plain_lines
+    from noaap.timing import plain_lines
 
     return plain_lines(lrc.read_text(encoding="utf-8"))
 
 
 def provider(**kw):
-    from ytalbum.timing_local import LocalTiming
+    from noaap.timing_local import LocalTiming
 
     try:
         engine = LocalTiming(**kw)
@@ -157,8 +157,8 @@ def test_blackbeard_the_entrys_words_fit_this_recording(tmp_path: Path) -> None:
     """P35's founding case, done again: LRCLIB's words for a file 4.4 s away really are its words."""
     album_dir, track = find(BLACKBEARD)
     audio = audio_of(album_dir, track, tmp_path)
-    from ytalbum.lyrics import Lrclib
-    from ytalbum.timing import plain_lines
+    from noaap.lyrics import Lrclib
+    from noaap.timing import plain_lines
 
     # one read-only lookup: this is the path the feature actually takes, and nothing is published
     try:

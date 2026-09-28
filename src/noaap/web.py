@@ -835,7 +835,7 @@ class App:
 
 
 def _asset(name: str) -> bytes:
-    return resources.files("ytalbum").joinpath("webui", name).read_bytes()
+    return resources.files("noaap").joinpath("webui", name).read_bytes()
 
 
 # what a served module imports: the URL is versioned when the module is served, and the importer's

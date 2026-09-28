@@ -10,12 +10,12 @@ import pytest
 from mutagen.oggopus import OggOpus
 from test_incremental import JPEG, FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import iter_plans, load_plan, run, save_plan
-from ytalbum.models import Collection, Provenance
-from ytalbum.plan import build_plan, merge_plans, refresh_derived
-from ytalbum.service import Service, apply_user_edits
-from ytalbum.web import App
+from noaap.config import Config
+from noaap.download import iter_plans, load_plan, run, save_plan
+from noaap.models import Collection, Provenance
+from noaap.plan import build_plan, merge_plans, refresh_derived
+from noaap.service import Service, apply_user_edits
+from noaap.web import App
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 
@@ -128,7 +128,7 @@ def test_apply_user_edits_ignores_blanks_and_unknown_tracks():
 
 def test_browser_setting(server, monkeypatch, tmp_path):
     app, c = server
-    monkeypatch.setattr("ytalbum.config.detect_browsers", lambda: ["firefox", "chrome"])
+    monkeypatch.setattr("noaap.config.detect_browsers", lambda: ["firefox", "chrome"])
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     assert c.get("/api/state").json()["settings"]["browsers"] == ["firefox", "chrome"]
     assert c.post("/api/settings", json={"cookies_from_browser": "netscape"}, headers=HDR).status_code == 400
@@ -221,7 +221,7 @@ def test_details_ignores_foreign_urls_and_oversized_requests(server):
 
 
 def test_albums_sort_naturally():
-    from ytalbum.text import natural_key
+    from noaap.text import natural_key
 
     volumes = [f"Vol. {n} - x" for n in (1, 2, 10, 11, 20, 3)]
     assert [v.split(" - ")[0] for v in sorted(volumes, key=natural_key)] == ["Vol. 1", "Vol. 2", "Vol. 3", "Vol. 10", "Vol. 11", "Vol. 20"]
@@ -467,7 +467,7 @@ class FakeLyrics:
         self.candidates = [(11, self.LRC)]  # tests that need a second match extend this
 
     def get(self, artist, title, album=None, length=None, skip=()):
-        from ytalbum.lyrics import Lyrics
+        from noaap.lyrics import Lyrics
 
         self.asked.append(title)
         self.skipped.append(list(skip))
@@ -477,7 +477,7 @@ class FakeLyrics:
         return None  # every candidate was rejected for this track
 
     def by_id(self, lrclib_id):
-        from ytalbum.lyrics import Lyrics
+        from noaap.lyrics import Lyrics
 
         return Lyrics(synced=self.LRC, lrclib_id=lrclib_id)
 
@@ -538,8 +538,8 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
     assert publish["can"] is False and publish["why"] == "these are lrclib's own words, not yours"
 
     # point the track at another video and the same panel says the timings are for the old file
-    from ytalbum.download import save_plan
-    from ytalbum.service import switch_source
+    from noaap.download import save_plan
+    from noaap.service import switch_source
 
     album_dir, plan = app.album(album_id)
     switch_source(plan.tracks[0], "Z2UO4FsFGFM")
@@ -549,7 +549,7 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
     assert stale and stale["source"] == track.video_id and stale["now"] == 184.0
 
     # the file is the original: remove it and the UI says so instead of showing a stale tag
-    from ytalbum.lyrics import sidecar_path
+    from noaap.lyrics import sidecar_path
 
     sidecar_path(app.album(album_id)[0], track.filename).unlink()
     assert c.get(f"/api/lyrics?id={album_id}&v={track.video_id}").json()["text"] == ""
@@ -568,7 +568,7 @@ def test_a_trimmed_track_can_be_played_from_its_untouched_original(server, tmp_p
 
     Without it the head is skipped twice: the file is already cut and the player cuts again.
     """
-    from ytalbum.trim import apply as apply_trim
+    from noaap.trim import apply as apply_trim
 
     app, c = server
     album_dir, plan = app.album(app.albums()[0]["id"])
@@ -614,13 +614,13 @@ def saved(c, album_id, video_id, text):
 
 
 def sidecar_of(app, album_id, track):
-    from ytalbum.lyrics import sidecar_path
+    from noaap.lyrics import sidecar_path
 
     return sidecar_path(app.album(album_id)[0], track.filename)
 
 
 def tagged_of(app, album_id, track):
-    from ytalbum.tag import tagged_lyrics
+    from noaap.tag import tagged_lyrics
 
     return tagged_lyrics(app.album(album_id)[0] / track.filename)
 
@@ -889,7 +889,7 @@ def test_lrclib_being_unreachable_is_not_reported_as_no_words(lyrics_server):
     track = app.album(album_id)[1].tracks[0]
 
     def down(*a, **kw):
-        from ytalbum.lyrics import LyricsError
+        from noaap.lyrics import LyricsError
 
         raise LyricsError("lrclib: HTTP 503 after 4 tries")
 
@@ -1257,7 +1257,7 @@ def test_a_button_that_drops_its_background_must_set_its_own_colour() -> None:
     """
     import re
 
-    css = (Path(__file__).parent.parent / "src/ytalbum/webui/style.css").read_text(encoding="utf-8")
+    css = (Path(__file__).parent.parent / "src/noaap/webui/style.css").read_text(encoding="utf-8")
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)          # comments may mention anything
     offenders = []
     for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):

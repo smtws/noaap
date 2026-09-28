@@ -3,7 +3,7 @@
 import pytest
 from test_incremental import vol1
 
-from ytalbum.plan import (
+from noaap.plan import (
     LENGTH_BIG,
     album_length_flag,
     build_plan,
@@ -110,7 +110,7 @@ def test_one_comparable_track_is_never_enough():
 
 def test_renaming_a_track_gives_up_the_length_that_came_with_its_recording():
     """Otherwise the pair breaks and `repair` drops the length later, seemingly by itself."""
-    from ytalbum.service import apply_user_edits
+    from noaap.service import apply_user_edits
 
     plan = album(471.0, 200.0, mb=229.8)
     for t in plan.tracks:

@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.models import AlbumPlan, PlanTrack
-from ytalbum.plan import build_plan
-from ytalbum.service import Service, apply_user_edits, switch_source
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.models import AlbumPlan, PlanTrack
+from noaap.plan import build_plan
+from noaap.service import Service, apply_user_edits, switch_source
 
 
 def track(**kw) -> PlanTrack:
@@ -150,8 +150,8 @@ def test_the_quality_of_the_file_we_have_is_measured(library):
 
 def test_restoring_a_displaced_file_refuses_whatever_displaced_it(library):
     """Spike §4: putting a file back means saying no to the thing that replaced it."""
-    from ytalbum.recycle import bin_track, entries
-    from ytalbum.service import _inside
+    from noaap.recycle import bin_track, entries
+    from noaap.service import _inside
 
     tmp_path, plan, yt = library
     album_dir = tmp_path / plan.folder

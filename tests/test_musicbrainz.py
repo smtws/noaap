@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from ytalbum.enrich import (
+from noaap.enrich import (
     core,
     credit_names,
     credit_phrase,
@@ -23,9 +23,9 @@ from ytalbum.enrich import (
     uploader_stood_in,
     version_markers,
 )
-from ytalbum.mb import MusicBrainz, MusicBrainzError, phrase
-from ytalbum.models import Collection, Kind, PlanTrack, Provenance
-from ytalbum.plan import build_plan
+from noaap.mb import MusicBrainz, MusicBrainzError, phrase
+from noaap.models import Collection, Kind, PlanTrack, Provenance
+from noaap.plan import build_plan
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 RESPONSES = json.loads((FIXTURES / "mb_responses.json").read_text())
@@ -52,8 +52,8 @@ class RecordedMB(MusicBrainz):
 def plan_for(name: str):
     """These fixtures are YouTube collections, so the plan is built with that provider — it is what
     reads an OLAK id as a release and a video title as a title (§9, slice 51)."""
-    from ytalbum.config import Config
-    from ytalbum.sources import get
+    from noaap.config import Config
+    from noaap.sources import get
 
     return build_plan(Collection.from_dict(json.loads((FIXTURES / name).read_text())),
                       source=get(None, Config()))

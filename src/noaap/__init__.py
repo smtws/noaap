@@ -1,4 +1,4 @@
-"""ytalbum — turn YouTube playlists into properly tagged albums. See DESIGN.md."""
+"""noaap — turn playlists into properly tagged albums. See DESIGN.md."""
 
 
 def main() -> None:

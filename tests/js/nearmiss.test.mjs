@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { nearMiss } from "../../src/ytalbum/webui/logic.mjs";
+import { nearMiss } from "../../src/noaap/webui/logic.mjs";
 
 test("with nothing checked yet, it offers the check where one is possible", () => {
   assert.match(nearMiss({ can_check: true }).say, /a few seconds off this file/);

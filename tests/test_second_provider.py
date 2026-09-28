@@ -18,13 +18,13 @@ from typing import Any
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum import sources
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.models import Collection, Entry, Music
-from ytalbum.plan import build_plan
-from ytalbum.recycle import entries as bin_entries
-from ytalbum.service import Service
+from noaap import sources
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.models import Collection, Entry, Music
+from noaap.plan import build_plan
+from noaap.recycle import entries as bin_entries
+from noaap.service import Service
 
 SHELF = "shelf"
 
@@ -195,7 +195,7 @@ def test_only_the_provider_knows_what_youtube_looks_like() -> None:
     """
     import re
 
-    root = Path(__file__).parent.parent / "src" / "ytalbum"
+    root = Path(__file__).parent.parent / "src" / "noaap"
     # `titles.py` *is* YouTube's title conventions — it is the provider's province, wherever the
     # file happens to sit. What matters is who reaches into it, which the next case pins.
     allowed = {"youtube.py", "sources_youtube.py", "titles.py"}
@@ -229,7 +229,7 @@ def test_what_still_reaches_into_youtubes_title_conventions_is_written_down() ->
     """
     import re
 
-    root = Path(__file__).parent.parent / "src" / "ytalbum"
+    root = Path(__file__).parent.parent / "src" / "noaap"
     reaching = sorted(p.name for p in root.glob("*.py")
                       if p.name not in {"titles.py", "sources_youtube.py"}
                       and re.search(r"(?m)^from \.titles import", p.read_text(encoding="utf-8")))

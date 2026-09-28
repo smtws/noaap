@@ -12,19 +12,19 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.cli import main
-from ytalbum.config import Config
+from noaap.cli import main
+from noaap.config import Config
 
 
 def without(monkeypatch: pytest.MonkeyPatch, *missing: str) -> None:
     """`shutil.which` as if those programs were not installed."""
     real = shutil.which
-    monkeypatch.setattr("ytalbum.config.shutil.which",
+    monkeypatch.setattr("noaap.config.shutil.which",
                         lambda name, *a, **k: None if name in missing else real(name, *a, **k))
 
 
 def test_ffmpeg_is_found_when_it_is_there(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ytalbum.config.shutil.which",
+    monkeypatch.setattr("noaap.config.shutil.which",
                         lambda name, *a, **k: "/somewhere/bin/ffmpeg" if name == "ffmpeg" else None)
     assert Config().resolved_ffmpeg() == "/somewhere/bin/ffmpeg"
 
@@ -36,7 +36,7 @@ def test_ffmpeg_is_none_when_it_is_not(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_config_reports_where_ffmpeg_is(monkeypatch: pytest.MonkeyPatch,
                                         capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr("ytalbum.config.shutil.which",
+    monkeypatch.setattr("noaap.config.shutil.which",
                         lambda name, *a, **k: f"/usr/bin/{name}")
     assert main(["config"]) == 0
     line = next(ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("ffmpeg:"))
@@ -76,7 +76,7 @@ def test_the_source_tree_writes_slice_references_the_way_the_docs_do() -> None:
 
     root = Path(__file__).parent.parent
     offenders = []
-    for path in list((root / "src").rglob("*.py")) + list((root / "src/ytalbum/webui").glob("*.*")) \
+    for path in list((root / "src").rglob("*.py")) + list((root / "src/noaap/webui").glob("*.*")) \
             + list((root / "tests").rglob("*.py")) + list((root / "tests/js").glob("*.mjs")):
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"§9\.\d", line):

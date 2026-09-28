@@ -22,8 +22,8 @@ from typing import Any
 
 import pytest
 
-from ytalbum.lyrics import FIT_SPAN, FIT_WIDE, NOFIT_UNPLACED, fit_verdict, nominated
-from ytalbum.timing import (
+from noaap.lyrics import FIT_SPAN, FIT_WIDE, NOFIT_UNPLACED, fit_verdict, nominated
+from noaap.timing import (
     LOST_PILED,
     LOST_SPAN,
     Signals,
@@ -160,7 +160,7 @@ def test_any_span_floor_inside_the_measured_gap_gives_the_same_verdicts(floor: f
     """The measurement left a gap: lost methods span 0.41 to 0.70, the ones that followed 0.86 to 1.12.
     So the floor is not load-bearing anywhere inside it, and this case says by how much. A floor
     outside the gap changes answers, which is what makes the range worth asserting."""
-    monkeypatch.setattr("ytalbum.timing.LOST_SPAN", floor)
+    monkeypatch.setattr("noaap.timing.LOST_SPAN", floor)
     named = {row["track"] for row in SPANS
              if which_lost(signals_for(row, "ctc"), signals_for(row, "whisper"))[0]}
     assert len(named) == 5, f"floor {floor} changed the verdicts: {sorted(named)}"

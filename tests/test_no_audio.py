@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from yt_dlp.utils import DownloadError
 
-import ytalbum.youtube as youtube_mod
-from ytalbum.config import Config
-from ytalbum.youtube import NoAudioStream, YouTube
+import noaap.youtube as youtube_mod
+from noaap.config import Config
+from noaap.youtube import NoAudioStream, YouTube
 
 FORMAT_GONE = "ERROR: [youtube] abc: Requested format is not available. Use --list-formats for a list of available formats"
 

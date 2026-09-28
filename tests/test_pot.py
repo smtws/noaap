@@ -4,9 +4,9 @@ import os
 import sys
 import time
 
-from ytalbum.config import Config
-from ytalbum.pot import watchdog
-from ytalbum.youtube import YouTube
+from noaap.config import Config
+from noaap.pot import watchdog
+from noaap.youtube import YouTube
 
 
 def test_watchdog_stops_the_child_when_idle(tmp_path):

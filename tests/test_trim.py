@@ -9,11 +9,11 @@ import pytest
 from mutagen.oggopus import OggOpus
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run
-from ytalbum.plan import build_plan
-from ytalbum.service import Service, apply_user_edits, parse_time
-from ytalbum.trim import ORIGINALS, apply, signature
+from noaap.config import Config
+from noaap.download import load_plan, run
+from noaap.plan import build_plan
+from noaap.service import Service, apply_user_edits, parse_time
+from noaap.trim import ORIGINALS, apply, signature
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_trim_through_the_service_keeps_tags(tmp_path, opus_template):
 
     plan = load_plan(album_dir)
     apply_user_edits(plan, {"tracks": [{"video_id": plan.tracks[0].video_id, "trim_start": "0:00.2", "trim_end": "0:00.6"}]})
-    from ytalbum.download import save_plan
+    from noaap.download import save_plan
 
     save_plan(plan, album_dir)
     service.download_existing(album_dir)
@@ -130,7 +130,7 @@ def m4a_track(plan):
 
 
 def test_an_m4a_track_is_cut_into_its_own_container(tmp_path, aac):
-    from ytalbum.trim import holds, original_path
+    from noaap.trim import holds, original_path
 
     plan = build_plan(vol1())
     track = m4a_track(plan)
@@ -162,7 +162,7 @@ def test_an_m4a_track_round_trips(tmp_path, aac):
 
 def test_an_original_of_another_format_is_never_cut_from(tmp_path, aac, tone):
     """The B6 case: a track switched to the combined stream still had its opus original."""
-    from ytalbum.trim import ORIGINALS
+    from noaap.trim import ORIGINALS
 
     plan = build_plan(vol1())
     track = m4a_track(plan)
@@ -179,7 +179,7 @@ def test_an_original_of_another_format_is_never_cut_from(tmp_path, aac, tone):
 
 
 def test_a_leftover_original_is_replaced_when_the_file_is_untouched(tmp_path, aac, tone):
-    from ytalbum.trim import ORIGINALS, holds, original_path
+    from noaap.trim import ORIGINALS, holds, original_path
 
     plan = build_plan(vol1())
     track = m4a_track(plan)

@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.models import AlbumPlan, Collection, Entry, Kind, Provenance
-from ytalbum.plan import build_plan, classify, compilation_album_title, safe_name, track_filename
-from ytalbum.youtube import entry_from_info
+from noaap.models import AlbumPlan, Collection, Entry, Kind, Provenance
+from noaap.plan import build_plan, classify, compilation_album_title, safe_name, track_filename
+from noaap.youtube import entry_from_info
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 
@@ -100,8 +100,8 @@ def test_artist_full_album_playlist_is_not_an_official_album():
 def test_olak_playlists_are_official_albums(vol1):
     """Whether an id means "a release" is the provider's to say (§9, slice 51), so the classifier
     has to be given one — without it, nothing knows what OLAK5uy_ is."""
-    from ytalbum.config import Config
-    from ytalbum.sources import get
+    from noaap.config import Config
+    from noaap.sources import get
 
     vol1.source_id = "OLAK5uy_example"
     assert classify(vol1, get(None, Config())) == Kind.OFFICIAL_ALBUM
@@ -231,8 +231,8 @@ def test_a_singles_album_name_loses_the_noise_bracket_too():
 
 def test_a_single_is_named_after_its_song(monkeypatch):
     """The album read the video's title while the track read MusicBrainz' — one song, one name."""
-    from ytalbum.models import Provenance
-    from ytalbum.plan import set_single_album_name
+    from noaap.models import Provenance
+    from noaap.plan import set_single_album_name
 
     plan = build_plan(single("DOMINUM - The Dead Don't Die (feat. @xxFEUERSCHWANZxx)", "DOMINUM"))
     plan.tracks[0].title = "The Dead Don't Die feat. Feuerschwanz"  # what enrichment leaves behind
@@ -245,8 +245,8 @@ def test_a_single_is_named_after_its_song(monkeypatch):
 
 
 def test_an_album_name_the_user_chose_is_not_renamed_after_the_song():
-    from ytalbum.models import Provenance
-    from ytalbum.plan import set_single_album_name
+    from noaap.models import Provenance
+    from noaap.plan import set_single_album_name
 
     plan = build_plan(single("DOMINUM - The Dead Don't Die", "DOMINUM"))
     plan.album, plan.provenance["album"] = "My Own Name", Provenance.USER
@@ -256,8 +256,8 @@ def test_an_album_name_the_user_chose_is_not_renamed_after_the_song():
 
 
 def test_a_title_the_user_chose_is_followed_without_freezing_the_album():
-    from ytalbum.models import Provenance
-    from ytalbum.plan import set_single_album_name
+    from noaap.models import Provenance
+    from noaap.plan import set_single_album_name
 
     plan = build_plan(single("DOMINUM - The Dead Don't Die", "DOMINUM"))
     plan.tracks[0].title, plan.tracks[0].provenance["title"] = "My Own Title", Provenance.USER
@@ -267,7 +267,7 @@ def test_a_title_the_user_chose_is_followed_without_freezing_the_album():
 
 def test_an_album_of_several_tracks_keeps_its_own_name():
     plan = build_plan(load_collection("vol1_collection.json"))
-    from ytalbum.plan import set_single_album_name
+    from noaap.plan import set_single_album_name
 
     before = plan.album
     assert set_single_album_name(plan) is None

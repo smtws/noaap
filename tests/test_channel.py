@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.cli import parse_pick
-from ytalbum.youtube import channel_base_url, refs_from_tab
+from noaap.cli import parse_pick
+from noaap.youtube import channel_base_url, refs_from_tab
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 

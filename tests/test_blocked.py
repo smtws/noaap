@@ -6,15 +6,15 @@ from pathlib import Path
 import pytest
 from yt_dlp.utils import DownloadError
 
-import ytalbum.youtube as youtube_mod
-from ytalbum import cli
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.models import Collection, Failure
-from ytalbum.plan import build_plan, merge_plans
-from ytalbum.service import Service, exit_code
-from ytalbum.sources import Blocked
-from ytalbum.youtube import BOT_CHECK, YouTube, is_transient
+import noaap.youtube as youtube_mod
+from noaap import cli
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.models import Collection, Failure
+from noaap.plan import build_plan, merge_plans
+from noaap.service import Service, exit_code
+from noaap.sources import Blocked
+from noaap.youtube import BOT_CHECK, YouTube, is_transient
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 BOT = "ERROR: [youtube] j89ChkaWpi0: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."

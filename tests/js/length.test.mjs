@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { LENGTH, asTime, fmt, lengthBand, roundMark, markedTrim, trimTarget } from "../../src/ytalbum/webui/logic.mjs";
+import { LENGTH, asTime, fmt, lengthBand, roundMark, markedTrim, trimTarget } from "../../src/noaap/webui/logic.mjs";
 
 const table = JSON.parse(readFileSync(new URL("../shared/trim_target.json", import.meta.url))).cases;
 

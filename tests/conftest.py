@@ -2,8 +2,8 @@
 
 import pytest
 
-import ytalbum.pot
-import ytalbum.service
+import noaap.pot
+import noaap.service
 
 
 class NoLyrics:
@@ -22,7 +22,7 @@ def isolated(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(home / "cache"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "config"))
     started = []
-    monkeypatch.setattr(ytalbum.pot, "ensure_server", lambda *a, **k: started.append(a) or False)
+    monkeypatch.setattr(noaap.pot, "ensure_server", lambda *a, **k: started.append(a) or False)
     # a Service builds its lyrics client itself; tests that want one pass a fake explicitly
-    monkeypatch.setattr(ytalbum.service, "Lrclib", lambda *a, **k: NoLyrics())
+    monkeypatch.setattr(noaap.service, "Lrclib", lambda *a, **k: NoLyrics())
     return started

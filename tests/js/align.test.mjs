@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { alignNotice, applyStamps, draftNotice, draftText } from "../../src/ytalbum/webui/logic.mjs";
+import { alignNotice, applyStamps, draftNotice, draftText } from "../../src/noaap/webui/logic.mjs";
 
 const timed = (...starts) => ({
   provider: "local", model: "wav2vec2", version: "2.11.0",

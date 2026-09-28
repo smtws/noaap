@@ -729,6 +729,57 @@ wheels = [
 ]
 
 [[package]]
+name = "noaap"
+version = "0.9.0"
+source = { editable = "." }
+dependencies = [
+    { name = "bgutil-ytdlp-pot-provider" },
+    { name = "httpx" },
+    { name = "mutagen" },
+    { name = "pillow" },
+    { name = "yt-dlp", extra = ["default"] },
+]
+
+[package.optional-dependencies]
+timing = [
+    { name = "demucs", version = "4.0.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "demucs", version = "4.1.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
+    { name = "numpy" },
+    { name = "soundfile" },
+    { name = "torch" },
+    { name = "torchaudio" },
+]
+timing-check = [
+    { name = "faster-whisper" },
+    { name = "stable-ts" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "bgutil-ytdlp-pot-provider", specifier = ">=2.0.0" },
+    { name = "demucs", marker = "extra == 'timing'", specifier = ">=4.0.1" },
+    { name = "faster-whisper", marker = "extra == 'timing-check'", specifier = ">=1.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "mutagen", specifier = ">=1.48.1" },
+    { name = "numpy", marker = "extra == 'timing'", specifier = ">=1.26" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "soundfile", marker = "extra == 'timing'", specifier = ">=0.12" },
+    { name = "stable-ts", marker = "extra == 'timing-check'", specifier = ">=2.19" },
+    { name = "torch", marker = "extra == 'timing'", specifier = ">=2.4" },
+    { name = "torchaudio", marker = "extra == 'timing'", specifier = ">=2.4" },
+    { name = "yt-dlp", extras = ["default"], specifier = ">=2026.8.19" },
+]
+provides-extras = ["timing", "timing-check"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
+[[package]]
 name = "numba"
 version = "0.67.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1658,54 +1709,3 @@ sdist = { url = "https://files.pythonhosted.org/packages/d3/e6/cceb9530e8f4e5940
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/bd/520769863744b669440a924271a6159ddd82ad5ae26b4ac4d4b69e9f8d44/yt_dlp_ejs-0.8.0-py3-none-any.whl", hash = "sha256:79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4", size = 53443, upload-time = "2026-03-17T22:49:17.736Z" },
 ]
-
-[[package]]
-name = "ytalbum"
-version = "0.9.0"
-source = { editable = "." }
-dependencies = [
-    { name = "bgutil-ytdlp-pot-provider" },
-    { name = "httpx" },
-    { name = "mutagen" },
-    { name = "pillow" },
-    { name = "yt-dlp", extra = ["default"] },
-]
-
-[package.optional-dependencies]
-timing = [
-    { name = "demucs", version = "4.0.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
-    { name = "demucs", version = "4.1.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'x86_64' or sys_platform != 'darwin'" },
-    { name = "numpy" },
-    { name = "soundfile" },
-    { name = "torch" },
-    { name = "torchaudio" },
-]
-timing-check = [
-    { name = "faster-whisper" },
-    { name = "stable-ts" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "bgutil-ytdlp-pot-provider", specifier = ">=2.0.0" },
-    { name = "demucs", marker = "extra == 'timing'", specifier = ">=4.0.1" },
-    { name = "faster-whisper", marker = "extra == 'timing-check'", specifier = ">=1.1" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mutagen", specifier = ">=1.48.1" },
-    { name = "numpy", marker = "extra == 'timing'", specifier = ">=1.26" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "soundfile", marker = "extra == 'timing'", specifier = ">=0.12" },
-    { name = "stable-ts", marker = "extra == 'timing-check'", specifier = ">=2.19" },
-    { name = "torch", marker = "extra == 'timing'", specifier = ">=2.4" },
-    { name = "torchaudio", marker = "extra == 'timing'", specifier = ">=2.4" },
-    { name = "yt-dlp", extras = ["default"], specifier = ">=2026.8.19" },
-]
-provides-extras = ["timing", "timing-check"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]

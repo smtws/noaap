@@ -3,11 +3,11 @@
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import iter_plans, load_plan, run, save_plan
-from ytalbum.models import Provenance
-from ytalbum.plan import build_plan, refresh_derived
-from ytalbum.service import Service, track_spelling
+from noaap.config import Config
+from noaap.download import iter_plans, load_plan, run, save_plan
+from noaap.models import Provenance
+from noaap.plan import build_plan, refresh_derived
+from noaap.service import Service, track_spelling
 
 
 class NoNetwork(FakeYouTube):

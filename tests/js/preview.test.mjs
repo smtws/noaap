@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { nowLine, timedLines, trimOffset } from "../../src/ytalbum/webui/logic.mjs";
+import { nowLine, timedLines, trimOffset } from "../../src/noaap/webui/logic.mjs";
 
 test("a stamped line yields its words and its moment, an unstamped one only words", () => {
   const got = timedLines("[00:12.3] one\ntwo\n[01:40.0] three");

@@ -16,9 +16,9 @@ import httpx
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.lyrics import (
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.lyrics import (
     Lrclib,
     LyricsError,
     Provenance,
@@ -28,8 +28,8 @@ from ytalbum.lyrics import (
     solve_challenge,
     write_sidecar,
 )
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
+from noaap.plan import build_plan
+from noaap.service import Service
 
 EASY = "ff" * 32          # any nonce solves it: the proof of work is not what these tests are about
 LRC = "[00:12.5] One\n[00:20.0] Two\n[03:05.66]\n"
@@ -89,7 +89,7 @@ def lrclib_server():
 @pytest.fixture
 def client(lrclib_server, monkeypatch):
     base, state = lrclib_server
-    monkeypatch.setattr("ytalbum.lyrics.BASE", base)
+    monkeypatch.setattr("noaap.lyrics.BASE", base)
     return Lrclib(cache_path=None, client=httpx.Client(timeout=10), min_interval=0.0), state
 
 
@@ -98,7 +98,7 @@ def client(lrclib_server, monkeypatch):
 
 def test_the_solver_finds_a_nonce_the_documented_rule_accepts():
     # their own comparison, spelled out: above the target at any byte fails, below it succeeds
-    from ytalbum.lyrics import _not_above
+    from noaap.lyrics import _not_above
 
     prefix, target = "VXMwW2qPfW2gkCNSl1i708NJkDghtAyU", "0000ff" + "ff" * 29
     nonce = solve_challenge(prefix, target)
@@ -156,7 +156,7 @@ def test_a_challenge_that_never_comes_is_reported_before_anything_is_sent(client
 
 
 def track_with(tmp_path, **fields):
-    from ytalbum.models import PlanTrack
+    from noaap.models import PlanTrack
 
     track = PlanTrack(video_id="v1", title="Song", artist="Someone", number=1, filename="song.opus",
                       provenance={"lyrics": Provenance.USER}, state="done", lyrics="synced")
@@ -259,7 +259,7 @@ def test_nothing_on_disk_changes_when_lrclib_refuses(album, client, tmp_path):
 
 
 def test_the_page_is_told_whether_it_may_offer_the_button(album, tmp_path):
-    from ytalbum.web import App
+    from noaap.web import App
 
     album_dir, plan, _yt = album
     track = a_users_lyric(album_dir, plan)

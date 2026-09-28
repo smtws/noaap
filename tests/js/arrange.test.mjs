@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { movedRow, numberByDisc } from "../../src/ytalbum/webui/logic.mjs";
+import { movedRow, numberByDisc } from "../../src/noaap/webui/logic.mjs";
 
 const rows = (...discs) => discs.map((disc, i) => ({ id: `t${i + 1}`, disc: String(disc) }));
 const order = (list) => list.map((r) => `${r.disc}-${r.id}`).join(" ");

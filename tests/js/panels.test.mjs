@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lyricsPanelState, resetKind } from "../../src/ytalbum/webui/logic.mjs";
+import { lyricsPanelState, resetKind } from "../../src/noaap/webui/logic.mjs";
 
 test("lrclib's words can be looked up again or rejected", () => {
   const s = lyricsPanelState({ text: "[00:01.00] a", status: "synced", lrclib_id: 11, owner: null });

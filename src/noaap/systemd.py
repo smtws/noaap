@@ -26,7 +26,7 @@ def unit_dir() -> Path:
 
 
 def render_units(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> dict[str, str]:
-    exe = Path(sys.prefix) / "bin" / "ytalbum"
+    exe = Path(sys.prefix) / "bin" / "noaap"
     path = ["/usr/local/bin", "/usr/bin", "/bin"]
     if node := cfg.resolved_node():  # systemd does not see nvm's PATH; yt-dlp and the token server need node
         path.insert(0, str(Path(node).parent))

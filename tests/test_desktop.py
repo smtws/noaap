@@ -2,7 +2,7 @@
 
 import pytest
 
-from ytalbum import desktop
+from noaap import desktop
 
 
 @pytest.fixture

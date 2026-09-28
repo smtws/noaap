@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.timing import TimedLine, coverage, lines_from_words, with_gaps
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.timing import TimedLine, coverage, lines_from_words, with_gaps
 
 
 @pytest.fixture
@@ -130,8 +130,8 @@ def test_the_pause_that_breaks_a_line_is_a_setting(gap):
 
 def test_a_draft_listens_to_the_separated_voice_when_there_is_one(album, tmp_path, monkeypatch):
     """Measured on the user's own song: the voice doubles what a vendor hears (catalog AF)."""
-    import ytalbum.service as service_mod
-    from ytalbum.timing import Timed, TimedLine
+    import noaap.service as service_mod
+    from noaap.timing import Timed, TimedLine
 
     album_dir, plan, yt = album
     heard: list[str] = []
@@ -148,7 +148,7 @@ def test_a_draft_listens_to_the_separated_voice_when_there_is_one(album, tmp_pat
         return into
 
     monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": Ears())
-    monkeypatch.setattr("ytalbum.timing_local.separated_voice", separate)
+    monkeypatch.setattr("noaap.timing_local.separated_voice", separate)
     service = Service(Config(), tmp_path, yt=yt, log=lambda s: None)
     track = plan.tracks[0]
     track.lyrics = "none"
@@ -160,8 +160,8 @@ def test_a_draft_listens_to_the_separated_voice_when_there_is_one(album, tmp_pat
 
 
 def test_and_falls_back_to_the_mixed_track_when_there_is_no_separator(album, tmp_path, monkeypatch):
-    import ytalbum.service as service_mod
-    from ytalbum.timing import Timed, TimedLine
+    import noaap.service as service_mod
+    from noaap.timing import Timed, TimedLine
 
     album_dir, plan, yt = album
     heard: list[str] = []
@@ -174,7 +174,7 @@ def test_and_falls_back_to_the_mixed_track_when_there_is_no_separator(album, tmp
             return Timed(lines=[TimedLine("a line", 1.0, 3.0)], provider="fake", model="ears")
 
     monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": Ears())
-    monkeypatch.setattr("ytalbum.timing_local.separated_voice", lambda *a, **k: None)
+    monkeypatch.setattr("noaap.timing_local.separated_voice", lambda *a, **k: None)
     service = Service(Config(), tmp_path, yt=yt, log=lambda s: None)
     track = plan.tracks[0]
     track.lyrics = "none"

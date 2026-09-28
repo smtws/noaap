@@ -1,7 +1,7 @@
 """Local PO-token server (bgutil HTTP mode): started on demand, stops itself when idle.
 
 `ensure_server()` pings 127.0.0.1:<port>/ping; if nothing answers it starts a detached
-watchdog (`python -m ytalbum.pot`), which runs `node build/main.js` and stops it once the
+watchdog (`python -m noaap.pot`), which runs `node build/main.js` and stops it once the
 heartbeat file has not been touched for `idle` seconds. ytalbum touches the heartbeat on
 every YouTube request and during downloads. If the server cannot be started, yt-dlp's
 plugin falls back to script mode on its own.
@@ -64,7 +64,7 @@ def ensure_server(home: Path, node: str, port: int = DEFAULT_PORT, idle: int = D
     log_file = cache_dir() / "pot-server.log"
     with open(log_file, "ab") as out:
         subprocess.Popen(
-            [sys.executable, "-m", "ytalbum.pot", "--home", str(home), "--node", node, "--port", str(port), "--idle", str(idle)],
+            [sys.executable, "-m", "noaap.pot", "--home", str(home), "--node", node, "--port", str(port), "--idle", str(idle)],
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=subprocess.STDOUT,
@@ -116,7 +116,7 @@ def watchdog(command: list[str], cwd: Path, idle: float, heartbeat: Path, poll: 
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m ytalbum.pot")
+    p = argparse.ArgumentParser(prog="python -m noaap.pot")
     p.add_argument("--home", type=Path, required=True, help="bgutil server dir (with build/main.js)")
     p.add_argument("--node", default="node")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)

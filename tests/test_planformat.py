@@ -19,8 +19,8 @@ from typing import Any
 
 import pytest
 
-from ytalbum.download import load_plan, save_plan
-from ytalbum.models import AlbumPlan
+from noaap.download import load_plan, save_plan
+from noaap.models import AlbumPlan
 
 PLANS = sorted((Path(__file__).parent / "fixtures" / "plans").glob("*.json"))
 assert PLANS, "the plan fixtures are missing"
@@ -176,7 +176,7 @@ def test_the_fixtures_cover_every_shape_worth_covering() -> None:
 
 
 def test_verify_reports_and_writes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     library = tmp_path / "lib"
     for i, path in enumerate(PLANS[:3]):
@@ -194,7 +194,7 @@ def test_verify_reports_and_writes_nothing(tmp_path: Path, capsys: pytest.Captur
 
 def test_verify_names_an_unknown_field_and_still_passes(tmp_path: Path,
                                                         capsys: pytest.CaptureFixture[str]) -> None:
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     folder = tmp_path / "lib" / "a" / "b"
     folder.mkdir(parents=True)
@@ -210,7 +210,7 @@ def test_verify_names_an_unknown_field_and_still_passes(tmp_path: Path,
 
 def test_verify_fails_loudly_on_a_plan_it_cannot_read(tmp_path: Path,
                                                       capsys: pytest.CaptureFixture[str]) -> None:
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     folder = tmp_path / "lib" / "a" / "b"
     folder.mkdir(parents=True)
@@ -222,7 +222,7 @@ def test_verify_fails_loudly_on_a_plan_it_cannot_read(tmp_path: Path,
 
 
 def test_plan_without_a_url_or_verify_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
-    from ytalbum.cli import main
+    from noaap.cli import main
 
     assert main(["plan"]) == 2
     assert "--verify" in capsys.readouterr().err

@@ -5,7 +5,7 @@ import io
 import pytest
 from PIL import Image, ImageDraw
 
-from ytalbum.cover import square_if_padded
+from noaap.cover import square_if_padded
 
 
 def jpeg(img: Image.Image) -> bytes:

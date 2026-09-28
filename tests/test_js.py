@@ -1,6 +1,6 @@
 """The page's own logic, run by node. One command still runs everything (DESIGN.md §9, slice 33).
 
-`src/ytalbum/webui/logic.mjs` holds what the page computes rather than draws; `tests/js/` checks
+`src/noaap/webui/logic.mjs` holds what the page computes rather than draws; `tests/js/` checks
 it with node's built-in runner — no npm dependency, no build step. This file is the bridge: it
 shells out, so `uv run pytest` covers both sides, and skips with a reason where node is missing.
 """
@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.models import PlanTrack, Provenance
-from ytalbum.plan import trimmed_gap
+from noaap.models import PlanTrack, Provenance
+from noaap.plan import trimmed_gap
 
 ROOT = Path(__file__).parent.parent
 SHARED = Path(__file__).parent / "shared"

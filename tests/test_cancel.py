@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan
-from ytalbum.models import SourceRef
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.web import Jobs
-from ytalbum.youtube import Cancelled
+from noaap.config import Config
+from noaap.download import load_plan
+from noaap.models import SourceRef
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.web import Jobs
+from noaap.youtube import Cancelled
 
 
 class SlowFake(FakeYouTube):

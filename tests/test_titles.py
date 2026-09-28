@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.models import Collection, PlanTrack
-from ytalbum.plan import build_plan, drop_album_name
-from ytalbum.text import move_feat, split_feat, strip_leading_artist, strip_self_feat
-from ytalbum.titles import (
+from noaap.models import Collection, PlanTrack
+from noaap.plan import build_plan, drop_album_name
+from noaap.text import move_feat, split_feat, strip_leading_artist, strip_self_feat
+from noaap.titles import (
     channel_artist,
     clean_title,
     drop_label,

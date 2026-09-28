@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { canSeed, fixConfirm, lengthFix, seedConfirm } from "../../src/ytalbum/webui/logic.mjs";
+import { canSeed, fixConfirm, lengthFix, seedConfirm } from "../../src/noaap/webui/logic.mjs";
 
 const plan = (fields = {}) => ({
   album: "Fegefeuer", albumartist: "Feuerschwanz", year: 2023, kind: "official_album", mbid: null,

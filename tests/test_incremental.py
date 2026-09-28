@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 from mutagen.oggopus import OggOpus
 
-from ytalbum.download import find_plan, load_plan, relocate, run
-from ytalbum.models import Collection, Entry, Provenance
-from ytalbum.plan import build_plan, merge_plans
+from noaap.download import find_plan, load_plan, relocate, run
+from noaap.models import Collection, Entry, Provenance
+from noaap.plan import build_plan, merge_plans
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 64
@@ -48,7 +48,7 @@ class FakeYouTube:
         return JPEG
 
     def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
-        from ytalbum.titles import parse_video_title
+        from noaap.titles import parse_video_title
 
         return parse_video_title(entry.title, entry.channel)
 
@@ -56,7 +56,7 @@ class FakeYouTube:
         return f"https://www.youtube.com/watch?v={ref}"
 
     def one_ref(self, text: str) -> str | None:
-        from ytalbum.youtube import one_video
+        from noaap.youtube import one_video
 
         return one_video(text)
 
@@ -318,7 +318,7 @@ def test_missing_cover_art_falls_back(tmp_path, yt):
 def test_new_album_folder_follows_enriched_names():
     plan = build_plan(vol1())
     plan.albumartist = "Someone Else"
-    from ytalbum.plan import refresh_derived
+    from noaap.plan import refresh_derived
 
     assert refresh_derived(plan).folder == "Someone Else/Vol. 1 - Heavy Sleeping"
 
@@ -336,8 +336,8 @@ def test_merge_never_downgrades_to_a_weaker_source():
 
 
 def test_prune_deletes_only_gone_tracks_and_retags_the_rest(tmp_path, yt):
-    from ytalbum.config import Config
-    from ytalbum.service import Service
+    from noaap.config import Config
+    from noaap.service import Service
 
     plan = build_plan(vol1())
     album_dir = tmp_path / plan.folder
@@ -362,9 +362,9 @@ def test_prune_deletes_only_gone_tracks_and_retags_the_rest(tmp_path, yt):
 
 def pruned(tmp_path, yt, discs=1, drop=2):
     """An album on disk with a user order, one track gone from the source, then pruned."""
-    from ytalbum.config import Config
-    from ytalbum.download import save_plan
-    from ytalbum.service import Service
+    from noaap.config import Config
+    from noaap.download import save_plan
+    from noaap.service import Service
 
     plan = build_plan(vol1())
     album_dir = tmp_path / plan.folder
@@ -404,9 +404,9 @@ def test_prune_closes_the_gap_per_disc_on_a_multi_disc_album(tmp_path, yt):
 
 
 def test_prune_never_deletes_outside_the_album(tmp_path, yt):
-    from ytalbum.config import Config
-    from ytalbum.download import save_plan
-    from ytalbum.service import Service
+    from noaap.config import Config
+    from noaap.download import save_plan
+    from noaap.service import Service
 
     plan = build_plan(vol1())
     album_dir = tmp_path / plan.folder

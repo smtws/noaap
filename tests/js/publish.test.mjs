@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { publishConfirm, publishState } from "../../src/ytalbum/webui/logic.mjs";
+import { publishConfirm, publishState } from "../../src/noaap/webui/logic.mjs";
 
 const ready = {
   publish: { can: true, why: "", published: "", lines: 42, length: 219.1,

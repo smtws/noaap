@@ -11,14 +11,14 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.lyrics import timings_stale, write_sidecar
-from ytalbum.models import AlbumPlan, Entry, PlanTrack, Provenance
-from ytalbum.plan import build_plan, merge_plans
-from ytalbum.service import Service, apply_user_edits, switch_source
-from ytalbum.trim import ORIGINALS, original_path
-from ytalbum.youtube import one_video
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.lyrics import timings_stale, write_sidecar
+from noaap.models import AlbumPlan, Entry, PlanTrack, Provenance
+from noaap.plan import build_plan, merge_plans
+from noaap.service import Service, apply_user_edits, switch_source
+from noaap.trim import ORIGINALS, original_path
+from noaap.youtube import one_video
 
 SHARED = Path(__file__).parent / "shared"
 OTHER = "Z2UO4FsFGFM"  # the audio upload of a song whose playlist entry is the film cut

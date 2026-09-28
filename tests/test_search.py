@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-from ytalbum.models import SourceRef
-from ytalbum.search import dedupe_by_title, main_channel, search_artist
-from ytalbum.youtube import ref_from_ytm_album
+from noaap.models import SourceRef
+from noaap.search import dedupe_by_title, main_channel, search_artist
+from noaap.youtube import ref_from_ytm_album
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 FAUNTUBE = "https://www.youtube.com/channel/UCxWwz-uZkTNwEM_duLUrWkQ"

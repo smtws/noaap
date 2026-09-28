@@ -1,5 +1,5 @@
 [project]
-name = "ytalbum"
+name = "noaap"
 version = "0.9.0"
 description = "Turn YouTube playlists into properly tagged Opus albums"
 authors = [
@@ -18,7 +18,7 @@ dependencies = [
 
 # Everything a timing provider needs, and nothing the rest of ytalbum imports. Install it only if
 # you want the `local` provider (or are running `ytalbum timing-serve` for another machine):
-#     uv pip install "ytalbum[timing]"
+#     uv pip install "noaap[timing]"
 # On a machine without a usable GPU, ask for the small CPU build of torch first — it is ~200 MB
 # against some 4 GB of CUDA libraries, and the aligner runs perfectly well on a processor:
 #     uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
@@ -36,7 +36,7 @@ timing = [
 # A second opinion on every alignment, and the ability to draft words for a track that has none.
 # It carries a Whisper decoder — **3.09 GB of model on first use** — and is worth it only if you
 # want alignments checked without listening to them, or transcription without a paid provider:
-#     uv pip install "ytalbum[timing,timing-check]"
+#     uv pip install "noaap[timing,timing-check]"
 # On CUDA, ctranslate2 wants CUDA 12's libcublas while torch may bring a different one; ytalbum
 # falls back to the processor and says so, and `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`
 # puts the GPU back. On a machine without one it is simply slower (about 2x real time).
@@ -46,7 +46,7 @@ timing-check = [
 ]
 
 [project.scripts]
-ytalbum = "ytalbum:main"
+noaap = "noaap:main"
 
 [build-system]
 requires = ["uv_build>=0.11.7,<0.12.0"]
@@ -82,4 +82,4 @@ ignore = [
 "tests/*" = ["F401", "F811"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ytalbum"]
+known-first-party = ["noaap"]

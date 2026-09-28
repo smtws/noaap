@@ -9,10 +9,10 @@ import pytest
 from mutagen.flac import Picture
 from mutagen.oggopus import OggOpus
 
-from ytalbum.download import cover_candidates
-from ytalbum.models import AlbumPlan, Kind, PlanTrack
-from ytalbum.tag import audio_length, image_mime, tag_file, tagged_lyrics
-from ytalbum.youtube import best_thumbnail, entry_from_info
+from noaap.download import cover_candidates
+from noaap.models import AlbumPlan, Kind, PlanTrack
+from noaap.tag import audio_length, image_mime, tag_file, tagged_lyrics
+from noaap.youtube import best_thumbnail, entry_from_info
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 32
 
@@ -88,8 +88,8 @@ def test_image_mime():
 
 def test_cover_candidates_prefer_maxres():
     url = "https://i.ytimg.com/vi/0gr0bwQgTSo/hqdefault.jpg?sqp=abc"
-    from ytalbum.config import Config
-    from ytalbum.sources import get
+    from noaap.config import Config
+    from noaap.sources import get
 
     yt = get(None, Config())
     assert cover_candidates(url, yt) == ["https://i.ytimg.com/vi/0gr0bwQgTSo/maxresdefault.jpg", url]
@@ -106,7 +106,7 @@ def test_only_the_performer_is_taken_from_youtubes_artist_list():
 
 
 def test_short_error_messages():
-    from ytalbum.youtube import _short_error
+    from noaap.youtube import _short_error
 
     assert _short_error("ERROR: [youtube] abc: Sign in to confirm your age. Use --cookies…").startswith("age-restricted")
     assert _short_error("ERROR: [youtube] abc: Video unavailable. This video is private") == "Video unavailable"
@@ -119,8 +119,8 @@ def test_best_thumbnail_prefers_preference_then_size():
 
 
 def test_pot_provider_is_only_used_when_built(tmp_path):
-    from ytalbum.config import Config
-    from ytalbum.youtube import YouTube
+    from noaap.config import Config
+    from noaap.youtube import YouTube
 
     home = tmp_path / "server"
     cfg = Config(pot_provider_home=home, js_runtime="node", pot_mode="script")
@@ -140,8 +140,8 @@ def test_pot_provider_is_only_used_when_built(tmp_path):
 
 
 def test_album_art_prefers_the_signed_urls_over_the_biggest():
-    from ytalbum.models import Entry
-    from ytalbum.youtube import playlist_thumbnail
+    from noaap.models import Entry
+    from noaap.youtube import playlist_thumbnail
 
     tracks = [Entry(video_id="a", position=1, title="t", thumbnail="https://i.ytimg.com/vi/a/hq.jpg")]
     # YouTube lists the album art three times; only the signed ones work, the plain one 404s
@@ -185,7 +185,7 @@ def test_m4a_gets_the_same_tags(tmp_path):
 
 
 def test_filenames_follow_the_format(tmp_path):
-    from ytalbum.plan import wanted_filename
+    from noaap.plan import wanted_filename
 
     plan = make_plan()
     plan.tracks[0].ext = "m4a"
@@ -206,7 +206,7 @@ def test_an_unreadable_file_has_no_length(tmp_path):
 @pytest.mark.parametrize("reader", ["MP4", "OggOpus"])
 def test_a_bug_in_the_reader_is_not_read_as_a_missing_length(monkeypatch, tmp_path, reader):
     """Swallowing everything would turn a programming error into "this file has no length"."""
-    import ytalbum.tag as tag
+    import noaap.tag as tag
 
     def explode(*a, **k):
         raise TypeError("a bug, not a broken file")

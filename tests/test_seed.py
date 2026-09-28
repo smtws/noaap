@@ -11,13 +11,13 @@ import httpx
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import run, save_plan
-from ytalbum.mb import length_disagreement, recording_edit_url, seed_release, seed_url, seedable
-from ytalbum.models import AlbumPlan, PlanTrack
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.web import App
+from noaap.config import Config
+from noaap.download import run, save_plan
+from noaap.mb import length_disagreement, recording_edit_url, seed_release, seed_url, seedable
+from noaap.models import AlbumPlan, PlanTrack
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.web import App
 
 
 @pytest.fixture
@@ -149,7 +149,7 @@ def test_the_links_are_their_pages_and_can_be_pointed_elsewhere(monkeypatch):
     assert seed_url().endswith("/release/add")
     assert recording_edit_url("rec-1").endswith("/recording/rec-1/edit")
     # the override exists so a test can open a form that is not theirs (catalog AD)
-    monkeypatch.setattr("ytalbum.mb.WEB", "http://127.0.0.1:8796")
+    monkeypatch.setattr("noaap.mb.WEB", "http://127.0.0.1:8796")
     assert seed_url() == "http://127.0.0.1:8796/release/add"
 
 

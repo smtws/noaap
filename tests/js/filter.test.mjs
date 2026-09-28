@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { fold, foldMap, hits } from "../../src/ytalbum/webui/logic.mjs";
+import { fold, foldMap, hits } from "../../src/noaap/webui/logic.mjs";
 
 test("case, accents and punctuation are ignored", () => {
   assert.equal(fold("Njǫrð"), "njord");

@@ -7,11 +7,11 @@ import pytest
 from mutagen.oggopus import OggOpus
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.plan import build_plan, merge_plans
-from ytalbum.service import Service
-from ytalbum.trim import ORIGINALS
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.plan import build_plan, merge_plans
+from noaap.service import Service
+from noaap.trim import ORIGINALS
 
 
 @pytest.fixture
@@ -64,7 +64,7 @@ def test_delete_album_removes_the_folder(library):
     assert not album_dir.parent.exists()  # the artist folder went too, it was empty
     # the audio is not gone, it is in the bin: nothing ytalbum deletes leaves the library (slice 49)
     assert [p.name for p in tmp_path.iterdir()] == [".recycle"]
-    from ytalbum.recycle import entries
+    from noaap.recycle import entries
 
     binned = entries(tmp_path)
     assert len(binned) == len(plan.tracks) + 1           # every track, and the cover
@@ -96,7 +96,7 @@ def test_deleting_something_unknown_fails_cleanly(library):
 
 def test_prune_takes_the_kept_original_with_it(tmp_path, opus_template):
     """delete_track has always removed it; prune left a full-size orphan behind."""
-    from ytalbum.trim import kept_originals
+    from noaap.trim import kept_originals
 
     plan = build_plan(vol1())
     plan.tracks = plan.tracks[:3]

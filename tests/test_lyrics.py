@@ -8,13 +8,13 @@ import pytest
 from mutagen.oggopus import OggOpus
 from test_incremental import FakeYouTube, opus_template, vol1
 
-from ytalbum.config import Config
-from ytalbum.download import load_plan, run, save_plan
-from ytalbum.lyrics import Lrclib, Lyrics, LyricsError, consensus_length, query_title, read_sidecar, sidecar_path, update_track
-from ytalbum.models import Provenance
-from ytalbum.plan import build_plan
-from ytalbum.service import Service
-from ytalbum.tag import audio_length, build_tags
+from noaap.config import Config
+from noaap.download import load_plan, run, save_plan
+from noaap.lyrics import Lrclib, Lyrics, LyricsError, consensus_length, query_title, read_sidecar, sidecar_path, update_track
+from noaap.models import Provenance
+from noaap.plan import build_plan
+from noaap.service import Service
+from noaap.tag import audio_length, build_tags
 
 SYNCED_LRC = "[00:01.00] one\n[00:05.50] two\n[00:12.00] three"
 
@@ -204,7 +204,7 @@ def test_words_win_over_a_closer_length_without_them():
 
 
 def test_server_busy_is_retried(monkeypatch):
-    monkeypatch.setattr("ytalbum.lyrics.time.sleep", lambda s: None)
+    monkeypatch.setattr("noaap.lyrics.time.sleep", lambda s: None)
     tries = []
 
     def handler(request):
@@ -216,7 +216,7 @@ def test_server_busy_is_retried(monkeypatch):
 
 
 def test_giving_up_raises_and_never_pretends_there_are_no_lyrics(monkeypatch):
-    monkeypatch.setattr("ytalbum.lyrics.time.sleep", lambda s: None)
+    monkeypatch.setattr("noaap.lyrics.time.sleep", lambda s: None)
     api = client(lambda request: httpx.Response(503, json={}), retries=1)
     with pytest.raises(LyricsError):
         api.get("TUNGSTEN", "Lullaby", "Tundra", 61.0)

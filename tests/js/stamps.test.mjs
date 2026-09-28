@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { lineAt, lineStart, nudged, shifted, stampOf, stampText, tapped, tenth, toFileClock, toPlayerClock, trimOffset, withStamp }
-  from "../../src/ytalbum/webui/logic.mjs";
+  from "../../src/noaap/webui/logic.mjs";
 
 test("an untrimmed track has one clock", () => {
   const playing = { trimmed: null, start: null, savedStart: null };

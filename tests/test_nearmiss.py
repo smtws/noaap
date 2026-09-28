@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from ytalbum.lyrics import fit_reason, fit_verdict, nominated
+from noaap.lyrics import fit_reason, fit_verdict, nominated
 
 MEASURED = json.loads((Path(__file__).parent / "fixtures" / "lrclib_near_misses.json").read_text())["candidates"]
 
@@ -97,13 +97,13 @@ def test_every_rejected_entry_is_one_the_aligner_could_not_place():
 
 from test_incremental import FakeYouTube, opus_template, vol1  # noqa: E402
 
-import ytalbum.service as service_mod  # noqa: E402
-from ytalbum.config import Config  # noqa: E402
-from ytalbum.download import load_plan, run, save_plan  # noqa: E402
-from ytalbum.lyrics import Lyrics  # noqa: E402
-from ytalbum.plan import build_plan  # noqa: E402
-from ytalbum.service import Service  # noqa: E402
-from ytalbum.timing import Timed, TimedLine  # noqa: E402
+import noaap.service as service_mod  # noqa: E402
+from noaap.config import Config  # noqa: E402
+from noaap.download import load_plan, run, save_plan  # noqa: E402
+from noaap.lyrics import Lyrics  # noqa: E402
+from noaap.plan import build_plan  # noqa: E402
+from noaap.service import Service  # noqa: E402
+from noaap.timing import Timed, TimedLine  # noqa: E402
 
 ENTRY = "[00:10.0] first line\n[00:20.0] second line\n[00:30.0] third line\n"
 
@@ -415,7 +415,7 @@ def test_the_panel_is_told_nothing_about_it(album, tmp_path, monkeypatch):
 
     # and the panel's payload does not carry it: App.lyrics builds that dict by hand, so this asserts
     # against the real builder rather than against the plan it reads from
-    from ytalbum.web import App
+    from noaap.web import App
 
     app = App(Config(), tmp_path)
     got = app.lyrics(after.source_id, after.tracks[0].video_id)
@@ -427,8 +427,8 @@ def test_the_panel_is_told_nothing_about_it(album, tmp_path, monkeypatch):
 
 
 def test_needs_you_is_the_two_verdicts_that_decide_nothing():
-    from ytalbum.lyrics import needs_you
-    from ytalbum.models import PlanTrack
+    from noaap.lyrics import needs_you
+    from noaap.models import PlanTrack
 
     def track(decided, lyrics="none"):
         return PlanTrack(video_id="v", number=1, filename="f.opus", provenance={},
@@ -445,7 +445,7 @@ def test_needs_you_is_the_two_verdicts_that_decide_nothing():
 
 
 def test_the_album_row_counts_the_tracks_that_wait(album, tmp_path, monkeypatch):
-    from ytalbum.web import App
+    from noaap.web import App
 
     album_dir, plan, yt = album
     plan.tracks[0].lyrics_fit = {"decided": "unclear"}

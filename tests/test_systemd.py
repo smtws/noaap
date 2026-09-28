@@ -6,9 +6,9 @@ import threading
 import httpx
 import pytest
 
-from ytalbum.config import Config
-from ytalbum.systemd import install, render_units
-from ytalbum.web import App
+from noaap.config import Config
+from noaap.systemd import install, render_units
+from noaap.web import App
 
 
 def test_units_start_the_service_on_demand_with_node_on_the_path():
@@ -41,7 +41,7 @@ def test_server_on_an_inherited_socket_and_idle_accounting(tmp_path):
 def test_restart_refuses_while_a_job_runs(monkeypatch):
     import subprocess
 
-    import ytalbum.systemd as sd
+    import noaap.systemd as sd
 
     monkeypatch.setattr(sd, "busy", lambda port=None: True)
     calls = []
@@ -54,7 +54,7 @@ def test_restart_refuses_while_a_job_runs(monkeypatch):
 
 
 def test_installed_port_is_read_from_the_unit(tmp_path, monkeypatch):
-    import ytalbum.systemd as sd
+    import noaap.systemd as sd
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     (tmp_path / "systemd" / "user").mkdir(parents=True)
@@ -69,8 +69,8 @@ def test_installed_port_is_read_from_the_unit(tmp_path, monkeypatch):
 @pytest.mark.parametrize("flag", [["--port", "9000"], ["--idle-exit", "60"]])
 def test_a_flag_that_cannot_work_is_refused_not_ignored(action, flag, capsys, monkeypatch, tmp_path):
     """`service restart --port 9000` did nothing with the port — and said nothing either."""
-    import ytalbum.cli as cli
-    import ytalbum.systemd as sd
+    import noaap.cli as cli
+    import noaap.systemd as sd
 
     monkeypatch.setattr(sd, "restart", lambda force=False: pytest.fail("must not act"))
     monkeypatch.setattr(sd, "uninstall", lambda: pytest.fail("must not act"))
@@ -81,8 +81,8 @@ def test_a_flag_that_cannot_work_is_refused_not_ignored(action, flag, capsys, mo
 
 
 def test_install_still_takes_both_flags(monkeypatch, capsys, tmp_path):
-    import ytalbum.cli as cli
-    import ytalbum.systemd as sd
+    import noaap.cli as cli
+    import noaap.systemd as sd
 
     seen = {}
     monkeypatch.setattr(sd, "install", lambda cfg, port, idle: seen.update(port=port, idle=idle) or [])
