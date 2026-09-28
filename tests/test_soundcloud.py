@@ -19,6 +19,7 @@ import pytest
 from noaap import sources
 from noaap.config import Config
 from noaap.soundcloud import SoundCloud, is_address, one_ref, owner_url, track_url
+from noaap.titles_soundcloud import owner_is_artist, parse_track_title
 
 FIXTURES = Path(__file__).parent / "fixtures" / "soundcloud"
 SET_URL = "https://soundcloud.com/anttimartikainen/sets/carmina-gloria"
@@ -118,3 +119,42 @@ def test_the_cheap_check_is_one_flat_read(client):
 
     assert state["modified"] == "20211104"
     assert len(state["ids"]) == 11 and state["ids"][0] == "865897327"
+
+
+# -- how its titles read ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("title,artist,expected", [
+    ("Divine Alliance (epic heroic power metal)", None, "Divine Alliance"),
+    ("Carmina Gloria (symphonic crusader power metal)", None, "Carmina Gloria"),
+    ("Bloodywood - Gaddaar (Indian Folk Metal)", "Bloodywood", "Gaddaar"),
+    ("Auf Wiederseh'n (snip)", None, "Auf Wiederseh'n"),
+    ("Taivaantuli (Nordic folk metal)", None, "Taivaantuli"),
+])
+def test_the_conventions_it_actually_has(title, artist, expected):
+    """Every one of these is a real title from a real page, and they are the whole ruleset."""
+    assert parse_track_title(title) == (artist, expected)
+
+
+@pytest.mark.parametrize("title", [
+    "Kalevala (Live)", "Kalevala (Acoustic)", "Kalevala (Remix)", "Kalevala (feat. Somebody)",
+])
+def test_a_parenthesis_that_belongs_to_the_song_is_kept(title):
+    """The mistake that would otherwise merge two different recordings."""
+    assert parse_track_title(title)[1] == title
+
+
+def test_the_uploader_is_not_returned_as_the_artist():
+    """`owner_artist` is where an uploader becomes an artist. Answering it here as well would make
+    an upload by a curator look as if the song itself said so."""
+    assert parse_track_title("Some Song", "A Curator") == (None, "Some Song")
+
+
+@pytest.mark.parametrize("owner,expected", [
+    ("Antti Martikainen", "Antti Martikainen"),
+    ("Feuerschwanz", "Feuerschwanz"),
+    ("Ebunny. Music for your projects.", None),
+    ("", None),
+])
+def test_an_uploader_is_usually_the_artist_but_a_shop_sign_is_not(owner, expected):
+    assert owner_is_artist(owner) == expected
