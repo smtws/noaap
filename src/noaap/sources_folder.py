@@ -343,6 +343,10 @@ class FolderSource:
                 duration=copies[0].length,
                 disc=disc,
                 copies=copies,
+                # the file is already here, so the container is known now rather than after a
+                # download. Said by the provider, because the ref it is read off is opaque to
+                # everyone else (§9, slice 58).
+                ext=Path(copies[0].ref).suffix.lstrip(".").lower() or None,
                 music=Music(artist=tags.get("artist"), track=tags.get("title"),
                             album=tags.get("album"), year=tags.get("year")),
             ))

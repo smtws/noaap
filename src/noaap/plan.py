@@ -221,6 +221,10 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
                 artist=artist,
                 title=title,
                 filename="",  # set by refresh_derived
+                # what the audio already is, where the source knows. A download finds out when the
+                # file arrives; a folder's file is on the disk now, and taking the default instead
+                # is what would rename an mp3 to `.opus` (§9, slice 58).
+                ext=entry.ext or PlanTrack.ext,
                 provenance={"artist": artist_prov, "title": title_prov},
                 auto={"artist": artist, "title": title},
                 channel=entry.channel,

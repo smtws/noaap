@@ -96,6 +96,11 @@ class Entry:
     chapters: list[dict[str, Any]] = field(default_factory=list)
     music: Music = field(default_factory=Music)
     disc: int = 1  # a source that knows its discs says so; a flat one leaves it at 1 (§9, slice 53)
+    # The container this entry's audio is in, when the source knows before fetching it — a folder
+    # always does, since the file is already there (§9, slice 58). `None` means "find out when it
+    # arrives", which is what a download does. **The core may not read it off the ref**: a ref is
+    # opaque, and the one time it was parsed for a suffix it renamed 1662 real files into a lie.
+    ext: str | None = None
     # every copy of this recording the source can offer, best first — `video_id` is the first.
     # A folder holding an album twice, once as flac and once as mp3, is the case this is for.
     copies: list[Candidate] = field(default_factory=list)
