@@ -84,15 +84,15 @@ def owner_artist_of(owner: str | None, source: Any = None) -> str | None:
 def track_artist(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     """YouTube Music's field, else the artist named in the title, else the channel."""
     if entry.music.artist:
-        return entry.music.artist, Provenance.YT_MUSIC
+        return entry.music.artist, Provenance.SOURCE_TAGS
     parsed, _ = read_entry(entry, source)
-    return parsed or owner_artist_of(entry.owner, source) or "Unknown Artist", Provenance.YT_TITLE
+    return parsed or owner_artist_of(entry.owner, source) or "Unknown Artist", Provenance.SOURCE_TITLE
 
 
 def track_title(entry: Entry, source: Any = None) -> tuple[str, Provenance]:
     if entry.music.track:
-        return entry.music.track, Provenance.YT_MUSIC
-    return read_entry(entry, source)[1], Provenance.YT_TITLE
+        return entry.music.track, Provenance.SOURCE_TAGS
+    return read_entry(entry, source)[1], Provenance.SOURCE_TITLE
 
 
 def named_artist(entry: Entry, collection: Collection, source: Any = None) -> str | None:
@@ -144,7 +144,7 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
     if kind == Kind.COMPILATION:
         albumartist = collection.channel or "Various Artists"
         album = compilation_album_title(collection.title, albumartist)
-        album_prov = {"albumartist": Provenance.PLAYLIST, "album": Provenance.PLAYLIST}
+        album_prov = {"albumartist": Provenance.COLLECTION, "album": Provenance.COLLECTION}
         year = None
     else:
         named = [(a, track_artist(e, source)[1]) for e in entries if (a := named_artist(e, collection, source))]
@@ -153,19 +153,19 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
         albumartist, prov = (
             _most_common(named)
             or _most_common([track_artist(e, source) for e in entries])
-            or (collection.channel or "Unknown Artist", Provenance.PLAYLIST)
+            or (collection.channel or "Unknown Artist", Provenance.COLLECTION)
         )
         album_prov["albumartist"] = prov
         shared_album = _shared([e.music.album for e in entries])
         if shared_album:
-            album, album_prov["album"] = shared_album, Provenance.YT_MUSIC
+            album, album_prov["album"] = shared_album, Provenance.SOURCE_TAGS
         else:
             album = _playlist_album_title(collection.title, albumartist)
-            album_prov["album"] = Provenance.PLAYLIST
+            album_prov["album"] = Provenance.COLLECTION
         # release_year also exists on plain videos (upload year) - only trust it with an album
         year = _most_common_value([e.music.year for e in entries if e.music.year and e.music.album])
         if year:
-            album_prov["year"] = Provenance.YT_MUSIC
+            album_prov["year"] = Provenance.SOURCE_TAGS
 
     tracks = []
     for number, entry in enumerate(entries, start=1):
@@ -179,7 +179,7 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             # the album's own artist, not the channel handle or the album title read as a name
             # (the guest credit stays on for move_feat, which puts it into the title below)
             stripped = _without_collection_title(artist, collection.title) if named else None
-            artist, artist_prov = (stripped, artist_prov) if stripped else (albumartist, Provenance.PLAYLIST)
+            artist, artist_prov = (stripped, artist_prov) if stripped else (albumartist, Provenance.COLLECTION)
         title = strip_leading_artist(artist, title)  # "Metallica: Nothing Else Matters"
         artist, title = move_feat(artist, title)  # guests belong in the title
         title = strip_self_feat(artist, title)
@@ -394,7 +394,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
 
 
 # how much a value is trusted; a merge never replaces a value by a less trusted one
-TRUST = {Provenance.PLAYLIST: 1, Provenance.YT_TITLE: 1, Provenance.YT_MUSIC: 2, Provenance.MB: 3, Provenance.USER: 4}
+TRUST = {Provenance.COLLECTION: 1, Provenance.SOURCE_TITLE: 1, Provenance.SOURCE_TAGS: 2, Provenance.MB: 3, Provenance.USER: 4}
 
 
 def _merge_fields(target: AlbumPlan | PlanTrack, fresh: AlbumPlan | PlanTrack, fields: tuple[str, ...]) -> None:

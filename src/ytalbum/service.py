@@ -312,12 +312,12 @@ class Service:
         `user`, which means "the user chose this for *this* album" and would freeze it.
         """
         plan.albumartist = plan.auto["albumartist"] = name
-        for source in (Provenance.MB, Provenance.YT_MUSIC, Provenance.PLAYLIST):
+        for source in (Provenance.MB, Provenance.SOURCE_TAGS, Provenance.COLLECTION):
             if source in sources:
                 plan.provenance["albumartist"] = source
                 break
         else:
-            plan.provenance["albumartist"] = Provenance.YT_TITLE
+            plan.provenance["albumartist"] = Provenance.SOURCE_TITLE
         refresh_derived(plan)
 
     def _spellings(self, plan: AlbumPlan) -> dict[str, set[str | None]]:
@@ -1065,7 +1065,7 @@ class Service:
                         t.mb_length = None
                 self.log(f"{borrowed} track(s) gave up a length taken from another recording")
             for t in plan.tracks:
-                if t.provenance.get("artist") == Provenance.YT_MUSIC and ", " in t.artist:
+                if t.provenance.get("artist") == Provenance.SOURCE_TAGS and ", " in t.artist:
                     t.artist = t.auto["artist"] = t.artist.split(", ")[0]  # writers and producers
                 if Provenance.USER in (t.provenance.get("artist"), t.provenance.get("title")):
                     continue  # the user decided how this one reads
@@ -1077,7 +1077,7 @@ class Service:
             editable = [t for t in plan.tracks if t.provenance.get("title") != Provenance.USER]
             if dropped := drop_album_name(plan.album, editable):
                 self.log(f"{dropped} track title(s) lost the repeated album name")
-            if plan.kind != Kind.COMPILATION and plan.provenance.get("albumartist") in (Provenance.YT_MUSIC, Provenance.YT_TITLE):
+            if plan.kind != Kind.COMPILATION and plan.provenance.get("albumartist") in (Provenance.SOURCE_TAGS, Provenance.SOURCE_TITLE):
                 names = [t.artist for t in plan.tracks]
                 if names:
                     plan.albumartist = plan.auto["albumartist"] = max(set(names), key=names.count)

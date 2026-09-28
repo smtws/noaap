@@ -35,11 +35,23 @@ class Failure(StrEnum):
 
 
 class Provenance(StrEnum):
+    """Where a value came from.
+
+    **The strings are what is on disk and they do not change.** `yt_music` and `yt_title` were named
+    after the only provider there was; the names in code say what they mean for any of them, and the
+    old names remain as aliases so nothing that reads a plan has to be rewritten (§9, slice 51).
+    """
+
     MB = "mb"
-    YT_MUSIC = "yt_music"  # yt-dlp's artist/track/album fields
-    YT_TITLE = "yt_title"  # derived from the video title / channel name
-    PLAYLIST = "playlist"  # derived from the playlist title / owner
+    SOURCE_TAGS = "yt_music"    # metadata the source itself carried, beside the audio
+    SOURCE_TITLE = "yt_title"   # read out of the item's title, by that source's conventions
+    COLLECTION = "playlist"     # derived from the collection's own title or its owner
     USER = "user"
+
+    # what these were called while YouTube was the only source
+    YT_MUSIC = SOURCE_TAGS
+    YT_TITLE = SOURCE_TITLE
+    PLAYLIST = COLLECTION
 
 
 @dataclass

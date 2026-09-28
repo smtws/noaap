@@ -184,7 +184,7 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
         # not that recording - keep our title, attach no recording id, and take no length
         # from it either (a live cut measured against the studio one reads as 2 minutes off)
         t.title = t.auto["title"] = title
-        t.provenance["title"] = Provenance.YT_TITLE
+        t.provenance["title"] = Provenance.SOURCE_TITLE
     else:
         _set(t, "title", title)
         t.mbid = rec["id"]
@@ -297,7 +297,7 @@ def _worth_looking_up(plan: AlbumPlan, t: PlanTrack) -> bool:
     if Provenance.USER in t.provenance.values():
         return False
     # YouTube Music data is already good for albums; in compilations MB still fixes spelling
-    return Provenance.YT_TITLE in t.provenance.values() or plan.kind == Kind.COMPILATION
+    return Provenance.SOURCE_TITLE in t.provenance.values() or plan.kind == Kind.COMPILATION
 
 
 def _set(obj: AlbumPlan | PlanTrack, name: str, value: Any) -> None:
