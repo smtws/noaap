@@ -42,6 +42,7 @@ from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
 from .service import Outcome, Service, _inside, channel_base_url
 from .tag import image_mime
+from .text import natural_key
 from .timing import (
     ALIGN,
     OFFERS,
@@ -54,7 +55,6 @@ from .timing import (
     release_gpu_memory,
     verifies_with,
 )
-from .titles import natural_key
 from .trim import original_path
 from .youtube import Cancelled, YouTube
 

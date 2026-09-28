@@ -49,6 +49,8 @@ from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, ren
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .tag import audio_length
+from .text import key as text_key
+from .text import move_feat, strip_self_feat
 from .timing import (
     ALIGN,
     TRANSCRIBE,
@@ -61,8 +63,6 @@ from .timing import (
     with_gaps,
 )
 from .timing import provider as timing_provider
-from .titles import key as text_key
-from .titles import move_feat, strip_self_feat
 from .trim import ORIGINALS, kept_originals, originals_of
 from .youtube import BOT_CHECK, Cancelled, YouTube, channel_base_url, one_video
 

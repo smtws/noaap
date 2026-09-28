@@ -218,7 +218,7 @@ def test_details_ignores_foreign_urls_and_oversized_requests(server):
 
 
 def test_albums_sort_naturally():
-    from ytalbum.titles import natural_key
+    from ytalbum.text import natural_key
 
     volumes = [f"Vol. {n} - x" for n in (1, 2, 10, 11, 20, 3)]
     assert [v.split(" - ")[0] for v in sorted(volumes, key=natural_key)] == ["Vol. 1", "Vol. 2", "Vol. 3", "Vol. 10", "Vol. 11", "Vol. 20"]

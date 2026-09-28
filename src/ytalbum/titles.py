@@ -8,7 +8,8 @@ MusicBrainz step or the user.
 from __future__ import annotations
 
 import re
-import unicodedata
+
+from .text import BRACKETS, SEPARATOR, clean_text, key, words_of
 
 # bracket groups made only of these words are video noise, not part of the song title
 NOISE_WORDS = {
@@ -27,7 +28,7 @@ MARKER_WORDS = {
     "musikvideo", "musikclip", "oficial", "officiel", "ufficiale",
     "1080p", "720p", "480p", "2160p", "1440p", "360p", "240p", "144p", "uhd", "fullhd",
 }
-_BRACKETS = re.compile(r"\s*[(\[【]([^()\[\]【】]*)[)\]】]")
+
 # a trailing segment naming a publisher: "… / Napalm Records". Unlike "|", a slash appears in
 # real titles ("Intro / Outro", "AC/DC"), so the words have to say it is a label.
 PUBLISHER_WORDS = {"records", "record", "recordings", "entertainment", "productions", "publishing", "media", "label", "musikverlag"}
@@ -35,7 +36,6 @@ _SLASH = re.compile(r"\s+/\s+")
 # A dash separates when spaced on both sides, or - "Arcana- Innocent Child" - when what
 # follows it starts a name: a German compound ellipsis continues in lowercase ("sang- und
 # klanglos") and must stay whole. A colon separates too ("Metallica: Nothing Else Matters").
-_SEPARATOR = re.compile(r"(?:\s+[-–—~]{1,2}\s+|[-–—~]{1,2}\s+(?=[A-ZÀ-ÖØ-Þ])|\s*:\s+)")
 _QUOTED = re.compile(r'^(?P<artist>[^"“”„\']+?)\s*["“„\'](?P<title>[^"“”\']+)["”“\'](?P<rest>.*)$')
 _LEADING_QUOTED = re.compile(r'^["“„](?P<title>[^"“”]+)["”“](?P<rest>.*)$')
 _INVISIBLE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]")  # bidi/zero-width marks
@@ -64,11 +64,6 @@ def drop_label(text: str) -> str:
     return _drop_publisher(before_label(clean_text(text))).strip(" -–—~")
 
 
-def clean_text(text: str) -> str:
-    """NFC, and without the invisible marks YouTube titles carry ('In The Nursery \u200e- …')."""
-    return _INVISIBLE.sub("", unicodedata.normalize("NFC", text))
-
-
 def title_by_artist(title: str) -> tuple[str, str] | None:
     """'No Sound But The Wind by The Editors' -> ('The Editors', 'No Sound But The Wind').
 
@@ -94,7 +89,7 @@ def strip_album_name(album: str, title: str) -> str:
     words = re.findall(r"\w+", album or "")
     if len(words) < 2 or not title:
         return title
-    vocabulary = _words_of(album)
+    vocabulary = words_of(album)
     rest = title
     for n in range(len(words), 1, -1):
         run = r"\b" + r"\W+".join(map(re.escape, words[-n:])) + r"\b"  # \b: a bare "4" must not match inside "04"
@@ -106,86 +101,19 @@ def strip_album_name(album: str, title: str) -> str:
 
     # "(Folge 4)" after the name is the release again, in brackets
     # a group that named the release, and the empty pair left when it sat inside one
-    rest = _BRACKETS.sub(lambda m: "" if not _words_of(m[1]) or _words_of(m[1]) <= vocabulary else m[0], rest)
-    rest = re.sub(r"^\W*\d+\W+", " ", rest) if _words_of(rest) - vocabulary else rest  # a leading "2 - "
+    rest = BRACKETS.sub(lambda m: "" if not words_of(m[1]) or words_of(m[1]) <= vocabulary else m[0], rest)
+    rest = re.sub(r"^\W*\d+\W+", " ", rest) if words_of(rest) - vocabulary else rest  # a leading "2 - "
     rest = re.sub(r"\s+", " ", rest).strip(" -–—:|,.")
-    inner = _BRACKETS.fullmatch(rest)
+    inner = BRACKETS.fullmatch(rest)
     rest = (inner[1] if inner else rest).strip()
     return rest or title
-
-
-def _words_of(text: str) -> set[str]:
-    return {w.casefold() for w in re.findall(r"\w+", text or "")}
-
-
-def strip_leading_artist(artist: str, title: str) -> str:
-    """'Metallica: Nothing Else Matters' with artist Metallica -> 'Nothing Else Matters'."""
-    if not artist or not title:
-        return title
-    parts = _SEPARATOR.split(title, maxsplit=1)
-    if len(parts) == 2 and parts[1].strip() and key(parts[0]).startswith(key(artist)):
-        return parts[1].strip()
-    return title
 
 
 _CHANNEL_NOISE = re.compile(r"(\s*-\s*topic|vevo|\s*official)$", re.I)
 
 
-def natural_key(text: str) -> list[object]:
-    """Sort key that reads digit runs as numbers: Vol. 2 before Vol. 10.
-
-    Punctuation and spacing inside the words are ignored, so "Vol.9" and "Vol. 10" are
-    ordered by their number, not by the dot.
-    """
-    parts = re.split(r"(\d+)", text or "")
-    return [(1, int(p), "") if p.isdigit() else (0, 0, re.sub(r"\W+", " ", p).strip().casefold()) for p in parts]
-
-
 _FEAT_WORD = re.compile(r"\b(?:feat\.?|ft\.?|featuring)\s", re.I)
 _FEAT_TAIL = re.compile(r"\s*[(\[]?\s*\b(feat\.?|ft\.?|featuring)\s+(?P<guests>[^)\]]+?)\s*[)\]]?\s*$", re.I)
-
-
-def split_feat(artist: str) -> tuple[str, str | None]:
-    """'Feuerschwanz ft. Melissa Bonny' -> ('Feuerschwanz', 'ft. Melissa Bonny').
-
-    Guest credits belong in the title; the artist field stays the performer, so the library
-    does not grow an entry per collaboration.
-    """
-    m = _FEAT_TAIL.search(artist)
-    if not m or not m["guests"].strip():
-        return artist, None
-    main = artist[: m.start()].strip(" -–—,&")
-    return (main or artist), (None if not main else f"{m[1]} {m['guests'].strip()}")
-
-
-def move_feat(artist: str, title: str) -> tuple[str, str]:
-    """Take a guest credit out of the artist and append it to the title, once."""
-    main, guests = split_feat(artist)
-    if not guests:
-        return artist, title
-    if _FEAT_WORD.search(title):  # the title already names them, anywhere in it
-        return main, title
-    return main, f"{title} {guests}"
-
-
-def strip_self_feat(artist: str, title: str) -> str:
-    """'Gary Jules' - 'Mad World (feat. Gary Jules)': the guest is the artist. Drop the credit."""
-    if not artist:
-        return title
-
-    def drop(m: re.Match[str]) -> str:
-        guests = _FEAT_WORD.split(m[1], maxsplit=1)
-        return "" if len(guests) == 2 and key(guests[1]) == key(artist) else m[0]
-
-    out = _BRACKETS.sub(drop, title)
-    if (m := _FEAT_TAIL.search(out)) and key(m["guests"]) == key(artist):
-        out = out[: m.start()]
-    return re.sub(r"\s+", " ", out).strip(" -–—~")
-
-
-def key(s: str) -> str:
-    """Comparison key: case- and punctuation-insensitive."""
-    return re.sub(r"\W+", "", s.casefold())
 
 
 def channel_artist(channel: str | None) -> str | None:
@@ -202,8 +130,8 @@ def clean_title(title: str) -> str:
     """Drop label suffixes, noise brackets like '(Official Video)', stray quotes and spacing."""
     title = before_label(clean_text(title))
     title = _drop_publisher(title)
-    title = _BRACKETS.sub(_clean_group, title)
-    parts = _SEPARATOR.split(title)
+    title = BRACKETS.sub(_clean_group, title)
+    parts = SEPARATOR.split(title)
     while len(parts) > 1 and _is_noise(parts[-1]):  # "Song – Official Lyric Video"
         parts.pop()
     title = " - ".join(parts) if len(parts) > 1 else parts[0]
@@ -220,7 +148,7 @@ def parse_video_title(title: str, channel: str | None) -> tuple[str | None, str]
     ch = channel_artist(channel)
     text = before_label(clean_text(title))
 
-    parts = _SEPARATOR.split(text, maxsplit=1)
+    parts = SEPARATOR.split(text, maxsplit=1)
     # '"Mad World" (feat. Gary Jules) - Official Music Video': what follows the dash only
     # labels the video, so the whole text is the song - it names no artist.
     if len(parts) == 2 and not _is_noise(parts[1]):

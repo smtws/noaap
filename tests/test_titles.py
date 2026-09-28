@@ -5,15 +5,12 @@ import pytest
 
 from ytalbum.models import Collection, PlanTrack
 from ytalbum.plan import build_plan, drop_album_name
+from ytalbum.text import move_feat, split_feat, strip_leading_artist, strip_self_feat
 from ytalbum.titles import (
     channel_artist,
     clean_title,
     drop_label,
-    move_feat,
     parse_video_title,
-    split_feat,
-    strip_leading_artist,
-    strip_self_feat,
     title_by_artist,
 )
 

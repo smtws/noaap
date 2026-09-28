@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from .enrich import core
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import SourceRef
-from .titles import key
+from .text import key
 
 log = logging.getLogger(__name__)
 

@@ -20,7 +20,8 @@ from typing import Any
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
 from .plan import refresh_derived
-from .titles import channel_artist, key, move_feat
+from .text import key, move_feat
+from .titles import channel_artist
 
 log = logging.getLogger(__name__)
 

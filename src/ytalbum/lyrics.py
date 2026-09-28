@@ -32,7 +32,7 @@ import httpx
 
 from .models import AlbumPlan, PlanTrack, Provenance
 from .tag import audio_length, tagged_lyrics
-from .titles import key as text_key
+from .text import key as text_key
 
 log = logging.getLogger(__name__)
 

@@ -7,18 +7,14 @@ import re
 from collections import Counter
 
 from .models import AlbumPlan, Collection, Entry, Kind, PlanTrack, Provenance
+from .text import key, move_feat, split_feat, strip_leading_artist, strip_self_feat
 from .titles import (
     NOISE_WORDS,
     channel_artist,
     clean_title,
     drop_label,
-    key,
-    move_feat,
     parse_video_title,
-    split_feat,
     strip_album_name,
-    strip_leading_artist,
-    strip_self_feat,
     title_by_artist,
 )
 

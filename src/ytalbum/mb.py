@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from .titles import key as text_key
+from .text import key as text_key
 
 log = logging.getLogger(__name__)
 
