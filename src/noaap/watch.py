@@ -19,7 +19,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -202,5 +202,116 @@ def write_state(state: dict[str, Any], path: Path | None = None) -> Path:
     return path
 
 
-__all__ = ["INTERVAL", "SETTLE", "Folder", "Seen", "Watcher", "album_of", "albums", "look",
-           "loose", "read_state", "skip", "state_path", "write_state"]
+
+
+# -- the process (§9, slice 59) --------------------------------------------------------------------
+#
+# Its own process and its own unit, not a thread in the web service: that service is
+# socket-activated and stops itself after fifteen idle minutes, and a watcher inside it would count
+# as busy and keep it alive for ever, which defeats the socket. A separate watcher costs one idle
+# process that stats a tree every ten seconds — and when it has something to say, **asking the
+# service wakes it through that same socket**, exactly as a browser request does (R-200, ruling 4).
+
+
+@dataclass
+class Run:
+    """One watched folder, between looks. Knows nothing about jobs and nothing about paths but its
+    own root's."""
+
+    name: str
+    folder: Path
+    shape: str
+    watcher: Watcher
+    trouble: int = 0          # consecutive looks that could not be taken
+    said_missing: bool = False
+    waiting: dict[str, int] = field(default_factory=dict)  # album -> attempts so far
+
+
+TRIES = 3  # how often an arrival is offered again before it is left alone and said out loud
+
+
+def once(run: Run, audio: Iterable[str], now: float, ask: Callable[[str, str], bool],
+         log: Callable[[str], None] = lambda s: None) -> list[str]:
+    """One look at one folder, and whatever it leads to. Returns the albums handed over.
+
+    `ask(name, album)` does the asking and answers whether it was accepted; it is a parameter so
+    that the cases never open a socket.
+    """
+    if not run.folder.is_dir():
+        if not run.said_missing:
+            log(f"{run.name}: the folder is not there")
+            run.said_missing = True
+        return []
+    if run.said_missing:
+        log(f"{run.name}: the folder is back")
+        run.said_missing = False
+
+    try:
+        files = look(run.folder, audio)
+    except OSError as e:
+        run.trouble += 1
+        log(f"{run.name}: could not look ({e.strerror or e})")
+        return []
+    run.trouble = 0
+
+    handed: list[str] = []
+    ready = run.watcher.step(files, now)
+    for where in loose(ready):
+        # a loose file at the root is not an album, and guessing which ones belong together is the
+        # decision its owner makes by putting them in a folder (R-200)
+        log(f"{run.name}: loose file(s) at the top, left alone — put them in a folder")
+        run.watcher.forget(where)
+    for album in albums(ready):
+        tries = run.waiting.get(album, 0)
+        if tries >= TRIES:
+            continue  # said once, and not again until something about it changes
+        if ask(run.name, album):
+            run.waiting.pop(album, None)
+            handed.append(album)
+            continue
+        run.waiting[album] = tries + 1
+        run.watcher.forget(album)   # so the next look offers it again
+        if run.waiting[album] >= TRIES:
+            log(f"{run.name}: {album} was not taken after {TRIES} tries, leaving it")
+    return handed
+
+
+
+
+def runs(cfg: Any, now: float | None = None) -> list[Run]:
+    """One `Run` per configured folder, knowing what the last watcher knew."""
+    now = time.monotonic() if now is None else now
+    state = read_state()
+    out = []
+    for row in cfg.watches:
+        kept = state.get(row.name, {})
+        out.append(Run(name=row.name, folder=row.folder, shape=row.shape,
+                       watcher=Watcher.restored(kept.get("folders") or {}, now=now)))
+    return out
+
+
+def keep(runs: Iterable[Run], looked: str) -> dict[str, Any]:
+    """What to write down, named by the watch and never by a path on the disk."""
+    return {run.name: {"folders": run.watcher.state(), "looked": looked,
+                       "waiting": dict(run.waiting)}
+            for run in runs}
+
+
+__all__ = [
+    "INTERVAL",
+    "SETTLE",
+    "TRIES",
+    "Folder",
+    "Run",
+    "Seen",
+    "Watcher",
+    "album_of",
+    "albums",
+    "keep", "look",
+    "loose",
+    "once",
+    "read_state", "runs",
+    "skip",
+    "state_path",
+    "write_state",
+]

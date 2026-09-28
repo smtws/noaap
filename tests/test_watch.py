@@ -6,6 +6,7 @@ forward — which is also the only way to test a twenty-second window in a suite
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -269,3 +270,111 @@ def test_the_label_never_carries_a_path(served, tmp_path):
     job = app.submit("arrived", {"watch": "drop", "album": "A Band/An Album"})
 
     assert str(tmp_path) not in job.label and "/home/" not in job.label
+
+
+# -- one look, and what it leads to -----------------------------------------------------------------
+
+
+def a_run(tmp_path, shape="intake", settle=20):
+    from noaap.watch import Run, Watcher
+
+    folder = tmp_path / "drop"
+    folder.mkdir(exist_ok=True)
+    return Run(name="drop", folder=folder, shape=shape, watcher=Watcher(settle=settle))
+
+
+def an_album(run, *names: str) -> None:
+    album = run.folder / "A Band" / "An Album"
+    album.mkdir(parents=True, exist_ok=True)
+    for name in names or ("01 - One.mp3",):
+        (album / name).write_bytes(b"x" * 10)
+
+
+AUDIO = (".mp3", ".flac", ".opus")
+
+
+def test_a_settled_album_is_offered_once(tmp_path):
+    from noaap.watch import once
+
+    run = a_run(tmp_path)
+    an_album(run)
+    asked: list[tuple[str, str]] = []
+
+    assert once(run, AUDIO, 0, lambda n, a: asked.append((n, a)) or True) == []
+    assert once(run, AUDIO, 30, lambda n, a: asked.append((n, a)) or True) == ["A Band/An Album"]
+    assert once(run, AUDIO, 60, lambda n, a: asked.append((n, a)) or True) == []
+    assert asked == [("drop", "A Band/An Album")]
+
+
+def test_an_arrival_the_app_would_not_take_is_offered_again_and_then_left(tmp_path):
+    """Three tries, then it is said out loud and not repeated — a watcher that asks for ever is a
+    watcher nobody can read the log of."""
+    from noaap.watch import TRIES, once
+
+    run = a_run(tmp_path)
+    an_album(run)
+    said: list[str] = []
+    tries = 0
+
+    for second in range(0, 300, 30):
+        got = once(run, AUDIO, second, lambda n, a: False, log=said.append)
+        tries += 1 if got == [] and second >= 20 else 0
+
+    assert run.waiting["A Band/An Album"] == TRIES
+    assert any("was not taken after 3 tries" in line for line in said)
+
+
+def test_a_folder_that_is_not_there_is_said_once_and_not_again(tmp_path):
+    from noaap.watch import once
+
+    run = a_run(tmp_path)
+    run.folder.rmdir()
+    said: list[str] = []
+
+    for second in (0, 30, 60):
+        assert once(run, AUDIO, second, lambda n, a: True, log=said.append) == []
+
+    assert said == ["drop: the folder is not there"]
+
+
+def test_a_folder_that_comes_back_is_said_too(tmp_path):
+    from noaap.watch import once
+
+    run = a_run(tmp_path)
+    run.folder.rmdir()
+    said: list[str] = []
+    once(run, AUDIO, 0, lambda n, a: True, log=said.append)
+    run.folder.mkdir()
+
+    once(run, AUDIO, 30, lambda n, a: True, log=said.append)
+
+    assert said == ["drop: the folder is not there", "drop: the folder is back"]
+
+
+def test_a_loose_file_is_named_and_left(tmp_path):
+    from noaap.watch import once
+
+    run = a_run(tmp_path)
+    (run.folder / "stray.mp3").write_bytes(b"x")
+    said: list[str] = []
+    asked: list[str] = []
+
+    once(run, AUDIO, 0, lambda n, a: asked.append(a) or True, log=said.append)
+    got = once(run, AUDIO, 30, lambda n, a: asked.append(a) or True, log=said.append)
+
+    assert got == [] and asked == []
+    assert any("put them in a folder" in line for line in said)
+
+
+def test_what_is_written_down_names_the_watch_and_never_a_path(tmp_path):
+    """R-200, ruling 5."""
+    from noaap.watch import keep, once
+
+    run = a_run(tmp_path)
+    an_album(run)
+    once(run, AUDIO, 0, lambda n, a: True)
+
+    state = keep([run], "2026-09-29 00:00")
+
+    assert set(state) == {"drop"}
+    assert str(tmp_path) not in json.dumps(state)

@@ -141,6 +141,13 @@ def main(argv: list[str] | None = None) -> int:
     ad.add_argument("--retag", action="store_true",
                     help="afterwards: write the plan's tags in, keeping every field noaap does not model")
 
+    wa = sub.add_parser("watch", help="watch the configured folders and hand what arrives to the app")
+    wa.add_argument("--once", action="store_true", help="one look at each folder, then stop")
+    wa.add_argument("--interval", type=float, default=None, metavar="SECONDS", help="how often to look")
+    wa.add_argument("--settle", type=float, default=None, metavar="SECONDS",
+                    help="how long a folder must sit still before it counts as arrived")
+    wa.add_argument("--port", type=int, default=8765, help="the port the app listens on")
+
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
     mg.add_argument("--uninstall-old", action="store_true",
@@ -247,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
                     done = adopt_pass.carry_out(found, log=print)
                     print(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
                 return 0
+            case "watch":
+                return _watch(args, cfg)
             case "migrate":
                 from . import migrate
                 for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old):
@@ -455,6 +464,60 @@ def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str
     elif before != after:
         changed.append(f"{path}{before!r} -> {after!r}")
     return gone, changed
+
+
+def _watch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
+    """Look at the configured folders, and hand what has arrived to the app. Does no work itself."""
+    import json
+    import time
+    import urllib.error
+    import urllib.request
+
+    from . import watch as watch_pass
+    from .sources_folder import AUDIO
+
+    if not cfg.watches:
+        print("nothing is watched. Put a [[watch]] table in the config file; `noaap config` shows it.",
+              file=sys.stderr)
+        return 2
+    if trouble := config_mod.watch_trouble(cfg.watches, cfg.library_root):
+        for why in trouble:
+            print(f"refused: {why}", file=sys.stderr)
+        return 2
+
+    settle = args.settle if args.settle is not None else watch_pass.SETTLE
+    interval = args.interval if args.interval is not None else watch_pass.INTERVAL
+    here = watch_pass.runs(cfg)
+    for run in here:
+        run.watcher.settle = settle
+
+    def ask(name: str, album: str) -> bool:
+        """Ask the app to take it. This is what wakes a socket-activated service."""
+        body = json.dumps({"watch": name, "album": album}).encode()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{args.port}/api/arrived", data=body, method="POST",
+            headers={"Content-Type": "application/json", "X-Noaap": "1"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as answer:
+                print(f"{name}: {album} — {json.load(answer)['job']['label']}", flush=True)
+                return True
+        except urllib.error.HTTPError as e:
+            print(f"{name}: {album} — refused: {e.read().decode('utf-8', 'replace')[:200]}",
+                  file=sys.stderr, flush=True)
+        except OSError as e:
+            print(f"{name}: {album} — the app did not answer ({e})", file=sys.stderr, flush=True)
+        return False
+
+    print(f"watching {len(here)} folder(s), looking every {interval:.0f}s, "
+          f"settling after {settle:.0f}s" + (" (once)" if args.once else ""), flush=True)
+    while True:
+        now = time.monotonic()
+        for run in here:
+            watch_pass.once(run, AUDIO, now, ask, log=lambda s: print(s, flush=True))
+        watch_pass.write_state(watch_pass.keep(here, time.strftime("%Y-%m-%d %H:%M")))
+        if args.once:
+            return 0
+        time.sleep(interval)
 
 
 def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace) -> int:
