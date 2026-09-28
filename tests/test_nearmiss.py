@@ -342,3 +342,82 @@ def test_the_pass_gives_the_card_back_even_when_a_track_fails(album, tmp_path, m
     logged(service)
     service.check_near_lyrics_all()
     assert released, "the models are released whatever the pass ran into"
+
+
+# -- remembering that there is nothing to find (P40) -----------------------------------------------
+
+
+class NoEntries:
+    """An lrclib with nothing for this title, which is the commonest answer of all."""
+
+    def candidates(self, artist, title):
+        return []
+
+    def by_id(self, lrclib_id):
+        return None
+
+
+def test_no_candidate_is_remembered_and_not_asked_again(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    service = pass_service(tmp_path, yt, NoEntries(), FakeAligner(0.95), monkeypatch)
+    logged(service)
+    service.check_near_lyrics_all()
+
+    after = load_plan(album_dir)
+    assert all(t.lyrics_no_entry for t in after.tracks), "the pass did not write down what it learned"
+    assert all(t.lyrics_fit is None for t in after.tracks), "no entry is not a verdict"
+
+    # the next pass has nothing left to look at
+    service = pass_service(tmp_path, yt, NoEntries(), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all()
+    assert lines[0] == "near misses: nothing to check"
+
+
+def test_refetch_asks_again_for_a_track_lrclib_had_nothing_for(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    for t in plan.tracks:
+        t.lyrics_no_entry = "2026-09-28"
+    save_plan(plan, album_dir)
+
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch)
+    lines = logged(service)
+    service.check_near_lyrics_all(refetch=True, dry_run=True)
+    assert f"{len(plan.tracks)} track(s) with no words" in lines[0]
+
+
+def test_an_entry_appearing_later_clears_the_note(album, tmp_path, monkeypatch):
+    album_dir, plan, yt = album
+    for t in plan.tracks:
+        t.lyrics_no_entry = "2026-09-28"
+    save_plan(plan, album_dir)
+
+    service = pass_service(tmp_path, yt, FakeLrclib(204.4), FakeAligner(0.95), monkeypatch)
+    logged(service)
+    service.check_near_lyrics_all(refetch=True)
+
+    after = load_plan(album_dir)
+    assert all(t.lyrics_no_entry is None for t in after.tracks), "lrclib answered; the note is stale"
+
+
+def test_the_panel_is_told_nothing_about_it(album, tmp_path, monkeypatch):
+    """`lyrics_no_entry` is not a verdict, so it must not reach the lyrics panel at all: `nearMiss`
+    renders any unknown `decided` as the unclear wording, which would be a claim about an entry that
+    does not exist."""
+    album_dir, plan, yt = album
+    service = pass_service(tmp_path, yt, NoEntries(), FakeAligner(0.95), monkeypatch)
+    logged(service)
+    service.check_near_lyrics_all()
+
+    after = load_plan(album_dir)
+    assert all(t.lyrics_fit is None for t in after.tracks)
+    assert all(t.lyrics_no_entry for t in after.tracks), "it is on the plan"
+
+    # and the panel's payload does not carry it: App.lyrics builds that dict by hand, so this asserts
+    # against the real builder rather than against the plan it reads from
+    from ytalbum.web import App
+
+    app = App(Config(), tmp_path)
+    got = app.lyrics(after.source_id, after.tracks[0].video_id)
+    assert got is not None
+    assert not [k for k in got if "no_entry" in k], f"the panel is shown {sorted(got)}"

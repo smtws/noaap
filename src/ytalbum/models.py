@@ -146,6 +146,11 @@ class PlanTrack:
     # {entry, ours, theirs, span, unplaced, decided, why}. Kept so a pass never asks twice and a
     # user who disagrees with a verdict has the numbers in front of them.
     lyrics_fit: dict[str, str] | None = None
+    # the date a near-miss pass asked lrclib and was told there is nothing else for this title
+    # (§9.46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
+    # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —
+    # 878 of this library's 1089 wordless tracks are in this state, and they were asked every run.
+    lyrics_no_entry: str | None = None
 
     @property
     def effective_id(self) -> str:

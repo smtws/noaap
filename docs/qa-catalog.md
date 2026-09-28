@@ -2422,10 +2422,32 @@ applied to anything.
   Tested with an aligner that raises.
   - **result:** pass
 
+## AK. Remembering that there is nothing to find (P40)
+
+After P39's real pass, **878 of 1089** wordless tracks had no lrclib candidate at all and nothing on
+the plan to say so, so every later `--near` would have asked lrclib about all 878 again.
+
+- [x] **AK1 · R** — the outcome is recorded, and it is not a verdict
+
+  `lyrics_no_entry` on the track, the date of the lookup. Deliberately **not** a `lyrics_fit`
+  verdict: `nearMiss` in logic.mjs renders any `decided` it does not recognise with the *unclear*
+  wording, so a "no candidate" verdict would have told the user the aligner was undecided about an
+  entry that does not exist. `App.lyrics` never sends it, asserted against the real payload builder
+  rather than against the plan.
+  - **result:** pass
+
+- [x] **AK2 · R** — it is not asked again, and `--refetch` still asks
+
+  A second pass over a library where lrclib has nothing reports "nothing to check" and makes no
+  lookup. `--refetch` takes those tracks back. An entry that does turn up clears the note, so a track
+  is never stuck on a stale answer.
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AK cases (P40: remembering that there is nothing to find) | 2 | 0 | `lyrics_no_entry` on the track, a date, not a verdict — `nearMiss` renders an unknown `decided` as *unclear*, which would have claimed the aligner was undecided about an entry that does not exist. 878 lookups a run saved. 723 pytest + 88 node. |
 | 2026-09-28 | the AJ cases (P39: a library-wide near-miss pass) | 4 | 0 in the design; 1 of my own (the summary counted from a stale copy of the plan and reported 13 "no candidate" for 13 tracks it had just written words to) | `ytalbum lyrics --near`, and `--dry-run` on the real library read-only: 1089 tracks looked at, **196 would align**, 878 have no candidate, 15 are too far. ~36 min on this GPU, ~9 h on a processor. Plans byte-identical after the dry run. 719 pytest + 88 node. |
 | 2026-09-28 | the AI cases (P38: a chip nobody could see) | 4 | 0 | `color: inherit` on `button.len.fix`. 1.00:1 → 17.04:1 light, 1.10:1 → 14.05:1 dark; 103 of 2977 tracks were in the invisible 10–20 s window. A CSS guard now forbids a button rule that drops its background without setting a colour — the P12 class, twice. album.jpg retaken. 712 pytest + 88 node. |
 | 2026-09-28 | the AH cases (P37: a corpus that keeps the measurements) | 4 | 0 in the design; 3 of my own in the corpus's own cases (two invented API names, the wrong lrclib entry and then no span, and a skip message that was my error rather than a fact about the library) | 27 fast cases over six fixtures, no model and no audio, 0.04 s. The slow half against the real library: 3 passed, 1 skipped (no `timing-check` extra), 89 s. Four dead heuristics each have a case that must keep failing them. 710 pytest + 88 node. |

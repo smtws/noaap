@@ -760,8 +760,11 @@ class Service:
 
         entry, apart = self._nearest_entry(api, track)
         if not entry:
+            track.lyrics_no_entry = datetime.now(UTC).date().isoformat()
+            save_plan(plan, album_dir)
             self.log(f"{track.title}: lrclib has nothing else for this title")
             return Outcome("ok", plan, album_dir)
+        track.lyrics_no_entry = None   # there is one after all; the next pass should look again
         theirs = float(entry.length or 0.0)
         if not nominated(track.file_length, theirs):
             track.lyrics_fit = {"entry": str(entry.lrclib_id or ""), "ours": f"{track.file_length:.1f}",
@@ -848,7 +851,8 @@ class Service:
                 if track.state != "done" or (track.lyrics or "none") != "none" or not track.file_length:
                     continue
                 decided = (track.lyrics_fit or {}).get("decided")
-                if decided is None or (refetch and decided in self.RECHECKABLE):
+                settled = decided is not None or track.lyrics_no_entry is not None
+                if not settled or (refetch and (decided in self.RECHECKABLE or track.lyrics_no_entry)):
                     wanted.append((plan, track))
         if not wanted:
             self.log("near misses: nothing to check")
@@ -885,7 +889,7 @@ class Service:
             self.check()
             entry, apart = self._nearest_entry(api, track)
             if not entry:
-                counts["no candidate"] += 1
+                counts["no candidate"] += 1   # a real pass would remember this and stop asking
                 self.log(f"{track.artist} — {track.title}: lrclib has nothing else for this title")
                 continue
             theirs = float(entry.length or 0.0)
