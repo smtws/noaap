@@ -64,7 +64,11 @@ class Entry:
 
     @property
     def audio(self) -> Path | None:
-        return next((p for p in sorted(self.path.glob(f"{AUDIO_STEM}.*"))), None)
+        """The file this entry is about — a track's audio, or whatever else was binned."""
+        for stem in (AUDIO_STEM, *(m for m in self.data.get("moved", []) if m not in ("words", "original"))):
+            if found := next((p for p in sorted(self.path.glob(f"{stem}.*"))), None):
+                return found
+        return None
 
     @property
     def original(self) -> Path | None:
@@ -148,7 +152,8 @@ def bin_file(library: Path, plan: AlbumPlan, path: Path, reason: str, what: str 
     when = datetime.now(UTC)
     entry = bin_root(library) / _entry_id(plan.source_id, what, when)
     entry.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(path), entry / f"{AUDIO_STEM}{path.suffix}")
+    # named for what it is: "audio.jpg" for a cover was simply wrong (catalog AR)
+    shutil.move(str(path), entry / f"{what}{path.suffix}")
     (entry / BIN_FILE).write_text(json.dumps({
         "when": when.isoformat(timespec="seconds"),
         "reason": reason,

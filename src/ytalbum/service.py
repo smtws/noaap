@@ -1157,8 +1157,14 @@ class Service:
             else:
                 shutil.move(str(words), sidecar_path(album_dir, track.filename))
 
-        plan.tracks.append(track)
-        plan.tracks.sort(key=lambda t: (t.disc or 1, t.number))
+        # Put it back where it stood, then let `arrange` close the numbering. Its old number cannot
+        # simply be reused: the tracks left behind were renumbered when it went, so restoring a 1
+        # into an album that already has a 1 gives two of them — which is what the first version
+        # did. Sorting the whole list instead would interleave a multi-disc album (slice 22).
+        same_disc = [i for i, t in enumerate(plan.tracks) if t.disc == track.disc]
+        after = [i for i in same_disc if plan.tracks[i].number >= track.number]
+        plan.tracks.insert(after[0] if after else (same_disc[-1] + 1 if same_disc else len(plan.tracks)), track)
+        arrange(plan)
         save_plan(plan, album_dir)
         if not said:
             shutil.rmtree(entry.path, ignore_errors=True)

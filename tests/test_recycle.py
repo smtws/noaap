@@ -236,3 +236,118 @@ def test_the_bin_holds_no_filesystem_path_for_the_page(library):
     assert len(rows) == 1
     assert str(tmp_path) not in str(rows), rows
     assert set(rows[0]) == {"id", "when", "reason", "artist", "title", "album", "bytes", "track"}
+
+
+# -- what the first run of P47 got wrong (R-139) ---------------------------------------------------
+
+
+def test_restore_renumbers_instead_of_reusing_the_old_number(library):
+    """Deleting renumbers what is left, so putting a 1 back into an album that now has a 1 gives
+    two of them — which is what the first version did, observed on the disposable copy."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    s = service(tmp_path, yt)
+    first = plan.tracks[0]
+    s.delete_track(plan.source_id, first.video_id)
+    assert [t.number for t in load_plan(album_dir).tracks] == list(range(1, len(plan.tracks)))
+
+    s.restore(entries(tmp_path)[0].id)
+
+    back = load_plan(album_dir)
+    numbers = [t.number for t in back.tracks]
+    assert numbers == sorted(numbers), numbers
+    assert len(numbers) == len(set(numbers)), f"two tracks share a number: {numbers}"
+    assert numbers == list(range(1, len(plan.tracks) + 1))
+    # and it went back where it stood, not onto the end
+    assert back.tracks[0].video_id == first.video_id
+
+
+def test_a_binned_cover_is_called_a_cover(library):
+    tmp_path, plan, yt = library
+    (tmp_path / plan.folder / "cover.jpg").write_bytes(b"\xff\xd8\xff art")
+
+    service(tmp_path, yt).delete_album(plan.source_id)
+
+    cover = next(e for e in entries(tmp_path) if not e.data.get("track"))
+    assert cover.audio and cover.audio.name == "cover.jpg", "a cover is not audio.jpg"
+    assert cover.data["moved"] == ["cover"]
+
+
+def test_an_entry_written_before_the_rename_still_resolves(library):
+    """Entries binned by the first version call the cover `audio.jpg`; they must still list and
+    restore, because a bin that loses things is worse than no bin."""
+    tmp_path, plan, yt = library
+    (tmp_path / plan.folder / "cover.jpg").write_bytes(b"\xff\xd8\xff art")
+    service(tmp_path, yt).delete_album(plan.source_id)
+    cover = next(e for e in entries(tmp_path) if not e.data.get("track"))
+    cover.audio.rename(cover.path / "audio.jpg")          # as the old code wrote it
+
+    again = next(e for e in entries(tmp_path) if not e.data.get("track"))
+    assert again.audio and again.audio.name == "audio.jpg"
+
+
+def test_the_cli_says_why_a_restore_was_refused(library, capsys):
+    """It exited 1 and printed nothing: `exit_code` returns a number and never the message."""
+    from ytalbum.cli import main
+
+    tmp_path, plan, yt = library
+    s = service(tmp_path, yt)
+    s.delete_track(plan.source_id, plan.tracks[0].video_id)
+    entry = entries(tmp_path)[0]
+    s.delete_album(plan.source_id)
+    capsys.readouterr()
+
+    assert main(["recycle", "restore", "--library", str(tmp_path), entry.id]) == 1
+    said = capsys.readouterr()
+    assert "not in the library any more" in said.err, f"stdout={said.out!r} stderr={said.err!r}"
+
+
+def test_the_cli_restores_without_being_told_the_library(library, capsys, monkeypatch):
+    """`--library` was the only way in, because `_recycle` read `args.library` directly instead of
+    falling back to the configured root the way every other command does."""
+    from ytalbum import config as config_mod
+    from ytalbum.cli import main
+
+    tmp_path, plan, yt = library
+    service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
+    entry = entries(tmp_path)[0]
+    monkeypatch.setattr(config_mod, "load", lambda *a, **k: Config(library_root=tmp_path, musicbrainz=False))
+
+    assert main(["recycle", "restore", entry.id]) == 0
+    assert entries(tmp_path) == []
+
+
+def test_pruning_from_the_command_line_bins_too(library, capsys, monkeypatch):
+    """`_service(cfg, None)` gave prune no library, so it fell back to unlinking — the one thing
+    slice 49 removed. Found while fixing the restore, not reported."""
+    from ytalbum import config as config_mod
+    from ytalbum.cli import main
+
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    plan.tracks[0].in_source = False
+    save_plan(plan, album_dir)
+    monkeypatch.setattr(config_mod, "load", lambda *a, **k: Config(library_root=tmp_path, musicbrainz=False))
+
+    assert main(["prune", "--yes", str(album_dir)]) == 0
+    assert len(entries(tmp_path)) == 1
+    assert entries(tmp_path)[0].reason == "no longer in the source playlist"
+
+
+def test_listing_survives_being_piped_into_head(library, monkeypatch, capsys):
+    """`ytalbum recycle list | head` closed the pipe and Python printed a traceback."""
+    from ytalbum.cli import main
+
+    tmp_path, plan, yt = library
+    service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
+
+    real = print
+
+    def closed(*a, **k):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr("builtins.print", closed)
+    try:
+        assert main(["recycle", "list", "--library", str(tmp_path)]) == 0
+    finally:
+        monkeypatch.setattr("builtins.print", real)

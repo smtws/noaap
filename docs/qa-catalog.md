@@ -2703,6 +2703,24 @@ undoing that decision. No code.
   bytes, track — and the library root appears nowhere in the response.
   - **result:** pass
 
+### Five defects the first run found, and one the fix run found
+
+`1e4d914` was run on a disposable full copy of the library. Deleting worked; **restoring did not**,
+and it failed *silently* — exit 1, no output, with `-v` too.
+
+| | what | why |
+|---|---|---|
+| 1 | `recycle restore` always refused | `_recycle` read `args.library` directly instead of `_library(args, cfg, …)`, so without `--library` the Service had no library root and every restore hit "no library configured" |
+| 2 | …and said nothing | `exit_code` returns a number; the `Outcome.message` was never printed. A refusal now goes to stderr, a success to stdout |
+| 3 | **`ytalbum prune` unlinked instead of binning** | `_service(cfg, None)`: no library, so `_bin` took its no-bin fallback. The exact behaviour slice 49 removed, still live on the command line. Found while fixing 1, not reported |
+| 4 | a binned cover was `audio.jpg` | it is named for what it is now, and `moved` says so; entries written by the first version still list and restore |
+| 5 | **restore gave two tracks the same number** | deleting renumbers what is left, so putting a `1` back into an album that now has a `1` produced two. It is inserted at its old position and `arrange` closes the numbering — `arrange`, not `renumber`, because sorting the whole list interleaves a multi-disc album (slice 22) |
+| 6 | `recycle list \| head` printed a traceback | BrokenPipeError on the way out. A listing command has to survive being piped |
+
+3 and 5 are the ones worth noting: both were *in* the reviewed commit, neither was in the report, and
+5 would have quietly corrupted an album's numbering every time somebody used the feature the package
+exists for.
+
 ### A regression I wrote and the existing suite caught
 
 The first version of `bin_track` fell back to `album_dir / track.filename` when the caller passed no
@@ -2717,6 +2735,7 @@ itself passed `_inside`, because it joins the filename without checking.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AR cases re-run (P47 follow-up) | 6 | 6 defects in the reviewed commit, all fixed | Run on a disposable copy of the library. Restore refused every time and said nothing (`args.library` read directly; `exit_code` never prints the message). CLI `prune` still unlinked instead of binning. A binned cover was `audio.jpg`. **Restore gave two tracks the same number.** `recycle list \| head` printed a traceback. 806 pytest + 91 node. |
 | 2026-09-28 | the AR cases (P47: the recycle bin) | 5 | 0 in the design; 1 of my own, caught by the existing suite (a fallback in `bin_track` reopened the path traversal `_inside` closes, and moving is worse than unlinking) | `ytalbum never removes audio, it only moves it to the bin`. Delete, delete-album and prune all route through `<library>/.recycle/`; the kept original goes with the track, which fixes the phase-5 inconsistency. Restore is deliberately asymmetric: the user's lyrics win, tags are rewritten not replayed, a track the playlist dropped comes back and is binned again. Never empties itself. 799 pytest + 91 node. |
 | 2026-09-28 | the AQ cases (P46: several sources for one track) | 3 | n/a — design spike, no code | Candidates on a track (additive, ships before the boundary, folds in `source_override`); intake folder vs library-as-source; a **length-first** ranking rule with quality only inside the 3 s band, argued from median 0.3 s / p90 17.1 s / max 514 s over 2539 tracks; a recycle bin at the library root that never empties itself, with `prune`/`delete` routed through it. Flagged: this library has **one** `source_override` and **one** format, so it holds no evidence about ranking — that part is reasoned, not measured. |
 | 2026-09-28 | the AP cases (P45: the half of the cold read that was code) | 2 | 0 in the software; 1 of my own (a scanner that matched its own docstring) | `ytalbum config` now reports ffmpeg — found, or NOT FOUND with the two things that break — and still exits 0, because ffmpeg is reported and not required. 204 slice references across 40 files brought into line with the docs, with a test that keeps them there. 786 pytest + 91 node. |

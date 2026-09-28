@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -145,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             case "search":
                 return _search(args, cfg)
             case "download":
-                return exit_code(_service(cfg, None).download_existing(args.album_dir))
+                return exit_code(_service(cfg, _library(args, cfg, required=False)).download_existing(args.album_dir))
             case "update":
                 library = _library(args, cfg, required=True)
                 return 2 if library is None else exit_code(_service(cfg, library).update_all(report_only=args.dry_run, deep=args.deep))
@@ -240,14 +242,33 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 
 
 def _recycle(args: argparse.Namespace, cfg: Config) -> int:
-    """The bin: what is in it, putting one back, and emptying it — never automatically."""
+    """The bin: what is in it, putting one back, and emptying it — never automatically.
+
+    `recycle list | head` closes the pipe under us, which Python reports as a BrokenPipeError with a
+    traceback on the way out. A listing command has to survive being piped into `head`.
+    """
     from . import recycle as bin_
 
-    root = args.library or cfg.library_root
+    root = _library(args, cfg, required=True)
     if not root or not root.is_dir():
-        print("set the library first: ytalbum config --library PATH", file=sys.stderr)
         return 2
     if args.action == "list":
+        return _recycle_list(bin_, root)
+    if args.action == "restore":
+        if not args.entry:
+            print("which one? `ytalbum recycle list` shows the ids", file=sys.stderr)
+            return 2
+        outcome = _service(cfg, root).restore(args.entry)
+        if outcome.message:
+            print(outcome.message, file=sys.stderr if outcome.status == "failed" else sys.stdout)
+        return exit_code(outcome)
+    gone, freed = bin_.empty(root, args.older_than)
+    print(f"removed {gone} entr{'y' if gone == 1 else 'ies'} for good, {freed / 1e6:.1f} MB")
+    return 0
+
+
+def _recycle_list(bin_: Any, root: Path) -> int:
+    try:
         found = bin_.entries(root)
         if not found:
             print("the recycle bin is empty")
@@ -257,14 +278,11 @@ def _recycle(args: argparse.Namespace, cfg: Config) -> int:
         count, size = bin_.total(root)
         print(f"\n{count} entr{'y' if count == 1 else 'ies'}, {size / 1e6:.1f} MB — "
               f"nothing here is ever removed on its own")
-        return 0
-    if args.action == "restore":
-        if not args.entry:
-            print("which one? `ytalbum recycle list` shows the ids", file=sys.stderr)
-            return 2
-        return exit_code(_service(cfg, args.library).restore(args.entry))
-    gone, freed = bin_.empty(root, args.older_than)
-    print(f"removed {gone} entr{'y' if gone == 1 else 'ies'} for good, {freed / 1e6:.1f} MB")
+    except BrokenPipeError:
+        # `| head` closed the pipe. Point stdout at nothing so the interpreter's exit-time flush has
+        # somewhere to go; closing it instead would be correct here and break anything capturing it.
+        with contextlib.suppress(OSError, ValueError):
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
     return 0
 
 
@@ -404,7 +422,9 @@ def _prune(args: argparse.Namespace, cfg: config_mod.Config) -> int:
             return 2
         if input("delete them? [y/N] ").strip().lower() not in ("y", "yes", "j", "ja"):
             return 0
-    return exit_code(_service(cfg, None).prune(args.album_dir))
+    # the library root is what tells prune where the recycle bin is; without it, it would fall
+    # back to unlinking, which is exactly the behaviour slice 49 removed
+    return exit_code(_service(cfg, _library(args, cfg, required=False)).prune(args.album_dir))
 
 
 def _systemd(args: argparse.Namespace, cfg: config_mod.Config) -> int:
