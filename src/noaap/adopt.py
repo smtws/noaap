@@ -198,6 +198,11 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
               log: Callable[[str], None] = lambda s: None) -> dict[str, int]:
     """Return an adopted album to the state it was in, and remove what noaap added.
 
+    **It can be run again.** A file already back under its own name is not renamed, tags already
+    restored are not rewritten, and an album whose plan is gone is already done and is not visited.
+    One track that cannot be given back costs that track: the rest of the album is still restored,
+    the plan is kept so a later run can finish it, and the caller is told.
+
     **Judged on what matters** (R-189, ruling 4): every file answers to `adopted_name`, every field
     in `adopted_tags` has the value it had, and the audio stream is the one that was there. The tag
     *block* does not come back byte-identical — mutagen rewrites it whole, and a writer that put
@@ -207,20 +212,32 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
     A file noaap added and the user has since changed is **kept**, and this says so: it is theirs
     now, whatever put it there.
     """
-    done = {"renamed": 0, "restored": 0, "removed": 0, "kept": 0}
+    done = {"renamed": 0, "restored": 0, "removed": 0, "kept": 0, "failed": 0}
     if not plan.adopted:
         raise ValueError(f"{plan.album}: no record of an adoption to undo")
 
     for track in plan.tracks:
-        if not track.adopted_name:
-            raise ValueError(f"{plan.album}: {track.title} has no record of the name it had")
-        here = _inside(album_dir, track.filename)
-        want = album_dir / track.adopted_name
-        if here and here != want and here.is_file():
-            here.rename(want)
-            done["renamed"] += 1
-        if track.adopted_tags and want.is_file() and restore_tags(want, track.adopted_tags):
-            done["restored"] += 1
+        try:
+            if not track.adopted_name:
+                raise ValueError(f"{track.title} has no record of the name it had")
+            here = _inside(album_dir, track.filename)
+            want = album_dir / track.adopted_name
+            if here and here != want and here.is_file():
+                here.rename(want)
+                done["renamed"] += 1
+            if track.adopted_tags and want.is_file() and restore_tags(want, track.adopted_tags):
+                done["restored"] += 1
+        except Exception as e:  # one file's trouble is not the album's, and not the pass's
+            done["failed"] += 1
+            log(f"  {track.adopted_name or track.title}: {e}")
+
+    if done["failed"]:
+        # **the plan stays.** It is the only record of what these files were, and throwing it away
+        # because part of the undo failed would leave the rest of the album unrecoverable. Run the
+        # undo again and it finishes what is left (found 2026-09-28: a crash mid-pass left 92 of
+        # 132 albums adopted and three renamed albums with no way back but this).
+        save_plan(plan, album_dir)
+        return done
 
     for path in added_by_us(album_dir, plan):
         if not path.is_file():

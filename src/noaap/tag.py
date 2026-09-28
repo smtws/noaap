@@ -407,7 +407,13 @@ def restore_tags(path: Path, values: dict[str, Any]) -> bool:
             if now == want:
                 continue
             if want is None:
-                audio.tags.pop(key, None)
+                # **`del`, not `pop`.** A Vorbis comment block (`OggOpusVComment`, `VCFLACDict`)
+                # has no `pop` at all — not even a one-argument one — and `pop(key, None)` raises
+                # `TypeError: pop expected at most 1 argument, got 2`. EasyID3 does have it, which
+                # is how three containers' worth of cases passed without ever removing a key:
+                # every file in them had tags to put back (found 2026-09-28 by a real album that
+                # had none).
+                del audio.tags[key]
             else:
                 audio.tags[key] = want
         except (KeyError, ValueError):

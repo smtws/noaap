@@ -445,6 +445,7 @@ def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace)
 
     totals: dict[str, int] = {}
     albums = 0
+    trouble: list[str] = []
     for album_dir, plan in iter_plans(root):
         if not plan.adopted or not adopt_pass.in_scope(album_dir, root, args.only, args.album):
             continue
@@ -453,12 +454,30 @@ def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace)
             print(f"  would give back {plan.albumartist} — {plan.album} ({len(plan.tracks)} track(s))")
             continue
         print(f"  {plan.albumartist} — {plan.album}")
-        for key, value in adopt_pass.give_back(album_dir, plan, library, log=print).items():
+        # **one album's trouble is not the pass's.** A crash in the middle used to end the run with
+        # most of the library still adopted and the renamed albums with no way back (found
+        # 2026-09-28). Whatever fails is named at the end and the exit code says so.
+        try:
+            done = adopt_pass.give_back(album_dir, plan, library, log=print)
+        except Exception as e:
+            trouble.append(f"{plan.albumartist} — {plan.album}: {e}")
+            print(f"  could not give it back: {e}", file=sys.stderr)
+            continue
+        if done.get("failed"):
+            trouble.append(f"{plan.albumartist} — {plan.album}: {done['failed']} track(s) — "
+                           "its plan was kept, run the undo again")
+        for key, value in done.items():
             totals[key] = totals.get(key, 0) + value
     if not args.apply:
         print(f"{albums} adopted album(s). Nothing was changed. `--undo --apply` does it.")
         return 0
     print(f"{albums} album(s) given back: " + ", ".join(f"{v} {k}" for k, v in sorted(totals.items())))
+    if trouble:
+        print(f"\n{len(trouble)} album(s) not fully given back:", file=sys.stderr)
+        for line in trouble:
+            print(f"  {line}", file=sys.stderr)
+        print("run the same command again to finish them.", file=sys.stderr)
+        return 1
     return 0
 
 

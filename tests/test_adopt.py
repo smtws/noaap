@@ -404,3 +404,92 @@ def test_neither_runs_without_a_way_back(library, act):
 
     with pytest.raises(ValueError, match="no record of what they were"):
         getattr(adopt, act)(album_dir, plan)
+
+
+# -- the album that had no tags at all --------------------------------------------------------------
+
+
+@pytest.fixture
+def untagged(tmp_path) -> Path:
+    """One album per container whose files carry **no tags**. The reference collection has such an
+    album, and the first undo crashed on it: making a field absent again is not the same code path
+    as putting a value back, and nothing here had ever exercised it."""
+    album = tmp_path / "Nobody" / "Untitled"
+    for n, suffix in enumerate((".mp3", ".flac", ".opus"), 1):
+        encode(album / f"{n:02d} - track{suffix}")
+    return album
+
+
+@pytest.mark.parametrize("suffix", [".mp3", ".flac", ".opus"])
+def test_a_file_with_no_tags_has_no_tags_again(untagged, tmp_path, suffix):
+    """R-192, item 1. `pop` does not exist on a Vorbis comment block — not even with one argument —
+    so removing a key had to be `del`, and three containers' worth of cases passed without it
+    because every file in them had something to put back."""
+    from noaap import adopt
+    from noaap.download import load_plan, save_plan
+    from noaap.tag import raw_tags
+
+    audio = next(untagged.glob(f"*{suffix}"))
+    assert not any(raw_tags(audio, adopt.WRITTEN).values()), "it starts with nothing"
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    plan = load_plan(untagged)
+    adopt.retag(untagged, plan)
+    save_plan(plan, untagged)
+    assert any(raw_tags(audio, adopt.WRITTEN).values()), "the retag really did write fields"
+
+    adopt.give_back(untagged, load_plan(untagged), tmp_path)
+
+    assert not any(raw_tags(audio, adopt.WRITTEN).values()), "and now it says nothing again"
+
+
+def test_one_track_that_cannot_be_given_back_costs_that_track(untagged, tmp_path):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    plan = load_plan(untagged)
+    plan.tracks[1].adopted_name = None  # the record for this one is gone
+
+    done = adopt.give_back(untagged, plan, tmp_path, log=lambda s: None)
+
+    assert done["failed"] == 1
+    assert (untagged / ".ytalbum.json").is_file(), \
+        "the plan stays: it is the only record of what the other files were"
+
+
+def test_an_undo_can_be_run_again_and_finishes_what_is_left(library, untagged, tmp_path, monkeypatch):
+    """R-192, item 3. The state after a failure is not a dead end."""
+    from noaap import adopt
+    from noaap.download import PLAN_FILE, load_plan
+
+    before = fingerprint(tmp_path)
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+
+    # the first pass: one album cannot be finished, the others are. The failure is the real one —
+    # the container refusing to remove a key — and it goes away without touching the record.
+    real = adopt.restore_tags
+    refused: list[Path] = []
+
+    def refuses(path, values):
+        if "Untitled" in str(path) and not refused:
+            refused.append(path)
+            raise TypeError("pop expected at most 1 argument, got 2")
+        return real(path, values)
+
+    monkeypatch.setattr(adopt, "restore_tags", refuses)
+    first = {}
+    for album_dir in (untagged, tmp_path / "A Band" / "An Album", tmp_path / "B Band" / "Another"):
+        first[album_dir.name] = adopt.give_back(album_dir, load_plan(album_dir), tmp_path,
+                                                log=lambda s: None)
+
+    assert first["Untitled"]["failed"] == 1 and (untagged / PLAN_FILE).is_file()
+    assert not (tmp_path / "A Band" / "An Album" / PLAN_FILE).exists(), "the others were finished"
+
+    # and again, with nothing reset
+    monkeypatch.setattr(adopt, "restore_tags", real)
+    again = adopt.give_back(untagged, load_plan(untagged), tmp_path, log=lambda s: None)
+
+    assert again["failed"] == 0
+    assert not list(tmp_path.rglob(PLAN_FILE)), "nothing of noaap's is left anywhere"
+    assert fingerprint(tmp_path) == before
