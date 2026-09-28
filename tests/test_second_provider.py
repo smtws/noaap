@@ -186,26 +186,34 @@ def test_an_unknown_provider_is_refused_rather_than_guessed(tmp_path):
 # -- the guard ------------------------------------------------------------------------------------
 
 
-def test_only_the_provider_knows_what_youtube_looks_like() -> None:
-    """The boundary is only real while nothing outside it recognises a YouTube anything.
+# The boundary is only real while nothing outside a provider recognises that provider's anything.
+# This is a grep, deliberately: it catches a URL pasted into a message, an id pattern copied into a
+# helper, an import added for convenience — none of which a type checker would mind and all of which
+# put the core back where it was.
+#
+# Three provinces, not one (§9, slice 57). The client is shared now, so `yt_dlp` is allowed wherever
+# yt-dlp is spoken; each *site's* shapes are allowed only in that site's own files. `ytdlp.py` is in
+# the first list and in neither of the others, which is the whole point of it: shared plumbing that
+# cannot name a site.
+PROVINCES = [
+    ("yt-dlp itself", r"\byt_dlp\b",
+     {"ytdlp.py", "youtube.py", "sources_youtube.py", "soundcloud.py", "sources_soundcloud.py"}),
+    # `titles.py` *is* YouTube's title conventions — the provider's province, wherever the file
+    # happens to sit. What matters is who reaches into it, which the case after this pins.
+    ("YouTube", r"youtube\.com|youtu\.be|ytimg|ggpht|googlevideo"
+                r"|watch\?v=|playlist\?list=|OLAK5uy|\bparse_video_title\b|\bchannel_artist\b",
+     {"youtube.py", "sources_youtube.py", "titles.py"}),
+    ("SoundCloud", r"soundcloud\.com|sndcdn|\bscsearch\b|api-v2\.soundcloud",
+     {"soundcloud.py", "sources_soundcloud.py"}),
+]
 
-    This is a grep, deliberately: it catches a URL pasted into a message, an id pattern copied into
-    a helper, an import added for convenience — none of which a type checker would mind and all of
-    which put the core back where it was. `youtube.py` and `sources_youtube.py` are the province.
-    """
+
+@pytest.mark.parametrize("who,pattern,allowed", PROVINCES, ids=[p[0] for p in PROVINCES])
+def test_a_provider_stays_inside_its_own_files(who, pattern, allowed) -> None:
     import re
 
     root = Path(__file__).parent.parent / "src" / "noaap"
-    # `titles.py` *is* YouTube's title conventions — it is the provider's province, wherever the
-    # file happens to sit. What matters is who reaches into it, which the next case pins.
-    allowed = {"youtube.py", "sources_youtube.py", "titles.py"}
-    shapes = re.compile(
-        r"yt_dlp"                      # the client itself
-        r"|youtube\.com|youtu\.be"     # its addresses
-        r"|ytimg|ggpht|googlevideo"    # and where it keeps the pictures and the audio
-        r"|watch\?v=|playlist\?list=|OLAK5uy"   # the id shapes
-        r"|\bparse_video_title\b|\bchannel_artist\b"   # its title conventions
-    )
+    shapes = re.compile(pattern)
     offenders = []
     for path in sorted(root.rglob("*.py")) + sorted((root / "webui").glob("*.mjs")):
         if path.name in allowed:
@@ -213,7 +221,17 @@ def test_only_the_provider_knows_what_youtube_looks_like() -> None:
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if shapes.search(line) and "THUMB_HOSTS" not in line:
                 offenders.append(f"{path.relative_to(root)}:{n}: {line.strip()[:70]}")
-    assert not offenders, "YouTube has leaked out of its provider:\n" + "\n".join(offenders)
+    assert not offenders, f"{who} has leaked out of its province:\n" + "\n".join(offenders)
+
+
+def test_the_shared_client_knows_no_site() -> None:
+    """`ytdlp.py` exists to be shared, so it is the one file where a site name would be invisible:
+    it is nobody's province and every provider imports it."""
+    shared = (Path(__file__).parent.parent / "src" / "noaap" / "ytdlp.py").read_text(encoding="utf-8")
+
+    for who, pattern, _ in PROVINCES[1:]:
+        import re
+        assert not re.search(pattern, shared), f"{who} reached into the shared client"
 
 
 def test_what_still_reaches_into_youtubes_title_conventions_is_written_down() -> None:
@@ -234,3 +252,33 @@ def test_what_still_reaches_into_youtubes_title_conventions_is_written_down() ->
                       if p.name not in {"titles.py", "sources_youtube.py"}
                       and re.search(r"(?m)^from \.titles import", p.read_text(encoding="utf-8")))
     assert reaching == ["plan.py"], f"the coupling grew: {reaching}"
+
+
+def test_cookies_are_given_to_the_shared_client_never_taken_by_it() -> None:
+    """One site's credentials must not be reachable from a helper every site calls. `ytdlp.params`
+    takes them as arguments; a provider reads its own config and passes its own (§9, slice 57)."""
+    import re
+
+    from noaap import ytdlp
+
+    shared = (Path(__file__).parent.parent / "src" / "noaap" / "ytdlp.py").read_text(encoding="utf-8")
+    # the import, not the word: the docstring explains what it must not do, and a scanner that
+    # matches its own explanation is the mistake this suite keeps re-learning
+    assert not re.search(r"(?m)^\s*(from \.config import|import .*\bconfig\b)", shared), \
+        "the shared client imported a config, which is the only way it could read one"
+
+    got = ytdlp.params(cookies_file="/somewhere/cookies.txt")
+    assert got["cookiefile"] == "/somewhere/cookies.txt"
+    assert "cookiesfrombrowser" not in got, "a file wins; asking a browser as well would be two answers"
+    assert ytdlp.params(cookies_from_browser="firefox:Work")["cookiesfrombrowser"] == ("firefox", "Work", None, None)
+    assert "cookiefile" not in ytdlp.params(), "no cookies unless somebody hands them over"
+
+
+def test_the_shared_client_shortens_in_two_steps() -> None:
+    """A provider reads the whole message for the phrases it knows, then cuts it. Doing both at
+    once in the shared half would hide an age gate behind a first sentence."""
+    from noaap import ytdlp
+
+    whole = ytdlp.trim("ERROR: [somewhere] abc123: Video unavailable. This video is private")
+    assert whole == "Video unavailable. This video is private"
+    assert ytdlp.one_sentence(whole) == "Video unavailable"

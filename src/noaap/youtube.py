@@ -24,7 +24,7 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadCancelled, DownloadError
 
 from . import pot as pot_server
-from . import sources
+from . import sources, ytdlp
 from .config import Config
 from .models import Collection, Entry, Failure, Music, SourceRef
 
@@ -94,22 +94,6 @@ def one_video(text: str) -> str | None:
     return m["id"] if m else None
 
 
-class _YdlLogger:
-    def debug(self, msg: str) -> None:
-        log.debug(msg.removeprefix("[debug] "))
-
-    def info(self, msg: str) -> None:
-        log.debug(msg)
-
-    def warning(self, msg: str) -> None:
-        # yt-dlp warns about things it then recovers from itself ("re-fetching using API");
-        # real failures arrive as DownloadError. Visible with -v.
-        log.info(msg)
-
-    def error(self, msg: str) -> None:
-        log.debug(msg)  # surfaced via the DownloadError we catch instead
-
-
 class YouTube:
     def __init__(self, cfg: Config, cancel: threading.Event | None = None) -> None:
         self.cfg = cfg
@@ -149,25 +133,15 @@ class YouTube:
             pot_server.touch_heartbeat()
 
     def _params(self, **extra: Any) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "quiet": True,
-            "noprogress": True,
-            "logger": _YdlLogger(),
-            "socket_timeout": 30,
-            "retries": 3,
-            "fragment_retries": 3,
-            "extractor_retries": 2,
-            "sleep_interval_requests": 0.5,  # be gentle; YouTube answers bursts with a bot check
-            "progress_hooks": [self._progress],
-        }
-        if self.cfg.cookies_file:
-            params["cookiefile"] = str(self.cfg.cookies_file)
-        elif self.cfg.cookies_from_browser:
-            browser, _, profile = self.cfg.cookies_from_browser.partition(":")
-            params["cookiesfrombrowser"] = (browser, profile or None, None, None)
-        if runtime := self.cfg.resolved_js_runtime():
-            name, path = runtime
-            params["js_runtimes"] = {name: {"path": path} if path else {}}
+        """The shared options, plus the two things that are YouTube's alone.
+
+        The cookies are read from the config **here**, not in `ytdlp`: they are this site's
+        credentials and nothing else may reach for them (§9, slice 57).
+        """
+        params = ytdlp.params(cookies_file=self.cfg.cookies_file,
+                              cookies_from_browser=self.cfg.cookies_from_browser,
+                              js_runtime=self.cfg.resolved_js_runtime(),
+                              progress=self._progress)
         if pot := self._pot_home():
             # proof-of-origin tokens like a browser: unlocks streams YouTube otherwise withholds
             args: dict[str, dict[str, list[str]]] = {"youtubepot-bgutilscript": {"server_home": [str(pot)]}}
@@ -494,13 +468,14 @@ def _is_channel(info: dict[str, Any]) -> bool:
 
 
 def _short_error(e: DownloadError | str) -> str:
-    """yt-dlp's multi-line advice -> one sentence, e.g. 'age-restricted: needs cookies'."""
-    msg = str(e).removeprefix("ERROR: ")
-    # "[youtube] abc: Video unavailable. This video is private" -> drop the extractor prefix
-    if msg.startswith("[") and ": " in msg:
-        msg = msg.split(": ", 1)[1]
+    """yt-dlp's multi-line advice -> one sentence, e.g. 'age-restricted: needs cookies'.
+
+    The unwrapping is everyone's and lives in `ytdlp`; the two readings below are YouTube's own,
+    and they run on the whole message before it is cut to a sentence.
+    """
+    msg = ytdlp.trim(e)
     if "confirm your age" in msg or "age-restricted" in msg.lower():
         return "age-restricted: needs cookies (noaap config --cookies-from-browser/--cookies-file)"
     if "not a bot" in msg:
         return BOT_CHECK
-    return msg.split(". ")[0].strip().rstrip(".")
+    return ytdlp.one_sentence(msg)
