@@ -18,7 +18,6 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -356,69 +355,155 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
 
 
 # -- reading and putting back exactly what a file said (§9, slice 58) ------------------------------
+#
+# **Every key each writer above can set, in that container's own spelling, and derived from the
+# writers rather than listed by hand.** An undo built on a hand-written list is wrong the first
+# time a writer gains a key, and it was: the retag added `tracktotal` and `totaltracks`, the record
+# had never heard of them, and 17 files came back carrying tags their owner never had. A guard in
+# the suite reads the writers' own source and fails when they set something this does not know.
+#
+# Pictures are deliberately not here. They are not a tag one puts back from a text record, and a
+# cover is never written into a file that had none (R-189, ruling 2).
 
 
-def raw_tags(path: Path, keys: Iterable[str]) -> dict[str, str | None]:
-    """What the file says for these keys, verbatim, or None where it says nothing.
+def _logical_keys() -> tuple[str, ...]:
+    """What `build_tags` can produce, with every branch of it turned on."""
+    from .models import AlbumPlan, Kind, PlanTrack
 
-    Verbatim matters: `read_tags` digests a date into a year, and an undo that wrote the year back
-    would turn "2018-05-04" into "2018" and call it restored. This is the symmetric twin of
-    `restore_tags` — the same vocabulary in and out, whatever the container.
+    one = PlanTrack(video_id="v", number=1, artist="a", title="t", filename="f", provenance={},
+                    disc=1, mbid="x")
+    two = PlanTrack(video_id="w", number=2, artist="a", title="u", filename="g", provenance={},
+                    disc=2)
+    plan = AlbumPlan(source_url="https://example.invalid/1", source_id="s", kind=Kind.COMPILATION,
+                     album="al", albumartist="aa", year=2000, cover_url=None, folder="f",
+                     tracks=[one, two], mbid="y")
+    return tuple(build_tags(plan, one, "words"))
+
+
+VORBIS_KEYS = _logical_keys()
+# the three ID3 frames and four MP4 atoms the writers set outside their key maps
+ID3_EXTRA = ("TRCK", "TCMP", "USLT")
+MP4_EXTRA = ("trkn", "disk", "cpil")
+WRITES = {
+    "opus": VORBIS_KEYS,
+    "flac": VORBIS_KEYS,
+    "mp3": tuple(ID3_KEYS.values()) + ID3_EXTRA,
+    "mp4": tuple(MP4_KEYS.values()) + MP4_EXTRA,
+}
+
+
+def raw_tags(path: Path) -> dict[str, Any]:
+    """Everything a writer could have touched in this file, in the container's own spelling.
+
+    JSON-safe, because it is kept in the plan: MP4's freeform bytes and its pairs become strings,
+    and an ID3 frame becomes its text. Absent keys are absent from the mapping, not `None` — the
+    difference is what tells an undo to *remove* a key rather than write an empty one.
     """
-    import mutagen
-
     try:
-        audio = mutagen.File(path, easy=True)
-    except Exception:  # mutagen raises a family of its own; an unreadable file said nothing
-        return dict.fromkeys(keys)
-    tags = getattr(audio, "tags", None) if audio is not None else None
-    out: dict[str, str | None] = {}
+        audio = _open(path)
+    except (MutagenError, OSError):
+        return {}
+    keys = WRITES.get(kind(path), ())
+    out: dict[str, Any] = {}
+    if kind(path) == "mp3":
+        for key in keys:
+            found = audio.tags.getall(key) if audio.tags else []
+            if not found:
+                continue
+            frame = found[0]
+            out[key] = str(frame.text) if key == "USLT" else [str(v) for v in frame.text]
+        return out
     for key in keys:
-        try:
-            value = tags.get(key) if tags is not None else None
-        except (KeyError, ValueError):  # a container that does not know this key
-            value = None
-        out[key] = str(value[0]) if value else None
+        value = (audio.tags or {}).get(key) if audio.tags is not None else None
+        if value is None or value == []:
+            continue
+        out[key] = _plain(value)
     return out
 
 
+def _plain(value: Any) -> Any:
+    """A tag value as something JSON can hold, and `_shaped` can turn back."""
+    if isinstance(value, list | tuple):
+        return [_plain(v) for v in value]
+    if isinstance(value, bytes):
+        return {"bytes": value.hex()}
+    if isinstance(value, bool | int | str):
+        return value
+    return str(value)
+
+
+def _shaped(value: Any) -> Any:
+    if isinstance(value, dict) and "bytes" in value:
+        return bytes.fromhex(value["bytes"])
+    if isinstance(value, list):
+        return [_shaped(v) for v in value]
+    return value
+
+
 def restore_tags(path: Path, values: dict[str, Any]) -> bool:
-    """Put these values back, and take away the keys the file did not have. True if anything moved.
+    """Make this file say exactly what it said, in every key a writer could have touched.
 
-    **An absent value is restored by removing the key**, which is the half an undo forgets: putting
-    the old values back while leaving our additions behind is not giving the file back.
+    **Both halves.** What was there goes back; what a writer added and the record does not have is
+    *removed*. Putting the old values back while leaving our additions behind is not giving the
+    file back, and that is the half that shipped broken twice.
     """
-    import mutagen
-
     try:
-        audio = mutagen.File(path, easy=True)
-    except Exception:
-        return False
-    if audio is None:
+        audio = _open(path)
+    except (MutagenError, OSError):
         return False
     if audio.tags is None:
-        audio.add_tags()
-    changed = False
-    for key, value in values.items():
-        want = None if value is None else str(value)
         try:
-            now = audio.tags.get(key)
-            now = str(now[0]) if now else None
-            if now == want:
-                continue
-            if want is None:
-                # **`del`, not `pop`.** A Vorbis comment block (`OggOpusVComment`, `VCFLACDict`)
-                # has no `pop` at all — not even a one-argument one — and `pop(key, None)` raises
-                # `TypeError: pop expected at most 1 argument, got 2`. EasyID3 does have it, which
-                # is how three containers' worth of cases passed without ever removing a key:
-                # every file in them had tags to put back (found 2026-09-28 by a real album that
-                # had none).
-                del audio.tags[key]
-            else:
-                audio.tags[key] = want
-        except (KeyError, ValueError):
-            continue  # this container cannot carry that key, so it never held our value either
-        changed = True
+            audio.add_tags()
+        except (MutagenError, OSError):
+            return False
+    changed = False
+    for key in WRITES.get(kind(path), ()):
+        want = values.get(key)
+        if _restore_one(audio, path, key, want):
+            changed = True
     if changed:
         audio.save()
     return changed
+
+
+def _restore_one(audio: Any, path: Path, key: str, want: Any) -> bool:
+    """One key back to what it was, or gone. True when the file had to change."""
+    if kind(path) == "mp3":
+        had = audio.tags.getall(key)
+        if want is None:
+            if not had:
+                return False
+            audio.tags.delall(key)
+            return True
+        if had and _plain(_text_of(had[0], key)) == want:
+            return False
+        audio.tags.setall(key, [_frame(key, want)])
+        return True
+
+    now = (audio.tags or {}).get(key)
+    if want is None:
+        if now is None or now == []:
+            return False
+        del audio.tags[key]
+        # **`del`, not `pop`.** A Vorbis comment block has no `pop` at all — not even a
+        # one-argument one — and `pop(key, None)` raises `TypeError: pop expected at most 1
+        # argument, got 2` (found 2026-09-28 by a real album whose files had no tags).
+        return True
+    want = _shaped(want)
+    if now is not None and _plain(now) == _plain(want):
+        return False
+    audio.tags[key] = want if isinstance(want, list) else [want]
+    return True
+
+
+def _text_of(frame: Any, key: str) -> Any:
+    return str(frame.text) if key == "USLT" else [str(v) for v in frame.text]
+
+
+def _frame(key: str, text: Any) -> Any:
+    """An ID3 frame rebuilt from what it said."""
+    if key == "USLT":
+        return USLT(encoding=3, lang="eng", desc="", text=text if isinstance(text, str) else text[0])
+    if key.startswith("TXXX:"):
+        return TXXX(encoding=3, desc=key[5:], text=text if isinstance(text, list) else [text])
+    return ID3_FRAMES[key](encoding=3, text=text if isinstance(text, list) else [text])

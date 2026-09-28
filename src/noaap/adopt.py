@@ -30,10 +30,8 @@ from .service import _inside
 from .tag import raw_tags, restore_tags, tag_file
 from .text import key as text_key
 
+
 # what the plan would assert about a file, and therefore what an undo has to be able to give back
-WRITTEN = ("title", "artist", "albumartist", "album", "tracknumber", "discnumber", "date")
-
-
 @dataclass
 class Adoption:
     """One album folder, and what adopting it would come to."""
@@ -101,7 +99,7 @@ def _was(audio: Path, plan: AlbumPlan, track: Any) -> dict[str, Any]:
     restore. A key the file does not carry is recorded as `None` — *absent* is a value too, and
     without it an undo would leave behind a tag the owner never had.
     """
-    return dict(raw_tags(audio, WRITTEN))
+    return dict(raw_tags(audio))
 
 
 def survey(root: Path, library: Path, source: Any, artist: str | None = None,
@@ -223,7 +221,11 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
             if here and here != want and here.is_file():
                 here.rename(want)
                 done["renamed"] += 1
-            if track.adopted_tags and want.is_file() and restore_tags(want, track.adopted_tags):
+            # `is not None`, not truthiness: **an empty record is a record** — it says the file
+            # had no tags at all, and those are exactly the files a retag adds the most to. The
+            # same mistake in a second costume (§9, slice 58).
+            if track.adopted_tags is not None and want.is_file() \
+                    and restore_tags(want, track.adopted_tags):
                 done["restored"] += 1
         except Exception as e:  # one file's trouble is not the album's, and not the pass's
             done["failed"] += 1

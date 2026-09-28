@@ -206,10 +206,12 @@ def test_what_the_file_said_is_recorded_before_anything_could_change_it(library)
     track = load_plan(library / "A Band" / "An Album").tracks[0]
 
     assert track.adopted_name == Path(track.video_id).name
-    assert track.adopted_tags["title"] == "One"
-    assert track.adopted_tags["albumartist"] == "A Band"
-    assert "discnumber" in track.adopted_tags and track.adopted_tags["discnumber"] is None, \
-        "absent is a value too: without it an undo leaves behind a tag the owner never had"
+    # in the container's own spelling — this one is an mp3, so ID3 frames
+    assert track.adopted_tags["TIT2"] == ["One"]
+    assert track.adopted_tags["TPE2"] == ["A Band"]
+    assert "TPOS" not in track.adopted_tags, \
+        "a key the file does not carry is absent from the record, which is how an undo knows to " \
+        "remove it rather than write an empty one"
 
 
 def test_an_album_that_is_already_ours_is_left_alone(library):
@@ -246,11 +248,10 @@ def test_the_scope_reads_as_the_folders_do(library, narrow, albums):
 
 def fingerprint(library: Path) -> dict[str, tuple[str, dict[str, str | None]]]:
     """Every audio file by name, with its stream digest and the fields noaap would ever write."""
-    from noaap.adopt import WRITTEN
     from noaap.sources_folder import AUDIO, stream_sha
     from noaap.tag import raw_tags
 
-    return {str(p.relative_to(library)): (stream_sha(p), raw_tags(p, WRITTEN))
+    return {str(p.relative_to(library)): (stream_sha(p), raw_tags(p))
             for p in sorted(library.rglob("*")) if p.suffix.lower() in AUDIO}
 
 
@@ -436,17 +437,17 @@ def test_a_file_with_no_tags_has_no_tags_again(untagged, tmp_path, suffix):
     from noaap.tag import raw_tags
 
     audio = next(untagged.glob(f"*{suffix}"))
-    assert not any(raw_tags(audio, adopt.WRITTEN).values()), "it starts with nothing"
+    assert raw_tags(audio) == {}, "it starts with nothing"
 
     adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
     plan = load_plan(untagged)
     adopt.retag(untagged, plan)
     save_plan(plan, untagged)
-    assert any(raw_tags(audio, adopt.WRITTEN).values()), "the retag really did write fields"
+    assert raw_tags(audio), "the retag really did write fields"
 
     adopt.give_back(untagged, load_plan(untagged), tmp_path)
 
-    assert not any(raw_tags(audio, adopt.WRITTEN).values()), "and now it says nothing again"
+    assert raw_tags(audio) == {}, "and now it says nothing again"
 
 
 def test_one_track_that_cannot_be_given_back_costs_that_track(untagged, tmp_path):
@@ -499,3 +500,67 @@ def test_an_undo_can_be_run_again_and_finishes_what_is_left(library, untagged, t
     assert again["failed"] == 0
     assert not list(tmp_path.rglob(PLAN_FILE)), "nothing of noaap's is left anywhere"
     assert fingerprint(tmp_path) == before
+
+
+# -- the record has to know every key a writer can write -----------------------------------------------
+
+
+def test_the_record_covers_every_key_the_writers_can_write():
+    """R-194, ruling 1. The first record was a hand-written list of seven fields; the retag wrote
+    `tracktotal` and `totaltracks` as well, the undo had never heard of them, and 17 files came
+    back carrying tags their owner never had.
+
+    So this reads **the writers' own source** for the keys they set outside their key maps. It
+    fails when a writer gains one, which is the only way a list like this stays true.
+    """
+    import inspect
+    import re
+
+    from noaap import tag
+
+    source = inspect.getsource(tag)
+    # every `id3.setall("X"` / `audio["X"] =` in the three writers, and the two key maps
+    literal = set(re.findall(r'(?:setall|delall)\(\s*"([^"]+)"', source))
+    literal |= set(re.findall(r'audio\[\s*"([^"]+)"\s*\]\s*=', source))
+    literal |= {k for k in re.findall(r'audio\[\s*([A-Z_]+)\s*\]\s*=', source)}
+    known = set(tag.WRITES["mp3"]) | set(tag.WRITES["mp4"]) | set(tag.WRITES["opus"])
+    known |= {"PICTURE_KEY", "APIC", "covr"}  # pictures are not a tag one puts back from a record
+
+    assert literal <= known, f"a writer sets keys the undo does not know: {sorted(literal - known)}"
+
+
+def test_the_logical_keys_come_from_build_tags_itself():
+    """The other half: the vorbis spelling *is* whatever `build_tags` returns, so it cannot drift."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+    from noaap.tag import WRITES, build_tags
+
+    one = PlanTrack(video_id="v", number=1, artist="a", title="t", filename="f", provenance={},
+                    disc=1, mbid="x")
+    two = PlanTrack(video_id="w", number=2, artist="a", title="u", filename="g", provenance={}, disc=2)
+    plan = AlbumPlan(source_url="https://example.invalid/1", source_id="s", kind=Kind.COMPILATION,
+                     album="al", albumartist="aa", year=2000, cover_url=None, folder="f",
+                     tracks=[one, two], mbid="y")
+
+    assert set(build_tags(plan, one, "words")) <= set(WRITES["opus"])
+    for key in ("tracktotal", "totaltracks", "compilation", "source", "youtube_id", "lyrics",
+                "musicbrainz_albumid", "musicbrainz_trackid", "discnumber", "date"):
+        assert key in WRITES["opus"], f"{key} is written and the undo must know it"
+
+
+@pytest.mark.parametrize("suffix", [".mp3", ".flac", ".opus"])
+def test_a_retag_adds_nothing_the_undo_cannot_take_away(untagged, tmp_path, suffix):
+    """The failure itself, as a case: compare the **whole** tag set, not a chosen list."""
+    from noaap import adopt
+    from noaap.download import load_plan, save_plan
+    from noaap.tag import raw_tags
+
+    audio = next(untagged.glob(f"*{suffix}"))
+    before = raw_tags(audio)
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    plan = load_plan(untagged)
+    adopt.retag(untagged, plan)
+    save_plan(plan, untagged)
+    adopt.give_back(untagged, load_plan(untagged), tmp_path)
+
+    assert raw_tags(audio) == before
