@@ -21,7 +21,7 @@ from yt_dlp.utils import DownloadError
 
 from .cover import square_if_padded
 from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
-from .models import AlbumPlan, PlanTrack
+from .models import AlbumPlan, Failure, PlanTrack
 from .plan import refresh_derived, wanted_filename, wanted_folder
 from .tag import audio_length, audio_quality, image_mime, signature, tag_file
 from .trim import apply as apply_trim
@@ -195,21 +195,23 @@ def run(
             except NoAudioStream as e:
                 track.state = "failed"
                 track.error = f"YouTube offers no separate audio stream ({e.description})"
-                track.error_kind = "no_audio_stream"
+                track.error_kind = Failure.NO_AUDIO_STREAM
                 break  # retrying changes nothing; the user picks what to do
             except (DownloadError, RuntimeError, OSError) as e:
                 message = str(e).removeprefix("ERROR: ").strip()
-                track.state, track.error = "failed", BOT_CHECK if is_bot_check(message) else message
+                blocked = is_bot_check(message)
+                track.state, track.error = "failed", BOT_CHECK if blocked else message
+                track.error_kind = Failure.BOT_CHECK if blocked else None
                 log.debug("track %s attempt %d failed", track.video_id, attempt, exc_info=True)
-                if track.error == BOT_CHECK:
+                if blocked:
                     break  # retrying only makes it worse
                 if attempt < ATTEMPTS:
                     time.sleep(RETRY_DELAY)
         save_plan(plan, album_dir)
         taken = f" from {track.effective_id}" if track.source_override else ""
         on_track(track, f"downloaded{taken}" if track.state == "done" else "failed")
-        if track.error == BOT_CHECK:
-            log.warning("YouTube is blocking requests (bot check) - stopping this album")
+        if track.error_kind == Failure.BOT_CHECK:
+            log.warning("the source is blocking requests (bot check) - stopping this album")
             break
 
     if all(t.state == "done" or not t.in_source for t in plan.tracks) and parts.exists():

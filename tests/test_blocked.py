@@ -10,7 +10,7 @@ import ytalbum.youtube as youtube_mod
 from ytalbum import cli
 from ytalbum.config import Config
 from ytalbum.download import load_plan, run, save_plan
-from ytalbum.models import Collection
+from ytalbum.models import Collection, Failure
 from ytalbum.plan import build_plan, merge_plans
 from ytalbum.service import Service, exit_code
 from ytalbum.youtube import BOT_CHECK, YouTube, is_transient
@@ -80,7 +80,9 @@ def test_partial_data_changes_nothing_on_disk(tmp_path):
         def fetch(self, url):
             c = vol1()
             for e in c.entries[1:]:
-                e.skipped, e.transient = BOT_CHECK, True
+                # a provider says both: the words a person reads, and the kind the pipeline
+                # branches on. Setting only the message downgrades a bot check to "incomplete".
+                e.skipped, e.skipped_kind, e.transient = BOT_CHECK, Failure.BOT_CHECK, True
             return c
 
     messages = []

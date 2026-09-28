@@ -21,6 +21,19 @@ class Kind(StrEnum):
     SINGLE = "single"
 
 
+class Failure(StrEnum):
+    """Why something could not be had, in words no provider owns (DESIGN §9, slice 51).
+
+    The *message* stays whatever the provider said — it is what a person reads. This is the part
+    the pipeline branches on, so that `service.py` never compares against a YouTube string again.
+    """
+
+    BOT_CHECK = "bot_check"            # the source wants a sign-in before it will answer
+    TRANSIENT = "transient"            # network, rate limit: the same request may work later
+    NO_AUDIO_STREAM = "no_audio_stream"  # it is there, but not as audio we can take
+    NOT_SUPPORTED = "not_supported"    # this provider cannot do anything with that reference
+
+
 class Provenance(StrEnum):
     MB = "mb"
     YT_MUSIC = "yt_music"  # yt-dlp's artist/track/album fields
@@ -63,7 +76,8 @@ class Entry:
     thumbnail: str | None = None
     chapters: list[dict[str, Any]] = field(default_factory=list)
     music: Music = field(default_factory=Music)
-    skipped: str | None = None  # reason, if this entry is unusable
+    skipped: str | None = None  # reason, if this entry is unusable — the provider's own words
+    skipped_kind: str | None = None  # and which `Failure` that is, for the pipeline to branch on
     transient: bool = False  # the reason may go away (bot check, network): the entry is still in the source
 
     @property
@@ -155,7 +169,7 @@ class PlanTrack:
     disc: int = 1
     state: str = "pending"  # pending | done | failed
     error: str | None = None
-    error_kind: str | None = None  # "no_audio_stream" → the UI can offer the choice
+    error_kind: str | None = None  # a `Failure`; "no_audio_stream" is the one the UI acts on
     audio_choice: str = "best"  # "best" = separate audio stream; "combined" = take it from the video
     ext: str = "opus"  # "m4a" when the audio was taken from a combined stream (copied, not re-encoded)
     # values as derived automatically; a field that differs from these was edited by the user

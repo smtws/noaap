@@ -25,7 +25,7 @@ from yt_dlp.utils import DownloadCancelled, DownloadError
 
 from . import pot as pot_server
 from .config import Config
-from .models import Collection, Entry, Music, SourceRef
+from .models import Collection, Entry, Failure, Music, SourceRef
 
 log = logging.getLogger(__name__)
 
@@ -312,6 +312,8 @@ class YouTube:
                 channel=_channel(flat),
                 duration=flat.get("duration"),
                 skipped=reason,
+                skipped_kind=(Failure.BOT_CHECK if is_bot_check(raw) or reason == BOT_CHECK
+                              else Failure.TRANSIENT if is_transient(raw) else None),
                 transient=is_transient(raw),
             )
 

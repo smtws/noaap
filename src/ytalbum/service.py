@@ -44,7 +44,7 @@ from .lyrics import (
 )
 from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
-from .models import AlbumPlan, Candidate, Kind, PlanTrack, Provenance, SourceRef
+from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
@@ -163,12 +163,13 @@ class Service:
         if unreadable := collection.unreadable:
             # never classify, merge or rename from a partial view (DESIGN.md §3.8)
             reason = unreadable[0].skipped or "unknown"
+            kind = unreadable[0].skipped_kind
             msg = (
                 f"{len(unreadable)} of {len(collection.entries)} videos could not be read right now ({reason}). "
                 "Nothing was changed — try again later."
             )
             self.log(msg)
-            return Outcome("blocked" if reason == BOT_CHECK else "incomplete", message=msg)
+            return Outcome("blocked" if kind == Failure.BOT_CHECK else "incomplete", message=msg)
 
         plan = build_plan(collection)
         if collection.entries and not plan.tracks:
@@ -355,7 +356,7 @@ class Service:
         run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, lyrics=self.lrclib)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))
-        if any(t.error == BOT_CHECK for t in failed):
+        if any(t.error_kind == Failure.BOT_CHECK for t in failed):
             return Outcome("blocked", plan, album_dir, BOT_CHECK)
         return Outcome("failed" if failed else "ok", plan, album_dir)
 
