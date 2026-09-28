@@ -395,26 +395,6 @@ def test_a_tag_always_beats_the_name(tmp_path, source):
 # -- covers, and what is left alone ------------------------------------------------------------------
 
 
-def test_a_folder_without_a_cover_file_falls_back_to_the_picture_inside_a_track(tmp_path, source):
-    """65 of 135 folders in the reference collection have a cover file; 269 of 2000 files carry a
-    picture. The second number is why this fallback exists."""
-    from noaap.models import AlbumPlan, Kind, PlanTrack
-    from noaap.tag import tag_file
-
-    folder = tmp_path / "album"
-    path = encode(folder / "01 - a.flac", title="a", artist="A", album="B", track="1")
-    plan = AlbumPlan(source_url=str(folder), source_id=str(folder), kind=Kind.OFFICIAL_ALBUM,
-                     album="B", albumartist="A", year=None, cover_url=None, folder="x",
-                     tracks=[PlanTrack(video_id=str(path), number=1, artist="A", title="a",
-                                       filename="a.flac", provenance={})], provider="folder")
-    tag_file(path, plan, plan.tracks[0], cover=JPEG)
-
-    found = source.collection(str(folder))
-
-    assert found.thumbnail is None, "there is no cover file to name"
-    assert source.art(str(folder)) == JPEG, "so the folder itself is the address for the one inside"
-
-
 def test_what_is_left_alone_is_counted_by_kind(album, source):
     (album / "New Album Releases.url").write_text("[InternetShortcut]\n")
     (album / ".thumb").mkdir()
@@ -704,3 +684,43 @@ def test_musicbrainz_fills_gaps_and_never_overrules_the_files(tmp_path, source):
     _set(plan, "year", 2018)
     assert plan.year == 2018, "a field the files leave empty is MusicBrainz's to fill"
     assert plan.provenance["year"] == Provenance.MB
+
+
+def test_a_folder_with_no_cover_file_still_offers_the_one_inside_a_track(tmp_path, source):
+    """`art()` is only ever asked about an address the collection named, so leaving `thumbnail`
+    None meant nothing asked and 269 embedded pictures in the reference collection went unused.
+    16 of its 132 albums have no cover file and a picture in their tracks."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+    from noaap.tag import tag_file
+
+    folder = tmp_path / "album"
+    path = encode(folder / "01 - a.flac", title="a", artist="A", album="B", track="1")
+    plan = AlbumPlan(source_url=str(folder), source_id=str(folder), kind=Kind.OFFICIAL_ALBUM,
+                     album="B", albumartist="A", year=None, cover_url=None, folder="x",
+                     tracks=[PlanTrack(video_id=str(path), number=1, artist="A", title="a",
+                                       filename="a.flac", provenance={})], provider="folder")
+    tag_file(path, plan, plan.tracks[0], cover=JPEG)
+
+    found = source.collection(str(folder))
+
+    assert found.thumbnail == str(folder.resolve()), "the folder is the address of its own cover"
+    assert source.art(found.thumbnail) == JPEG
+
+
+def test_a_guest_credit_in_the_album_artist_does_not_lose_the_owner(tmp_path, source):
+    """"Mono Inc." on 33 tracks and "Mono Inc. feat. Ronan Harris" on the 34th is one artist with
+    a guest. Read as two it left the album with no owner, so it was not a release, and a folder
+    album became an artist playlist."""
+    from noaap.models import Kind
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Hits And Rarities"
+    for n, credit in enumerate(["Mono Inc.", "Mono Inc.", "Mono Inc. feat. Ronan Harris"], 1):
+        encode(folder / f"{n:02d} - t{n}.mp3", title=f"t{n}", artist=credit,
+               album="Hits And Rarities", album_artist=credit, track=str(n))
+
+    found = source.collection(str(folder))
+    plan = build_plan(found, source=source)
+
+    assert found.owner == "Mono Inc."
+    assert plan.kind == Kind.OFFICIAL_ALBUM

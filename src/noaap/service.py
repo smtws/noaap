@@ -50,7 +50,7 @@ from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, ren
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
-from .tag import audio_length
+from .tag import measured_length
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
@@ -1450,7 +1450,7 @@ class Service:
 def _minutes(audio: Path) -> str:
     """How much audio a request is about to send, because a per-minute bill is the user's (§9, slice 37)."""
     try:
-        seconds = audio_length(audio) or 0
+        seconds = measured_length(audio) or 0
     except Exception:
         return "unknown length"
     return f"{seconds / 60:.1f} min"

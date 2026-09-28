@@ -263,3 +263,27 @@ def test_a_local_address_is_not_written_into_the_file(tmp_path):
 
     plan.source_url = "https://www.youtube.com/playlist?list=PLx"
     assert build_tags(plan, plan.tracks[0])["source"] == plan.source_url
+
+
+def test_a_length_is_measured_once_and_the_same_way_everywhere(tmp_path, monkeypatch):
+    """The acceptance run found 52 tracks with no `file_length` although their candidate held a
+    decoded one: the download path read the header only. Every place that needs this file's own
+    seconds — the plan's `file_length`, the LRCLIB match, the vendor's bill — asks the same
+    function now, and `_measure_candidate` never trades a number it has for an absence."""
+    from noaap import tag
+    from noaap.download import _measure_candidate
+    from noaap.models import Candidate, PlanTrack
+
+    path = tmp_path / "t.flac"
+    path.write_bytes(b"stands in for a file whose header will not answer")
+    monkeypatch.setattr(tag, "audio_length", lambda p: None)
+    monkeypatch.setattr(tag, "decoded_length", lambda p: 269.7)
+
+    assert tag.measured_length(path) == 269.7
+
+    track = PlanTrack(video_id="x", number=1, artist="A", title="t", filename="t.flac",
+                      provenance={}, candidates=[Candidate(ref="x", length=269.7)], chosen="x")
+    track.file_length = None
+    _measure_candidate(track, path)
+
+    assert track.candidate("x").length == 269.7, "a known length survives a file that will not say"

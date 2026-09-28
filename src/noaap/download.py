@@ -22,7 +22,7 @@ from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
 from .models import AlbumPlan, Failure, PlanTrack
 from .plan import refresh_derived, wanted_filename, wanted_folder
 from .sources import Blocked, NoAudio, Source, SourceError
-from .tag import audio_length, audio_quality, image_mime, signature, tag_file
+from .tag import audio_quality, image_mime, measured_length, signature, tag_file
 from .trim import apply as apply_trim
 
 log = logging.getLogger(__name__)
@@ -92,7 +92,9 @@ def relocate(album_dir: Path, plan: AlbumPlan, library: Path) -> Path:
 def _measure_candidate(track: PlanTrack, path: Path) -> None:
     """Record what the chosen candidate actually sounds like, from the file we now have."""
     if candidate := track.candidate(track.effective_id):
-        candidate.length = track.file_length
+        # never trade a number for an absence: a provider that measured this file before handing
+        # it over knows more than a header that will not answer (§9, slice 53)
+        candidate.length = track.file_length or candidate.length
         for name, value in audio_quality(path).items():
             setattr(candidate, name, value)
 
@@ -151,7 +153,7 @@ def run(
                 on_track(track, "trim failed")
             measured = cut or track.file_length is None  # measured once, then only when it changes
             if measured:
-                track.file_length = audio_length(final)
+                track.file_length = measured_length(final)
                 _measure_candidate(track, final)
             # whose words are beside this track, and does the plan still agree with the disk?
             # Asked before the lookup, so an edited sidecar is known to be the user's by the
@@ -192,7 +194,7 @@ def run(
                     track.filename = wanted_filename(plan, track)
                     final = album_dir / track.filename
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
-                track.file_length = audio_length(tmp)
+                track.file_length = measured_length(tmp)
                 _measure_candidate(track, tmp)
                 try:
                     track.tagged = tag_file(tmp, plan, track, cover, text)

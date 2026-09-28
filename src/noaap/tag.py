@@ -16,6 +16,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +78,32 @@ def audio_length(path: Path) -> float | None:
         return float(_open(path).info.length) or None
     except (MutagenError, OSError):  # not readable, not audio: an unknown length means "no match"
         return None  # and nothing else is swallowed: a bug here must not read as a missing file
+
+
+TIMESTAMP = re.compile(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
+
+
+def decoded_length(path: Path) -> float | None:
+    """Seconds, counted by reading the audio — for a file whose header will not say.
+
+    Three albums in the reference collection are FLACs with `total_samples = 0`, and ffprobe cannot
+    answer for them either without doing this. About 0.12 s a file, so it is worth asking whenever
+    the cheap answer is missing rather than deciding in advance who might need it.
+    """
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "error", "-stats", "-i", str(path), "-f", "null", "-"],
+                              capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if not (found := TIMESTAMP.findall(done.stderr)):
+        return None
+    hours, minutes, seconds = found[-1]
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def measured_length(path: Path) -> float | None:
+    """What the file says, and what it sounds like when it will not say (§9, slice 53)."""
+    return audio_length(path) or decoded_length(path)
 
 
 def audio_quality(path: Path) -> dict[str, Any]:

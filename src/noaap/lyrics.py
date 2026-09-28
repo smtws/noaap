@@ -31,7 +31,7 @@ import httpx
 
 from . import config, user_agent
 from .models import AlbumPlan, PlanTrack, Provenance
-from .tag import audio_length, tagged_lyrics
+from .tag import measured_length, tagged_lyrics
 from .text import key as text_key
 
 log = logging.getLogger(__name__)
@@ -702,7 +702,7 @@ def update_track(api: LyricsAPI, plan: AlbumPlan, track: PlanTrack, album_dir: P
             log.info("%s: the lyrics beside this track differ from the entry we saved — they are yours", track.title)
             return existing
         track.lyrics_sha = sidecar_sha(album_dir, track)  # ours after all; record it and carry on
-    length = audio_length(audio)
+    length = measured_length(audio)
     try:
         found = api.get(track.artist, track.title, plan.album, length, skip=track.lyrics_rejected)
     except LyricsError as e:

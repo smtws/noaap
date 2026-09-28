@@ -27,8 +27,9 @@ from typing import Any
 from . import sources
 from .config import Config
 from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
-from .tag import audio_length, audio_quality
+from .tag import audio_length, audio_quality, decoded_length, measured_length
 from .text import key as text_key
+from .text import split_feat
 
 NAME = "folder"
 
@@ -246,29 +247,6 @@ def stream_sha(path: Path) -> str | None:
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
-TIMESTAMP = re.compile(r"time=(\d+):(\d\d):(\d\d(?:\.\d+)?)")
-
-
-def decoded_length(path: Path) -> float | None:
-    """Seconds, counted by decoding the file — for the ones whose header will not say.
-
-    Three albums in the reference collection are FLACs with `total_samples = 0`; ffprobe cannot
-    answer for them either without reading the audio. Decoding one costs about 0.12 s, which is
-    nothing for the 52 files it applies to and everything to them: without a length there is no
-    length chip, no duration for LRCLIB, no near-miss check and no trim reference, from the day
-    they arrive (§9, slice 53).
-    """
-    try:
-        done = subprocess.run(["ffmpeg", "-v", "error", "-stats", "-i", str(path), "-f", "null", "-"],
-                              capture_output=True, text=True)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if not (found := TIMESTAMP.findall(done.stderr)):
-        return None
-    hours, minutes, seconds = found[-1]
-    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-
-
 def measure(path: Path) -> Candidate:
     """Everything about this file that ranking will ever want, read from the file itself."""
     length, how = audio_length(path), None
@@ -367,8 +345,15 @@ class FolderSource:
                 music=Music(artist=tags.get("artist"), track=tags.get("title"),
                             album=tags.get("album"), year=tags.get("year")),
             ))
-        owners = {e.channel for e in entries if e.channel}
-        cover = self._cover_for(folder, discs)
+        # "Mono Inc." on 33 tracks and "Mono Inc. feat. Ronan Harris" on the 34th is one artist
+        # with a guest, not two — and reading it as two left that album with no owner, so it was
+        # not a release and became an artist playlist (§9, slice 53).
+        owners = {split_feat(e.channel)[0] for e in entries if e.channel}
+        # A folder with no cover file still has a cover to offer — the picture inside a track. The
+        # address for it is the folder itself, because `art()` is only ever asked about an address
+        # the collection named: with `thumbnail` left None nothing asks, and 269 embedded pictures
+        # in the reference collection went unused (§9, slice 53).
+        cover = self._cover_for(folder, discs) or folder
         return Collection(
             source_url=str(folder),
             source_id=str(folder),
@@ -376,7 +361,7 @@ class FolderSource:
             title=next((t.get("album") or n.get("album") for _, _, t, n in rows
                          if t.get("album") or n.get("album")), folder.name.strip()),
             channel=owners.pop() if len(owners) == 1 else None,
-            thumbnail=str(cover) if cover else None,
+            thumbnail=str(cover),
             fetched_at=dt.date.today().isoformat(),
             entries=entries,
             modified=_stamp(folder),
@@ -444,7 +429,7 @@ class FolderSource:
         return Entry(video_id=ref, position=known.get("tracknumber") or 1,
                      title=known.get("title") or path.stem,
                      channel=known.get("albumartist") or known.get("artist"),
-                     duration=audio_length(path),
+                     duration=measured_length(path),
                      music=Music(artist=tags.get("artist"), track=tags.get("title"),
                                  album=tags.get("album"), year=tags.get("year")))
 
