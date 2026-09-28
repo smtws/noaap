@@ -46,7 +46,16 @@ from .lyrics import (
 from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
-from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
+from .plan import (
+    build_plan,
+    drop_album_name,
+    merge_plans,
+    refresh_derived,
+    renumber,
+    set_single_album_name,
+    wanted_filename,
+    wanted_folder,
+)
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
@@ -1317,11 +1326,25 @@ class Service:
         assert self.library
         track = PlanTrack.from_dict(entry.data["track"])
         present = next((t for t in plan.tracks if t.video_id == track.video_id), None)
+        displacer = (entry.data.get("ranking") or {}).get("chosen", {}).get("ref")
+        # three shapes now: the track is gone; the track is there with no file (a repair); or the
+        # track is there with *another file* — a merge took a copy from somewhere else, and putting
+        # this one back means undoing that (§9, slice 54)
+        undo = present is not None and bool(displacer) and present.effective_id == displacer
         repair = present is not None and not (album_dir / present.filename).is_file()
-        if present is not None and not repair:
+        if present is not None and not repair and not undo:
             return Outcome("failed", message=f"{track.title} is already in {plan.album}")
-        if repair:
+        if repair or undo:
             track = present                        # the plan's own copy stays authoritative
+        if undo:
+            if taken := _inside(album_dir, track.filename):
+                taken.unlink(missing_ok=True)      # the copy that displaced this one goes
+            track.source_override = None
+            track.chosen = track.video_id
+            track.ext = Path(entry.audio).suffix.lstrip(".") if entry.audio else track.ext
+            track.filename = wanted_filename(plan, track)
+            track.file_length = None               # measured again from the file coming back
+            track.tagged = None
 
         album_dir.mkdir(parents=True, exist_ok=True)
         if (audio := entry.audio) and track.filename:

@@ -375,8 +375,15 @@ class AlbumPlan:
         where they came from, and defaults them to youtube. The plan does know, and says so here.
         Candidates added deliberately — with their own provider, from another one — are left alone,
         which is what lets one album hold tracks from two providers (§9, slices 50 and 51).
+
+        **Only the synthesised one is claimed.** `sync_candidates` marks what it invents
+        `added_by="source"`; anything else was put there by someone who knew where it came from —
+        the user, or a pass that measured it. An earlier version claimed whatever the
+        `source_override` named, which quietly rewrote a merged-in track's provider to the album's
+        on the next load, so a re-download of it would have asked YouTube for a folder path
+        (§9, slice 54).
         """
         for track in self.tracks:
             for candidate in track.candidates:
-                if candidate.ref in (track.video_id, track.source_override) and candidate.added_by != "user":
+                if candidate.ref == track.video_id and candidate.added_by == "source":
                     candidate.provider = self.provider

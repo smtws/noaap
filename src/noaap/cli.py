@@ -185,8 +185,12 @@ def main(argv: list[str] | None = None) -> int:
                 from .ranking import Verdict
                 found = merge_pass.survey(Path(args.source).expanduser(), library, log=print)
                 wanted = [Verdict.UNDECIDED] if args.undecided else None
-                for line in merge_pass.report(found, verdicts=wanted):
+                for line in merge_pass.report(found, verdicts=wanted, applying=args.apply):
                     print(line)
+                if args.apply:
+                    done = merge_pass.carry_out(found, library, log=print)
+                    print(f"{done['replaced']} replaced, {done['filled']} filled"
+                          + (f", {done['failed']} could not be taken" if done["failed"] else ""))
                 return 0
             case "migrate":
                 from . import migrate

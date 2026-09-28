@@ -179,3 +179,174 @@ def test_a_survey_can_be_read_back_as_data(tmp_path):
 
     assert json.dumps({"verdict": p.verdict.verdict.value, "why": p.verdict.why,
                        "new": p.verdict.new.line(), "old": p.verdict.old.line()})
+
+
+# -- and what `--apply` does ---------------------------------------------------------------------------
+
+
+def real_library(root: Path, folder: str, *titles: str, ext: str = "opus", provider: str = "youtube",
+                 body: bytes = b"old audio") -> tuple[Path, AlbumPlan]:
+    tracks = [PlanTrack(video_id=f"{folder}-{n}", number=n, artist="A Band", title=t,
+                        filename=f"{n:02d} - {t}.{ext}", provenance={}, file_length=200.0)
+              for n, t in enumerate(titles, 1)]
+    plan = AlbumPlan(source_url=f"x://{folder}", source_id=folder, kind=Kind.OFFICIAL_ALBUM,
+                     album=folder, albumartist="A Band", year=None, cover_url=None,
+                     folder=f"A Band/{folder}", tracks=tracks, provider=provider)
+    album_dir = root / plan.folder
+    save_plan(plan, album_dir)
+    for track in plan.tracks:
+        (album_dir / track.filename).write_bytes(body)
+    return root, plan
+
+
+def test_apply_copies_the_file_in_and_bins_what_was_there(tmp_path):
+    from noaap.merge import carry_out
+    from noaap.recycle import entries as bin_entries
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder",
+                             body=b"new audio")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    found = survey(source, target, judge=fixed(Verdict.REPLACE, why="holds more audio"))
+    done = carry_out(found, target)
+
+    assert done == {"replaced": 1, "filled": 0, "failed": 0}
+    album_dir = target / plan.folder
+    assert (album_dir / "A Band - Album - 01 - One.flac").read_bytes() == b"new audio", \
+        "the file decides its extension, and the album decides its name"
+    assert not (album_dir / "01 - One.opus").exists(), "what was there went to the bin"
+    binned = bin_entries(target)
+    assert len(binned) == 1 and "replaced by a copy from folder" in binned[0].reason
+
+
+def test_the_bin_entry_holds_both_files_numbers(tmp_path):
+    import json as _json
+
+    from noaap.merge import carry_out
+    from noaap.recycle import entries as bin_entries
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, _ = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    entry = bin_entries(target)[0]
+    ranking = _json.loads((entry.path / "bin.json").read_text())["ranking"]
+    assert ranking["chosen"]["ref"] == "Intake-1"
+    assert ranking["chosen"]["codec"] == "flac" and ranking["chosen"]["cutoff_khz"] == 22
+    assert ranking["displaced"]["codec"] == "opus" and ranking["displaced"]["cutoff_khz"] == 20
+
+
+def test_the_plan_records_where_the_audio_now_comes_from(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE, why="holds more audio")), target)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    assert track.chosen == "Intake-1" and track.source_override == "Intake-1"
+    taken = track.candidate("Intake-1")
+    assert taken.provider == "folder" and taken.added_by == "pass" and taken.why == "holds more audio"
+    assert taken.codec == "flac" and taken.bytes
+    assert track.tagged is None, "the ordinary pass retags it with this album's names"
+
+
+def test_restoring_marks_the_displacer_refused(tmp_path):
+    """The user has just said they preferred what was here, so it is never offered again."""
+    from noaap.config import Config
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+    from noaap.recycle import entries as bin_entries
+    from noaap.service import Service
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    service = Service(Config(musicbrainz=False, lyrics=False), target, log=lambda s: None)
+    service.restore(bin_entries(target)[0].id)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    assert "Intake-1" in track.refused_candidates
+
+
+def test_a_source_file_that_vanished_fails_only_its_own_track(tmp_path):
+    from noaap.merge import carry_out
+
+    source, source_plan = real_library(tmp_path / "source", "Intake", "One", "Two",
+                                       ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One", "Two")
+    found = survey(source, target, judge=fixed(Verdict.REPLACE))
+    (source / source_plan.folder / "01 - One.flac").unlink()
+
+    done = carry_out(found, target)
+
+    assert done == {"replaced": 1, "filled": 0, "failed": 1}
+    assert (target / plan.folder / "A Band - Album - 02 - Two.flac").is_file()
+
+
+def test_a_replacement_of_a_different_length_makes_the_timings_stale(tmp_path):
+    """R-164, ruling 5: after a replacement the existing check must flag words stamped against
+    the file that is gone."""
+    from noaap.download import load_plan
+    from noaap.lyrics import timings_stale
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    timed = load_plan(target / plan.folder)
+    timed.tracks[0].lyrics = "synced"
+    timed.tracks[0].lyrics_for_source = timed.tracks[0].video_id
+    timed.tracks[0].lyrics_for_length = 200.0
+    save_plan(timed, target / plan.folder)
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    after = load_plan(target / plan.folder).tracks[0]
+    assert timings_stale(after), "the words were timed against the file that just went to the bin"
+
+
+def test_restoring_puts_the_old_file_back_and_removes_the_new_one(tmp_path):
+    """A restore after a replacement is an undo, not a second copy in the folder."""
+    from noaap.config import Config
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+    from noaap.recycle import entries as bin_entries
+    from noaap.service import Service
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder",
+                             body=b"new audio")
+    target, plan = real_library(tmp_path / "target", "Album", "One", body=b"old audio")
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+    album_dir = target / plan.folder
+
+    Service(Config(musicbrainz=False, lyrics=False), target,
+            log=lambda s: None).restore(bin_entries(target)[0].id)
+
+    audio = sorted(p.name for p in album_dir.iterdir() if p.suffix in (".opus", ".flac"))
+    assert audio == ["A Band - Album - 01 - One.opus"], "one file, and it is the one that came back"
+    assert (album_dir / audio[0]).read_bytes() == b"old audio"
+    track = load_plan(album_dir).tracks[0]
+    assert track.source_override is None and track.chosen == track.video_id
+    assert "Intake-1" in track.refused_candidates
+
+
+def test_a_merged_track_keeps_saying_where_its_audio_came_from(tmp_path):
+    """`own_the_candidates` used to claim whatever `source_override` named, which rewrote a
+    merged-in track's provider to the album's on the next load — so a re-download would have asked
+    YouTube for a folder path."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+    reloaded = load_plan(target / plan.folder)
+
+    assert reloaded.provider == "youtube", "the album is still YouTube's"
+    assert reloaded.tracks[0].candidate("Intake-1").provider == "folder"
+    assert reloaded.tracks[0].provider_in(reloaded) == "folder", "and its audio is the folder's"
