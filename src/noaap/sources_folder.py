@@ -482,7 +482,8 @@ class FolderSource:
             # a child holding audio *is* an album; otherwise it is an artist and its children are.
             # Both shapes occur: `listing(<artist>)` and `listing(<the whole collection>)`.
             for folder in [child] if audio_files(child) else _subfolders(child):
-                files = audio_files(folder)
+                files = audio_files(folder) or [f for _, disc in disc_folders(folder)
+                                                for f in audio_files(disc)]
                 if not files:
                     continue
                 tags = read_tags(files[0])

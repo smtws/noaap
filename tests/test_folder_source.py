@@ -658,3 +658,19 @@ def test_nothing_in_a_folder_is_too_short_to_be_a_track(tmp_path, source):
     plan = build_plan(source.collection(str(folder)), source=source)
 
     assert len(plan.tracks) == 2 and plan.skipped == []
+
+
+def test_a_multi_disc_album_is_one_entry_in_a_listing(tmp_path, source):
+    """Found by reconciling files on disk against tracks planned: 67 files — four albums — were
+    in no album at all. A disc-parent holds no audio of its own, so the listing walked past it
+    and the whole album was invisible from the collection root."""
+    artist = tmp_path / "In Extremo"
+    discs(artist / "Am goldenen Rhein", "cd1", "cd2")
+    encode(artist / "Sterneneisen" / "01 - a.flac", title="a", artist="In Extremo",
+           album="Sterneneisen", track="1")
+
+    found = source.listing(str(tmp_path))
+
+    assert sorted(r.title for r in found) == ["Am goldenen Rhein", "Sterneneisen"]
+    assert next(r.count for r in found if r.title == "Am goldenen Rhein") == 4
+    assert len(source.collection(next(r.url for r in found if r.title == "Am goldenen Rhein")).entries) == 4
