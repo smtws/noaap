@@ -2471,10 +2471,48 @@ them. They sat two clicks inside albums nobody had a reason to open.
   click to the panel, which already shows both numbers and offers the plain-text take.
   - **result:** pass
 
+## AM. Where YouTube is assumed (P42, docs/spikes/2026-09-sources.md)
+
+A read-only inventory before a Source boundary is designed. No code changed.
+
+- [x] **AM1 · R** — the method, so the next reader knows what it covers
+
+  A marker regex over every `.py`, `.js`, `.mjs`, `.html` and `.css` in `src/` and `tests/`:
+  `yt_dlp`, `youtube`, `youtu.be`, `ytimg`, `ggpht`, `googleusercontent`, `googlevideo`, `video_id`,
+  `yt_title`, `yt_music`, `OLAK5uy`, `watch?v=`, `playlist?list=`, `pot_`, `bgutil`, `po_token`,
+  `cookies_from_browser`, `NoAudioStream`, `no_audio_stream`, `BOT_CHECK`, `channel_base_url`,
+  `one_video`. Then the import graph of `youtube.py`, the `YouTube` class's own method list, the
+  plan model's fields, and both test doubles. Counts are derived by script, not by eye.
+  - **result:** 895 marked lines in 49 files — 423 in `src/`, 472 in tests
+
+- [x] **AM2 · R** — what this method would miss, stated rather than discovered later
+
+  - **A concept with no keyword.** `plan.py`'s classifier reads `entry.channel` to decide album vs
+    compilation; the word "channel" is generic, so the *assumption* was found by reading `classify`,
+    not by the regex. There may be more of these.
+  - **`titles.py`** scores 2 marked lines and is 288 lines of YouTube title convention end to end. A
+    line count is the wrong instrument for a whole-module assumption.
+  - **Prose.** Several hits in `enrich.py`, `mb.py` and `lyrics.py` are comments, not code. They are
+    counted, which inflates those modules slightly.
+  - **Not exercised:** no attempt was made to actually run anything against a non-YouTube source, so
+    this is an inventory, not a feasibility study.
+  - **Docs excluded** on purpose: README and DESIGN describe YouTube because the product is about
+    YouTube today, and rewording them is not part of a boundary.
+
+- [x] **AM3 · R** — the disk leaks are enumerated separately from the code
+
+  Seven, of which one is expensive: `tag.py` writes a **`youtube_id` tag into every audio file**
+  (and an iTunes freeform atom for m4a), so changing that name is a full-library re-tag. The rest —
+  `video_id`, `source_url`/`source_id`, the two `yt_*` provenance strings, `channel`, `audio_choice`,
+  `.originals/<video_id>.opus` — are plan- or filename-level and can be kept as "the YouTube
+  provider's names" at no cost.
+  - **result:** migration bill written down; no migration proposed
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AM cases (P42: where YouTube is assumed) | 3 | n/a — read-only inventory, no code under test | 895 marked lines in 49 files (423 src, 472 tests). `youtube.py` is already a seam only four modules import; the real coupling is `video_id` as identity, the `yt_*` provenance names, and a classifier that reads a channel. Everything downstream of the plan — lyrics, timing, MB, trim, tags, the editor — is already source-neutral. Seven disk leaks, one expensive (`youtube_id` in every audio file). |
 | 2026-09-28 | the AL cases (P41: finding the tracks that wait for you) | 3 | 0 | 42 tracks across 33 albums were waiting and nothing listed them. Header chip `♪ 42 need you`, a count per card, `♪ ?` on the row. Counted on the real library read-only and it matched the pass's tally. 725 pytest + 91 node. |
 | 2026-09-28 | the AK cases (P40: remembering that there is nothing to find) | 2 | 0 | `lyrics_no_entry` on the track, a date, not a verdict — `nearMiss` renders an unknown `decided` as *unclear*, which would have claimed the aligner was undecided about an entry that does not exist. 878 lookups a run saved. 723 pytest + 88 node. |
 | 2026-09-28 | the AJ cases (P39: a library-wide near-miss pass) | 4 | 0 in the design; 1 of my own (the summary counted from a stale copy of the plan and reported 13 "no candidate" for 13 tracks it had just written words to) | `ytalbum lyrics --near`, and `--dry-run` on the real library read-only: 1089 tracks looked at, **196 would align**, 878 have no candidate, 15 are too far. ~36 min on this GPU, ~9 h on a processor. Plans byte-identical after the dry run. 719 pytest + 88 node. |
