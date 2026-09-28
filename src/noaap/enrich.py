@@ -300,7 +300,18 @@ def _worth_looking_up(plan: AlbumPlan, t: PlanTrack) -> bool:
     return Provenance.SOURCE_TITLE in t.provenance.values() or plan.kind == Kind.COMPILATION
 
 
+# Evidence MusicBrainz does not get to overrule: a value the files themselves carry (§9, slice 53).
+# Whoever tagged that collection knew which release they had — the Deluxe Edition, the live
+# recording, the remaster — and a lookup that matched *a* release is not better information than
+# the one in front of it. MusicBrainz still fills every field the files leave empty.
+FIRSTHAND = (Provenance.FILE_TAGS,)
+
+
 def _set(obj: AlbumPlan | PlanTrack, name: str, value: Any) -> None:
+    if obj.provenance.get(name) in FIRSTHAND:
+        # kept where a reset can reach it, so the page can still offer what MusicBrainz said
+        obj.auto[name] = value
+        return
     setattr(obj, name, value)
     obj.provenance[name] = Provenance.MB
     obj.auto[name] = value

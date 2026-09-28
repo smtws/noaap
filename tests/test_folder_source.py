@@ -674,3 +674,33 @@ def test_a_multi_disc_album_is_one_entry_in_a_listing(tmp_path, source):
     assert sorted(r.title for r in found) == ["Am goldenen Rhein", "Sterneneisen"]
     assert next(r.count for r in found if r.title == "Am goldenen Rhein") == 4
     assert len(source.collection(next(r.url for r in found if r.title == "Am goldenen Rhein")).entries) == 4
+
+
+def test_musicbrainz_fills_gaps_and_never_overrules_the_files(tmp_path, source):
+    """Whoever tagged that collection knew which release they had — the Deluxe Edition, the live
+    recording, the remaster. A lookup that matched *a* release is not better information than the
+    one in front of it. Found by running it: MusicBrainz renamed "Trust in Rust (Deluxe Edition)"
+    to "Trust in Rust" and rewrote all 21 tracks, tags and all."""
+    from noaap.enrich import _set
+    from noaap.models import Provenance
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "album"
+    encode(folder / "01 - a.flac", title="Their Title", artist="Their Artist",
+           album="Their Album (Deluxe Edition)", track="1")
+    plan = build_plan(source.collection(str(folder)), source=source)
+    track = plan.tracks[0]
+
+    _set(plan, "album", "Their Album")
+    _set(track, "title", "A Title From The Database")
+
+    assert plan.album == "Their Album (Deluxe Edition)", "the file's own word stands"
+    assert plan.provenance["album"] == Provenance.FILE_TAGS
+    assert track.title == "Their Title"
+    assert plan.auto["album"] == "Their Album", "and what the database said is a reset away"
+    assert track.auto["title"] == "A Title From The Database"
+
+    plan.provenance.pop("year", None)
+    _set(plan, "year", 2018)
+    assert plan.year == 2018, "a field the files leave empty is MusicBrainz's to fill"
+    assert plan.provenance["year"] == Provenance.MB

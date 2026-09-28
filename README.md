@@ -194,7 +194,8 @@ titles and MusicBrainz one track at a time.
 ```
 address ─► resolve ─► inspect ─► classify ─► enrich ─► plan ─► [you edit] ─► download ─► tag
    │
-   └─ a source provider: YouTube today, and the only thing that knows what YouTube looks like
+   ├─ youtube: the only thing that knows what a video id or a watch link looks like
+   └─ folder:  a path on this machine — it copies, and never writes where it read
 ```
 
 **Where the audio comes from is one small interface.** A *source provider* answers four questions —
@@ -203,7 +204,24 @@ few it may decline: can it search, can it say cheaply whether a collection chang
 carry conventions worth stripping. YouTube is one such provider, and nothing outside it recognises a
 video id, a watch link or a channel; a test in the suite greps for exactly that and fails if it
 leaks. Each album's plan records which provider it came from, and each track records which one its
-audio comes from — so one album can, in principle, hold tracks from two.
+audio comes from — so one album can hold tracks from two.
+
+**A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
+own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath
+and asks which. Nothing is written, moved or re-encoded where it was read, and what is not a track
+— a stray `.url`, a thumbnail cache, a label logo — is counted in the report and left alone.
+
+The files decide, in this order: **their own tags**, then the **file name** where a tag is missing,
+then the **folder name**. Each value records which of the three it came from, so the page and
+`noaap plan` can show you. MusicBrainz fills gaps but never overrules a tag that is there — whoever
+tagged that collection knew more about it than a lookup does. Numbered sub-folders (`cd1`, `CD 2`,
+`1`) are the discs of one album. An `albumartist` is what says an album is one artist's, so a guest
+credit on one track does not turn it into a compilation — and `Various Artists` is the one value
+that means the opposite.
+
+An album whose artist and name are **already in your library** is reported with how many of its
+titles overlap, and then left alone: choosing between two copies of a recording is a decision of its
+own, and noaap does not make it quietly in the middle of an import.
 
 Each album folder holds a **plan** (`.ytalbum.json`): what the source listed, what each
 track should be called, where every value came from, what has been downloaded, and which

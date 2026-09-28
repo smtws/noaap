@@ -2947,6 +2947,95 @@ This is the third variant of one family — `pkill -f` matching its own command 
 matching its own docstring, and now a test matching its own name. The rule they share: **a check
 that reads its own surroundings must not be named after what it looks for.**
 
+## AV. A folder is a source (P51, DESIGN §9, slice 53)
+
+The second real provider, and the first that is not a website. Every case below was run against
+the user's own 43.8 GB collection — 2000 audio files (mp3 932, flac 730, opus 338) in 135 album
+folders under 12 names, counted 2026-09-28 — **read-only, never written to**. What was planned went
+into a scratch library; a dry run writes nothing, which is why that library is still empty.
+
+The package's argument for itself is that **five defects came out of running it, and none of them
+would have come out of a test**. They are the five cases.
+
+- [x] **AV1 · R** — two tracks vanished into a merge
+
+  Copies were grouped by (disc, track number), so two different songs both tagged track 10 became
+  one. `My Dark Lullabies/Vol.17` planned 14 tracks instead of 15 — "Blutengel – Seelenschmerz"
+  simply gone, behind "Subway To Sally – Kleid Aus Rosen". `Mono Inc/Head Under Water` lost one the
+  same way: `Looking Bach.mp3` at 320 kbps beside `Looking Back.mp3` at 128.
+  - **result:** fixed — a number must agree with a title. Two files with identical audio are
+    recorded as they are, digests included; "is this the same recording" is P52's question.
+
+- [x] **AV2 · M** — three albums refused, 52 tracks, for being "shorter than 30s"
+
+  `Mono Inc/Terlingua`, `Together till the End`, `Welcome To Hell`: 39 MB FLACs whose STREAMINFO
+  carries `total_samples = 0`, which some encoders leave when they cannot seek back to fill it in.
+  mutagen reports it faithfully as `length = 0.0`.
+  - **evidence:** "nothing to download in “Terlingua”: all 13 videos are unusable (13× shorter than
+    30s (0s))"
+  - **result:** fixed. **A zero is not a length, it is unknown** — the same rule the catalog
+    recorded in P48 from the other direction, when Opus reported no sample rate at all.
+
+- [x] **AV3 · M** — and unknown was not good enough
+
+  Without a length there is no length chip, no duration for LRCLIB, no near-miss check and no trim
+  reference, from the day the album arrives. `ffprobe -show_entries format=duration` answers `N/A`
+  for these files; decoding is the only way to the number.
+  - **result:** the provider decodes where the header will not say — `ffmpeg -f null -` and the last
+    `time=`, **0.12 s a file**, faster than `ffprobe -count_frames` (0.22 s). 52 files, seconds in
+    total. `Candidate.length_by` records that the number was decoded.
+
+- [x] **AV4 · R** — a rule that belonged to the wrong layer
+
+  30 seconds is YouTube's: a playlist opens with an intro card. A short file in an album folder is
+  an interlude, a skit or a spoken intro, and it belongs to the album. Two more tracks were being
+  dropped by it.
+  - **result:** `Source.shortest_track()` — 30 for YouTube, 0 for a folder.
+
+- [x] **AV5 · R** — three albums nobody could reach
+
+  A folder whose children are numbered discs holds no audio of its own, so the listing walked past
+  it. `collection(<the parent>)` had always grouped the discs correctly, which is why every test
+  passed and every spot check looked right — **only the address nobody types was broken**.
+  `Am goldenen Rhein-Live` (24 tracks), `Kein Blick Zurück` (22), `Sturm aufs Paradies` (21) did
+  not exist from the collection root.
+  - **evidence:** 2000 files in, 1933 tracks out, 67 in no album at all — and 24 + 22 + 21 = 67
+  - **result:** fixed; 129 albums listed became 132.
+
+### Count what went in, count what came out, itemise the difference
+
+AV5 is the one no amount of test-writing would have produced, and it came out of arithmetic:
+
+```
+audio files under the root: 2000   (hidden: 0)
+albums the listing finds:    132
+tracks planned:             2000
+  further copies merged:       0
+  of those with no length:     0
+  dropped for being short:     0
+files in no album at all:      0
+```
+
+**Every file is a planned track, one for one.** The three terms that once stood between 2000 and
+1933 were each a defect rather than a category. A suite proves the paths it walks; only the balance
+notices a path nobody walked. Use this form wherever a pass consumes a known number of things.
+
+### A wait loop that waited for itself
+
+`until ! pgrep -f 'noaap fetch --dry-run --all'` never finished, because the loop's own shell
+carries that string in its command line. `pkill -f` killing its own shell, a scanner matching its
+own docstring, a test matching its own `tmp_path`, and now this: the fourth shape of one family.
+The rule the catalog already carries — **a check that reads its own surroundings must not be named
+after what it looks for** — extends to process checks, where it means waiting on a recorded PID.
+
+### And one report that was wrong about its own evidence
+
+I told the reviewer the 67 files were four albums, naming `Sturmfels-Klänge` as the fourth. It was
+never missing: it holds its audio directly and had always been listed. I had grepped my own
+verification output for `Sturm|Rhein|Blick|Better` and it matched "Sturm" as a bystander, and I
+quoted it without checking that it belonged. The listing count said so all along — 129 to 132 is
+three. **A number that can be derived two ways should be, before it is reported.**
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |

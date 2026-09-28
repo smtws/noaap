@@ -1388,6 +1388,49 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    had been renamed — a wrong contact address on every request, and the one field they ask for — and
    both user agents claimed version `0.1` forever. They now read the installed version from one place.
 
+53. ✅ **A folder is a source** (2026-09-28, P51). The second real provider, and the first that is
+   not a website: an address is a path, a collection is a folder, `audio()` **copies**, and the
+   source is never written, moved or re-encoded. Built against a real 43.8 GB collection —
+   2000 files (mp3 932, flac 730, opus 338), 135 album folders, 12 top-level names, counted
+   2026-09-28 — and every rule below was measured on it before it was written.
+   **Four containers, one vocabulary.** FLAC and MP3 could not be read at all until now: everything
+   that was not `.m4a` opened as Opus, raised, was caught, and answered `None`. A `None` length
+   reads as "no match" and an empty quality as "unknown", so 1662 of those 2000 files would have
+   arrived measurable by nothing, with 900 tests green. `kind()` is now the one place a suffix
+   decides anything, and `keep_unknown=True` writes only the keys the plan asserts, leaving
+   replaygain, ISRC, composer, BPM, a comment and an existing MusicBrainz id where they are — the
+   difference between taking a collection in and taking it apart.
+   **A ref is an absolute path**, because `audio(ref, into)` has one argument to find a file with.
+   That has a consequence the boundary had not been asked before: **nothing derived from a ref may
+   leave the program.** It is not written into a file's tags (`youtube_id` held the ref, so a
+   folder track would have put someone's home directory into every file), it is never sent to
+   MusicBrainz or LRCLIB, it does not appear in a fixture, and in a list or a tooltip it is shown
+   by its last two parts — the whole path only in the source panel, where the user asked for it.
+   A ref is an identifier only where the provider mints identifiers; everywhere else it is a way
+   to find a file, and that is all.
+   **Identity is the audio, not the file.** Hashing every byte of all 2000 files takes 41 s and
+   finds **no duplicates**, because every copy differs in its tags; hashing the audio stream takes
+   160 s (80 ms a file) and finds **68 recordings held twice** — a track on the album and the same
+   track on the best-of. So `stream_sha` sits on the candidate beside `bytes`, survives a retag and
+   differs between two encodings. Being the same stream never means discarding one.
+   **What the filesystem states, and what it only suggests.** Numbered sub-folders (`cd1`, `CD 1`,
+   `1` — three spellings, three albums) are the discs of one album, all of them or none. Sibling
+   folders differing by a trailing `Disc N` are the one grouping the folder names only suggest, so
+   the tags get the vote — and in the one real case they vote against it, because those files call
+   themselves two different albums. **A folder says when it is one artist's release**: without it a
+   normal album read as a compilation the moment one track credited a guest.
+   **Tags and names are read apart.** `file_tags`, `folder_name` and `file_name` are three origins
+   with their own provenance, weighted like the ones they stand in for, and a provider now names
+   its own (`origins()`) instead of the planner guessing from its name. The 17 untagged files in
+   that collection are one album named by this program's own output scheme, so their recovery is
+   exact — and it surfaced an old defect: a title that *is* the album name stripped to `")"`.
+   **Overlap is not this pass's decision.** An album whose artist and name are already in the
+   library is reported with how many titles overlap, and left alone. Matching a file to a track we
+   already hold is the same-recording question, and that is P52's first rule.
+   **Not chosen is not copied**: an unchosen candidate records its ref, its measurements and its
+   digest, and is fetched only if something later chooses it. Copying 43.8 GB of losing candidates
+   to find out would be absurd.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
