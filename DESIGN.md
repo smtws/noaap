@@ -1602,6 +1602,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    key: putting the old values back while leaving our additions behind is not giving the file back.
    What noaap added is removed only while it is still what noaap wrote; a sidecar the user has
    edited since is theirs, whatever put it there.
+   **The undo has to finish, and has to be able to run again.** Its acceptance run crashed on the
+   one album whose files carry **no tags at all**: a Vorbis comment block has no `pop` — not even a
+   one-argument one — so making a field absent again raised, and three containers' worth of cases
+   had never reached that line because every file in them had a value to put back. The crash ended
+   the whole pass, leaving 92 of 132 albums adopted and three renamed with no way back. So one
+   track's trouble costs that track, one album's costs that album, what failed is named with a
+   non-zero exit, and **when a track cannot be given back the plan is kept** — it is the only
+   record of what those files were. A second run finishes what is left and leaves what is done
+   alone.
+   **Every file noaap writes records its own fingerprint as it writes it.** The first undo kept 80
+   sidecars as "edited" that noaap had written itself, because it judged them against a snapshot
+   taken at adoption — and a snapshot is stale the moment a later pass writes anything. A sidecar
+   answers to `lyrics_sha`, a cover to `cover_fetched.sha1`, both maintained by the passes that
+   write them. A file whose fingerprint was never taken is kept, not removed.
    **Two things are refused rather than guessed:** a folder that already holds a plan, and a folder
    whose files say they are two different albums — the owner made that folder, and deciding which
    files belong together is theirs. And a replacement by `merge` in such a library takes the

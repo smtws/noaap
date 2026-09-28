@@ -3432,6 +3432,47 @@ byte-for-byte identical to the original before anything ran. `~/Music/legacy` wa
   `--rename` and `--retag` refuse an album whose record of what it was is missing or incomplete.
   - **result:** pass, and the refusal names the album.
 
+### What the acceptance run found, and it was the undo
+
+Three faults in one crash, and the design was right about everything except the case nobody had.
+
+1. **`pop` does not exist on a Vorbis comment block.** Not `pop(key, None)`, not `pop(key)` —
+   `TypeError: pop expected at most 1 argument, got 2`. Removing a key had to be `del`. Every case
+   in three containers passed without ever reaching that line, **because every file in them had a
+   value to put back**: the collection has an album whose files carry no tags at all, and making a
+   field absent again is not the same code path as putting a value into it. Cases now adopt, retag
+   and undo a file with no tags in each of the three containers.
+2. **The crash ended the whole pass.** 92 of 132 albums still adopted, three albums renamed with no
+   way back, 96 sidecars left, exit 1 and no list of what had failed. One track's trouble now costs
+   that track, one album's costs that album, the failures are named at the end and the exit code
+   says so. **And when a track cannot be given back the plan is kept** — it is the only record of
+   what those files were, and discarding it because part of the undo failed would leave the rest of
+   the album unrecoverable.
+3. **80 sidecars were kept as "edited" that noaap had written itself.** The undo judged them against
+   a snapshot of fingerprints taken at adoption, and that snapshot is stale the moment a later pass
+   writes anything. Nothing is snapshotted now: **every file noaap writes already records its own
+   fingerprint** — a sidecar answers to `lyrics_sha` (*the bytes we wrote; anything else is the
+   user's*), a cover to `cover_fetched.sha1`. A file whose fingerprint we never took is kept, not
+   removed, which is the safe side of that question.
+
+- [x] **BA6 · M** — the undo run again, on the crashed library, without resetting it
+
+  **Proved on the state the crash left**: the album it died on, Feuerschwanz — *Drachentanz (Live
+  2008)*, is the one whose files have no tags.
+  - **result:** the second undo finished the remaining 92 albums in 1.0 s and that album's **17
+    files match the original on every tag field** — 0 differences. Only their byte size differs.
+
+- [x] **BA7 · M** — and then the whole sequence again, clean
+
+  Adopt 132 albums → a lyrics pass over one artist (**96 sidecars, every one with its fingerprint
+  recorded**, 0 that noaap could not prove it wrote) → `--retag --rename` on three albums across
+  the three containers (17 opus, 38 mp3, 40 flac) → undo the root.
+  - **result:** undo exit 0, **0 failed**, 228 files removed, 18 renamed back, 64 files' tags
+    restored, **0 plans and 0 sidecars left**. The 60 "kept" are the owners' own `cover.*` files,
+    which noaap did not write and did not touch.
+  - against the untouched original: **0 name differences over the whole tree**, and 18 files
+    differing in byte size alone — every one among the three albums deliberately retagged.
+
 ### A number in my own proposal that was wrong
 
 I-144 said adoption would make **1699 renames**. The true number is **438**. The 1699 was produced
