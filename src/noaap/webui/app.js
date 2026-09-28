@@ -34,7 +34,7 @@ function h(tag, attrs = {}, ...children) {
 async function api(path, body) {
   const opts = body === undefined ? {} : {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Ytalbum": "1" },
+    headers: { "Content-Type": "application/json", "X-Noaap": "1" },
     body: JSON.stringify(body),
   };
   const r = await fetch(path, opts);
@@ -473,7 +473,15 @@ $("#grid").addEventListener("keydown", (e) => {
 // -- one album: view and edit ---------------------------------------------------------
 
 let currentAlbum = null;
-let lastAlbumId = (() => { try { return localStorage.getItem("ytalbum-last"); } catch { return null; } })();
+// Per-browser conveniences, nothing the library depends on. Written under our own name and read
+// under ytalbum's as well, once, so a rename does not forget which album you had open or lose the
+// theme you picked. Every access is guarded: private mode makes these throw.
+const LAST = "noaap-last", LAST_WAS = "ytalbum-last";
+const THEME = "noaap-theme", THEME_WAS = "ytalbum-theme";
+function remembered(key, was) {
+  try { return localStorage.getItem(key) ?? localStorage.getItem(was); } catch { return null; }
+}
+let lastAlbumId = remembered(LAST, LAST_WAS);
 
 // closing the editor hands focus back to the album's tile, so the keyboard keeps working
 function closeAlbum(focusId = currentAlbum?.source_id) {
@@ -486,7 +494,7 @@ function closeAlbum(focusId = currentAlbum?.source_id) {
 
 function markAlbum(id) {
   lastAlbumId = id;
-  try { localStorage.setItem("ytalbum-last", id); } catch { /* private mode */ }
+  try { localStorage.setItem(LAST, id); } catch { /* private mode */ }
   for (const card of document.querySelectorAll("#grid .card")) card.classList.toggle("current", card.dataset.id === id);
 }
 
@@ -2114,14 +2122,15 @@ function applyTheme(theme) {
 }
 
 function savedTheme() {
-  try { return THEMES[localStorage.getItem("ytalbum-theme")] ? localStorage.getItem("ytalbum-theme") : "auto"; } catch { return "auto"; }
+  const saved = remembered(THEME, THEME_WAS);
+  return saved && THEMES[saved] ? saved : "auto";
 }
 
 let theme = savedTheme();
 $("#theme").addEventListener("click", () => {
   const order = ["auto", "dark", "light"];
   theme = order[(order.indexOf(theme) + 1) % order.length];
-  try { localStorage.setItem("ytalbum-theme", theme); } catch { /* private mode: just this session */ }
+  try { localStorage.setItem(THEME, theme); } catch { /* private mode: just this session */ }
   applyTheme(theme);
 });
 applyTheme(theme);

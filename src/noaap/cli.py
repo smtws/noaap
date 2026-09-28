@@ -125,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(line_buffering=True)  # keep progress in order with stderr when piped
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    if notice := config_mod.legacy_notice():  # still configured as ytalbum (§9, slice 52)
+        print(notice, file=sys.stderr)
     cfg = config_mod.load()
     if getattr(args, "no_mb", False):
         cfg.musicbrainz = False
@@ -211,7 +213,8 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     if changes:
         cfg = config_mod.load()
     runtime = cfg.resolved_js_runtime()
-    print(f"config file:  {config_mod.config_path()}")
+    # the one it read, which is not always the one it writes (§9, slice 52)
+    print(f"config file:  {config_mod.read_path()}")
     print(f"library_root: {cfg.library_root or '(not set)'}")
     print(f"cookies:      {cfg.cookies_file or cfg.cookies_from_browser or '(none — age-restricted videos are skipped)'}")
     print(f"musicbrainz:  {'on' if cfg.musicbrainz else 'off'}")

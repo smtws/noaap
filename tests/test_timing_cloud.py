@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
+from noaap import config
 from noaap.config import Config
 from noaap.download import load_plan, run, save_plan
 from noaap.plan import build_plan
@@ -309,17 +310,17 @@ def test_a_key_never_reaches_the_page_or_the_log(album, tmp_path, monkeypatch):
 # -- the real thing, only when a key is deliberately put in the environment --------------------
 
 
-@pytest.mark.skipif(not os.environ.get("YTALBUM_ELEVENLABS_KEY"),
-                    reason="set YTALBUM_ELEVENLABS_KEY to run one real (billed) ElevenLabs request")
+@pytest.mark.skipif(not config.env("ELEVENLABS_KEY"),
+                    reason="set NOAAP_ELEVENLABS_KEY to run one real (billed) ElevenLabs request")
 def test_elevenlabs_for_real(audio):
-    timed = ElevenLabsTiming(os.environ["YTALBUM_ELEVENLABS_KEY"]).align(audio, ["hello"])
+    timed = ElevenLabsTiming(config.env("ELEVENLABS_KEY")).align(audio, ["hello"])
     assert timed.provider == "elevenlabs"
 
 
-@pytest.mark.skipif(not os.environ.get("YTALBUM_DEEPGRAM_KEY"),
-                    reason="set YTALBUM_DEEPGRAM_KEY to run one real (billed) Deepgram request")
+@pytest.mark.skipif(not config.env("DEEPGRAM_KEY"),
+                    reason="set NOAAP_DEEPGRAM_KEY to run one real (billed) Deepgram request")
 def test_deepgram_for_real(audio, capsys):
-    """One request, deliberately. `YTALBUM_LIVE_AUDIO` points it at something with words in it.
+    """One request, deliberately. `NOAAP_LIVE_AUDIO` points it at something with words in it.
 
     The default fixture is a one-second sine tone, which proves the key and the auth header and
     nothing about the response's shape; a real track answers whether the documented fields hold.
@@ -327,8 +328,8 @@ def test_deepgram_for_real(audio, capsys):
     """
     import httpx
 
-    path = Path(os.environ.get("YTALBUM_LIVE_AUDIO") or audio)
-    client = DeepgramTiming(os.environ["YTALBUM_DEEPGRAM_KEY"])
+    path = Path(config.env("LIVE_AUDIO") or audio)
+    client = DeepgramTiming(config.env("DEEPGRAM_KEY"))
     raw: dict = {}
     original = httpx.post
 

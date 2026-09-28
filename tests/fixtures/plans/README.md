@@ -5,6 +5,7 @@ reads and writes them exactly as v0.7.0 does. No filesystem path appears in any 
 `folder` and `filename` fields are relative names, which is what they are on disk); no covers
 and no audio.
 
-Two are **built**, because the library holds no example: `failed_and_no_audio.json` (a failed
-track and one with no audio-only stream) and `from_a_later_version.json` (keys this version has
-never heard of, for the forward-compatibility case).
+Three are **built**, because the library holds no example: `failed_and_no_audio.json` (a failed
+track and one with no audio-only stream), `from_a_later_version.json` (keys this version has
+never heard of, for the forward-compatibility case) and `from_another_provider.json` (a plan owned
+by a provider this build does not have — the other direction of the same promise).

@@ -1,6 +1,6 @@
 """The timing boundary, offline: a fake provider is enough to test everything but the model.
 
-The real models are opt-in (`YTALBUM_TIMING_LIVE=1` and the `noaap[timing]` extra installed);
+The real models are opt-in (`NOAAP_TIMING_LIVE=1` and the `noaap[timing]` extra installed);
 without them this file still covers the shape of the thing — what the page is told it may offer,
 what the job returns, what reaches the disk, and what the HTTP provider does with an endpoint that
 answers and one that does not.
@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 from test_incremental import FakeYouTube, opus_template, vol1
 
+from noaap import config
 from noaap.config import Config, load
 from noaap.download import load_plan, run, save_plan
 from noaap.plan import build_plan
@@ -242,8 +243,8 @@ def test_the_far_end_refuses_nonsense(served, tmp_path, opus_template):
 # -- the real thing, only when asked for --------------------------------------------------------
 
 
-@pytest.mark.skipif(not os.environ.get("YTALBUM_TIMING_LIVE"),
-                    reason="set YTALBUM_TIMING_LIVE=1 (and install noaap[timing]) to run the models")
+@pytest.mark.skipif(not config.env("TIMING_LIVE"),
+                    reason="set NOAAP_TIMING_LIVE=1 (and install noaap[timing]) to run the models")
 def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
     from noaap.timing_local import LocalTiming
 

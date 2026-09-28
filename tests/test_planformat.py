@@ -252,3 +252,27 @@ def test_the_old_fields_win_when_a_plan_disagrees_with_itself() -> None:
     assert not gone
     mine = ("tracks.0.chosen", "tracks.0.candidates")
     assert [c for c in changed if not c.startswith(mine)] == [], changed
+
+
+def test_a_plan_from_a_provider_this_build_lacks_loads_and_keeps_saying_whose_it_is():
+    """The other half of slice 48: noaap 1.0 reads a plan written by a later one.
+
+    `from_another_provider.json` is what P51's intake folder will write — an address that is not a
+    URL, a ref that is a file name, a flac. A build without that provider must still load it, keep
+    the name, and **refuse to fetch it** rather than quietly handing the work to YouTube, which
+    would download a wrong copy of a track that is already on the disk.
+    """
+    from noaap import sources
+    from noaap.config import Config
+
+    plan = AlbumPlan.from_dict(raw(Path(__file__).parent / "fixtures" / "plans" / "from_another_provider.json"))
+
+    assert plan.provider == "intake"
+    track = plan.tracks[0]
+    assert track.candidate(track.chosen).provider == "intake"
+    assert serialise(plan).count('"provider": "intake"') == 2, "the plan's and the candidate's"
+
+    with pytest.raises(ValueError, match="unknown source provider 'intake'"):
+        sources.for_plan(plan, Config())
+    with pytest.raises(ValueError, match="unknown source provider 'intake'"):
+        sources.for_candidate(track, plan, Config())

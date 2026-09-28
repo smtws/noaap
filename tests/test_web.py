@@ -19,7 +19,7 @@ from noaap.web import App
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 
-HDR = {"X-Ytalbum": "1", "Content-Type": "application/json"}
+HDR = {"X-Noaap": "1", "Content-Type": "application/json"}
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_cover_only_by_album_id(server):
 def test_writes_need_the_header(server):
     _, c = server
     assert c.post("/api/update", json={}).status_code == 403  # plain cross-site-able POST
-    assert c.post("/api/update", content=b"{}", headers={"X-Ytalbum": "1", "Content-Type": "text/plain"}).status_code == 403
+    assert c.post("/api/update", content=b"{}", headers={"X-Noaap": "1", "Content-Type": "text/plain"}).status_code == 403
     assert c.request("OPTIONS", "/api/update").status_code == 403
 
 
@@ -134,7 +134,7 @@ def test_browser_setting(server, monkeypatch, tmp_path):
     assert c.post("/api/settings", json={"cookies_from_browser": "netscape"}, headers=HDR).status_code == 400
     r = c.post("/api/settings", json={"cookies_from_browser": "firefox"}, headers=HDR)
     assert r.json()["cookies_from_browser"] == "firefox" and app.cfg.cookies_from_browser == "firefox"
-    assert 'cookies_from_browser = "firefox"' in (tmp_path / "cfg" / "ytalbum" / "config.toml").read_text()
+    assert 'cookies_from_browser = "firefox"' in (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
     assert c.post("/api/settings", json={"cookies_from_browser": "firefox"}).status_code == 403  # header still required
 
 
@@ -166,7 +166,7 @@ def test_settings_validate_then_apply(server, monkeypatch, tmp_path):
     assert r.status_code == 200
     assert (app.cfg.concurrency, app.cfg.musicbrainz, app.cfg.pot_idle) == (1, False, 600)
     assert new_lib.is_dir() and app.library == new_lib and c.get("/api/state").json()["albums"] == []
-    text = (tmp_path / "cfg" / "ytalbum" / "config.toml").read_text()
+    text = (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
     assert "concurrency = 1" in text and "musicbrainz = false" in text and f'library_root = "{new_lib}"' in text
 
 

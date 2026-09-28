@@ -8,11 +8,11 @@ and the software broken — a model version bump, a resampling change, a device 
 Nothing here reads from the repository and nothing is committed with it. Audio stays where it is,
 is copied read-only into pytest's own temp directory for the run, and is deleted with it.
 
-    YTALBUM_CORPUS_AUDIO=1 uv run pytest -m slow -v
+    NOAAP_CORPUS_AUDIO=1 uv run pytest -m slow -v
 
 and, when the library is not the one in your noaap config:
 
-    YTALBUM_CORPUS_AUDIO=1 YTALBUM_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slow -v
+    NOAAP_CORPUS_AUDIO=1 NOAAP_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slow -v
 
 **Pointing it at your own library.** It looks in the `library_root` from your noaap config and
 finds each track by artist, title and album through the album plans — so it works unchanged on any
@@ -32,13 +32,14 @@ from pathlib import Path
 
 import pytest
 
+from noaap import config
 from noaap.lyrics import fit_verdict
 from noaap.timing import LOST_SPAN
 
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.skipif(not os.environ.get("YTALBUM_CORPUS_AUDIO"),
-                       reason="set YTALBUM_CORPUS_AUDIO=1 to run the corpus against real audio"),
+    pytest.mark.skipif(not config.env("CORPUS_AUDIO"),
+                       reason="set NOAAP_CORPUS_AUDIO=1 to run the corpus against real audio"),
 ]
 
 
@@ -79,18 +80,18 @@ def library() -> Path:
 
     `tests/conftest.py` redirects `XDG_CONFIG_HOME` for every test so that nothing reads the real
     configuration by accident. That protection is right and this suite does not defeat it: it takes
-    the library from **`YTALBUM_CORPUS_LIBRARY`** when that is set, and otherwise reads the config
+    the library from **`NOAAP_CORPUS_LIBRARY`** when that is set, and otherwise reads the config
     file deliberately, from the real home directory, saying so here rather than reaching around the
     fixture in silence.
     """
-    if named := os.environ.get("YTALBUM_CORPUS_LIBRARY"):
+    if named := config.env("CORPUS_LIBRARY"):
         return Path(named).expanduser()
-    path = Path.home() / ".config" / "ytalbum" / "config.toml"
+    path = config.read_path()
     if not path.is_file():
-        pytest.skip(f"no {path} and no YTALBUM_CORPUS_LIBRARY: point this suite at a library")
+        pytest.skip(f"no {path} and no NOAAP_CORPUS_LIBRARY: point this suite at a library")
     root = tomllib.loads(path.read_text(encoding="utf-8")).get("library_root")
     if not root:
-        pytest.skip(f"{path} sets no library_root; set YTALBUM_CORPUS_LIBRARY instead")
+        pytest.skip(f"{path} sets no library_root; set NOAAP_CORPUS_LIBRARY instead")
     return Path(root).expanduser()
 
 
@@ -98,7 +99,7 @@ def find(case: Case) -> tuple[Path, dict]:
     """The album folder and plan track for a case, or skip saying exactly what is missing."""
     root = library()
     if not root.is_dir():
-        pytest.skip(f"{root} is not a directory; set YTALBUM_CORPUS_LIBRARY")
+        pytest.skip(f"{root} is not a directory; set NOAAP_CORPUS_LIBRARY")
     hits = []
     for album_dir, plan in _plans(root):
         if case.album.lower() not in str(plan.get("album", "")).lower():

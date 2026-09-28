@@ -18,11 +18,11 @@ rate-limited or refused request comes back as `TimingUnavailable` carrying the v
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from . import config
 from .timing import (
     ALIGN,
     TRANSCRIBE,
@@ -51,10 +51,10 @@ class CloudTiming:
         self.key = (key or "").strip()
         self.timeout = timeout
         self.log: Callable[[str], None] = lambda _: None
-        # `YTALBUM_TIMING_BASE_ELEVENLABS=http://127.0.0.1:9000/v1` sends the requests somewhere
+        # `NOAAP_TIMING_BASE_ELEVENLABS=http://127.0.0.1:9000/v1` sends the requests somewhere
         # else: a gateway, a proxy, or — which is what it exists for — a server that speaks the
         # vendor's documented shapes, so this can be exercised end to end without spending a cent.
-        if base := os.environ.get(f"YTALBUM_TIMING_BASE_{self.name.upper()}"):
+        if base := config.env(f"TIMING_BASE_{self.name.upper()}"):
             self._rebase(base.rstrip("/"))
 
     def _rebase(self, base: str) -> None:

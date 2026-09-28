@@ -95,7 +95,7 @@ def test_the_seed_fills_their_documented_fields():
     assert got["type"] == "Album" and got["mediums.0.format"] == "Digital Media"
     assert got["events.0.date.year"] == "2023"
     assert got["urls.0.url"] == "https://www.youtube.com/playlist?list=PL1"
-    assert "ytalbum" in got["edit_note"] and "check everything" in got["edit_note"]
+    assert "noaap" in got["edit_note"] and "check everything" in got["edit_note"]
 
 
 def test_the_tracklist_carries_the_lengths_measured_from_the_files():

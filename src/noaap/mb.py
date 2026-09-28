@@ -17,24 +17,25 @@ from typing import Any, Protocol
 
 import httpx
 
+from . import config, user_agent
 from .text import key as text_key
 
 log = logging.getLogger(__name__)
 
 BASE = "https://musicbrainz.org/ws/2"
-USER_AGENT = "ytalbum/0.1 ( https://github.com/Tordt/YT-Downloads )"
+USER_AGENT = user_agent()
 HIT_TTL = 30 * 24 * 3600
 MISS_TTL = 3600
 
 
 # The site, not the web service: seeding and editing are pages a person opens, not API calls
-# (§9, slice 43). `YTALBUM_MUSICBRAINZ_WEB=http://127.0.0.1:8796` points them at a local stand-in, which is
+# (§9, slice 43). `NOAAP_MUSICBRAINZ_WEB=http://127.0.0.1:8796` points them at a local stand-in, which is
 # how the seeding was verified without opening a real edit form.
-WEB = (os.environ.get("YTALBUM_MUSICBRAINZ_WEB") or "https://musicbrainz.org").rstrip("/")
+WEB = (config.env("MUSICBRAINZ_WEB") or "https://musicbrainz.org").rstrip("/")
 # what a YouTube playlist is to a release, in their vocabulary. Left for the editor to choose: the
 # numeric link_type is optional in the seeding format, and guessing it wrongly would be worse than
 # letting the person pick from the list that is already in front of them.
-SEED_NOTE = ("Seeded by ytalbum (https://github.com/smtws/ytalbum) from a YouTube playlist. "
+SEED_NOTE = ("Seeded by noaap (https://github.com/smtws/noaap) from a YouTube playlist. "
              "Track lengths are measured from the audio files. Please check everything before you submit.")
 
 
@@ -129,7 +130,7 @@ class MusicBrainzAPI(Protocol):
 
 def default_cache_path() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / "ytalbum" / "musicbrainz.sqlite3"
+    return Path(base) / config.NAME / "musicbrainz.sqlite3"
 
 
 def phrase(text: str) -> str:

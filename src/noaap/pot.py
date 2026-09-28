@@ -20,6 +20,8 @@ from pathlib import Path
 
 import httpx
 
+from . import config
+
 log = logging.getLogger(__name__)
 
 DEFAULT_PORT = 4416  # the plugin's default base_url
@@ -29,7 +31,7 @@ START_TIMEOUT = 15.0
 
 def cache_dir() -> Path:
     base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
-    return Path(base) / "ytalbum"
+    return Path(base) / config.NAME
 
 
 def heartbeat_path() -> Path:

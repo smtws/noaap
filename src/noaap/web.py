@@ -3,7 +3,7 @@
 Stdlib only. One worker thread runs jobs one after another (gentle on YouTube, and no two
 jobs ever touch the library at once); the browser polls /api/state.
 
-Safety: listens on 127.0.0.1 by default. Writes need the `X-Ytalbum` header (so other
+Safety: listens on 127.0.0.1 by default. Writes need the `X-Noaap` header (so other
 websites cannot trigger them through the browser: that header forces a CORS preflight we
 never answer) and the Host header must be ours (DNS rebinding). Files are only ever served
 by album id, never by a path from the request.
@@ -33,7 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from . import config as config_mod
-from . import sources
+from . import sources, user_agent
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
@@ -60,6 +60,11 @@ from .timing import (
 from .trim import original_path
 
 log = logging.getLogger(__name__)
+
+# A write must say it came from our own page rather than from a form on someone else's
+# (§9, slice 24). ytalbum's spelling is still accepted — see the check itself for why.
+WRITE_HEADER = "X-Noaap"
+LEGACY_WRITE_HEADER = "X-Ytalbum"
 
 STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -264,7 +269,7 @@ class App:
     def __init__(self, cfg: Config, library: Path, host: str = "127.0.0.1", port: int = 8765, service_factory=None) -> None:
         self.cfg, self.library, self.host, self.port = cfg, library.expanduser(), host, port
         self.last_request = time.monotonic()
-        self.http = httpx.Client(timeout=10, follow_redirects=True, headers={"User-Agent": "ytalbum"})
+        self.http = httpx.Client(timeout=10, follow_redirects=True, headers={"User-Agent": user_agent()})
         self._thumbs: dict[str, tuple[bytes, str]] = {}
         self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel))
         self.jobs = Jobs(self._service_factory)
@@ -496,7 +501,7 @@ class App:
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,
             "info": {
-                "config file": str(config_mod.config_path()),
+                "config file": str(config_mod.read_path()),
                 "JavaScript runtime": " ".join(filter(None, runtime)) if runtime else "none found",
                 "token generator": str(pot) if pot else "not set up (see README)",
                 "audio": "Opus, the best stream YouTube offers, never re-encoded",
@@ -936,8 +941,11 @@ class _Handler(BaseHTTPRequestHandler):
         self.app.touch()
         if not self.app.allowed_host(self.headers.get("Host")):
             return self._error(HTTPStatus.FORBIDDEN, "host not allowed")
-        if self.headers.get("X-Ytalbum") != "1" or not (self.headers.get("Content-Type") or "").startswith("application/json"):
-            return self._error(HTTPStatus.FORBIDDEN, "missing X-Ytalbum header or JSON content type")
+        # either spelling: an installed PWA serves ytalbum's app.js from its own cache until the
+        # service worker updates, and a 403 on every write is a poor way to learn that.
+        if not any(self.headers.get(name) == "1" for name in (WRITE_HEADER, LEGACY_WRITE_HEADER)) \
+                or not (self.headers.get("Content-Type") or "").startswith("application/json"):
+            return self._error(HTTPStatus.FORBIDDEN, f"missing {WRITE_HEADER} header or JSON content type")
         url = urlsplit(self.path)
         if not url.path.startswith("/api/"):
             return self._error(HTTPStatus.NOT_FOUND, "not found")

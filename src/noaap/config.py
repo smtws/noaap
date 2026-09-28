@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,9 +33,64 @@ def detect_browsers() -> list[str]:
     return [name for name, dirs in BROWSER_DIRS.items() if any(Path(d).expanduser().is_dir() for d in dirs)]
 
 
-def config_path() -> Path:
+# What noaap is called on disk, and what it used to be called (§9, slice 52). The old name is
+# read, never written: a setting saved here always lands in noaap's own directory.
+NAME = "noaap"
+LEGACY = "ytalbum"
+ENV = "NOAAP_"
+LEGACY_ENV = "YTALBUM_"
+
+
+def config_dir(name: str = NAME) -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-    return Path(base) / "ytalbum" / "config.toml"
+    return Path(base) / name
+
+
+def config_path() -> Path:
+    return config_dir() / "config.toml"
+
+
+def legacy_config_path() -> Path:
+    return config_dir(LEGACY) / "config.toml"
+
+
+def read_path() -> Path:
+    """Where settings are read from: ours, or ytalbum's while ours does not exist.
+
+    Without this a user who renames has no `library_root` and every command answers "set the
+    library first", which is a worse welcome than a one-line notice.
+    """
+    if config_path().exists() or not legacy_config_path().exists():
+        return config_path()
+    return legacy_config_path()
+
+
+def legacy_notice() -> str | None:
+    """One line for whoever is still configured as ytalbum. `noaap migrate` ends it."""
+    if read_path() == config_path():
+        return None
+    return (f"settings read from {legacy_config_path()} (ytalbum's). "
+            f"`noaap migrate` copies them to {config_path()}.")
+
+
+_said: set[str] = set()
+
+
+def env(name: str) -> str | None:
+    """`NOAAP_<name>`, falling back to ytalbum's `YTALBUM_<name>` and saying so once.
+
+    Once per name per process: these are read at import time by several modules, and a line per
+    lookup would bury the run in its own notices.
+    """
+    if (value := os.environ.get(ENV + name)) is not None:
+        return value
+    if (value := os.environ.get(LEGACY_ENV + name)) is None:
+        return None
+    if name not in _said:
+        _said.add(name)
+        print(f"{LEGACY_ENV}{name} is ytalbum's name for {ENV}{name}; it still works.",
+              file=sys.stderr)
+    return value
 
 
 @dataclass
@@ -113,7 +169,7 @@ class Config:
 
 
 def load(path: Path | None = None) -> Config:
-    path = path or config_path()
+    path = path or read_path()
     if not path.exists():
         return Config()
     data = tomllib.loads(path.read_text())
