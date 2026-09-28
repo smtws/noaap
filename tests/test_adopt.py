@@ -139,3 +139,103 @@ def test_an_album_noaap_fetched_is_untouched_by_any_of_this(collection, tmp_path
     assert [t.filename for t in plan.tracks] != [Path(t.video_id).name for t in plan.tracks], \
         "an ordinary album is still renamed into noaap's scheme"
     assert (collection / plan.tracks[0].filename).is_file()
+
+
+# -- adopting: one plan per album, and nothing else ------------------------------------------------
+
+
+@pytest.fixture
+def library(tmp_path, collection) -> Path:
+    """A collection root with two artists, so scope can be narrowed."""
+    other = tmp_path / "B Band" / "Another"
+    encode(other / "01 - Song.flac", title="Song", artist="B Band", album="Another",
+           album_artist="B Band", track="1")
+    return tmp_path
+
+
+def survey_of(library: Path, **kw):
+    from noaap import adopt
+
+    return adopt.survey(library, library, folder(), **kw)
+
+
+def test_a_dry_adoption_writes_nothing(library):
+    before = {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*")) if p.is_file()}
+
+    found = survey_of(library)
+
+    assert found.counts() == {"albums": 2, "tracks": 4, "refused": 0}
+    assert {p: p.stat().st_mtime_ns for p in sorted(library.rglob("*")) if p.is_file()} == before
+
+
+def test_adopting_adds_one_file_per_album_and_no_other(library):
+    from noaap import adopt
+    from noaap.download import PLAN_FILE
+
+    before = {p for p in library.rglob("*") if p.is_file()}
+
+    done = adopt.carry_out(survey_of(library))
+
+    after = {p for p in library.rglob("*") if p.is_file()}
+    assert done == {"adopted": 2, "tracks": 4}
+    assert {p.name for p in after - before} == {PLAN_FILE}, "the plan, and nothing else"
+    assert len(after - before) == 2
+
+
+def test_the_plan_says_the_album_is_the_collections(library):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    plan = load_plan(library / "A Band" / "An Album")
+
+    assert plan.keep_names and plan.keep_tags
+    assert plan.provider == "folder"
+    assert plan.folder == "A Band/An Album", "where its owner put it"
+    assert all(t.state == "done" for t in plan.tracks)
+    assert [t.filename for t in plan.tracks] == [Path(t.video_id).name for t in plan.tracks]
+
+
+def test_what_the_file_said_is_recorded_before_anything_could_change_it(library):
+    """The undo data, written by the same act that adopts — nothing else ever sees these values
+    again once a retag has run."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    track = load_plan(library / "A Band" / "An Album").tracks[0]
+
+    assert track.adopted_name == Path(track.video_id).name
+    assert track.adopted_tags["title"] == "One"
+    assert track.adopted_tags["albumartist"] == "A Band"
+    assert "discnumber" in track.adopted_tags and track.adopted_tags["discnumber"] is None, \
+        "absent is a value too: without it an undo leaves behind a tag the owner never had"
+
+
+def test_an_album_that_is_already_ours_is_left_alone(library):
+    from noaap import adopt
+
+    adopt.carry_out(survey_of(library))
+    again = survey_of(library)
+
+    assert again.counts() == {"albums": 0, "tracks": 0, "refused": 2}
+    assert all(a.refused == "already a noaap album" for a in again.refused)
+
+
+def test_a_folder_that_is_two_albums_is_named_and_left(tmp_path):
+    """The owner made this folder; deciding which files are one album is theirs, not ours."""
+    mixed = tmp_path / "Someone" / "Mixed"
+    encode(mixed / "01 - A.mp3", title="A", artist="Someone", album="First", track="1")
+    encode(mixed / "02 - B.mp3", title="B", artist="Someone", album="Second", track="2")
+
+    found = survey_of(tmp_path)
+
+    assert found.counts()["albums"] == 0
+    assert "2 different albums by their own tags" in found.refused[0].refused
+
+
+@pytest.mark.parametrize("narrow,albums", [
+    ({}, 2), ({"artist": "A Band"}, 1), ({"album": "Another"}, 1), ({"artist": "Nobody"}, 0),
+])
+def test_the_scope_reads_as_the_folders_do(library, narrow, albums):
+    assert survey_of(library, **narrow).counts()["albums"] == albums

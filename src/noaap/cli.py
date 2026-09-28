@@ -128,6 +128,13 @@ def main(argv: list[str] | None = None) -> int:
     mr.add_argument("--album", metavar="NAME",
                     help="one album in the library being changed (the other side keeps its own names)")
 
+    ad = sub.add_parser("adopt", help="take a collection in where it stands: one plan per album, nothing else")
+    ad.add_argument("root", nargs="?", help="the folder to adopt — the library root by default")
+    ad.add_argument("--library", type=Path, help="the library this becomes (defaults to the config's)")
+    ad.add_argument("--apply", action="store_true", help="actually write the plans (without this: a dry run)")
+    ad.add_argument("--only", metavar="ARTIST", help="one artist's folder")
+    ad.add_argument("--album", metavar="NAME", help="one album folder")
+
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
     mg.add_argument("--uninstall-old", action="store_true",
@@ -210,6 +217,25 @@ def main(argv: list[str] | None = None) -> int:
                     else:
                         got = merge_pass.take_new(found, lambda url: service.fetch(url), log=print)
                         print(f"{got['taken']} album(s) fetched, {got['held']} already here and left alone")
+                return 0
+            case "adopt":
+                library = _library(args, cfg, required=True)
+                if library is None:
+                    return 2
+                from . import adopt as adopt_pass
+                from . import sources
+                root = Path(args.root).expanduser() if args.root else library
+                if not root.is_dir():
+                    print(f"not a folder: {root}", file=sys.stderr)
+                    return 2
+                source = sources.get("folder", cfg)
+                found = adopt_pass.survey(root, library, source, artist=args.only,
+                                          album=args.album, log=print)
+                for line in adopt_pass.report(found, applying=args.apply):
+                    print(line)
+                if args.apply:
+                    done = adopt_pass.carry_out(found, log=print)
+                    print(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
                 return 0
             case "migrate":
                 from . import migrate
