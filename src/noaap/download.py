@@ -99,6 +99,61 @@ def _measure_candidate(track: PlanTrack, path: Path) -> None:
             setattr(candidate, name, value)
 
 
+def library_of(album_dir: Path, plan: AlbumPlan) -> Path | None:
+    """The library root this album sits in, or None if it does not sit in one.
+
+    `album_dir` is `library / plan.folder` by construction everywhere in the program, so the root
+    is the folder's own depth above it. It is derived rather than passed because **every** caller of
+    `run` has to obey the rule that follows from it, including the ones that never expected to move
+    a file — and a parameter eight call sites can forget is not a rule (§9, slice 55).
+    """
+    depth = len(Path(plan.folder).parts)
+    root = album_dir
+    for _ in range(depth):
+        root = root.parent
+    return root if root / plan.folder == album_dir else None
+
+
+# every container a track's audio can arrive in. A provider hands over what it has, and the same
+# song can therefore sit in the folder twice under two suffixes — which is what this is for.
+AUDIO = (".opus", ".m4a", ".mp4", ".mp3", ".flac", ".ogg", ".oga", ".wav", ".aac", ".webm")
+
+
+def _put_away(album_dir: Path, plan: AlbumPlan, track: PlanTrack, final: Path) -> None:
+    """Move audio the new file has displaced into the bin, with the usual entry.
+
+    **An album folder holds no audio its plan does not name.** Before this, a fetch that landed in
+    another container — `merge`'s "take this one", an `audio_choice` switch, any candidate in
+    another format — wrote the new file and left the old one beside it: nothing removed, and nothing
+    put away either, so a player scanning the folder saw the song twice (found 2026-09-28, taking a
+    FLAC over an Opus through the panel).
+
+    **The displaced file is found by the name, not by watching the extension change.** Those are not
+    the same thing, and that is the whole difficulty: `merge` renames as the file arrives, an
+    `audio_choice` switch renames in the plan before the fetch is even asked for, and by the time
+    the download runs neither of them has left a trace of what was there. A switch never changes a
+    track's *name*, only its container — so the same stem in another suffix is this track's previous
+    file, whoever renamed it and whenever.
+
+    The entry is written while the track carries that old name: it says which file was taken away,
+    and a restore puts that one back.
+    """
+    from .recycle import bin_track  # here, not at import time: recycle reads plans this module writes
+
+    library = library_of(album_dir, plan)
+    if library is None:
+        return
+    for path in sorted(album_dir.iterdir()):
+        if not path.is_file() or path == final or path.suffix.lower() not in AUDIO \
+                or path.stem != final.stem:
+            continue
+        now, track.filename = track.filename, path.name
+        try:
+            bin_track(library, album_dir, plan, track, reason=f"replaced by {now}", audio=path)
+        finally:
+            track.filename = now
+
+
 def run(
     plan: AlbumPlan,
     album_dir: Path,
@@ -201,6 +256,7 @@ def run(
                 except MutagenError as e:
                     raise RuntimeError(f"downloaded file cannot be tagged: {e}") from e
                 os.replace(tmp, final)
+                _put_away(album_dir, plan, track, final)
                 # a fresh download is by definition untouched, whatever the plan said before:
                 # the trim points stay and the next pass applies them to this file
                 track.state, track.error, track.error_kind, track.trimmed = "done", None, None, None

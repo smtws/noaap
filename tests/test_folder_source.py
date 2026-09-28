@@ -28,7 +28,7 @@ def encode(path: Path, **tags: str) -> Path:
     if not shutil.which("ffmpeg"):
         pytest.skip("ffmpeg not installed")
     meta = [arg for key, value in tags.items() for arg in ("-metadata", f"{key}={value}")]
-    codec = {".flac": "flac", ".mp3": "libmp3lame", ".opus": "libopus"}[path.suffix]
+    codec = {".flac": "flac", ".mp3": "libmp3lame", ".opus": "libopus", ".m4a": "aac"}[path.suffix]
     path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=duration={SECONDS}",
                     "-c:a", codec, *meta, str(path)], check=True)

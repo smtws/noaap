@@ -1500,7 +1500,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **A ref is still opaque here.** Only a ref already on the track can be taken: the user is
    answering the pass's question, not naming a new source, and parsing what someone typed stays the
    provider's job. A folder's ref is a path, so it is shown by its last two parts and never in full
-   outside the panel the user opened.
+   outside the panel the user opened — and, because `.originals` is keyed by the ref, a ref that is
+   a path is turned into a name before it is ever written or read back as one. It was not: used as a
+   glob it raised **in the middle of `bin_track`**, after the audio had been moved and before the
+   entry was written, leaving a bin entry nothing listed and nothing could restore.
+   **An album folder holds no audio its plan does not name.** Slice 49's sentence is *nothing is
+   removed, it is only moved to the bin* — and half of it was being kept. A fetch that landed in
+   another container wrote the new file and left the old one beside it: a player scanning the folder
+   saw the song twice. Every switch now puts the file it displaced in the bin, with the usual entry.
+   It is found **by the name, not by watching the extension change**, because those are not the same
+   thing: `merge` renames as the file arrives, an `audio_choice` switch renames in the plan before
+   the fetch is asked for, and neither leaves a trace the download could read. A switch never changes
+   a track's name, only its container — so the same stem under another suffix is that track's
+   previous file, whoever renamed it and whenever. The library root is **derived** from the album and
+   the plan's folder rather than passed, because a parameter eight call sites can forget is not a
+   rule.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

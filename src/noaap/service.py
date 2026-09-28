@@ -75,6 +75,7 @@ from .timing import (
 )
 from .timing import provider as timing_provider
 from .trim import ORIGINALS, kept_originals, originals_of
+from .trim import key as trim_key
 
 log = logging.getLogger(__name__)
 
@@ -1351,7 +1352,7 @@ class Service:
             shutil.move(str(audio), album_dir / track.filename)
         if original := entry.original:
             (album_dir / ORIGINALS).mkdir(exist_ok=True)
-            shutil.move(str(original), album_dir / ORIGINALS / f"{track.effective_id}{original.suffix}")
+            shutil.move(str(original), album_dir / ORIGINALS / f"{trim_key(track.effective_id)}{original.suffix}")
         said = ""
         if words := entry.words:
             if read_sidecar(album_dir, track):

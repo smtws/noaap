@@ -13,6 +13,7 @@ untouched download.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 import subprocess
@@ -37,18 +38,35 @@ def signature(track: PlanTrack) -> str:
     return f"{track.trim_start or 0:.2f}-{'' if track.trim_end is None else f'{track.trim_end:.2f}'}"
 
 
+SAFE = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+
+
+def key(ref: str) -> str:
+    """A ref as a file name.
+
+    A YouTube id is already one, which is why this was never needed — but **a ref is opaque** and a
+    folder's is a path on this machine. Used as a name it would mean sub-folders; read back as a
+    glob pattern it raises `Non-relative patterns are unsupported` **in the middle of moving a
+    file**, leaving audio in a bin entry that was never finished and that nothing lists
+    (found 2026-09-28). Anything not plainly a name is replaced by a digest of it, so a library
+    written before this keeps every original it had (§9, slice 55).
+    """
+    return ref if ref and set(ref) <= SAFE else "ref-" + hashlib.sha256(ref.encode()).hexdigest()[:16]
+
+
 def original_path(album_dir: Path, track: PlanTrack) -> Path:
     """Where this track's untouched download is kept, in the track's own format.
 
     Keyed by the **effective** id: a track pointed at another video (§9, slice 34) holds another
     recording, and the two must never be cut from each other's original.
     """
-    return album_dir / ORIGINALS / f"{track.effective_id}.{track.ext}"
+    return album_dir / ORIGINALS / f"{key(track.effective_id)}.{track.ext}"
 
 
-def originals_of(album_dir: Path, video_id: str) -> list[Path]:
-    """Every original kept for one video, whatever format it was taken in."""
-    return sorted((album_dir / ORIGINALS).glob(f"{video_id}.*")) if (album_dir / ORIGINALS).is_dir() else []
+def originals_of(album_dir: Path, ref: str) -> list[Path]:
+    """Every original kept for one ref, whatever format it was taken in."""
+    folder = album_dir / ORIGINALS
+    return sorted(folder.glob(f"{key(ref)}.*")) if folder.is_dir() else []
 
 
 def kept_originals(album_dir: Path, track: PlanTrack) -> list[Path]:
