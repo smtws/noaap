@@ -14,7 +14,7 @@ import tempfile
 import threading
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -423,6 +423,63 @@ class Service:
                 self.log(f"stopping: YouTube is blocking requests; {len(refs) - i} not fetched")
                 break
         return outcomes
+
+    def reread(self, album_dir: Path) -> Outcome:
+        """Read an adopted album's own folder again and bring its plan up to date. **Copies nothing.**
+
+        This is not `fetch`. A fetch on an album's own folder takes the folder as a *source* and
+        will copy from it — and because the provider names an entry by its best copy, a better file
+        dropped into the folder changes that entry's ref, so the merge reads it as a new track and
+        the download half then writes the new file over the old one's name. Measured, not feared:
+        one file added to an adopted album did exactly that (§9, slice 59).
+
+        So the refs are aligned first. A fresh entry that shares **any** copy with a track we
+        already have *is* that track: it keeps its ref and its file name, and the new file joins it
+        as a candidate — which is what a second copy of a recording has been since slice 50, and
+        choosing between them stays `merge`'s job and a person's.
+        """
+        plan = load_plan(album_dir)
+        if not plan:
+            return Outcome("failed", message=f"no plan in {album_dir}")
+        source = sources.for_plan(plan, self.cfg, self.cancel)
+        try:
+            collection = source.collection(str(album_dir))
+        except sources.SourceError as e:
+            return Outcome("failed", plan, album_dir, f"cannot read the folder: {e}")
+        fresh = build_plan(collection, source=source)
+        fresh.provider = getattr(source, "name", sources.DEFAULT)
+        fresh.own_the_candidates()
+
+        mine = {ref: track for track in plan.tracks
+                for ref in [track.video_id, *(c.ref for c in track.candidates)]}
+        for track in fresh.tracks:
+            refs = [track.video_id, *(c.ref for c in track.candidates)]
+            if (known := next((mine[r] for r in refs if r in mine), None)) is None:
+                continue  # a track this album did not have: it arrives as itself
+            track.video_id = known.video_id  # the same recording, whatever file is best today
+            track.sync_candidates()
+
+        merged = merge_plans(plan, fresh)
+        merged.keep_names, merged.keep_tags = plan.keep_names, plan.keep_tags
+        merged.adopted = plan.adopted
+        # a second file of a recording we already have is a **candidate**, not a replacement: the
+        # merge keeps the track it knows, and this carries what the folder now offers beside it.
+        # Choosing between two copies is `merge`'s question and a person's (§9, slices 50 and 54).
+        by_ref = {track.video_id: track for track in merged.tracks}
+        for track in fresh.tracks:
+            if (known := by_ref.get(track.video_id)) is None:
+                continue
+            for copy in track.candidates:
+                if not known.candidate(copy.ref):
+                    known.candidates.append(replace(copy))
+        for track in merged.tracks:
+            if track.state == "pending" and _inside(album_dir, track.filename or "") is None:
+                track.state = "pending"  # a genuinely new file; the ordinary pass will place it
+        save_plan(merged, album_dir)
+        added = sum(t.video_id not in {x.video_id for x in plan.tracks} for t in merged.tracks)
+        gone = sum(not t.in_source for t in merged.tracks)
+        self.log(f"{merged.albumartist} — {merged.album}: {added} new, {gone} no longer in the folder")
+        return Outcome("ok", merged, album_dir)
 
     def update_all(self, report_only: bool = False, deep: bool = False, artist: str | None = None) -> list[Outcome]:
         """Check every album (or one artist's). Unchanged, complete albums cost one request."""

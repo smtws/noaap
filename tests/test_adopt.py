@@ -564,3 +564,73 @@ def test_a_retag_adds_nothing_the_undo_cannot_take_away(untagged, tmp_path, suff
     adopt.give_back(untagged, load_plan(untagged), tmp_path)
 
     assert raw_tags(audio) == before
+
+
+# -- reading an adopted album again, when its owner has changed it ---------------------------------
+
+
+def reread(library: Path, album_dir: Path):
+    from noaap.config import Config
+    from noaap.service import Service
+
+    return Service(Config(musicbrainz=False, lyrics=False), library, log=lambda s: None).reread(album_dir)
+
+
+def test_a_new_file_in_an_adopted_album_becomes_a_track_and_nothing_is_copied(library):
+    """The library shape: the folder **is** the album, so a file added to it is a new track — the
+    opposite of intake, which reports an album it already has and stops."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    before = digests(album_dir)
+    encode(album_dir / "04 - Four.mp3", title="Four", artist="A Band", album="An Album", track="4")
+
+    reread(library, album_dir)
+
+    plan = load_plan(album_dir)
+    assert len(plan.tracks) == 4 and "Four" in [t.title for t in plan.tracks]
+    assert digests(album_dir) | {} == {**before, **digests(album_dir)}, "nothing existing was touched"
+    assert plan.keep_names and plan.keep_tags, "it is still the collection's"
+
+
+def test_a_second_copy_of_a_track_joins_it_rather_than_replacing_it(library):
+    """Measured on the real collection first: `fetch` on an album's own folder took the new file as
+    the track's best copy, read it as a new track, and the download half wrote it over the old
+    one's name. `reread` keeps the track, its ref and its file, and the new file is a candidate."""
+    import shutil
+
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    first = load_plan(album_dir).tracks[0]
+    shutil.copy2(album_dir / first.filename, album_dir / "another copy.mp3")
+
+    reread(library, album_dir)
+
+    plan = load_plan(album_dir)
+    assert len(plan.tracks) == 3, "three tracks, not four: it is the same recording"
+    assert plan.tracks[0].filename == first.filename, "and it keeps the file it had"
+    assert "another copy.mp3" in [Path(c.ref).name for c in plan.tracks[0].candidates]
+
+
+def test_a_file_the_owner_removed_is_recorded_and_nothing_is_deleted(library):
+    """R-199, decision 3: a file that disappears is a fact in the plan, never a reason to remove."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    (album_dir / plan.tracks[2].filename).unlink()
+
+    reread(library, album_dir)
+
+    after = load_plan(album_dir)
+    assert len(after.tracks) == 3, "the track stays in the plan"
+    assert [t.in_source for t in after.tracks].count(False) == 1
+    assert len(list(album_dir.glob("*.mp3"))) + len(list(album_dir.glob("*.flac"))) \
+        + len(list(album_dir.glob("*.opus"))) == 2, "and the other two are still there"

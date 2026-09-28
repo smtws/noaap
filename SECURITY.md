@@ -46,6 +46,22 @@ after a request beyond the models it keeps loaded (`timing_idle_minutes`).
 library, the plan files or the logs. A `cookies.txt` you point at stays wherever you put it —
 treat that file as a password, because it is one.
 
+## The watcher's way in
+
+`noaap watch` is a separate process. It does no work itself: when a folder it watches has stopped
+moving, it asks the web service to run an ordinary job, through `POST /api/arrived`.
+
+**That call never takes a path.** It takes the *name* of a folder the config file names, and a path
+relative to it. An absolute path is refused outright; the arrival is resolved beneath the configured
+root and must still be beneath it afterwards, which is what stops `..` and a symlink pointing
+somewhere else. A name the config does not list is refused, so an unconfigured noaap has nothing to
+offer even to something that can already reach the port. It is a write like every other: without the
+`X-Noaap` header and a JSON content type it is refused before any of that is read.
+
+What the watcher remembers lives beside the config file at mode 600. It is a list of what is in
+somebody's music folders, which is theirs; and nothing it holds reaches a log line the page shows —
+a job is labelled by the watch's name and the album's path inside it, never by a path on the disk.
+
 ## Reporting a vulnerability
 
 Use **[private vulnerability reporting](https://github.com/smtws/noaap/security/advisories/new)**

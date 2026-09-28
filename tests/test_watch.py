@@ -218,3 +218,54 @@ def test_the_state_file_is_the_users_own_business(tmp_path):
     assert path.stat().st_mode & 0o777 == 0o600
     assert read_state(path) == {"drop": {"looked": "2026-09-29"}}
     assert read_state(tmp_path / "gone.json") == {}, "no state is not an error"
+
+
+# -- the one way in: a name and a path inside it -------------------------------------------------------
+
+
+@pytest.fixture
+def served(tmp_path, monkeypatch):
+    """An App whose config names one intake folder and one adopted library."""
+    from noaap.config import Config, Watch
+    from noaap.web import App
+
+    drop, library = tmp_path / "drop", tmp_path / "library"
+    (drop / "A Band" / "An Album").mkdir(parents=True)
+    library.mkdir()
+    cfg = Config(musicbrainz=False, lyrics=False)
+    cfg.watches = [Watch("drop", drop, "intake"), Watch("mine", library, "library")]
+    return App(cfg, library), drop, library
+
+
+@pytest.mark.parametrize("body,why", [
+    ({"watch": "nobody", "album": "x"}, "no watched folder"),
+    ({"watch": "drop", "album": "/etc"}, "named by its path inside"),
+    ({"watch": "drop", "album": ""}, "named by its path inside"),
+    ({"watch": "drop", "album": "../../etc"}, "not inside the watched folder"),
+    ({"watch": "drop", "album": "A Band/Nothing Here"}, "no such folder"),
+])
+def test_an_arrival_is_refused_unless_it_is_inside_a_configured_folder(served, body, why):
+    """R-200, ruling 2. The action never takes an absolute path, and a path that climbs out of the
+    root is refused after resolving — which is what stops `..` and a symlink pointing elsewhere."""
+    app, _, _ = served
+
+    with pytest.raises(ValueError, match=why):
+        app.submit("arrived", body)
+
+
+def test_an_arrival_inside_the_folder_becomes_a_job(served):
+    app, _, _ = served
+
+    job = app.submit("arrived", {"watch": "drop", "album": "A Band/An Album"})
+
+    assert job.kind == "watch" and job.lane == "write"
+    assert job.label == "Take in drop: A Band/An Album", "the watch and the album, never a path"
+
+
+def test_the_label_never_carries_a_path(served, tmp_path):
+    """R-200, ruling 5: nothing that reaches a log line the page shows names the user's home."""
+    app, _, _ = served
+
+    job = app.submit("arrived", {"watch": "drop", "album": "A Band/An Album"})
+
+    assert str(tmp_path) not in job.label and "/home/" not in job.label

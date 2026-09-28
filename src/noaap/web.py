@@ -647,6 +647,12 @@ class App:
                     return outcomes
 
                 return self.jobs.submit("fetch", f"Fetch {label}" if len(urls) > 1 else f"Update {label}" if " — " in label else f"Fetch {label}", fetch_all)
+            case "arrived":
+                # **the watcher's one way in** (§9, slice 59, R-200 ruling 2). It names a
+                # configured watch root and a path *relative* to it; an absolute path is not
+                # accepted at all, and one that climbs out of the root is refused. It is a write
+                # like any other, so it needs the `X-Noaap` header too.
+                return self.jobs.submit(*self._arrival(body))
             case "update":
                 deep = bool(body.get("deep"))
                 artist = str(body.get("artist") or "").strip() or None
@@ -824,6 +830,35 @@ class App:
                 edits = body.get("edits") or {}
                 return self.jobs.submit("edit", f"Save {self.describe(source_id)}", lambda s: s.apply_edits(source_id, edits), target=source_id)
         raise ValueError(f"unknown action {action!r}")
+
+    def _arrival(self, body: dict[str, Any]) -> tuple[str, str, Callable[[Service], Any]]:
+        """What the watcher asked for, as a job — or a refusal naming what is wrong.
+
+        Nothing here trusts a path. The root must be one the config names; the arrival is resolved
+        beneath it and must still be beneath it afterwards, which is what stops `..` and a symlink
+        that points elsewhere.
+        """
+        name = str(body.get("watch") or "").strip()
+        root = self.cfg.watch(name)
+        if root is None:
+            raise ValueError(f"no watched folder called {name!r}")
+        arrival = str(body.get("album") or "").strip()
+        if not arrival or Path(arrival).is_absolute():
+            raise ValueError("an arrival is named by its path inside the watched folder")
+        folder = (root.folder / arrival).resolve()
+        if folder != root.folder.resolve() and root.folder.resolve() not in folder.parents:
+            raise ValueError("that is not inside the watched folder")
+        if not folder.is_dir():
+            raise ValueError("there is no such folder in there any more")
+        # the label names the watch and the album, never the path: this line reaches the page
+        label = f"{name}: {arrival}"
+        if root.shape == "library":
+            # the folder **is** the album, so a file added to one that is already ours is a new
+            # track of it — the opposite of intake, and the reason the two shapes exist (R-200).
+            # `reread` and not `fetch`: a fetch would copy, and copying inside the library is how
+            # a dropped file ends up written over an existing one (§9, slice 59).
+            return "watch", f"Read {label}", lambda s: s.reread(folder)
+        return "watch", f"Take in {label}", lambda s: s.fetch(str(folder))
 
     def describe(self, url: str) -> str:
         """A readable job label: the album's name if the URL is one we have, else a short URL."""
