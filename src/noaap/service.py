@@ -59,7 +59,7 @@ from .plan import (
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
-from .tag import measure, measured_length
+from .tag import measure, measured_length, raw_tags
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
@@ -480,9 +480,21 @@ class Service:
             for copy in track.candidates:
                 if not known.candidate(copy.ref):
                     known.candidates.append(replace(copy))
+        # **a new file in an adopted album is already here.** The merge appends it as a fresh
+        # track, and a fresh plan derives its name by noaap's scheme — which in a library that
+        # keeps its own names is both wrong and dangerous: the derived name collides with an
+        # existing file and the track, being `pending`, would be fetched and written over it.
+        # Found live on a real album (§9, slice 59). It is adopted exactly as every other track of
+        # this album was: the file it came from, under the name its owner gave it.
         for track in merged.tracks:
-            if track.state == "pending" and _inside(album_dir, track.filename or "") is None:
-                track.state = "pending"  # a genuinely new file; the ordinary pass will place it
+            if track.state == "done" or not track.video_id:
+                continue
+            here = Path(track.video_id)
+            if here.is_file() and here.parent == album_dir:
+                track.filename, track.state = here.name, "done"
+                track.adopted_name = track.adopted_name or here.name
+                track.adopted_tags = track.adopted_tags if track.adopted_tags is not None \
+                    else dict(raw_tags(here))
         save_plan(merged, album_dir)
         added = sum(t.video_id not in {x.video_id for x in plan.tracks} for t in merged.tracks)
         gone = sum(not t.in_source for t in merged.tracks)

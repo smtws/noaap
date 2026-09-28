@@ -275,6 +275,44 @@ noaap adopt ~/Music/my-collection --apply          # write the plans
 noaap adopt ~/Music/my-collection --undo --apply   # give it all back
 ```
 
+## A folder that is watched
+
+`noaap watch` looks at the folders you name in the config file and hands what arrives in them to
+the app. **It never does the work itself**: it notices, waits until the arrival has stopped moving,
+and asks for an ordinary job — the same one `noaap fetch <folder>` would run. Nothing is watched
+unless you configure it, and the settings panel and `noaap config` both say what is being watched.
+
+Two shapes, and they may not be nested:
+
+```toml
+[[watch]]
+name = "drop"                    # things dropped here are taken into the library,
+folder = "~/Music/drop"          # and the folder itself is left exactly as it is
+shape = "intake"
+
+[[watch]]
+name = "mine"                    # an adopted library watching itself: you add, change
+folder = "~/Music/collection"    # or remove files in place and the plans follow
+shape = "library"
+```
+
+An intake folder may not hold the library and the library may not hold an intake folder — a library
+that watches itself is the second shape and needs no intake at all.
+
+It waits for quiet rather than for an event: a file that is still being copied never settles, a
+download client's temporary name is ignored until it is renamed, and an album arriving one track at
+a time is taken when the last of them stops moving. **Nothing is ever deleted by the watcher**: a
+file that disappears is recorded in the plan, never a reason to remove anything.
+
+It is a separate service you start yourself, because the web UI is started on demand and stops
+itself again, while a watcher has to be always on:
+
+```sh
+noaap watch --once                   # one look, to see what it would do
+noaap watch-service install          # as a user service, always on
+systemctl --user stop noaap-watch    # and that is how you stop it
+```
+
 ## Two copies of one song
 
 `noaap merge <another library>` looks at both, pairs what is the same song, and tells you which copy
@@ -426,6 +464,7 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
 | `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
 | `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
+| `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look; `noaap watch-service install` runs it as a user service. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` says what it would do and writes nothing. |
 | `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
@@ -825,6 +864,10 @@ Nothing outside this repository implements it yet; when something does, it gets 
 
 ## Limits
 
+- **A library cannot be moved yet.** An album taken in from a folder records where its files are as
+  an absolute path, so moving, copying or restoring a library to a different path — a share that
+  mounts somewhere else, a backup put back in another place — leaves every album unable to
+  recognise its own files. Known, and the next thing to be fixed.
 - **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
   uploader provided. No setting can make that better, and FLAC it will never be.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also

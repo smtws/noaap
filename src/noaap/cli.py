@@ -92,6 +92,10 @@ def main(argv: list[str] | None = None) -> int:
     sv.add_argument("--port", type=int, default=8765)
     sv.add_argument("--idle-exit", type=float, default=0, metavar="SECONDS", help="stop after this long without requests or jobs (for socket activation)")
 
+    wu = sub.add_parser("watch-service", help="the watcher as its own systemd user service")
+    wu.add_argument("action", choices=["install", "uninstall", "status"])
+    wu.add_argument("--port", type=int, default=None, help="the port the app listens on")
+
     tm = sub.add_parser("timing-serve", help="run the local aligner as a small HTTP service for another machine")
     tm.add_argument("--host", default="0.0.0.0", help="0.0.0.0 by default: the point is to be reached from the LAN")
     tm.add_argument("--port", type=int, default=8770)
@@ -256,6 +260,19 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             case "watch":
                 return _watch(args, cfg)
+            case "watch-service":
+                from . import systemd
+
+                if args.action == "status":
+                    print(f"watcher: {systemd.watching()}")
+                    return 0
+                doing = systemd.install_watch(cfg, args.port) if args.action == "install" \
+                    else systemd.uninstall_watch()
+                for line in doing:
+                    print(line)
+                if args.action == "install":
+                    print("the watcher is running. `systemctl --user stop noaap-watch` stops it.")
+                return 0
             case "migrate":
                 from . import migrate
                 for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old):

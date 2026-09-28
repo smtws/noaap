@@ -275,12 +275,14 @@ def test_the_label_never_carries_a_path(served, tmp_path):
 # -- one look, and what it leads to -----------------------------------------------------------------
 
 
-def a_run(tmp_path, shape="intake", settle=20):
+def a_run(tmp_path, shape="intake", settle=20, first=False):
+    """A run that has looked before, which is every run after the first — the cases that care
+    about the first look ask for it."""
     from noaap.watch import Run, Watcher
 
     folder = tmp_path / "drop"
     folder.mkdir(exist_ok=True)
-    return Run(name="drop", folder=folder, shape=shape, watcher=Watcher(settle=settle))
+    return Run(name="drop", folder=folder, shape=shape, watcher=Watcher(settle=settle), first=first)
 
 
 def an_album(run, *names: str) -> None:
@@ -399,3 +401,67 @@ def test_a_watched_folder_that_is_not_there_says_so(served, tmp_path):
     drop.rmdir()
 
     assert app.settings()["watching"][0]["there"] is False
+
+
+# -- its own unit --------------------------------------------------------------------------------
+
+
+def test_the_watcher_is_its_own_unit_and_is_not_installed_with_the_web_service(tmp_path):
+    """R-200, ruling 4. The web service is started on demand and stops itself; the watcher is
+    always on, so turning it on is a thing a person does deliberately."""
+    from noaap.config import Config, Watch
+    from noaap.systemd import WATCH_UNIT, render_units, render_watch_unit
+
+    cfg = Config()
+    cfg.watches = [Watch("drop", tmp_path / "drop")]
+
+    assert f"{WATCH_UNIT}.service" not in render_units(cfg)
+    unit = render_watch_unit(cfg, port=8765)[f"{WATCH_UNIT}.service"]
+    assert "ExecStart=" in unit and "watch --port 8765" in unit
+    assert "Restart=always" in unit, "a watcher that has quietly died looks like a quiet folder"
+
+
+def test_it_refuses_to_install_a_configuration_that_cannot_stand(tmp_path):
+    from noaap.config import Config, Watch
+    from noaap.systemd import install_watch
+
+    cfg = Config()
+    with pytest.raises(ValueError, match="nothing is watched"):
+        install_watch(cfg)
+
+    cfg.library_root = tmp_path / "library"
+    cfg.watches = [Watch("drop", tmp_path, "intake")]
+    with pytest.raises(ValueError, match="may not hold"):
+        install_watch(cfg)
+
+
+def test_the_first_look_at_a_folder_hands_over_nothing(tmp_path):
+    """A watcher notices what **arrives**. On an adopted library the first look would otherwise
+    hand over every album it holds — 132 of them, on the reference collection."""
+    from noaap.watch import once
+
+    run = a_run(tmp_path, first=True)
+    an_album(run)
+    asked: list[str] = []
+    said: list[str] = []
+
+    assert once(run, AUDIO, 0, lambda n, a: asked.append(a) or True, log=said.append) == []
+    assert once(run, AUDIO, 60, lambda n, a: asked.append(a) or True) == [], "and not later either"
+    assert asked == []
+    assert any("not an arrival" in line for line in said)
+
+    an_album(run, "02 - Two.mp3")
+    assert once(run, AUDIO, 90, lambda n, a: asked.append(a) or True) == []
+    assert once(run, AUDIO, 120, lambda n, a: asked.append(a) or True) == ["A Band/An Album"], \
+        "but what turns up afterwards is"
+
+
+def test_a_watcher_that_has_run_before_does_not_start_again_from_nothing(tmp_path, monkeypatch):
+    from noaap.config import Config, Watch
+    from noaap.watch import runs
+
+    cfg = Config()
+    cfg.watches = [Watch("drop", tmp_path / "drop")]
+    monkeypatch.setattr("noaap.watch.read_state", lambda: {"drop": {"folders": {}, "waiting": {}}})
+
+    assert runs(cfg, now=0)[0].first is False, "it has looked before, so what is there it knows"

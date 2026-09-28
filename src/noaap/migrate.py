@@ -67,7 +67,12 @@ def removals() -> list[Path]:
 
 
 def run(apply: bool = False, uninstall_old: bool = False) -> list[str]:
-    """What was done, or what would be. One line each, for the user to read before saying yes."""
+    """What was done, or what would be. One line each, for the user to read before saying yes.
+
+    The watcher is not part of this in either direction: ytalbum never had one, so there is nothing
+    of theirs to stop, and noaap's own is installed by hand and removed with the web service
+    (§9, slice 59).
+    """
     lines: list[str] = []
     for copy in copies():
         if copy.skip:

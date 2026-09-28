@@ -121,6 +121,18 @@ class Watcher:
             ready.append(where)
         return ready
 
+    def baseline(self, files: dict[str, Seen], now: float) -> None:
+        """What is there the very first time is not an arrival.
+
+        A watcher notices what **arrives**, and on its first look at a folder everything in it is
+        simply what was already there — on an adopted library that is every album it holds. So the
+        first look records and hands over nothing; from then on the state file remembers, and a
+        folder that gained something while the watcher was down is a genuine arrival (§9, slice 59).
+        """
+        self.step(files, now)
+        for folder in self.folders.values():
+            folder.handed_over = now
+
     def forget(self, where: str) -> None:
         """Let this folder be handed over again — after a job failed, or on a retry."""
         if folder := self.folders.get(where):
@@ -224,6 +236,7 @@ class Run:
     watcher: Watcher
     trouble: int = 0          # consecutive looks that could not be taken
     said_missing: bool = False
+    first: bool = True        # nothing has been looked at yet, so nothing in there has arrived
     waiting: dict[str, int] = field(default_factory=dict)  # album -> attempts so far
 
 
@@ -253,6 +266,12 @@ def once(run: Run, audio: Iterable[str], now: float, ask: Callable[[str, str], b
         log(f"{run.name}: could not look ({e.strerror or e})")
         return []
     run.trouble = 0
+
+    if run.first:
+        run.first = False
+        run.watcher.baseline(files, now)
+        log(f"{run.name}: {len(run.watcher.folders)} folder(s) already there, which is not an arrival")
+        return []
 
     handed: list[str] = []
     ready = run.watcher.step(files, now)
@@ -286,7 +305,8 @@ def runs(cfg: Any, now: float | None = None) -> list[Run]:
     for row in cfg.watches:
         kept = state.get(row.name, {})
         out.append(Run(name=row.name, folder=row.folder, shape=row.shape,
-                       watcher=Watcher.restored(kept.get("folders") or {}, now=now)))
+                       watcher=Watcher.restored(kept.get("folders") or {}, now=now),
+                       first=not kept, waiting=dict(kept.get("waiting") or {})))
     return out
 
 

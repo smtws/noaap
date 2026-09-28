@@ -54,6 +54,77 @@ Environment=PYTHONUNBUFFERED=1
     }
 
 
+WATCH_UNIT = f"{UNIT}-watch"
+
+
+def render_watch_unit(cfg: Config, port: int = 8765) -> dict[str, str]:
+    """The watcher's own unit. **Not installed with the web service** (R-200, ruling 4).
+
+    It is always on, where the web service is started on demand and stops itself again — so it is a
+    thing a person turns on deliberately, and turns off by stopping this one unit. `Restart=always`
+    because a watcher that has quietly died looks exactly like a folder where nothing arrives.
+    """
+    exe = Path(sys.prefix) / "bin" / "noaap"
+    path = ["/usr/local/bin", "/usr/bin", "/bin"]
+    if node := cfg.resolved_node():
+        path.insert(0, str(Path(node).parent))
+    return {
+        f"{WATCH_UNIT}.service": f"""[Unit]
+Description=noaap watcher (hands what arrives in a watched folder to the web UI)
+After=network.target
+
+[Service]
+ExecStart={exe} watch --port {port}
+Restart=always
+RestartSec=30
+Environment=PATH={":".join(path)}
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
+""",
+    }
+
+
+def install_watch(cfg: Config, port: int | None = None) -> list[str]:
+    """Write and start the watcher's unit. Refuses a configuration that cannot stand."""
+    from .config import watch_trouble
+
+    if not cfg.watches:
+        raise ValueError("nothing is watched: put a [[watch]] table in the config file first")
+    if trouble := watch_trouble(cfg.watches, cfg.library_root):
+        raise ValueError("; ".join(trouble))
+    done = []
+    unit_dir().mkdir(parents=True, exist_ok=True)
+    for name, text in render_watch_unit(cfg, port or installed_port()).items():
+        (unit_dir() / name).write_text(text)
+        done.append(f"wrote {unit_dir() / name}")
+    for args in (("daemon-reload",), ("enable", "--now", f"{WATCH_UNIT}.service")):
+        r = systemctl(*args)
+        if r.returncode:
+            raise RuntimeError(f"systemctl --user {' '.join(args)}: {r.stderr.strip()}")
+        done.append(f"systemctl --user {' '.join(args)}")
+    return done
+
+
+def uninstall_watch() -> list[str]:
+    done = []
+    systemctl("disable", "--now", f"{WATCH_UNIT}.service")
+    done.append(f"systemctl --user disable --now {WATCH_UNIT}.service")
+    path = unit_dir() / f"{WATCH_UNIT}.service"
+    if path.exists():
+        path.unlink()
+        done.append(f"removed {path}")
+    systemctl("daemon-reload")
+    return done
+
+
+def watching() -> str:
+    """One line for `service status`: the watcher is a separate unit and says so separately."""
+    state = systemctl("is-active", f"{WATCH_UNIT}.service").stdout.strip()
+    return state or "not installed"
+
+
 def systemctl(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True)
 
@@ -106,7 +177,8 @@ def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -
 
 
 def uninstall() -> list[str]:
-    done = []
+    """Remove the web service — and the watcher with it, since it exists to talk to it."""
+    done = uninstall_watch() if (unit_dir() / f"{WATCH_UNIT}.service").exists() else []
     for args in (("disable", "--now", f"{UNIT}.socket"), ("stop", f"{UNIT}.service")):
         systemctl(*args)
         done.append(f"systemctl --user {' '.join(args)}")

@@ -653,3 +653,27 @@ def test_an_album_taken_in_from_elsewhere_is_not_re_read_as_its_own_folder(libra
 
     assert outcome.status == "held"
     assert len(load_plan(album_dir).tracks) == 3, "and not one track was added"
+
+
+def test_a_new_file_keeps_its_own_name_and_is_not_fetched(library):
+    """Found live. The merge appends a new file as a fresh track, and a fresh plan derives its name
+    by noaap's scheme — which in a library that keeps its own names collides with an existing file,
+    and the track, being `pending`, would be fetched and written over it. A new arrival is adopted
+    exactly as every other track of that album was."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    encode(album_dir / "whatever the owner called it.mp3", title="Four", artist="A Band",
+           album="An Album", track="4")
+
+    reread(library, album_dir)
+
+    plan = load_plan(album_dir)
+    new = next(t for t in plan.tracks if t.title == "Four")
+    assert new.filename == "whatever the owner called it.mp3", "its own name, not noaap's"
+    assert new.state == "done", "it is here; there is nothing to fetch"
+    assert new.adopted_name == new.filename and new.adopted_tags is not None, \
+        "and it can be given back like the rest of the album"
+    assert len({t.filename for t in plan.tracks}) == 4, "no two tracks claim the same file"

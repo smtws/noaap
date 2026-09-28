@@ -1629,6 +1629,44 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    displaced file's own stem, because putting noaap's name on one file of an album called something
    else throughout is the one thing adoption promised not to decide.
 
+59. ✅ **A folder that is watched** (2026-09-29, P55). `noaap watch` looks at the folders the
+   config names and hands what arrives to the app. **It never does the work**: it notices, waits
+   until the arrival has stopped moving, and asks for an ordinary job — the same one `fetch` or
+   `adopt` would run.
+   **It polls**, and the reason is measured. inotify is available through ctypes and this machine
+   allows 254 776 watches against the collection's 226 folders, so the limit is not the problem;
+   but **a full walk of the 2153 files costs 0.01 s**, and inotify cannot see what another client
+   writes on an NFS or SMB share — which is where a music collection often lives. The settle window
+   means seconds pass on purpose, so sub-second notice buys nothing.
+   **The window belongs to the folder, not the file.** That is what carries an album arriving one
+   track at a time: a second track starts it again and the album is handed over once, after the
+   last of them stops. A file still growing never settles; a download client's temporary name is
+   skipped by pattern and its rename starts its own clock; a file that vanished is a change like
+   any other, noticed and never acted on.
+   **Two shapes, and they are opposite in the one place that matters.** An *intake* folder is a
+   stranger: an album already in the library is reported and left, because choosing between two
+   copies is slice 54's question and a person's. A *library watching itself* is the album: a new
+   file in it is a new track. They may not be nested, and the refusal says why — an intake inside a
+   library takes every drop twice, a library inside an intake copies itself into itself.
+   **And in a library, nothing is copied and no file name is written by a pass.** The obvious
+   implementation — enqueue `fetch` on the album's own folder — was measured on a real adopted
+   album and **wrote a newly dropped file over an existing one's name**: the provider names an
+   entry by its *best* copy, so the new file changed that entry's ref, the merge read it as a new
+   track, and the download half then placed it under the old one's name. So the library shape is
+   `reread`, which aligns refs before merging: a fresh entry sharing **any** copy with a track we
+   hold *is* that track, and the new file joins it as a candidate. A re-read also refuses an album
+   whose source is not the folder it sits in — an imported album still belongs to where it came
+   from, and reading it here made thirteen tracks into twenty-six.
+   **Its own process and its own unit.** The web service is socket-activated and stops itself when
+   idle; a watcher inside it would count as busy and keep it alive for ever. A separate watcher
+   costs one idle process that stats a tree every ten seconds, and asking the service wakes it
+   through that same socket. Its one way in is `POST /api/arrived`, which takes **a configured
+   watch's name and a path inside it** — never an absolute path, resolved and re-checked against
+   the root, refused for a name the config does not list, and a write like any other.
+   **What it says, it says once**: a folder that is not there, an arrival the app would not take
+   (three tries, then named and left), a loose file at the top that is not an album. What it writes
+   down names the watch and the album inside it, never a path on the disk.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
