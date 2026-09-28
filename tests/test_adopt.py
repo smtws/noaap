@@ -239,3 +239,85 @@ def test_a_folder_that_is_two_albums_is_named_and_left(tmp_path):
 ])
 def test_the_scope_reads_as_the_folders_do(library, narrow, albums):
     assert survey_of(library, **narrow).counts()["albums"] == albums
+
+
+# -- giving it back ---------------------------------------------------------------------------------
+
+
+def fingerprint(library: Path) -> dict[str, tuple[str, dict[str, str | None]]]:
+    """Every audio file by name, with its stream digest and the fields noaap would ever write."""
+    from noaap.adopt import WRITTEN
+    from noaap.sources_folder import AUDIO, stream_sha
+    from noaap.tag import raw_tags
+
+    return {str(p.relative_to(library)): (stream_sha(p), raw_tags(p, WRITTEN))
+            for p in sorted(library.rglob("*")) if p.suffix.lower() in AUDIO}
+
+
+def test_an_undo_gives_back_every_name_and_every_field(library):
+    """R-189, ruling 4. Judged on what matters: the names, the fields, and the audio — **not** on
+    byte identity of the tag block, which mutagen cannot give back and this does not claim."""
+    from noaap import adopt
+    from noaap.download import PLAN_FILE, load_plan
+
+    before = fingerprint(library)
+    files_before = {p for p in library.rglob("*") if p.is_file()}
+    adopt.carry_out(survey_of(library))
+
+    for album_dir in (library / "A Band" / "An Album", library / "B Band" / "Another"):
+        adopt.give_back(album_dir, load_plan(album_dir), library)
+
+    assert fingerprint(library) == before, "name for name, field for field, stream for stream"
+    assert {p for p in library.rglob("*") if p.is_file()} == files_before, "and nothing of ours left"
+    assert not list(library.rglob(PLAN_FILE))
+
+
+def test_an_undo_after_a_rename_puts_the_names_back(library):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    before = fingerprint(library)
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    for track in plan.tracks:  # what `--rename` will do in the next commit
+        (album_dir / track.filename).rename(album_dir / f"renamed {track.filename}")
+        track.filename = f"renamed {track.filename}"
+
+    adopt.give_back(album_dir, plan, library)
+
+    assert fingerprint(library) == before
+
+
+def test_a_file_noaap_added_and_the_user_edited_is_kept(library):
+    """It is theirs now, whatever put it there."""
+    from noaap import adopt
+    from noaap.download import load_plan
+    from noaap.lyrics import sidecar_path
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    words = sidecar_path(album_dir, plan.tracks[0].filename)
+    words.write_text("[00:01.00] as noaap wrote it\n", encoding="utf-8")
+    adopt.remember_added(album_dir, plan)
+    words.write_text("[00:01.00] as the user fixed it\n", encoding="utf-8")
+
+    said: list[str] = []
+    done = adopt.give_back(album_dir, load_plan(album_dir), library, log=said.append)
+
+    assert words.is_file() and "fixed it" in words.read_text()
+    assert done["kept"] == 1 and any("edited since" in line for line in said)
+
+
+def test_an_undo_without_a_record_refuses_rather_than_guesses(library):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    plan.adopted = {}
+
+    with pytest.raises(ValueError, match="no record of an adoption"):
+        adopt.give_back(album_dir, plan, library)

@@ -134,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     ad.add_argument("--apply", action="store_true", help="actually write the plans (without this: a dry run)")
     ad.add_argument("--only", metavar="ARTIST", help="one artist's folder")
     ad.add_argument("--album", metavar="NAME", help="one album folder")
+    ad.add_argument("--undo", action="store_true",
+                    help="give the albums back: their names, their tags, and nothing of noaap's left")
 
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
@@ -229,6 +231,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"not a folder: {root}", file=sys.stderr)
                     return 2
                 source = sources.get("folder", cfg)
+                if args.undo:
+                    return _adopt_undo(adopt_pass, library, root, args)
                 found = adopt_pass.survey(root, library, source, artist=args.only,
                                           album=args.album, log=print)
                 for line in adopt_pass.report(found, applying=args.apply):
@@ -427,6 +431,29 @@ def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str
     elif before != after:
         changed.append(f"{path}{before!r} -> {after!r}")
     return gone, changed
+
+
+def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace) -> int:
+    """Give back every adopted album under `root`, or say what it would give back."""
+    from .download import iter_plans
+
+    totals: dict[str, int] = {}
+    albums = 0
+    for album_dir, plan in iter_plans(root):
+        if not plan.adopted or not adopt_pass.in_scope(album_dir, root, args.only, args.album):
+            continue
+        albums += 1
+        if not args.apply:
+            print(f"  would give back {plan.albumartist} — {plan.album} ({len(plan.tracks)} track(s))")
+            continue
+        print(f"  {plan.albumartist} — {plan.album}")
+        for key, value in adopt_pass.give_back(album_dir, plan, library, log=print).items():
+            totals[key] = totals.get(key, 0) + value
+    if not args.apply:
+        print(f"{albums} adopted album(s). Nothing was changed. `--undo --apply` does it.")
+        return 0
+    print(f"{albums} album(s) given back: " + ", ".join(f"{v} {k}" for k, v in sorted(totals.items())))
+    return 0
 
 
 def _plan_unknown(plan: AlbumPlan) -> list[str]:

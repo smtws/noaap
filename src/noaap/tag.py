@@ -18,6 +18,7 @@ import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -352,3 +353,66 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
         audio["covr"] = old_cover
     audio.save()
     return signature(plan, track, cover, lyrics)
+
+
+# -- reading and putting back exactly what a file said (§9, slice 58) ------------------------------
+
+
+def raw_tags(path: Path, keys: Iterable[str]) -> dict[str, str | None]:
+    """What the file says for these keys, verbatim, or None where it says nothing.
+
+    Verbatim matters: `read_tags` digests a date into a year, and an undo that wrote the year back
+    would turn "2018-05-04" into "2018" and call it restored. This is the symmetric twin of
+    `restore_tags` — the same vocabulary in and out, whatever the container.
+    """
+    import mutagen
+
+    try:
+        audio = mutagen.File(path, easy=True)
+    except Exception:  # mutagen raises a family of its own; an unreadable file said nothing
+        return dict.fromkeys(keys)
+    tags = getattr(audio, "tags", None) if audio is not None else None
+    out: dict[str, str | None] = {}
+    for key in keys:
+        try:
+            value = tags.get(key) if tags is not None else None
+        except (KeyError, ValueError):  # a container that does not know this key
+            value = None
+        out[key] = str(value[0]) if value else None
+    return out
+
+
+def restore_tags(path: Path, values: dict[str, Any]) -> bool:
+    """Put these values back, and take away the keys the file did not have. True if anything moved.
+
+    **An absent value is restored by removing the key**, which is the half an undo forgets: putting
+    the old values back while leaving our additions behind is not giving the file back.
+    """
+    import mutagen
+
+    try:
+        audio = mutagen.File(path, easy=True)
+    except Exception:
+        return False
+    if audio is None:
+        return False
+    if audio.tags is None:
+        audio.add_tags()
+    changed = False
+    for key, value in values.items():
+        want = None if value is None else str(value)
+        try:
+            now = audio.tags.get(key)
+            now = str(now[0]) if now else None
+            if now == want:
+                continue
+            if want is None:
+                audio.tags.pop(key, None)
+            else:
+                audio.tags[key] = want
+        except (KeyError, ValueError):
+            continue  # this container cannot carry that key, so it never held our value either
+        changed = True
+    if changed:
+        audio.save()
+    return changed
