@@ -193,6 +193,9 @@ def test_details_runner_fills_counts_in_the_background(server):
     resolved = []
 
     class FakeYT:
+        def handles(self, address):
+            return True
+
         def details(self, url):
             resolved.append(url)
             return {"count": 13, "thumbnail": "https://i.ytimg.com/vi/x/hq.jpg", "title": "T"}

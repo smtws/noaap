@@ -80,9 +80,8 @@ class Entry:
     skipped_kind: str | None = None  # and which `Failure` that is, for the pipeline to branch on
     transient: bool = False  # the reason may go away (bot check, network): the entry is still in the source
 
-    @property
-    def url(self) -> str:
-        return f"https://www.youtube.com/watch?v={self.video_id}"
+    # `url` used to live here, building a watch link from the video id. It had no callers left, and
+    # a link is the provider's to build (§9, slice 51): `sources.Source.url_for(ref)`.
 
 
 @dataclass

@@ -9,6 +9,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from yt_dlp.utils import DownloadError
+
 from . import sources
 from .config import Config
 from .models import Collection, Entry, SourceRef
@@ -27,30 +29,42 @@ class YouTubeSource:
         self.cfg = cfg
         self.yt = YouTube(cfg, cancel)
 
+    def handles(self, address: str) -> bool:
+        """Cheap: is this one of ours? The details runner asks before spending a request."""
+        return any(host in address for host in ("youtube.com", "youtu.be"))
+
     def capabilities(self) -> frozenset[str]:
         return frozenset({sources.SEARCH, sources.CHANGES, sources.DETAILS, sources.CLEAN})
 
     # -- required ----------------------------------------------------------------------
 
-    def collection(self, url: str) -> Collection:
-        return self.yt.fetch(url)
+    def collection(self, address: str) -> Collection:
+        return self.yt.fetch(address)
 
     def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
-        return self.yt.download_audio(ref, into, choice)
+        try:
+            return self.yt.download_audio(ref, into, choice)
+        except DownloadError as e:
+            # yt-dlp's own exception stops here: the boundary's job is to keep its vocabulary in
+            # (§9, slice 51). `Blocked` and `NoAudio` are already raised inside by name.
+            raise sources.SourceError(str(e).removeprefix("ERROR: ").strip()) from e
 
     def probe(self, ref: str) -> Entry:
-        return self.yt.probe(ref)
+        try:
+            return self.yt.probe(ref)
+        except DownloadError as e:
+            raise sources.SourceError(str(e).removeprefix("ERROR: ").strip()) from e
 
-    def art(self, url: str) -> bytes:
-        return self.yt.fetch_bytes(url)
+    def art(self, address: str) -> bytes:
+        return self.yt.fetch_bytes(address)
 
     # -- capabilities ------------------------------------------------------------------
 
-    def changed(self, url: str) -> dict[str, Any] | None:
-        return self.yt.source_state(url)
+    def changed(self, address: str) -> dict[str, Any] | None:
+        return self.yt.source_state(address)
 
-    def listing(self, url: str) -> list[SourceRef]:
-        return self.yt.list_channel(url)
+    def listing(self, address: str) -> list[SourceRef]:
+        return self.yt.list_channel(address)
 
     def find(self, query: str, limit: int = 12) -> list[SourceRef]:
         return self.yt.search_albums(query, limit)
@@ -58,8 +72,8 @@ class YouTubeSource:
     def find_playlists(self, query: str, limit: int = 10) -> list[SourceRef]:
         return self.yt.search_playlists(query, limit)
 
-    def details(self, url: str) -> dict[str, Any] | None:
-        return self.yt.playlist_details(url)
+    def details(self, address: str) -> dict[str, Any] | None:
+        return self.yt.playlist_details(address)
 
     def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
         """YouTube titles carry conventions; §5 is what reads them."""

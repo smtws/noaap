@@ -24,30 +24,20 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadCancelled, DownloadError
 
 from . import pot as pot_server
+from . import sources
 from .config import Config
 from .models import Collection, Entry, Failure, Music, SourceRef
 
 log = logging.getLogger(__name__)
 
 
-class NotSupported(Exception):
-    """The URL is valid but its kind is not handled yet."""
-
-
-class NoAudioStream(Exception):
-    """Twice in a row, YouTube offered no audio-only stream — usually an old upload.
-
-    Once is not enough to conclude it: the audio formats are withheld now and then, and the
-    next attempt gets them (see `download_audio`).
-    """
-
-    def __init__(self, description: str) -> None:
-        super().__init__(description)
-        self.description = description
-
-
-class Cancelled(Exception):
-    """The user cancelled the job; raised only at points where stopping leaves nothing half-done."""
+# These are the boundary's types (§9, slice 51), kept under their old names here because this is
+# where they are raised. `NoAudioStream` means: twice in a row YouTube offered no audio-only stream,
+# usually an old upload. Once is not enough to conclude it — the formats are withheld now and then
+# and the next attempt gets them (see `download_audio`).
+NotSupported = sources.NotSupported
+NoAudioStream = sources.NoAudio
+Cancelled = sources.Cancelled
 
 
 BOT_CHECK = "YouTube wants a sign-in (bot check): wait a while, or configure cookies"
@@ -356,7 +346,8 @@ class YouTube:
                 raise Cancelled() from e
             except DownloadError as e:
                 if "Requested format is not available" not in str(e):
-                    raise
+                    # the caller must not have to read YouTube's sentences to know what happened
+                    raise (sources.Blocked(BOT_CHECK) if is_bot_check(str(e)) else e) from e
                 # The audio-only formats are sometimes simply not offered for a moment (a
                 # missing proof-of-origin token, a client that got a thin format list); a
                 # second ask usually gets them. Only a video that truly has none fails twice.

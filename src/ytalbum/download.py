@@ -17,16 +17,14 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from mutagen import MutagenError
-from yt_dlp.utils import DownloadError
 
 from .cover import square_if_padded
 from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
 from .models import AlbumPlan, Failure, PlanTrack
 from .plan import refresh_derived, wanted_filename, wanted_folder
-from .sources import Source
+from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import audio_length, audio_quality, image_mime, signature, tag_file
 from .trim import apply as apply_trim
-from .youtube import BOT_CHECK, NoAudioStream, is_bot_check
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +102,10 @@ def run(
     plan: AlbumPlan,
     album_dir: Path,
     source: Source,
+    # A track's audio comes from its chosen candidate, which carries its own provider: one album can
+    # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
+    # — the cover — and this answers for a track.
+    track_source: Callable[[PlanTrack], Source] | None = None,
     on_track: Callable[[PlanTrack, str], None] = lambda t, what: None,
     check: Callable[[], None] = lambda: None,
     download: bool = True,
@@ -116,6 +118,7 @@ def run(
     """
     refresh_derived(plan)
     save_plan(plan, album_dir)
+    whose = track_source or (lambda _t: source)
     cover = _cover(plan, album_dir, source, fetch=download)
     parts = album_dir / PARTS_DIR
 
@@ -177,10 +180,10 @@ def run(
             continue  # gone from the playlist, or we are only tidying up files
 
         if track.channel is None:
-            _follow_source(source, track)  # whose upload this really is, and how long it runs
+            _follow_source(whose, track)  # whose upload this really is, and how long it runs
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                tmp = source.audio(track.effective_id, parts, track.audio_choice)
+                tmp = whose(track).audio(track.effective_id, parts, track.audio_choice)
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length = audio_length(tmp)
                 _measure_candidate(track, tmp)
@@ -193,15 +196,16 @@ def run(
                 # the trim points stay and the next pass applies them to this file
                 track.state, track.error, track.error_kind, track.trimmed = "done", None, None, None
                 break
-            except NoAudioStream as e:
+            except NoAudio as e:
                 track.state = "failed"
-                track.error = f"YouTube offers no separate audio stream ({e.description})"
+                track.error = f"no separate audio stream ({e.description})"
                 track.error_kind = Failure.NO_AUDIO_STREAM
                 break  # retrying changes nothing; the user picks what to do
-            except (DownloadError, RuntimeError, OSError) as e:
+            except (SourceError, RuntimeError, OSError) as e:
+                # the provider says which it is; nothing here reads its words (§9, slice 51)
                 message = str(e).removeprefix("ERROR: ").strip()
-                blocked = is_bot_check(message)
-                track.state, track.error = "failed", BOT_CHECK if blocked else message
+                blocked = isinstance(e, Blocked)
+                track.state, track.error = "failed", message
                 track.error_kind = Failure.BOT_CHECK if blocked else None
                 log.debug("track %s attempt %d failed", track.video_id, attempt, exc_info=True)
                 if blocked:
@@ -220,7 +224,7 @@ def run(
     return plan
 
 
-def _follow_source(source: Source, track: PlanTrack) -> None:
+def _follow_source(whose: Callable[[PlanTrack], Source], track: PlanTrack) -> None:
     """Take the uploader and the length from the video the audio actually comes from (§9, slice 34).
 
     Two things follow the *audio* rather than the identity: the channel, because "trim everything
@@ -231,8 +235,8 @@ def _follow_source(source: Source, track: PlanTrack) -> None:
     moment, with a better message.
     """
     try:
-        facts = source.probe(track.effective_id)
-    except (DownloadError, RuntimeError, OSError) as e:
+        facts = whose(track).probe(track.effective_id)
+    except (SourceError, RuntimeError, OSError) as e:
         log.info("could not read %s: %s", track.effective_id, e)
         return
     track.channel = facts.channel or track.channel

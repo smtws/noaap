@@ -49,6 +49,7 @@ from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, 
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
+from .sources import Cancelled
 from .tag import audio_length
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
@@ -65,7 +66,6 @@ from .timing import (
 )
 from .timing import provider as timing_provider
 from .trim import ORIGINALS, kept_originals, originals_of
-from .youtube import BOT_CHECK, Cancelled, channel_base_url, one_video
 
 log = logging.getLogger(__name__)
 
@@ -357,11 +357,12 @@ class Service:
     def execute(self, plan: AlbumPlan, album_dir: Path) -> Outcome:
         todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, lyrics=self.lrclib)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, lyrics=self.lrclib)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))
         if any(t.error_kind == Failure.BOT_CHECK for t in failed):
-            return Outcome("blocked", plan, album_dir, BOT_CHECK)
+            blocking = next(t.error for t in failed if t.error_kind == Failure.BOT_CHECK)
+            return Outcome("blocked", plan, album_dir, blocking)
         return Outcome("failed" if failed else "ok", plan, album_dir)
 
     def download_existing(self, album_dir: Path) -> Outcome:
@@ -564,7 +565,7 @@ class Service:
         save_plan(plan, album_dir)
         # retag through the ordinary pass, with no lyrics client: it rewrites the LYRICS tag from
         # the sidecar as every pass does, and downloads nothing
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -717,6 +718,16 @@ class Service:
             return self.yt
         return sources.get(wanted, self.cfg, self._cancel)
 
+    def _track_source(self, plan: AlbumPlan):
+        """Which provider each track's audio comes from — its chosen candidate's, not the album's."""
+        def whose(track: PlanTrack):
+            wanted = getattr(sources.for_candidate(track, plan, self.cfg, self._cancel), "name", None)
+            if wanted == getattr(self.yt, "name", sources.DEFAULT):
+                return self.yt          # a Service built with a stand-in keeps using it
+            return sources.get(wanted, self.cfg, self._cancel)
+
+        return whose
+
     def _timing(self, capability: str, what: str):
         """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40)."""
         engine = timing_provider(self.cfg, capability)
@@ -746,7 +757,7 @@ class Service:
             mine = " — yours from now on" if t.provenance.get("lyrics") == Provenance.USER else ""
             self.log(f"{t.title}: {t.lyrics}{mine}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -829,7 +840,7 @@ class Service:
             self.log(f"{track.title}: lrclib's words are this song's, its timings are {track.lyrics_fit['why']}'s — "
                      f"kept the words and timed them to this file with {timed.by}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -961,7 +972,7 @@ class Service:
         track.lyrics_timed_by = None
         track.lyrics_fit = {**(track.lyrics_fit or {}), "decided": "words by hand"}
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         self.log(f"{track.title}: took lrclib's words without their timings, on your say-so")
         return Outcome("ok", plan, album_dir)
@@ -1019,12 +1030,12 @@ class Service:
         else:
             self.log(f"{track.title}: nothing lrclib has fits this recording")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)  # the tag follows the file
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)  # the tag follows the file
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
     def _lyrics_pass(self, plan: AlbumPlan, album_dir: Path, api: LyricsAPI) -> Outcome:
-        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False, lyrics=api)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False, lyrics=api)
         return Outcome("ok", plan, album_dir)
 
     # -- offline repair --------------------------------------------------------------------
@@ -1081,7 +1092,7 @@ class Service:
             self.log(f"=== {plan.albumartist} — {plan.album}")
             save_plan(plan, album_dir)
             album_dir = relocate(album_dir, plan, self.library)
-            run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
+            run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
         self.log(f"{len(outcomes)} album(s) tidied up")
         return outcomes
@@ -1440,11 +1451,14 @@ def switch_source(track: PlanTrack, video_id: str | None) -> bool:
     return True
 
 
-def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
+def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any], source: Any = None) -> AlbumPlan:
     """Pure: copy editable fields from `edits` into the plan, marking changed ones as USER.
 
     `reset` (album-level, and per track) names fields to hand back to ytalbum; it is applied first,
     so a save that resets one field and edits another does both.
+
+    `source` is only needed to read what the user typed into the audio-source field: the provider
+    knows what one of its own refs looks like, and nothing here does (§9, slice 51).
     """
     for name in edits.get("reset") or []:
         reset_field(plan, str(name))
@@ -1472,7 +1486,8 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any]) -> AlbumPlan:
             reset_field(t, str(name))
         if "source" in te:
             wanted = str(te.get("source") or "").strip()
-            chosen = one_video(wanted) if wanted else None
+            whose = source or sources.for_plan(plan, Config())
+            chosen = whose.one_ref(wanted) if wanted else None
             if wanted and chosen is None:
                 raise ValueError(f"{t.title}: “{wanted}” is not a single YouTube video")
             switch_source(t, None if chosen == t.video_id else chosen)
@@ -1614,4 +1629,15 @@ def exit_code(outcomes: list[Outcome] | Outcome) -> int:
     return 1 if any(o.status in ("failed", "incomplete") for o in items) else 0
 
 
-__all__ = ["Outcome", "Service", "apply_user_edits", "channel_base_url", "exit_code"]
+def collection_address(text: str, cfg: Config | None = None) -> str | None:
+    """Where a collection lives, if that is what the user typed — a channel URL, or a folder.
+
+    The core cannot tell; the provider can. This asks the default one, which is what the CLI and
+    the page did through `channel_base_url` before there were providers.
+    """
+    provider = sources.get(None, cfg or Config())
+    reader = getattr(provider, "collection_url", None)
+    return reader(text) if reader else None
+
+
+__all__ = ["Outcome", "Service", "apply_user_edits", "collection_address", "exit_code"]

@@ -29,6 +29,30 @@ CLEAN = "clean"          # its titles carry conventions worth stripping (DESIGN 
 DEFAULT = "youtube"      # a plan with no `provider` was written before providers existed
 
 
+class SourceError(Exception):
+    """Anything a provider could not do. The message is the provider's own words."""
+
+
+class Blocked(SourceError):
+    """The source wants a sign-in before it will answer (a bot check, a login wall)."""
+
+
+class NoAudio(SourceError):
+    """It is there, but not as audio this provider can take."""
+
+    def __init__(self, description: str) -> None:
+        super().__init__(description)
+        self.description = description
+
+
+class NotSupported(SourceError):
+    """A valid address of a kind this provider does not handle."""
+
+
+class Cancelled(Exception):
+    """The user stopped the job. Not a SourceError: nothing failed."""
+
+
 @runtime_checkable
 class Source(Protocol):
     """One place audio comes from. Four methods are required; the rest are capabilities."""
@@ -37,9 +61,12 @@ class Source(Protocol):
 
     def capabilities(self) -> frozenset[str]: ...
 
+    def handles(self, address: str) -> bool:
+        """Whether this address is one of this provider's, cheaply and without a request."""
+
     # -- required ----------------------------------------------------------------------
-    def collection(self, url: str) -> Collection:
-        """Everything at that address: the album/playlist/folder and its entries."""
+    def collection(self, address: str) -> Collection:
+        """Everything at that address — a URL for YouTube, a path for a folder."""
 
     def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
         """Fetch one item's audio into `into`, and return the file."""
@@ -47,14 +74,14 @@ class Source(Protocol):
     def probe(self, ref: str) -> Entry:
         """One item's metadata, read again — what `audio` would be fetching."""
 
-    def art(self, url: str) -> bytes:
+    def art(self, address: str) -> bytes:
         """The bytes behind a cover URL this provider gave us."""
 
     # -- capabilities ------------------------------------------------------------------
-    def changed(self, url: str) -> dict[str, Any] | None:
+    def changed(self, address: str) -> dict[str, Any] | None:
         """CHANGES: the collection's state now, cheaply — the caller compares it with what it stored."""
 
-    def listing(self, url: str) -> list[SourceRef]:
+    def listing(self, address: str) -> list[SourceRef]:
         """SEARCH: the collections an artist or channel publishes."""
 
     def find(self, query: str, limit: int = 12) -> list[SourceRef]:
@@ -63,7 +90,7 @@ class Source(Protocol):
     def find_playlists(self, query: str, limit: int = 10) -> list[SourceRef]:
         """SEARCH: collections that are not releases — a playlist somebody made."""
 
-    def details(self, url: str) -> dict[str, Any] | None:
+    def details(self, address: str) -> dict[str, Any] | None:
         """DETAILS: cover and track count for a search hit."""
 
     def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
@@ -104,8 +131,24 @@ def get(name: str | None, cfg: Config, cancel: Any = None) -> Source:
 
 
 def for_plan(plan: Any, cfg: Config, cancel: Any = None) -> Source:
-    """The provider a plan belongs to. Absent `provider` means it was written before slice 51."""
+    """The provider a **collection** belongs to: what `update`, `listing` and the cover ask.
+
+    A *track's audio* is not this. It comes from its chosen candidate, which carries its own
+    provider — one album can hold tracks from two of them, which is the point of P48's shape and
+    what P51 will actually do. Use `for_candidate`.
+    """
     return get(getattr(plan, "provider", None) or DEFAULT, cfg, cancel)
+
+
+def for_candidate(track: Any, plan: Any, cfg: Config, cancel: Any = None) -> Source:
+    """The provider of the candidate a track's audio is taken from.
+
+    Falls back to the plan's own provider for a track whose candidate list has not been written yet
+    — which is every track in every plan on disk today.
+    """
+    chosen = getattr(track, "chosen", None) or getattr(track, "effective_id", None)
+    found = track.candidate(chosen) if chosen and hasattr(track, "candidate") else None
+    return get(getattr(found, "provider", None) or getattr(plan, "provider", None) or DEFAULT, cfg, cancel)
 
 
 def can(source: Source, what: str) -> bool:

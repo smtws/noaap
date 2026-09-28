@@ -15,8 +15,8 @@ from . import config as config_mod
 from .config import Config
 from .download import PLAN_FILE
 from .models import AlbumPlan, PlanTrack, SourceRef, kept
-from .service import Service, exit_code
-from .youtube import NotSupported, channel_base_url
+from .service import Service, collection_address, exit_code
+from .sources import NotSupported
 
 PROV_MARK = {"mb": "MB", "yt_music": "YTM", "yt_title": "title", "playlist": "playlist", "user": "user"}
 BLOCKED = 3  # exit code: YouTube is refusing requests right now; stop asking
@@ -363,7 +363,7 @@ def _fetch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         return 2
     service = _service(cfg, library)
 
-    if not channel_base_url(args.url):
+    if not collection_address(args.url, cfg):
         outcome = service.fetch(args.url, dry=dry, plan_only=args.cmd == "plan", dump=getattr(args, "dump_collection", None))
         if outcome.status == "planned":
             print(f"\nplan written to {outcome.album_dir}/.ytalbum.json\nedit it, then run: ytalbum download '{outcome.album_dir}'")

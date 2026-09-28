@@ -13,6 +13,7 @@ from ytalbum.download import load_plan, run, save_plan
 from ytalbum.models import Collection, Failure
 from ytalbum.plan import build_plan, merge_plans
 from ytalbum.service import Service, exit_code
+from ytalbum.sources import Blocked
 from ytalbum.youtube import BOT_CHECK, YouTube, is_transient
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
@@ -107,7 +108,8 @@ def test_download_stops_at_the_first_bot_check(tmp_path):
 
         def audio(self, video_id, dest_dir, choice="best"):
             self.calls += 1
-            raise DownloadError(BOT)
+            # the provider says *which kind* of failure this is; nothing downstream reads its words
+            raise Blocked(BOT_CHECK)
 
         def art(self, url):
             raise OSError("offline")

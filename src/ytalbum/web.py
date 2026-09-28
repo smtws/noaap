@@ -41,7 +41,8 @@ from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
 from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
-from .service import Outcome, Service, _inside, channel_base_url
+from .service import Outcome, Service, _inside, collection_address
+from .sources import Cancelled
 from .tag import image_mime
 from .text import natural_key
 from .timing import (
@@ -57,7 +58,6 @@ from .timing import (
     verifies_with,
 )
 from .trim import original_path
-from .youtube import Cancelled
 
 log = logging.getLogger(__name__)
 
@@ -228,7 +228,7 @@ class Details:
         """Queue what we do not know yet; return what we already have."""
         for ref in refs:
             source_id, url = str(ref.get("id", "")), str(ref.get("url", ""))
-            if not source_id or not url.startswith("https://www.youtube.com/") or source_id in self.known:
+            if not source_id or source_id in self.known or not self._source().handles(url):
                 continue
             with self._lock:
                 if source_id in self._pending:
@@ -595,7 +595,7 @@ class App:
                 if not text:
                     raise ValueError("empty input")
                 if text.startswith(("http://", "https://")):
-                    if channel_base_url(text):
+                    if collection_address(text):
                         return self.jobs.submit("channel", f"channel {text}", lambda s: {"groups": _groups(s.channel(text))})
                     return self.jobs.submit("preview", f"preview {text}", lambda s: s.fetch(text, dry=True))
                 return self.jobs.submit("search", f"search {text}", lambda s: _search_result(s.search(text)))
