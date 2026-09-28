@@ -321,3 +321,86 @@ def test_an_undo_without_a_record_refuses_rather_than_guesses(library):
 
     with pytest.raises(ValueError, match="no record of an adoption"):
         adopt.give_back(album_dir, plan, library)
+
+
+# -- the two things a person may ask for afterwards ---------------------------------------------------
+
+
+def test_renaming_gives_the_files_noaaps_names_and_leaves_the_folder(library):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+
+    moved = adopt.rename(album_dir, plan)
+
+    assert moved == 3
+    assert all(t.filename.startswith("A Band - An Album - ") for t in plan.tracks)
+    assert [Path(t.filename).suffix for t in plan.tracks] == [".mp3", ".flac", ".opus"], \
+        "and every one keeps the container it actually is"
+    assert album_dir.is_dir(), "the folder stays where its owner put it"
+    assert plan.keep_names is False, "from here the names are noaap's"
+
+
+def test_retagging_keeps_what_this_program_does_not_model(library):
+    """A collection somebody has been tagging for years holds fields we know nothing about, and
+    losing them would be the adoption destroying the thing it took in."""
+    import mutagen
+
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    album_dir = library / "A Band" / "An Album"
+    flac = next(album_dir.glob("*.flac"))
+    audio = mutagen.File(flac)
+    audio["replaygain_track_gain"], audio["composer"] = ["-6.66 dB"], ["Somebody Else"]
+    audio.save()
+    adopt.carry_out(survey_of(library))
+    plan = load_plan(album_dir)
+
+    written = adopt.retag(album_dir, plan)
+
+    after = mutagen.File(flac)
+    assert written == 3
+    assert after["replaygain_track_gain"] == ["-6.66 dB"] and after["composer"] == ["Somebody Else"]
+    assert after["albumartist"] == ["A Band"], "and the plan's own fields are in"
+    assert plan.keep_tags is False
+
+
+def test_an_undo_after_a_retag_puts_every_field_back(library):
+    """R-189, ruling 4, the whole of it: after `--retag` and after `--undo` the names, the fields
+    and the stream are the ones that were there."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    before = fingerprint(library)
+    adopt.carry_out(survey_of(library))
+    for album_dir in (library / "A Band" / "An Album", library / "B Band" / "Another"):
+        plan = load_plan(album_dir)
+        adopt.retag(album_dir, plan)
+        adopt.rename(album_dir, plan)
+        from noaap.download import save_plan
+        save_plan(plan, album_dir)
+
+    assert fingerprint(library) != before, "the retag really did change the files"
+
+    for album_dir in (library / "A Band" / "An Album", library / "B Band" / "Another"):
+        adopt.give_back(album_dir, load_plan(album_dir), library)
+
+    assert fingerprint(library) == before
+
+
+@pytest.mark.parametrize("act", ["rename", "retag"])
+def test_neither_runs_without_a_way_back(library, act):
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(survey_of(library))
+    album_dir = library / "A Band" / "An Album"
+    plan = load_plan(album_dir)
+    plan.tracks[1].adopted_tags = None
+
+    with pytest.raises(ValueError, match="no record of what they were"):
+        getattr(adopt, act)(album_dir, plan)

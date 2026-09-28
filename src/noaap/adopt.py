@@ -23,11 +23,11 @@ from typing import Any
 
 from . import sources
 from .download import COVER_STEM, PLAN_FILE, save_plan
-from .lyrics import sidecar_path
+from .lyrics import rename_sidecar, sidecar_path
 from .models import AlbumPlan
-from .plan import build_plan
+from .plan import build_plan, wanted_filename
 from .service import _inside
-from .tag import raw_tags, restore_tags
+from .tag import raw_tags, restore_tags, tag_file
 from .text import key as text_key
 
 # what the plan would assert about a file, and therefore what an undo has to be able to give back
@@ -237,3 +237,75 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
         was.parent.mkdir(parents=True, exist_ok=True)
         album_dir.rename(was)
     return done
+
+
+# -- and the two things a person may ask for afterwards --------------------------------------------
+
+
+def undo_data_complete(plan: AlbumPlan) -> str:
+    """Why this album may not be renamed or retagged, or "" when it may.
+
+    Neither act runs without a way back (R-189, ruling 5). An album with no record is one noaap
+    never adopted, or one whose record something has eaten; either way the answer is no, because
+    the whole promise of adoption is that it can be given back.
+    """
+    if not plan.adopted:
+        return "no record of an adoption"
+    missing = [t.title for t in plan.tracks if not t.adopted_name or t.adopted_tags is None]
+    if missing:
+        return f"{len(missing)} track(s) have no record of what they were"
+    return ""
+
+
+def rename(album_dir: Path, plan: AlbumPlan, log: Callable[[str], None] = lambda s: None) -> int:
+    """Give the album noaap's own file names. The folder stays where its owner put it.
+
+    Moving the folder as well would be a second decision, and a collection laid out by hand is
+    laid out that way on purpose — so this renames files and nothing else.
+    """
+    if why := undo_data_complete(plan):
+        raise ValueError(f"{plan.album}: {why}, so it cannot be renamed")
+    moved = 0
+    for track in plan.tracks:
+        here = _inside(album_dir, track.filename)
+        want = wanted_filename(plan, track)
+        if here is None or not here.is_file() or track.filename == want:
+            continue
+        if (album_dir / want).exists():
+            log(f"  not renaming {track.filename}: {want} is already there")
+            continue
+        here.rename(album_dir / want)
+        rename_sidecar(album_dir, track.filename, want)
+        track.filename = want
+        moved += 1
+    if moved:
+        plan.keep_names = False  # from here on the names are noaap's, and passes may keep them so
+        remember_added(album_dir, plan)
+    return moved
+
+
+def retag(album_dir: Path, plan: AlbumPlan, cover: bytes | None = None,
+          log: Callable[[str], None] = lambda s: None) -> int:
+    """Write the plan's tags into the files, keeping everything this program does not model.
+
+    `keep_unknown=True` is the whole difference from an ordinary retag: a collection somebody has
+    been tagging for years holds replaygain, ISRC, composer, BPM and their own comment, and losing
+    those would be the adoption destroying the thing it took in (§9, slice 53).
+    """
+    if why := undo_data_complete(plan):
+        raise ValueError(f"{plan.album}: {why}, so it cannot be retagged")
+    written = 0
+    for track in plan.tracks:
+        audio = _inside(album_dir, track.filename)
+        if audio is None or not audio.is_file():
+            continue
+        try:
+            track.tagged = tag_file(audio, plan, track, cover, None, keep_unknown=True)
+        except Exception as e:  # one unreadable file is not the album's problem
+            log(f"  {track.filename}: {e}")
+            continue
+        written += 1
+    if written:
+        plan.keep_tags = False  # the tags are noaap's now; the undo still knows what they were
+        remember_added(album_dir, plan)
+    return written

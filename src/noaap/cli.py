@@ -136,6 +136,10 @@ def main(argv: list[str] | None = None) -> int:
     ad.add_argument("--album", metavar="NAME", help="one album folder")
     ad.add_argument("--undo", action="store_true",
                     help="give the albums back: their names, their tags, and nothing of noaap's left")
+    ad.add_argument("--rename", action="store_true",
+                    help="afterwards: give the files noaap's names (the folder stays where it is)")
+    ad.add_argument("--retag", action="store_true",
+                    help="afterwards: write the plan's tags in, keeping every field noaap does not model")
 
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
@@ -233,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
                 source = sources.get("folder", cfg)
                 if args.undo:
                     return _adopt_undo(adopt_pass, library, root, args)
+                if args.rename or args.retag:
+                    return _adopt_promote(adopt_pass, root, args)
                 found = adopt_pass.survey(root, library, source, artist=args.only,
                                           album=args.album, log=print)
                 for line in adopt_pass.report(found, applying=args.apply):
@@ -453,6 +459,35 @@ def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace)
         print(f"{albums} adopted album(s). Nothing was changed. `--undo --apply` does it.")
         return 0
     print(f"{albums} album(s) given back: " + ", ".join(f"{v} {k}" for k, v in sorted(totals.items())))
+    return 0
+
+
+def _adopt_promote(adopt_pass, root: Path, args: argparse.Namespace) -> int:
+    """`--rename` / `--retag`: the two things a person may ask for after an adoption."""
+    from .download import iter_plans, save_plan
+
+    renamed = retagged = albums = refused = 0
+    for album_dir, plan in iter_plans(root):
+        if not plan.adopted or not adopt_pass.in_scope(album_dir, root, args.only, args.album):
+            continue
+        if why := adopt_pass.undo_data_complete(plan):
+            print(f"  refused {plan.albumartist} — {plan.album}: {why}", file=sys.stderr)
+            refused += 1
+            continue
+        albums += 1
+        if not args.apply:
+            print(f"  would touch {plan.albumartist} — {plan.album} ({len(plan.tracks)} track(s))")
+            continue
+        if args.rename:
+            renamed += adopt_pass.rename(album_dir, plan, log=print)
+        if args.retag:
+            retagged += adopt_pass.retag(album_dir, plan, log=print)
+        save_plan(plan, album_dir)
+    if not args.apply:
+        print(f"{albums} album(s), {refused} refused. Nothing was changed. `--apply` does it.")
+        return 0
+    print(f"{albums} album(s): {renamed} file(s) renamed, {retagged} file(s) retagged"
+          + (f", {refused} refused" if refused else ""))
     return 0
 
 
