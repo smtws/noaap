@@ -489,6 +489,24 @@ class App:
         self._thumbs[url] = (r.content, mime)
         return self._thumbs[url]
 
+    def watching(self) -> list[dict[str, Any]]:
+        """The configured watches, what each is for, and when it was last looked at.
+
+        Read from the watcher's own state file: this service does not watch anything, and saying so
+        from the same place the watcher writes is the only way the page can be honest about a
+        process it does not run (§9, slice 59).
+        """
+        from . import watch as watch_pass
+
+        state = watch_pass.read_state()
+        out = []
+        for row in self.cfg.watches:
+            kept = state.get(row.name, {})
+            out.append({"name": row.name, "shape": row.shape, "folder": str(row.folder),
+                        "there": row.folder.is_dir(), "looked": kept.get("looked"),
+                        "waiting": len(kept.get("waiting") or {})})
+        return out
+
     def settings(self) -> dict[str, Any]:
         runtime = self.cfg.resolved_js_runtime()
         pot = self.cfg.resolved_pot_provider()
@@ -498,6 +516,9 @@ class App:
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
             "musicbrainz": self.cfg.musicbrainz,
+            # what `noaap watch` is looking at, if anything (§9, slice 59). Named by the watch and
+            # by its shape; the folder is shown as the user wrote it and never in a job's label.
+            "watching": self.watching(),
             # Two slots, one per capability (§9, slice 40), and everything that depends on *which* provider
             # is answered per slot: what it can do, whether it sends the audio away, what it charges.
             "timing": {"provider": self.cfg.timing_provider,

@@ -378,3 +378,24 @@ def test_what_is_written_down_names_the_watch_and_never_a_path(tmp_path):
 
     assert set(state) == {"drop"}
     assert str(tmp_path) not in json.dumps(state)
+
+
+def test_the_page_says_what_is_watched_and_never_that_it_watches_it(served):
+    """The app does not watch anything — a separate process does — so everything the panel shows
+    is read from what that process wrote down."""
+    app, drop, library = served
+
+    watching = app.settings()["watching"]
+
+    assert [(w["name"], w["shape"], w["there"]) for w in watching] == [
+        ("drop", "intake", True), ("mine", "library", True)]
+    assert all(w["looked"] is None for w in watching), "nothing has looked yet, and it says so"
+
+
+def test_a_watched_folder_that_is_not_there_says_so(served, tmp_path):
+    app, drop, _ = served
+    for child in sorted(drop.rglob("*"), reverse=True):
+        child.rmdir()
+    drop.rmdir()
+
+    assert app.settings()["watching"][0]["there"] is False

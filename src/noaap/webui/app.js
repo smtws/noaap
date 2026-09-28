@@ -1680,6 +1680,26 @@ function renderLog(job) {
 
 // -- settings ----------------------------------------------------------------------------
 
+// What `noaap watch` is looking at. **This app does not watch anything** — a separate process
+// does, so that this one can keep stopping itself when idle — and everything here is read from
+// what that process wrote down, which is the only way this page can be honest about it.
+function watchingSection(watching) {
+  const rows = watching || [];
+  if (!rows.length) {
+    return h("p", { class: "muted setting" },
+      "Nothing is watched. A folder can be watched so that what arrives in it is taken in without "
+      + "anyone typing a command \u2014 `noaap watch --help`, and it is a separate service you start yourself.");
+  }
+  return h("div", { class: "setting" },
+    h("strong", {}, "Watched folders"),
+    ...rows.map((w) => h("div", { class: "muted" },
+      h("strong", {}, w.name), ` \u00b7 ${w.shape === "library" ? "this library, watching itself" : "things dropped here are taken in"}`,
+      h("br"), w.folder,
+      h("br"), w.there ? "" : h("span", { class: "bad" }, "the folder is not there \u00b7 "),
+      w.looked ? `last looked at ${w.looked}` : "not looked at yet \u2014 is `noaap watch` running?",
+      w.waiting ? ` \u00b7 ${w.waiting} arrival(s) it could not hand over` : "")));
+}
+
 const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium", brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
 
 // What noaap moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
@@ -1792,6 +1812,7 @@ function openSettings() {
           : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
         h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
           placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
+      watchingSection(st.watching),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))),
     recycleSection());
