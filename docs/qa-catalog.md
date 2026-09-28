@@ -3197,10 +3197,15 @@ not a verdict.
   A number on a card that cannot be reached from the card is the same hole in a smaller shape. The
   album badge counts the tracks waiting, the filter shows those albums beside the "needs you" ones,
   and inside the album the ⇄ mark on the row is marked so the panel can be found.
-  - **result:** pass, `docs/screenshots/copies.jpg` — one track with three copies and two different
-    reasons. The offered copy is named by its last two parts; a case asserts no `/home/` reaches a
-    label. The full path stays in the tooltip of the panel the user opened, which is the one place
-    slice 53 allows it.
+  - **result:** pass, read off the panel on the real library: one track showing three copies and two
+    different reasons — the one in use (`opus 132 kbps · to 18 kHz · 3:39.3 · 3.6 MB`), an mp3 with
+    nothing up there to judge by, and a FLAC holding the same audio at 41.1 MB, each with *take this
+    one* and *not this one*. **No screenshot is kept**: every screenshot in this repository is of the
+    user's own My Dark Lullabies albums, and none of those has an undecided copy, so one of this
+    panel could only be of somebody else's catalogue.
+  - the offered copy is named by its last two parts; a case asserts no `/home/` reaches a label. The
+    full path stays in the tooltip of the panel the user opened, which is the one place slice 53
+    allows it.
 
 - [x] **AX6 · M** — the whole thing on the real libraries
 
@@ -3272,7 +3277,7 @@ package (R-167).
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
-| 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. 1059 pytest + 102 node. |
+| 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. No screenshot: the panel can only be shown on an artist this repository does not publish. 1059 pytest + 102 node. |
 | 2026-09-28 | the AX cases (P52c: the copy nobody could choose) | 6 | 0 in the design; 1 defect the counting exposed, fixed | The gap the AW run left: **288 of 762 undecided verdicts existed nowhere but in the report**, so a decision handed to a person could not be taken. `--apply` now lists the other copy on the track — not chosen, nothing copied — with the verdict's sentence and both files' numbers; *take this one* and *not this one* end it, and the library page counts what is waiting the way it counts "needs you". Live: 1313 pairs, **0 replace / 0 fill / 1050 keep / 263 undecided**, 178 copies listed on 175 tracks, 0 binned, `plan --verify` 329 plans 0 changed, and one copy taken through the UI end to end. Defect found by the counting: one track could be replaced twice in a pass. 1052 pytest + 102 node. |
 | 2026-09-28 | the AW cases re-run (P52b: the deciding margin) | 6 | 1 threshold wrong in the reviewed commit, fixed | The margin, not the floor: 1 kHz is inside Opus's own spread (20 kHz on 219 of the collection's files, 21 on 107), and it decided **37 of 88 replacements** on nothing. At 2 kHz the same 762 pairs read **51 replace, 0 fill, 423 keep, 288 undecided**, 1.93 GB added and 0.22 GB binned, 14 albums touched — and the reviewer predicted 51 before the run. Both candidates now keep what was measured; a replacement records what the binned file's timed words belong to. `--new` / `--only` / `--album` added. 1042 pytest + 95 node. |
 | 2026-09-28 | the AW cases (P52: which copy is better) | 6 | 0 in the design; 3 defects found by using it, all fixed | Two real libraries, 2000 tracks against 3942. Quality is measured, not believed: ten 1 kHz bands per file, and a FLAC made from an Opus reads what that Opus reads. **87% of the collection's 533 24/48 FLACs are band-limited where Opus stops.** Thresholds derived from all 338 Opus files. 762 pairs → 88 replace, 0 fill, 420 keep, 254 undecided on a **1 kHz** margin, corrected to 51 / 0 / 423 / 288 in P52b above. The largest group is 163 undecided lossless-but-identical — about 8 GB that a container-trusting rule would have written for nothing. 1033 pytest + 95 node. |
