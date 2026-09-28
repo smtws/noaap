@@ -91,7 +91,7 @@ def parse_time(value: object) -> float | None:
 
 @dataclass
 class Outcome:
-    status: str  # ok | failed | blocked | incomplete | planned | reported | dry
+    status: str  # ok | failed | blocked | incomplete | planned | reported | dry | held
     plan: AlbumPlan | None = None
     album_dir: Path | None = None
     message: str = ""
@@ -159,11 +159,20 @@ class Service:
     ) -> Outcome:
         """Read a playlist/video, enrich it, merge with the library, then (unless told not to) download."""
         self.check()
-        self.log(f"reading {url} …")
-        collection = self.source_for().collection(url)
+        source = self.source_for_address(url)
+        self.log(f"reading {self._said(url, source)} …")
+        collection = source.collection(url)
         self.check()
         if dump:
             dump.write_text(json.dumps(collection.to_dict(), indent=2, ensure_ascii=False) + "\n")
+        # what a folder held that is not a track, and how many copies of one recording it had.
+        # Both are the kind of thing a person wants to hear once, while looking at the folder.
+        if reader := getattr(source, "ignored", None):
+            if left := reader(url):
+                self.log("  left alone: " + ", ".join(f"{n} {kind}" for kind, n in sorted(left.items())))
+        if extra := sum(max(len(e.copies) - 1, 0) for e in collection.entries):
+            self.log(f"  {extra} further cop{'y' if extra == 1 else 'ies'} of these recordings are "
+                     "in there too, kept as candidates")
         if unreadable := collection.unreadable:
             # never classify, merge or rename from a partial view (DESIGN.md §3.8)
             reason = unreadable[0].skipped or "unknown"
@@ -175,7 +184,6 @@ class Service:
             self.log(msg)
             return Outcome("blocked" if kind == Failure.BOT_CHECK else "incomplete", message=msg)
 
-        source = self.source_for()
         plan = build_plan(collection, source=source)
         plan.provider = getattr(source, "name", sources.DEFAULT)  # whose collection this was
         plan.own_the_candidates()
@@ -199,6 +207,20 @@ class Service:
                 self.log(f"  {dropped} track title(s) lost the repeated album name")
         if named := set_single_album_name(plan):  # a single is its song, under whatever name it ended up with
             self.log(f"  the single is named after its track: “{named}”")
+
+        # Intake never writes into an album that is already here. Matching one of its files to a
+        # track we already hold is the same-recording question, and that is P52's first rule — so
+        # this reports the overlap and stops, rather than deciding it early and quietly.
+        if plan.provider == "folder" and (twin := self._named_like(plan)):
+            known_dir, existing = twin
+            mine = {text_key(t.title) for t in plan.tracks}
+            overlap = sum(text_key(t.title) in mine for t in existing.tracks)
+            where = known_dir.relative_to(self.library)
+            msg = (f"already in the library as {where}: {overlap} of {len(plan.tracks)} titles overlap. "
+                   "Nothing was changed — choosing between two copies is not this pass's job.")
+            self.log(msg)
+            self.on_plan(plan)
+            return Outcome("dry" if dry else "held", plan, known_dir, msg)
 
         if dry or self.library is None:
             # A preview is only worth having if it is the outcome, so it goes through what a real
@@ -710,6 +732,45 @@ class Service:
                  if length else f"drafted {len(timed.lines)} lines · {timed.by} — a machine's guess, check it")
         return {"timed": timed.to_dict(), "by": timed.by, "lines": len(timed.lines),
                 "placed": len(timed.lines) - len(timed.unplaced), "text": text}
+
+    def _named_like(self, plan: AlbumPlan) -> tuple[Path, AlbumPlan] | None:
+        """An album already in the library with this artist and this name, from somewhere else."""
+        if not self.library or not self.library.exists():
+            return None
+        want = (text_key(plan.albumartist), text_key(plan.album))
+        for album_dir, existing in iter_plans(self.library):
+            if existing.source_id != plan.source_id and (text_key(existing.albumartist), text_key(existing.album)) == want:
+                return album_dir, existing
+        return None
+
+    def source_for_address(self, address: str):
+        """Whose address this is. The core cannot tell one from another; each provider can.
+
+        This Service's own provider is asked first, so a test's stand-in keeps answering for the
+        addresses it was given. An address nobody claims still goes to the default, which then
+        says why it cannot read it — better than a message about providers (§9, slice 53).
+        """
+        asked = getattr(self.yt, "handles", None)
+        if asked is None or asked(address):
+            # a provider that cannot be asked *is* the answer: a Service built with one specific
+            # provider was built with it on purpose, and a test's stand-in must not be replaced
+            # by the real thing behind its back
+            return self.yt
+        for name in sources.known():
+            found = sources.get(name, self.cfg, self._cancel)
+            if found.handles(address):
+                return found
+        return self.yt
+
+    @staticmethod
+    def _said(address: str, source: Any) -> str:
+        """An address as it is worth reading in a log line: a URL entire, a path by its last two
+        parts. The whole path is the user's own directory tree and belongs in one place only —
+        the source panel of a single track (§9, slice 53)."""
+        if getattr(source, "name", None) != "folder":
+            return address
+        parts = Path(address).parts
+        return str(Path(*parts[-2:])) if len(parts) > 2 else address
 
     def source_for(self, plan: AlbumPlan | None = None):
         """The provider this plan belongs to — the one the Service was built with when they agree.

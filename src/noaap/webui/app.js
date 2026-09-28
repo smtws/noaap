@@ -1,6 +1,6 @@
 import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLength,
+         nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          resetKind, roundMark,
          seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
@@ -610,7 +610,7 @@ const openSource = new Set();
 function sourceMark(p, t) {
   const own = t.source_override;
   return h("button", { class: "quiet small src-pick" + (own ? " on" : ""), type: "button",
-    title: own ? `Audio from ${own}, not the playlist's ${t.video_id} \u2014 click to change it or go back`
+    title: own ? `Audio from ${refLabel(own)}, not the source's ${refLabel(t.video_id)} \u2014 click to change it or go back`
       : "Take the audio from another video \u2014 the same song without the film around it",
     onclick: (e) => toggleSource(e.currentTarget, p, t) }, "\u21c4");
 }

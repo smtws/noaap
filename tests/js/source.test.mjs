@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { effectiveId, oneVideo, sourceChange, timingNotice } from "../../src/noaap/webui/logic.mjs";
+import { effectiveId, oneVideo, refLabel, sourceChange, timingNotice } from "../../src/noaap/webui/logic.mjs";
 
 const table = JSON.parse(readFileSync(new URL("../shared/video_ids.json", import.meta.url))).cases;
 
@@ -55,7 +55,7 @@ test("going back is a change of its own, and says so", () => {
   const change = sourceChange(track({ source_override: "bbbbbbbbbbb", trim_start: 1.6 }), null);
   assert.equal(change.to, "aaaaaaaaaaa");
   assert.equal(change.back, true);
-  assert.match(change.lines.join("\n"), /Back to the playlist's own video, aaaaaaaaaaa\./);
+  assert.match(change.lines.join("\n"), /Back to the source's own aaaaaaaaaaa\./);
   assert.equal(change.marks, "0:01.6–end");
 });
 
@@ -73,4 +73,13 @@ test("and names the two lengths only when they really differ", () => {
   // and where nobody measured either file, it is still worth saying, without numbers
   assert.equal(timingNotice({ timings: { source: "aaaaaaaaaaa", was: null, now: null } }),
     "these timings were written for a different file");
+});
+
+test("a ref that is a path is shown by its last two parts", () => {
+  // a folder's ref is the file's absolute location; in a list that is someone's home directory
+  assert.equal(refLabel("/home/you/Music/legacy/Van Canto/01 - Back in the Lead.mp3"),
+               "Van Canto/01 - Back in the Lead.mp3");
+  assert.equal(refLabel("dQw4w9WgXcQ"), "dQw4w9WgXcQ", "a ref with no separator is left alone");
+  assert.equal(refLabel(""), "");
+  assert.equal(refLabel(undefined), undefined);
 });

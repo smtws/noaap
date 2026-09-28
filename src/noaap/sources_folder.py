@@ -364,6 +364,17 @@ class FolderSource:
     def _cover_for(self, folder: Path, discs: list[tuple[int, Path]]) -> Path | None:
         return cover_in(folder) or next((d for _, part in discs if (d := cover_in(part))), None)
 
+    def is_release(self, collection: Collection) -> bool:
+        """An album by one artist, which its own files say by agreeing on an album artist.
+
+        Without this a normal album reads as a compilation the moment one track credits a guest —
+        "van Canto, Kai Hansen" is one `artist` tag among twenty, and counting distinct artists
+        then says two. A folder does not have to guess: `albumartist` is what it is for, and
+        "Various Artists" is the one value that means the opposite (§9, slice 53).
+        """
+        owner = collection.owner
+        return bool(owner) and text_key(owner) != text_key("Various Artists")
+
     def owner_artist(self, owner: str | None) -> str | None:
         """A folder's owner *is* the artist — there is no channel handle to see through."""
         return owner

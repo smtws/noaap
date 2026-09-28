@@ -513,3 +513,72 @@ def test_two_encodings_of_one_recording_are_not_the_same_stream(tmp_path, source
     mp3 = encode(tmp_path / "a.mp3", title="a")
 
     assert stream_sha(flac) != stream_sha(mp3), "the same music, not the same recording"
+
+
+# -- what the CLI and the page are given --------------------------------------------------------------
+
+
+def test_one_guest_credit_does_not_turn_an_album_into_a_compilation(tmp_path, source):
+    """A folder's `artist` tags name guests — "van Canto, Kai Hansen" is one tag among twenty — and
+    counting distinct artists then says two. `albumartist` is what a folder has instead of a guess."""
+    from noaap.models import Kind
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Trust In Rust"
+    for n, artist in enumerate(["Van Canto", "Van Canto", "Van Canto, Kai Hansen"], 1):
+        encode(folder / f"{n:02d} - t{n}.flac", title=f"t{n}", artist=artist,
+               album="Trust in Rust", album_artist="Van Canto", track=str(n))
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert plan.kind == Kind.OFFICIAL_ALBUM
+    assert plan.albumartist == "Van Canto"
+
+
+def test_various_artists_is_the_one_album_artist_that_means_the_opposite(tmp_path, source):
+    from noaap.models import Kind
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Classic Rock Hits"
+    for n, artist in enumerate(["Fleetwood Mac", "ZZ Top", "Whitesnake"], 1):
+        encode(folder / f"{n:02d} - t{n}.mp3", title=f"t{n}", artist=artist,
+               album="Classic Rock Hits", album_artist="Various Artists", track=str(n))
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
+    assert plan.kind == Kind.COMPILATION
+
+
+def test_a_fetch_finds_the_provider_by_the_address(tmp_path, album):
+    """`noaap fetch <a path>` has to reach the folder provider without being told."""
+    from noaap.config import Config as Cfg
+    from noaap.service import Service
+
+    service = Service(Cfg(musicbrainz=False, lyrics=False), tmp_path / "library", log=lambda s: None)
+
+    assert service.source_for_address(str(album)).name == "folder"
+    assert service.source_for_address("https://www.youtube.com/playlist?list=PLx").name == "youtube"
+
+
+def test_an_album_already_in_the_library_is_reported_and_left_alone(tmp_path, album):
+    """The amendment to decision 3: matching a file to a track we already hold is the
+    same-recording question, and that is P52's first rule."""
+    from noaap.config import Config as Cfg
+    from noaap.download import save_plan
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+    from noaap.service import Service
+
+    library = tmp_path / "library"
+    existing = AlbumPlan(source_url="https://www.youtube.com/playlist?list=PLx", source_id="PLx",
+                         kind=Kind.OFFICIAL_ALBUM, album="Trust in Rust", albumartist="Van Canto",
+                         year=2018, cover_url=None, folder="Van Canto/Trust in Rust",
+                         tracks=[PlanTrack(video_id="vid1", number=1, artist="Van Canto",
+                                           title="Back in the Lead", filename="a.opus", provenance={})])
+    save_plan(existing, library / existing.folder)
+    service = Service(Cfg(musicbrainz=False, lyrics=False), library, log=lambda s: None)
+
+    outcome = service.fetch(str(album))
+
+    assert outcome.status == "held"
+    assert "already in the library" in outcome.message and "1 of 3 titles overlap" in outcome.message
+    assert not (library / "Van Canto" / "Trust in Rust" / "01 - Back in the Lead.mp3").exists()

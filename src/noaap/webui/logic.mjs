@@ -136,6 +136,15 @@ export const effectiveId = (t) => t.source_override || t.video_id;
 
 // What a source change costs, in the words the user is asked to confirm — because the marks and
 // the timings describe the file that is about to be replaced, and nothing may go quietly.
+// A ref means nothing outside the provider that minted it, and some of them are paths: a folder's
+// ref is the file's own absolute location (§9, slice 53). In a list or a tooltip that is someone's
+// home directory quoted at them, so refs with separators are shown by their last two parts. The
+// whole thing appears in one place only — the source panel, where the user asked for it.
+export function refLabel(ref) {
+  if (!ref || !ref.includes("/")) return ref;
+  return ref.split("/").filter(Boolean).slice(-2).join("/");
+}
+
 export function sourceChange(track, wanted) {
   const to = wanted || track.video_id;
   if (to === effectiveId(track)) return null;
@@ -146,8 +155,8 @@ export function sourceChange(track, wanted) {
     `\u201c${track.artist} \u2013 ${track.title}\u201d`,
     "",
     wanted
-      ? `Take the audio from ${to} instead of the playlist's own ${track.video_id}.`
-      : `Back to the playlist's own video, ${track.video_id}.`,
+      ? `Take the audio from ${refLabel(to)} instead of the source's own ${refLabel(track.video_id)}.`
+      : `Back to the source's own ${refLabel(track.video_id)}.`,
     "The track is downloaded again \u2014 it is a different recording.",
   ];
   if (marks) lines.push(`The trim ${marks} belongs to the current file and will be cleared.`);

@@ -18,7 +18,8 @@ from .models import AlbumPlan, PlanTrack, SourceRef, kept
 from .service import Service, collection_address, exit_code
 from .sources import NotSupported
 
-PROV_MARK = {"mb": "MB", "yt_music": "YTM", "yt_title": "title", "playlist": "playlist", "user": "user"}
+PROV_MARK = {"mb": "MB", "yt_music": "YTM", "yt_title": "title", "playlist": "playlist",
+             "user": "user", "file_tags": "tags", "folder_name": "folder", "file_name": "name"}
 BLOCKED = 3  # exit code: YouTube is refusing requests right now; stop asking
 
 
