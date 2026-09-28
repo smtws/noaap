@@ -1,6 +1,6 @@
 {
   "_source": "https://elevenlabs.io/docs/api-reference/forced-alignment/create, read 2026-09-27",
-  "_note": "characters[] is documented and returned but ytalbum reads only words[]; `loss` is the vendor's own confidence and is recorded in the provenance, never acted on.",
+  "_note": "characters[] is documented and returned but noaap reads only words[]; `loss` is the vendor's own confidence and is recorded in the provenance, never acted on.",
   "characters": [{"text": "B", "start": 12.5, "end": 12.6}],
   "words": [
     {"text": "Berzerkermode", "start": 12.52, "end": 13.1, "loss": 0.11},

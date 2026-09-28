@@ -1,4 +1,4 @@
-"""The recycle bin: **ytalbum never removes audio, it only moves it here** (DESIGN §9, slice 49).
+"""The recycle bin: **noaap never removes audio, it only moves it here** (DESIGN §9, slice 49).
 
 Everything that used to `unlink()` a track's audio now routes through `bin_track`. A bin entry is a
 directory under `<library>/.recycle/` holding the audio, its sidecar, its kept original, and a
@@ -11,7 +11,7 @@ would go with the very thing it exists to protect against.
 
 **It never empties itself.** No age cap, no size cap, no quiet sweeping. The bin exists because the
 program made a judgement the user may disagree with, and a bin that empties itself is one nobody can
-rely on. `ytalbum recycle empty` is the only thing that removes an entry.
+rely on. `noaap recycle empty` is the only thing that removes an entry.
 """
 from __future__ import annotations
 
@@ -233,7 +233,7 @@ def find(library: Path, entry_id: str) -> Entry | None:
 
 
 def total(library: Path) -> tuple[int, int]:
-    """(entries, bytes) — what `ytalbum config` and the settings panel report."""
+    """(entries, bytes) — what `noaap config` and the settings panel report."""
     found = entries(library)
     return len(found), sum(e.bytes for e in found)
 

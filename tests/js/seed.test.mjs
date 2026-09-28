@@ -1,4 +1,4 @@
-// Offering an album to MusicBrainz, the page's half (DESIGN.md §9, slice 43). ytalbum submits nothing:
+// Offering an album to MusicBrainz, the page's half (DESIGN.md §9, slice 43). noaap submits nothing:
 // these functions decide when to offer, and what is said before their form opens.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +28,7 @@ test("the confirm says it opens a form and submits nothing", () => {
   assert.match(text, /release editor is about to open, with 2 tracks already filled in/);
   assert.match(seedConfirm(plan({ tracks: [{ state: "done" }] })), /with 1 track already/);  // not "1 tracks"
   assert.match(text, /Feuerschwanz — Fegefeuer \(2023\)/);
-  assert.match(text, /ytalbum submits nothing/);
+  assert.match(text, /noaap submits nothing/);
   assert.match(text, /until you press their own submit button/);
   assert.match(text, /releases that were really released/);
 });
@@ -43,7 +43,7 @@ test("a recording whose length disagrees is flagged with both numbers", () => {
   assert.equal(lengthFix(null), null);
 });
 
-test("and the confirm for it says ytalbum cannot make the change", () => {
+test("and the confirm for it says noaap cannot make the change", () => {
   const track = { mbid: "rec-1", file_length: 252.4, mb_length: 211, title: "Song" };
   const text = fixConfirm(track, lengthFix(track));
   assert.match(text, /their recording: 3:31/);

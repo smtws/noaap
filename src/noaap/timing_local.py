@@ -1,9 +1,9 @@
 """The local timing provider: separate the voice, then force-align the words to it (§9, slice 36).
 
-Imported only when `timing_provider = "local"`, and it is the only file in ytalbum that touches a
+Imported only when `timing_provider = "local"`, and it is the only file in noaap that touches a
 model. It needs the optional extra:
 
-    uv pip install "ytalbum[timing]"          # torch, torchaudio, demucs
+    uv pip install "noaap[timing]"          # torch, torchaudio, demucs
 
 and on a machine without a usable GPU, the smaller CPU build of torch is worth asking for first
 (see the README). What it downloads on first use, into torch's own cache:
@@ -50,11 +50,11 @@ BUNDLES = {"en": "WAV2VEC2_ASR_BASE_960H", "de": "VOXPOPULI_ASR_BASE_10K_DE"}
 SEPARATOR = "htdemucs"
 BLANK = 0  # index 0 is the CTC blank in both bundles (their label 0 is "-"), never a letter
 MISSING = ("the local timing provider needs the optional extra: "
-           'uv pip install "ytalbum[timing]" (torch, torchaudio, demucs)')
+           'uv pip install "noaap[timing]" (torch, torchaudio, demucs)')
 # the second extra: a Whisper decoder, for the cross-check and for drafting words (§9, slice 38)
 WHISPER = "large-v3"
 WHISPER_SIZE = "3.09 GB on first use"
-NO_CHECK = ('the second opinion needs the other extra: uv pip install "ytalbum[timing-check]" '
+NO_CHECK = ('the second opinion needs the other extra: uv pip install "noaap[timing-check]" '
             f"(faster-whisper and stable-ts; {WHISPER_SIZE})")
 CUDA_FULL = ("the graphics card has no room left for the second opinion beside the aligner and the "
              "separator; checking on the processor instead, which is slower but gives the same answer")
@@ -255,7 +255,7 @@ class LocalTiming:
         """Let go of every model this provider has loaded (§9, slice 41, backlog 18).
 
         For the web service this is barely needed — a provider is built per job and dropped with it —
-        but `ytalbum timing-serve` keeps one for the life of the process, and a machine that is asked
+        but `noaap timing-serve` keeps one for the life of the process, and a machine that is asked
         to align one track an hour should not hold 3 GB of a graphics card for the other fifty-nine
         minutes. The next request loads them again, in seconds off a warm disk, and says so in its log.
         """
@@ -397,7 +397,7 @@ def separated_voice(audio: Path, into: Path, log: Callable[[str], None] | None =
     52 lines on the mix and **32** on the voice; the local decoder 28 and **38**. It is also less of
     the recording to send anywhere, which matters when the transcriber is somebody else's computer.
 
-    Never fatal: without the `ytalbum[timing]` extra, or if anything goes wrong, the caller falls
+    Never fatal: without the `noaap[timing]` extra, or if anything goes wrong, the caller falls
     back to the mixed track, which is what it always sent.
     """
     say = log or (lambda _: None)

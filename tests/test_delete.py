@@ -62,7 +62,7 @@ def test_delete_album_removes_the_folder(library):
     assert outcome.status == "ok"
     assert not album_dir.exists()
     assert not album_dir.parent.exists()  # the artist folder went too, it was empty
-    # the audio is not gone, it is in the bin: nothing ytalbum deletes leaves the library (slice 49)
+    # the audio is not gone, it is in the bin: nothing noaap deletes leaves the library (slice 49)
     assert [p.name for p in tmp_path.iterdir()] == [".recycle"]
     from noaap.recycle import entries
 

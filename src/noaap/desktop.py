@@ -1,4 +1,4 @@
-"""`ytalbum app install|uninstall`: a desktop launcher that is its own window, not a browser tab.
+"""`noaap app install|uninstall`: a desktop launcher that is its own window, not a browser tab.
 
 A PWA installed from the browser keeps the browser's window class (Chrome reports
 WM_CLASS "crx_<app-id>", "Google-chrome"), and desktops group by that class - so the app
@@ -116,5 +116,5 @@ def uninstall(keep_profile: bool = True) -> list[str]:
 
 def status(url: str) -> str:
     if not desktop_file().exists():
-        return "launcher: not installed (ytalbum app install)"
+        return "launcher: not installed (noaap app install)"
     return f"launcher: {desktop_file()}   window class: {APP_ID}   opens {url}"

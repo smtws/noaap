@@ -2,7 +2,7 @@
 
 Only this module talks to lrclib.net. Hits are cached for 30 days, misses for 7.
 
-The sidecar next to the audio is what ytalbum knows. `tag_file` replaces every tag on every
+The sidecar next to the audio is what noaap knows. `tag_file` replaces every tag on every
 pass, so the `LYRICS` comment is written *from* the sidecar instead of being kept — a lyric
 can then never be half-lost, and players that read tags see the same text as players that
 read `.lrc` files (MPD/Volumio has no lyrics tag at all).

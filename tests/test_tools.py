@@ -1,4 +1,4 @@
-"""What `ytalbum config` says it found, and what it does when it finds nothing.
+"""What `noaap config` says it found, and what it does when it finds nothing.
 
 ffmpeg is the one dependency that is *reported and not required*: a library can be browsed, tagged,
 searched and have its lyrics fetched without it. Downloading and trimming are what stop — and they

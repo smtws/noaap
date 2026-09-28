@@ -58,8 +58,8 @@ class Config:
     pot_port: int = 4416
     pot_idle: int = 300
     # who may put words on a clock (DESIGN.md §9, slice 36). "none" is the default and the app is exactly
-    # what it was without it; "local" needs the `ytalbum[timing]` extra; "http" is another machine
-    # running `ytalbum timing-serve`. Nothing is imported until one of the other two is chosen.
+    # what it was without it; "local" needs the `noaap[timing]` extra; "http" is another machine
+    # running `noaap timing-serve`. Nothing is imported until one of the other two is chosen.
     # Two slots, because the two capabilities are bought in different places (§9, slice 40): the machine
     # that aligns best is rarely the one that transcribes best. `timing_provider` is still read and
     # still means both, so nobody's config file breaks.
@@ -77,7 +77,7 @@ class Config:
     timing_verify: bool | None = None
     timing_verify_threshold: float = 2.0  # seconds two methods may differ by and still agree
     timing_verify_lost: float = 5.0  # seconds past which one of them has lost the song, not drifted
-    # how long `ytalbum timing-serve` keeps its models loaded with nothing to do (§9, slice 41). 0 = for
+    # how long `noaap timing-serve` keeps its models loaded with nothing to do (§9, slice 41). 0 = for
     # ever, which is what a machine dedicated to this wants; the app's own service needs no timer,
     # because it builds a provider per job.
     timing_idle_minutes: float = 5.0
@@ -96,7 +96,7 @@ class Config:
     def resolved_ffmpeg(self) -> str | None:
         """Where ffmpeg is, or None.
 
-        Nothing in ytalbum can be configured to point elsewhere: `trim.py` runs the bare name and
+        Nothing in noaap can be configured to point elsewhere: `trim.py` runs the bare name and
         yt-dlp looks it up the same way, so `PATH` is the whole answer. It is reported rather than
         enforced, because everything except downloading and trimming works without it.
         """

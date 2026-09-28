@@ -1,6 +1,6 @@
-"""`ytalbum service install|uninstall|status`: the web UI as a socket-activated systemd user service.
+"""`noaap service install|uninstall|status`: the web UI as a socket-activated systemd user service.
 
-systemd listens on the port; the first request starts `ytalbum serve --idle-exit …`, which
+systemd listens on the port; the first request starts `noaap serve --idle-exit …`, which
 stops itself when idle and is started again by the next request. User level only (no root).
 """
 
@@ -60,7 +60,7 @@ def systemctl(*args: str) -> subprocess.CompletedProcess[str]:
 def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> list[str]:
     """Write the units, enable and start the socket. Returns what was done, for the user."""
     if not cfg.library_root:
-        raise ValueError("set the library first: ytalbum config --library PATH")
+        raise ValueError("set the library first: noaap config --library PATH")
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
     for name, text in render_units(cfg, port, idle_exit).items():

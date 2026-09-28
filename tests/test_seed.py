@@ -1,8 +1,8 @@
 """Offering an album to MusicBrainz (DESIGN.md §9, slice 43).
 
 Nothing here talks to musicbrainz.org, and nothing in this feature ever does: seeding is a form
-that opens in the user's own browser, signed in as them, and ytalbum holds no credentials. So what
-is testable is exactly what ytalbum decides — which albums to offer, and what the boxes say.
+that opens in the user's own browser, signed in as them, and noaap holds no credentials. So what
+is testable is exactly what noaap decides — which albums to offer, and what the boxes say.
 """
 
 import threading

@@ -1,12 +1,12 @@
 """Putting words on a clock — the boundary, not the machinery (DESIGN.md §9, slice 36).
 
 Two capabilities, because they are two jobs with two different markets: **transcribe** derives words
-from audio, **align** places words you already have. ytalbum wants the second far more often —
+from audio, **align** places words you already have. noaap wants the second far more often —
 LRCLIB supplies the words for two tracks in three and the timings for fewer — and it is the one that
 needs no large model.
 
 Nothing here imports a model, and the core never imports one either. The default provider is
-`none`: it can do neither, the page renders no action for it, and ytalbum is exactly what it was
+`none`: it can do neither, the page renders no action for it, and noaap is exactly what it was
 before this file existed. A provider that *can* do something is an optional extra (`local`) or
 another machine (`http`), and `docs/spikes/2026-09-alignment.md` is why it is shaped this way.
 """
@@ -32,7 +32,7 @@ VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the au
 
 # List prices from the vendors' own pricing pages, read on the date beside them. They are here so
 # the settings panel can say what a pass would cost without asking anyone at runtime; nothing in
-# ytalbum ever queries a price, and a stale number is better than a request nobody asked for.
+# noaap ever queries a price, and a stale number is better than a request nobody asked for.
 # What a kind of provider can ever be asked for, which is not the same as what it can do today: the
 # two local ones depend on what is installed or on the machine at the other end, and `capabilities()`
 # answers that at runtime. This is for the settings panel, so that the slot for drafting words does
@@ -120,7 +120,7 @@ class NoTiming:
               check: Callable[[], None] | None = None) -> Timed:
         raise TimingUnavailable(
             "No timing provider is configured. Set `timing_provider` to `local` (with the "
-            "`ytalbum[timing]` extra installed) or to `http` with an endpoint — see the README.")
+            "`noaap[timing]` extra installed) or to `http` with an endpoint — see the README.")
 
     def transcribe(self, audio: Path, *, language: str | None = None,
                    check: Callable[[], None] | None = None) -> Timed:
@@ -550,11 +550,11 @@ def coverage(lines: list[TimedLine], length: float | None = None,
 
 
 class HttpTiming:
-    """`ytalbum timing-serve`, somewhere else on the network.
+    """`noaap timing-serve`, somewhere else on the network.
 
     The inference is the same code the `local` provider runs; what changes is which machine pays
     for it. Nothing leaves the network, and this side inherits no dependency heavier than the
-    `httpx` ytalbum already has.
+    `httpx` noaap already has.
     """
 
     name = "http"

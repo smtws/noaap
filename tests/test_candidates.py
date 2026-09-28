@@ -1,7 +1,7 @@
 """A track holds candidates, not a video id (DESIGN §9, slice 50).
 
 The shape only: no ranking and no second provider yet. What matters here is that the new fields are
-**derived from the old ones and never ahead of them** — two ytalbums share a library, and the older
+**derived from the old ones and never ahead of them** — two noaaps share a library, and the older
 one writes `source_override` knowing nothing about candidates.
 """
 from __future__ import annotations
@@ -53,7 +53,7 @@ def test_an_override_becomes_a_second_candidate_and_the_chosen_one():
 
 
 def test_the_old_fields_win_over_a_stale_candidate_list():
-    """An older ytalbum can write `source_override` and leave `chosen` behind."""
+    """An older noaap can write `source_override` and leave `chosen` behind."""
     t = PlanTrack.from_dict({**track().to_dict(), "source_override": "newone",
                              "chosen": "playlistvid"})
     assert t.chosen == "newone"
@@ -128,7 +128,7 @@ def test_an_existing_override_behaves_exactly_as_before(library):
     assert back.source_override == "overridevid"
     assert back.effective_id == "overridevid" != before
     assert back.chosen == "overridevid"
-    # and an older ytalbum, which reads only the old field, still sees the same thing
+    # and an older noaap, which reads only the old field, still sees the same thing
     assert json.loads(json.dumps(back.to_dict()))["source_override"] == "overridevid"
 
 

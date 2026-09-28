@@ -558,7 +558,7 @@ def test_the_plan_round_trips_with_the_new_fields(tmp_path, yt):
     assert written["tracks"][0]["lyrics_id"] == 7
 
 
-# -- the whole library (ytalbum lyrics) --------------------------------------------------
+# -- the whole library (noaap lyrics) --------------------------------------------------
 
 
 def library(tmp_path, opus_template):

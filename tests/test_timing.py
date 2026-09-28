@@ -1,6 +1,6 @@
 """The timing boundary, offline: a fake provider is enough to test everything but the model.
 
-The real models are opt-in (`YTALBUM_TIMING_LIVE=1` and the `ytalbum[timing]` extra installed);
+The real models are opt-in (`YTALBUM_TIMING_LIVE=1` and the `noaap[timing]` extra installed);
 without them this file still covers the shape of the thing — what the page is told it may offer,
 what the job returns, what reaches the disk, and what the HTTP provider does with an endpoint that
 answers and one that does not.
@@ -190,7 +190,7 @@ def test_saving_records_whose_clock_it_is(album, tmp_path, monkeypatch):
 
 @pytest.fixture
 def served():
-    """`ytalbum timing-serve`'s handler, with the fake behind it instead of a model."""
+    """`noaap timing-serve`'s handler, with the fake behind it instead of a model."""
     from noaap.timing_serve import handler_for
 
     fake = FakeTiming()
@@ -243,7 +243,7 @@ def test_the_far_end_refuses_nonsense(served, tmp_path, opus_template):
 
 
 @pytest.mark.skipif(not os.environ.get("YTALBUM_TIMING_LIVE"),
-                    reason="set YTALBUM_TIMING_LIVE=1 (and install ytalbum[timing]) to run the models")
+                    reason="set YTALBUM_TIMING_LIVE=1 (and install noaap[timing]) to run the models")
 def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
     from noaap.timing_local import LocalTiming
 

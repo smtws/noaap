@@ -10,11 +10,11 @@ is copied read-only into pytest's own temp directory for the run, and is deleted
 
     YTALBUM_CORPUS_AUDIO=1 uv run pytest -m slow -v
 
-and, when the library is not the one in your ytalbum config:
+and, when the library is not the one in your noaap config:
 
     YTALBUM_CORPUS_AUDIO=1 YTALBUM_CORPUS_LIBRARY=~/Music/Yours uv run pytest -m slow -v
 
-**Pointing it at your own library.** It looks in the `library_root` from your ytalbum config and
+**Pointing it at your own library.** It looks in the `library_root` from your noaap config and
 finds each track by artist, title and album through the album plans — so it works unchanged on any
 library that holds these recordings, and skips with a reason on one that does not. To use different
 tracks, change the `Case` entries below: each names an artist, a title, an album and the outcome the
@@ -145,7 +145,7 @@ def provider(**kw):
     try:
         engine = LocalTiming(**kw)
         if "align" not in engine.capabilities():
-            pytest.skip("the local provider cannot align here: the ytalbum[timing] extra is missing")
+            pytest.skip("the local provider cannot align here: the noaap[timing] extra is missing")
     except Exception as e:                                   # any import problem at all is a skip
         pytest.skip(f"the local provider is not usable here: {e}")
     return engine
@@ -200,7 +200,7 @@ def test_argent_the_second_method_is_the_one_named(tmp_path: Path) -> None:
     album_dir, track = find(ARGENT)
     engine = provider(verify=True)
     if not engine.verifying():
-        pytest.skip("the ytalbum[timing-check] extra is not installed, so there is no second opinion")
+        pytest.skip("the noaap[timing-check] extra is not installed, so there is no second opinion")
     audio = audio_of(album_dir, track, tmp_path)
     timed = engine.align(audio, sidecar_of(album_dir, track))
 

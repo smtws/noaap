@@ -1,7 +1,7 @@
 """Square covers from pillarboxed thumbnails (YouTube: 16:9 frame, square art, empty sides).
 
 Crops only when everything outside the square is empty background — a real 16:9 picture
-is never cut. Used for covers ytalbum saved itself; user-supplied covers are left alone.
+is never cut. Used for covers noaap saved itself; user-supplied covers are left alone.
 """
 
 from __future__ import annotations

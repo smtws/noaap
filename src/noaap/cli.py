@@ -1,4 +1,4 @@
-"""Command line: `ytalbum fetch|plan|download|update|search|serve|config`. A thin layer over service.py."""
+"""Command line: `noaap fetch|plan|download|update|search|serve|config`. A thin layer over service.py."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ BLOCKED = 3  # exit code: YouTube is refusing requests right now; stop asking
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="ytalbum", description="Turn YouTube playlists into tagged albums.")
+    p = argparse.ArgumentParser(prog="noaap", description="Turn YouTube playlists into tagged albums.")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--browser", help="which Chromium-based browser to use")
     ap.add_argument("--remove-profile", action="store_true", help="uninstall: also delete the app's browser profile")
 
-    rc = sub.add_parser("recycle", help="what ytalbum moved aside instead of deleting")
+    rc = sub.add_parser("recycle", help="what noaap moved aside instead of deleting")
     rc.add_argument("action", choices=["list", "restore", "empty"])
     rc.add_argument("entry", nargs="?", help="restore: the entry id, or enough of it to be unique")
     rc.add_argument("--library", type=Path)
@@ -235,7 +235,7 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 
         count, size = bin_total(cfg.library_root)
         print(f"recycle bin:  {count} entr{'y' if count == 1 else 'ies'}, {size / 1e6:.1f} MB"
-              + ("" if not count else " — `ytalbum recycle list`"))
+              + ("" if not count else " — `noaap recycle list`"))
     ffmpeg = cfg.resolved_ffmpeg()
     print(f"ffmpeg:       {ffmpeg or 'NOT FOUND — downloading and trimming will fail; apt install ffmpeg'}")
     return 0
@@ -256,7 +256,7 @@ def _recycle(args: argparse.Namespace, cfg: Config) -> int:
         return _recycle_list(bin_, root)
     if args.action == "restore":
         if not args.entry:
-            print("which one? `ytalbum recycle list` shows the ids", file=sys.stderr)
+            print("which one? `noaap recycle list` shows the ids", file=sys.stderr)
             return 2
         outcome = _service(cfg, root).restore(args.entry)
         if outcome.message:
@@ -291,11 +291,11 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
 
     Nothing is written. Additions are expected and not faults — a plan saved before a field existed
     gains it with its default — so only two things count: a key that disappears, or a value that
-    changes. Unknown keys are listed because they say a newer ytalbum has been here.
+    changes. Unknown keys are listed because they say a newer noaap has been here.
     """
     root = library or cfg.library_root
     if not root or not root.is_dir():
-        print("set the library first: ytalbum config --library PATH", file=sys.stderr)
+        print("set the library first: noaap config --library PATH", file=sys.stderr)
         return 2
     paths = sorted(root.glob(f"*/*/{PLAN_FILE}"))
     identical = filled = 0
@@ -322,7 +322,7 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
     print(f"{len(paths)} plan(s): {identical} byte-identical, {filled} would gain default fields, "
           f"{len(faults)} would lose or change something")
     for key, n in sorted(unknown.items()):
-        print(f"  unknown field {key!r} on {n} plan(s) — written by a newer ytalbum, carried through")
+        print(f"  unknown field {key!r} on {n} plan(s) — written by a newer noaap, carried through")
     for fault in faults:
         print(f"  {fault}")
     return 1 if faults else 0
@@ -366,7 +366,7 @@ def _fetch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     if not collection_address(args.url, cfg):
         outcome = service.fetch(args.url, dry=dry, plan_only=args.cmd == "plan", dump=getattr(args, "dump_collection", None))
         if outcome.status == "planned":
-            print(f"\nplan written to {outcome.album_dir}/.ytalbum.json\nedit it, then run: ytalbum download '{outcome.album_dir}'")
+            print(f"\nplan written to {outcome.album_dir}/.ytalbum.json\nedit it, then run: noaap download '{outcome.album_dir}'")
         return exit_code(outcome)
 
     if args.cmd == "plan":
@@ -435,7 +435,7 @@ def _systemd(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         # they describe the units, which only `install` writes — silently doing nothing with them
         # is how you come to believe the service moved to another port
         print(f"{' and '.join(given)} only mean something for 'install': they are written into the units. "
-              f"The running service's port is the installed one — 'ytalbum service status' shows it.", file=sys.stderr)
+              f"The running service's port is the installed one — 'noaap service status' shows it.", file=sys.stderr)
         return 2
     port, idle_exit = args.port or 8765, args.idle_exit or 900
     try:
@@ -464,7 +464,7 @@ def _app(args: argparse.Namespace) -> int:
         if args.action == "install":
             for line in desktop.install(url, args.browser):
                 print(line)
-            print("ready: 'ytalbum' is in the menu — its window is its own, not the browser's")
+            print("ready: 'noaap' is in the menu — its window is its own, not the browser's")
         elif args.action == "uninstall":
             for line in desktop.uninstall(keep_profile=not args.remove_profile):
                 print(line)
@@ -521,7 +521,7 @@ def _serve(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 def _library(args: argparse.Namespace, cfg: config_mod.Config, required: bool) -> Path | None:
     library = getattr(args, "library", None) or cfg.library_root
     if library is None and required:
-        print("no library root: run `ytalbum config --library PATH` or pass --library", file=sys.stderr)
+        print("no library root: run `noaap config --library PATH` or pass --library", file=sys.stderr)
     return library.expanduser() if library else None
 
 

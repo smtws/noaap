@@ -1,4 +1,4 @@
-"""`ytalbum serve`: a small web UI (installable as a PWA) on top of service.py.
+"""`noaap serve`: a small web UI (installable as a PWA) on top of service.py.
 
 Stdlib only. One worker thread runs jobs one after another (gentle on YouTube, and no two
 jobs ever touch the library at once); the browser polls /api/state.
@@ -118,7 +118,7 @@ class Jobs:
         self._queues: dict[str, queue.Queue[tuple[Job, Callable[[Service], Any]]]] = {"write": queue.Queue(), "read": queue.Queue()}
         self._lock = threading.Lock()
         for lane in self._queues:
-            threading.Thread(target=self._work, args=(lane,), name=f"ytalbum-jobs-{lane}", daemon=True).start()
+            threading.Thread(target=self._work, args=(lane,), name=f"noaap-jobs-{lane}", daemon=True).start()
 
     def submit(self, kind: str, label: str, action: Callable[[Service], Any], target: str | None = None) -> Job:
         job = Job(next(self._ids), kind, label, lane="read" if kind in self.READ_ONLY else "write", target=target)
@@ -222,7 +222,7 @@ class Details:
         self._lock = threading.Lock()
         self._blocked_until = 0.0
         for i in range(self.WORKERS):
-            threading.Thread(target=self._work, name=f"ytalbum-details-{i}", daemon=True).start()
+            threading.Thread(target=self._work, name=f"noaap-details-{i}", daemon=True).start()
 
     def want(self, refs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Queue what we do not know yet; return what we already have."""
@@ -871,7 +871,7 @@ def _search_result(result) -> dict[str, Any]:
 
 class _Handler(BaseHTTPRequestHandler):
     app: App
-    server_version = "ytalbum"
+    server_version = "noaap"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         log.debug("%s " + fmt, self.address_string(), *args)
@@ -899,7 +899,7 @@ class _Handler(BaseHTTPRequestHandler):
             case "/api/tracks":
                 return self._json(self.app.track_index())
             case "/api/recycle":
-                # what ytalbum moved aside instead of deleting (§9, slice 49). No filesystem path
+                # what noaap moved aside instead of deleting (§9, slice 49). No filesystem path
                 # leaves this endpoint: an entry is addressed by its id and nothing else.
                 return self._json({"entries": self.app.recycle()})
             case "/api/mbseed":
@@ -1043,7 +1043,7 @@ def serve(cfg: Config, library: Path, host: str = "127.0.0.1", port: int = 8765,
         app.host, app.port = sock.getsockname()[:2]
     server = app.make_server(sock)
     shown = "localhost" if app.host in ("127.0.0.1", "::1") else app.host
-    print(f"ytalbum: http://{shown}:{app.port}/  (library {library})" + (" [socket-activated]" if sock else " — Ctrl+C to stop"), flush=True)
+    print(f"noaap: http://{shown}:{app.port}/  (library {library})" + (" [socket-activated]" if sock else " — Ctrl+C to stop"), flush=True)
     if app.host in ("0.0.0.0", "::"):
         print("warning: reachable from your network without a login — anyone there can start downloads")
     if idle_exit > 0:
@@ -1056,7 +1056,7 @@ def serve(cfg: Config, library: Path, host: str = "127.0.0.1", port: int = 8765,
                     server.shutdown()
                     return
 
-        threading.Thread(target=watch, name="ytalbum-idle", daemon=True).start()
+        threading.Thread(target=watch, name="noaap-idle", daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

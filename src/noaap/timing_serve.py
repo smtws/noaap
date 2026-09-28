@@ -1,4 +1,4 @@
-"""`ytalbum timing-serve` — the local provider, on the machine that has the hardware (§9, slice 36).
+"""`noaap timing-serve` — the local provider, on the machine that has the hardware (§9, slice 36).
 
 Fifty lines around code that exists anyway: the same `LocalTiming` the `local` provider uses, behind
 two HTTP endpoints, so the laptop can ask a different box to do the arithmetic and inherit none of
@@ -36,7 +36,7 @@ def handler_for(engine: LocalTiming, idle_minutes: float = 0.0) -> type[BaseHTTP
     idle = idle_release(engine, idle_minutes)
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "ytalbum-timing"
+        server_version = "noaap-timing"
 
         def log_message(self, fmt: str, *args: object) -> None:
             log.info("%s - %s", self.address_string(), fmt % args)
@@ -161,7 +161,7 @@ def idle_release(engine: Any, minutes: float, sleep: Callable[[float], None] = t
                 engine.release()
                 idle.wait_again()
 
-    threading.Thread(target=watch, name="ytalbum-timing-idle", daemon=True).start()
+    threading.Thread(target=watch, name="noaap-timing-idle", daemon=True).start()
     return idle
 
 
@@ -174,10 +174,10 @@ def serve(host: str = "0.0.0.0", port: int = 8770, device: str = "auto") -> int:
                          verify=cfg.timing_verify,
                          threshold=cfg.timing_verify_threshold, lost=cfg.timing_verify_lost)
     if ALIGN not in engine.capabilities():
-        print("the timing extra is not installed here: uv pip install \"ytalbum[timing]\"")
+        print("the timing extra is not installed here: uv pip install \"noaap[timing]\"")
         return 2
     server = ThreadingHTTPServer((host, port), handler_for(engine, cfg.timing_idle_minutes))
-    print(f"ytalbum timing: http://{host}:{port}/  (device {engine.resolved_device()}) — Ctrl+C to stop", flush=True)
+    print(f"noaap timing: http://{host}:{port}/  (device {engine.resolved_device()}) — Ctrl+C to stop", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

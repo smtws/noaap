@@ -137,10 +137,10 @@ class Collection:
         return [e for e in self.entries if e.transient]
 
 
-# Forward compatibility, and it is a real risk rather than a theoretical one: two ytalbums share a
+# Forward compatibility, and it is a real risk rather than a theoretical one: two noaaps share a
 # library (the desktop app and a terminal), and a plan written by the newer one is read by the older
 # every time. Before this, an unknown key raised TypeError on load; the alternative — dropping it —
-# would have been worse, because the newer ytalbum would then silently lose a field it had written.
+# would have been worse, because the newer noaap would then silently lose a field it had written.
 # So what we do not understand is carried through untouched, and written back where it was.
 _KEPT = "_unknown_fields"
 
@@ -268,7 +268,7 @@ class PlanTrack:
     def sync_candidates(self) -> None:
         """Keep `candidates`/`chosen` in step with `video_id`/`source_override`.
 
-        **The old fields are the truth.** Two ytalbums share a library, and an older one writes
+        **The old fields are the truth.** Two noaaps share a library, and an older one writes
         `source_override` without knowing `candidates` exists — so where they disagree the legacy
         fields win and the candidate list is rebuilt from them. That also makes this the synthesis
         step for every plan written before slice 50: a plan with no candidates gets one for its

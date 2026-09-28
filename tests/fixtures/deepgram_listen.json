@@ -1,6 +1,6 @@
 {
   "_source": "https://developers.deepgram.com/docs/pre-recorded-audio, read 2026-09-27",
-  "_note": "words[] is always present. `paragraphs` is only present when paragraphs/smart_format are requested, and the docs do not promise it for every model — the client uses its sentences when they are there and groups the words itself when they are not. Confirmed by one live request on 2026-09-27 (nova-3, language=multi, smart_format+punctuate+paragraphs): paragraphs WAS returned, with 16 sentences for a 211 s track. That request also showed two fields the documentation does not list and ytalbum ignores: `languages` on the alternative and `language` on every word, both from asking for multi-language. They are kept below so the next reader knows what a real answer looks like.",
+  "_note": "words[] is always present. `paragraphs` is only present when paragraphs/smart_format are requested, and the docs do not promise it for every model — the client uses its sentences when they are there and groups the words itself when they are not. Confirmed by one live request on 2026-09-27 (nova-3, language=multi, smart_format+punctuate+paragraphs): paragraphs WAS returned, with 16 sentences for a 211 s track. That request also showed two fields the documentation does not list and noaap ignores: `languages` on the alternative and `language` on every word, both from asking for multi-language. They are kept below so the next reader knows what a real answer looks like.",
   "metadata": {
     "duration": 12.3,
     "models": [

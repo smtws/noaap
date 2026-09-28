@@ -500,7 +500,7 @@ def _short_error(e: DownloadError | str) -> str:
     if msg.startswith("[") and ": " in msg:
         msg = msg.split(": ", 1)[1]
     if "confirm your age" in msg or "age-restricted" in msg.lower():
-        return "age-restricted: needs cookies (ytalbum config --cookies-from-browser/--cookies-file)"
+        return "age-restricted: needs cookies (noaap config --cookies-from-browser/--cookies-file)"
     if "not a bot" in msg:
         return BOT_CHECK
     return msg.split(". ")[0].strip().rstrip(".")

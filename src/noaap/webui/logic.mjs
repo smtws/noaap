@@ -401,7 +401,7 @@ export function publishConfirm(d) {
     `    ${p.lines} lines, with their timestamps, and the same words without them`,
     "",
     "LRCLIB is a public database and takes no account. A publish cannot be taken back,",
-    "edited or deleted by you afterwards, and ytalbum never sends it twice.",
+    "edited or deleted by you afterwards, and noaap never sends it twice.",
     "",
     "OK: publish them. Cancel: nothing leaves this machine.",
   ].join("\n");
@@ -467,7 +467,7 @@ export function nearMiss(d) {
   }
 }
 
-// Offering an album to MusicBrainz (\u00a79.43). ytalbum never submits anything: the button opens
+// Offering an album to MusicBrainz (\u00a79.43). noaap never submits anything: the button opens
 // *their* release editor with the boxes filled in, and the person reviews it signed in as
 // themselves. So this half is only about when to offer, and what to say first.
 export function canSeed(plan) {
@@ -491,7 +491,7 @@ export function seedConfirm(plan) {
     "    one Digital Media medium, the titles and the lengths measured from your files,",
     "    the playlist's URL, and an edit note saying where it came from.",
     "",
-    "ytalbum submits nothing. The form opens in a new tab, signed in as you, and nothing reaches",
+    "noaap submits nothing. The form opens in a new tab, signed in as you, and nothing reaches",
     "MusicBrainz until you press their own submit button. Check every field first:",
     "the titles come from YouTube, and MusicBrainz wants releases that were really released.",
     "",
@@ -516,7 +516,7 @@ export function fixConfirm(track, fix) {
     `    their recording: ${asTime(fix.theirs)}`,
     `    your file:       ${asTime(fix.ours)}  (${fix.apart} s apart)`,
     "",
-    "Their recording page is about to open so you can look. ytalbum cannot seed a correction —",
+    "Their recording page is about to open so you can look. noaap cannot seed a correction —",
     "the seeding format is for releases, not recordings — so the change is yours to make, and",
     "only if you are sure: a file can be shorter because it was trimmed, or longer because the",
     "upload has an intro. Nothing is sent from here.",
@@ -525,7 +525,7 @@ export function fixConfirm(track, fix) {
   ].join("\n");
 }
 
-// The badge on a field: a button back to what ytalbum derived, a plain badge, or nothing.
+// The badge on a field: a button back to what noaap derived, a plain badge, or nothing.
 // Nothing is offered where nothing was derived — an album from before `auto` was recorded has
 // no value to go back to (§9, slice 29).
 export function resetKind(provenance, derived) {

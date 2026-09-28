@@ -5,7 +5,7 @@ import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftTe
          seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
   from "./logic.mjs";
 
-// ytalbum web UI. No framework, no build step. All server text goes in via textContent.
+// noaap web UI. No framework, no build step. All server text goes in via textContent.
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
@@ -519,7 +519,7 @@ async function refreshAlbumPanel() {
 
 // -- offering things to MusicBrainz (\u00a79.43) -------------------------------------------------
 //
-// Both of these open one of *their* pages. ytalbum holds no MusicBrainz credentials and submits
+// Both of these open one of *their* pages. noaap holds no MusicBrainz credentials and submits
 // nothing: a seeded form is a form with the boxes filled in, and the person is signed in as
 // themselves in their own browser. Everything else here is about saying that first.
 
@@ -559,19 +559,19 @@ function provBadge(p) {
 }
 
 // A value you overrode is yours until you say otherwise — so the badge that says "you" is also the
-// way back to what ytalbum found. Nothing is offered where nothing was derived (DESIGN.md §9, slice 29).
+// way back to what noaap found. Nothing is offered where nothing was derived (DESIGN.md §9, slice 29).
 function resetMark(plan, track, name, label = null) {
   const owner = track || plan;
   const derived = owner.auto?.[name];
   const kind = resetKind(owner.provenance?.[name], derived);
   if (kind !== "button") {
     return owner.provenance?.[name] === "user"
-      ? h("span", { class: "badge user", title: "Yours. ytalbum derived nothing for this field, so there is nothing to go back to." }, PROV.user)
+      ? h("span", { class: "badge user", title: "Yours. noaap derived nothing for this field, so there is nothing to go back to." }, PROV.user)
       : provBadge(owner.provenance?.[name]);
   }
   const what = label || name;
   return h("button", { class: "badge user reset", type: "button",
-    title: `Yours${label ? ` (${label})` : ""}. Click to go back to what ytalbum found: “${derived}” — it is then ytalbum's again, and an update or repair may change it.`,
+    title: `Yours${label ? ` (${label})` : ""}. Click to go back to what noaap found: “${derived}” — it is then noaap's again, and an update or repair may change it.`,
     onclick: (e) => resetField(plan, track, name, e.currentTarget, `${what} → “${derived}”`) }, `${PROV.user} \u21ba`);
 }
 
@@ -850,7 +850,7 @@ async function publishLyrics(button, p, t, d) {
 }
 
 // An lrclib entry that is nearly this recording (\u00a79.46): what is known about it, and the one
-// thing the user can do that ytalbum would not do for them.
+// thing the user can do that noaap would not do for them.
 function nearMissLine(p, t, d) {
   const got = nearMiss(d);
   if (!got) return null;
@@ -1052,7 +1052,7 @@ function mayLeave(what, capability) {
   if (!sendsAudio(capability) || told.has(name)) return true;
   if (!confirm([`The audio of this track is sent to ${name} to ${what}.`, "",
     "It leaves this machine and this network. Local providers (`local`, `http`) never do that.",
-    `${name} charges for it — the settings panel shows their list price — and ytalbum never retries,`,
+    `${name} charges for it — the settings panel shows their list price — and noaap never retries,`,
     "so one press is one request.", "", "OK: send it. Cancel: nothing is sent."].join("\n"))) return false;
   told.add(name);
   return true;
@@ -1657,8 +1657,8 @@ function renderLog(job) {
 
 const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium", brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
 
-// What ytalbum moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
-// way anything leaves is from here or `ytalbum recycle empty` — which is the point of having it.
+// What noaap moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
+// way anything leaves is from here or `noaap recycle empty` — which is the point of having it.
 function recycleSection() {
   const box = h("div", { class: "recycle" }, h("h3", {}, "Recycle bin"), h("div", { class: "muted" }, "loading…"));
   loadRecycle(box);
@@ -1674,9 +1674,9 @@ async function loadRecycle(box) {
   box.replaceChildren(
     h("h3", {}, "Recycle bin"),
     h("div", { class: "muted" }, rows.length
-      ? `${rows.length} thing(s) ytalbum moved aside instead of deleting, ${(size / 1e6).toFixed(1)} MB. `
+      ? `${rows.length} thing(s) noaap moved aside instead of deleting, ${(size / 1e6).toFixed(1)} MB. `
         + "Nothing here is ever removed on its own."
-      : "Empty. When ytalbum deletes or prunes a track, the audio comes here first."),
+      : "Empty. When noaap deletes or prunes a track, the audio comes here first."),
     ...rows.map((r) => h("div", { class: "recycle-row" },
       h("span", {}, `${r.artist} — ${r.title}`),
       h("span", { class: "muted" }, `${r.album} · ${r.reason} · ${(r.bytes / 1e6).toFixed(1)} MB`),
@@ -1696,7 +1696,7 @@ async function restoreEntry(row, button, box) {
 async function emptyRecycle(rows, button, box) {
   const size = rows.reduce((n, r) => n + (r.bytes || 0), 0);
   if (!confirm(`Empty the recycle bin?\n\n${rows.length} thing(s), ${(size / 1e6).toFixed(1)} MB.\n`
-      + "This is the one place where ytalbum really does delete audio, and it cannot be undone.")) return;
+      + "This is the one place where noaap really does delete audio, and it cannot be undone.")) return;
   const id = await submit("empty_recycle", {}, button);
   if (id != null) await jobSettled(id);
   await loadRecycle(box);
@@ -1710,7 +1710,7 @@ function renderSettings() {} // the panel is built when opened, so polling never
 function timingHelp(st, what) {
   const base = what === "align"
     ? "who may place timestamps on the words you have: nobody, a model on this machine (the "
-      + "ytalbum[timing] extra), another machine running `ytalbum timing-serve`, or a paid service"
+      + "noaap[timing] extra), another machine running `noaap timing-serve`, or a paid service"
     : "who may write down the words of a track that has none — a guess, offered only where there is "
       + "nothing to lose";
   // whether a second method checks every alignment is worth a sentence: it changes what the user

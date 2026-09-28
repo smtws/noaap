@@ -3,7 +3,7 @@
 Two of them, because the two capabilities have two different markets:
 
 - **ElevenLabs** aligns *and* transcribes. It is the only mainstream vendor that sells forced
-  alignment of text you supply, which is the thing ytalbum wants most often.
+  alignment of text you supply, which is the thing noaap wants most often.
 - **Deepgram** transcribes only, and says so: `capabilities()` never claims `align`, so the page
   never offers an alignment it cannot do.
 

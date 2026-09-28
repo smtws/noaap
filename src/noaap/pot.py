@@ -2,7 +2,7 @@
 
 `ensure_server()` pings 127.0.0.1:<port>/ping; if nothing answers it starts a detached
 watchdog (`python -m noaap.pot`), which runs `node build/main.js` and stops it once the
-heartbeat file has not been touched for `idle` seconds. ytalbum touches the heartbeat on
+heartbeat file has not been touched for `idle` seconds. noaap touches the heartbeat on
 every YouTube request and during downloads. If the server cannot be started, yt-dlp's
 plugin falls back to script mode on its own.
 """
@@ -68,7 +68,7 @@ def ensure_server(home: Path, node: str, port: int = DEFAULT_PORT, idle: int = D
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=subprocess.STDOUT,
-            start_new_session=True,  # survives ytalbum; stops itself when idle
+            start_new_session=True,  # survives noaap; stops itself when idle
         )
     deadline = time.monotonic() + START_TIMEOUT
     while time.monotonic() < deadline:

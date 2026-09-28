@@ -281,7 +281,7 @@ class Service:
 
         A fetch renames only the album it is fetching. So when the library already holds a
         spelling for this artist key, the incoming album adopts it — even when it arrives with
-        better evidence, because upgrading the other albums is `ytalbum repair`'s job, not a
+        better evidence, because upgrading the other albums is `noaap repair`'s job, not a
         side effect of fetching something. When the newcomer *is* the better evidence, one line
         says so and names both spellings. The cost, accepted: an older spelling can stand until
         repair runs. What it buys is one folder per artist (DESIGN.md §9, slice 23).
@@ -299,7 +299,7 @@ class Service:
         if spelling_rank(plan.albumartist, ours) < spelling_rank(theirs, seen[theirs]):
             self.log(
                 f"this album spells the artist '{plan.albumartist}', the library '{theirs}' — keeping "
-                f"'{theirs}' so there is one folder; 'ytalbum repair' (or “Repair library” in the web UI) "
+                f"'{theirs}' so there is one folder; 'noaap repair' (or “Repair library” in the web UI) "
                 f"unifies them on the better spelling"
             )
         else:
@@ -504,7 +504,7 @@ class Service:
         """
         api = self.lrclib
         if api is None:
-            self.log("lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            self.log("lyrics are switched off — turn them on with: noaap config --lyrics on")
             return []
         albums = list(iter_plans(self.library)) if self.library and self.library.exists() else []
         if artist:
@@ -576,7 +576,7 @@ class Service:
     def publish_lyrics(self, source_id: str, video_id: str) -> Outcome:
         """Give one track's words back to LRCLIB (§9, slice 42, backlog 19).
 
-        The one thing in ytalbum that makes something **public and irrevocable**, so it is the one
+        The one thing in noaap that makes something **public and irrevocable**, so it is the one
         thing that asks the most before doing it: the words must be the user's own (not lrclib's,
         not a machine's draft), timed, and different from whatever lrclib already holds for this
         track. The page asks a second time, in a confirm that names everything that leaves.
@@ -586,7 +586,7 @@ class Service:
         """
         api = self.lrclib
         if api is None or not hasattr(api, "publish"):
-            return Outcome("failed", message="lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            return Outcome("failed", message="lyrics are switched off — turn them on with: noaap config --lyrics on")
         found = self.find_album(source_id)
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
@@ -691,7 +691,7 @@ class Service:
         # touches this module (§9, slice 36)
         from .timing_local import separated_voice
 
-        with tempfile.TemporaryDirectory(prefix="ytalbum-voice-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="noaap-voice-") as tmp:
             voice = separated_voice(audio, Path(tmp) / "voice.wav", self.log, self.check)
             heard = "the separated voice" if voice else "the mixed track"
             self.log(f"asking {engine.name} to draft the words of {track.title} · "
@@ -748,7 +748,7 @@ class Service:
 
         The same `reconcile` the passes run (§9, slice 21), called for its own sake: the web UI asks for
         this when an album is opened and the two had drifted apart — a sidecar edited or deleted
-        outside ytalbum. Nothing is looked up and nothing is downloaded.
+        outside noaap. Nothing is looked up and nothing is downloaded.
         """
         found = self.find_album(source_id)
         if not found:
@@ -779,7 +779,7 @@ class Service:
         """
         api = self.lrclib
         if api is None:
-            return Outcome("failed", message="lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            return Outcome("failed", message="lyrics are switched off — turn them on with: noaap config --lyrics on")
         found = self.find_album(source_id)
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
@@ -867,7 +867,7 @@ class Service:
         """
         api = self.lrclib
         if api is None:
-            self.log("lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            self.log("lyrics are switched off — turn them on with: noaap config --lyrics on")
             return []
         if not dry_run and ALIGN not in capabilities_of(self.cfg):
             message = ("checking a near miss needs a timing provider that can align — "
@@ -1003,7 +1003,7 @@ class Service:
         """
         api = self.lrclib
         if api is None:
-            return Outcome("failed", message="lyrics are switched off — turn them on with: ytalbum config --lyrics on")
+            return Outcome("failed", message="lyrics are switched off — turn them on with: noaap config --lyrics on")
         found = self.find_album(source_id)
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
@@ -1305,7 +1305,7 @@ class Service:
         return Outcome("ok", message=f"{gone} removed")
 
     def delete_album(self, source_id: str) -> Outcome:
-        """Delete everything ytalbum put into this album folder, then the folder if it is empty."""
+        """Delete everything noaap put into this album folder, then the folder if it is empty."""
         found = self.find_album(source_id)
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
@@ -1398,7 +1398,7 @@ def _inside(album_dir: Path, filename: str) -> Path | None:
 
 
 def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:
-    """Put one field back to what ytalbum derived, and stop calling it the user's.
+    """Put one field back to what noaap derived, and stop calling it the user's.
 
     The value matters more than the mark: `_merge_fields` decides a field is the user's by comparing
     it with `auto` and re-asserts the USER provenance on every merge, so dropping the mark alone
@@ -1460,7 +1460,7 @@ def switch_source(track: PlanTrack, video_id: str | None) -> bool:
 def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any], source: Any = None) -> AlbumPlan:
     """Pure: copy editable fields from `edits` into the plan, marking changed ones as USER.
 
-    `reset` (album-level, and per track) names fields to hand back to ytalbum; it is applied first,
+    `reset` (album-level, and per track) names fields to hand back to noaap; it is applied first,
     so a save that resets one field and edits another does both.
 
     `source` is only needed to read what the user typed into the audio-source field: the provider

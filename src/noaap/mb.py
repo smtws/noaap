@@ -53,7 +53,7 @@ def seed_release(plan: Any, lengths: dict[str, float] | None = None) -> dict[str
 
     Read from <https://musicbrainz.org/doc/Development/Release_Editor_Seeding> on 2026-09-27: a
     form POST to `/release/add`, where only `name` is required and everything else is optional,
-    with `_x_` standing for an index. **ytalbum submits nothing** — these fields open a form with
+    with `_x_` standing for an index. **noaap submits nothing** — these fields open a form with
     the boxes already filled, and the person reviews it, logged in as themselves.
 
     The lengths are the ones measured from the files, because that is the only number here that

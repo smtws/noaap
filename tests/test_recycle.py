@@ -1,4 +1,4 @@
-"""The recycle bin: ytalbum never removes audio, it only moves it aside (DESIGN §9, slice 49).
+"""The recycle bin: noaap never removes audio, it only moves it aside (DESIGN §9, slice 49).
 
 Deleting and pruning used to unlink. They move now, and the bin holds enough to put everything back
 — the audio, the sidecar, the kept original, and the plan track exactly as it was. Nothing in here
@@ -413,7 +413,7 @@ def test_pruning_from_the_command_line_bins_too(library, capsys, monkeypatch):
 
 
 def test_listing_survives_being_piped_into_head(library, monkeypatch, capsys):
-    """`ytalbum recycle list | head` closed the pipe and Python printed a traceback."""
+    """`noaap recycle list | head` closed the pipe and Python printed a traceback."""
     from noaap.cli import main
 
     tmp_path, plan, yt = library

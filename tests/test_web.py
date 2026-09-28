@@ -55,7 +55,7 @@ def wait(client, job_id, timeout=10):
 def test_static_and_state(server):
     _, c = server
     page = c.get("/")
-    assert "ytalbum" in page.text and page.headers["cache-control"] == "no-store"
+    assert "noaap" in page.text and page.headers["cache-control"] == "no-store"
     assert '"/app.js?v=' in page.text and '"/style.css?v=' in page.text  # content-hashed: never stale
     assert "renderSettings" in c.get("/app.js?v=whatever").text
     assert c.get("/manifest.webmanifest").headers["content-type"] == "application/manifest+json"
@@ -907,7 +907,7 @@ def test_lrclib_being_unreachable_is_not_reported_as_no_words(lyrics_server):
 
 
 def test_the_repair_button_runs_repair_on_the_write_lane(library, opus_template):
-    """The fetch log tells people `ytalbum repair` unifies spellings; now they can click it."""
+    """The fetch log tells people `noaap repair` unifies spellings; now they can click it."""
     shouting = build_plan(Collection.from_dict(json.loads((FIXTURES / "vol1_collection.json").read_text())))
     # a second volume of the same curator, shouted: two spellings of one artist key, which is
     # what repair unifies. (Not an "album": repair would then name it after its track artists.)
@@ -952,7 +952,7 @@ def test_the_spelling_hint_names_both_ways_to_run_repair(tmp_path, opus_template
 
     _, log = settled(tmp_path, opus_template, [("LORD OF THE LOST", Provenance.YT_TITLE)], (LOTL, Provenance.MB))
     hint = next(line for line in log if "repair" in line)
-    assert "ytalbum repair" in hint and "Repair library" in hint
+    assert "noaap repair" in hint and "Repair library" in hint
 
 
 # -- the fetch preview (P11, DESIGN.md §9, slice 28) ---------------------------------------------
@@ -1061,7 +1061,7 @@ def test_the_direct_path_does_not_go_through_a_preview(library, opus_template):
 # -- a way back from an edit (P12, DESIGN.md §9, slice 29) ----------------------------------------
 
 
-def test_resetting_an_album_field_restores_what_ytalbum_derived():
+def test_resetting_an_album_field_restores_what_noaap_derived():
     plan = build_plan(vol1())
     derived = plan.album
     apply_user_edits(plan, {"album": "My Own Name"})
@@ -1069,7 +1069,7 @@ def test_resetting_an_album_field_restores_what_ytalbum_derived():
 
     apply_user_edits(plan, {"reset": ["album"]})
     assert plan.album == derived
-    assert "album" not in plan.provenance  # ytalbum's again, and the next pass names its source
+    assert "album" not in plan.provenance  # noaap's again, and the next pass names its source
     assert plan.folder.endswith(derived)  # the folder follows
 
 
@@ -1132,7 +1132,7 @@ def test_an_edited_field_survives_an_update_but_a_reset_one_does_not():
 
 
 def test_repair_unifies_an_album_artist_that_was_reset(tmp_path, opus_template):
-    """The point of the reset: the field is ytalbum's again, so harmonisation may touch it."""
+    """The point of the reset: the field is noaap's again, so harmonisation may touch it."""
     from test_repair import service as repair_service
 
     first = build_plan(vol1())

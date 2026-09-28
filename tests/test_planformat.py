@@ -110,10 +110,10 @@ def test_a_plan_survives_the_disk(path: Path, tmp_path: Path) -> None:
 
 def test_a_plan_from_a_later_version_survives_unchanged() -> None:
     """Forward compatibility, and it is not theoretical: the desktop app and a terminal share one
-    library, so a plan written by the newer ytalbum is read by the older every time it runs.
+    library, so a plan written by the newer noaap is read by the older every time it runs.
 
     Before this, an unknown key raised `TypeError` on load. Dropping it instead would have been
-    worse — the newer ytalbum would silently lose a field it had written and believed saved.
+    worse — the newer noaap would silently lose a field it had written and believed saved.
     """
     path = next(p for p in PLANS if p.stem == "from_a_later_version")
     before = raw(path)
@@ -172,7 +172,7 @@ def test_the_fixtures_cover_every_shape_worth_covering() -> None:
     assert not missing, f"no fixture covers {missing}"
 
 
-# -- ytalbum plan --verify -------------------------------------------------------------------------
+# -- noaap plan --verify -------------------------------------------------------------------------
 
 
 def test_verify_reports_and_writes_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -231,7 +231,7 @@ def test_plan_without_a_url_or_verify_is_a_usage_error(capsys: pytest.CaptureFix
 def test_the_old_fields_win_when_a_plan_disagrees_with_itself() -> None:
     """`candidates`/`chosen` are derived; `video_id`/`source_override` are the truth (slice 50).
 
-    Two ytalbums share a library and an older one writes `source_override` knowing nothing about
+    Two noaaps share a library and an older one writes `source_override` knowing nothing about
     candidates — so a plan whose `chosen` disagrees with its own override is repaired on load, in
     the direction of the field the older version can still write.
     """
