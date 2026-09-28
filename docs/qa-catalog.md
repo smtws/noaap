@@ -2508,10 +2508,44 @@ A read-only inventory before a Source boundary is designed. No code changed.
   provider's names" at no cost.
   - **result:** migration bill written down; no migration proposed
 
+## AN. The plan format, pinned before anything moves it (P43, DESIGN §9 slice 48)
+
+- [x] **AN1 · R** — a corpus of real plans, one per shape
+
+  `tests/fixtures/plans/`: twelve plans copied read-only out of the reference library, covering
+  official album, compilation, single, artist playlist, trimmed tracks, `source_override`, user-owned
+  lyrics, `lyrics_rejected`, all five `lyrics_fit` verdicts, `lyrics_no_entry`, `lyrics_timed_by`,
+  `lyrics_published` and multi-disc. Two are **built**, because the library holds no example: a
+  failed track with `no_audio_stream`, and a plan from a later version. A case asserts the set still
+  covers every shape, so losing one is a failure rather than a quiet gap.
+  - **result:** pass, 20 shapes, no filesystem path in any fixture
+
+- [x] **AN2 · R** — what the invariant actually is
+
+  Not byte-identity. Over the **246** real plans: **140 byte-identical, 106 differing, every
+  difference additive** — thirteen keys that older plans omit, filled with their defaults. Nothing
+  removed, no value changed, in any of the 246. So the invariant is *no key disappears and no value
+  changes*, plus a second round trip being byte-stable, plus every value keeping its type.
+  - **result:** pass, 55 cases
+
+- [x] **AN3 · M** — a plan from a later version survives
+
+  An unknown key used to raise `TypeError`. It is now carried through and written back where it was —
+  and the marker the implementation uses never reaches the file. An unknown *schema* is still
+  refused. This is the one rule P43 changed, and it is in DESIGN slice 48.
+  - **result:** pass
+
+- [x] **AN4 · R** — `ytalbum plan --verify` on the real library
+
+  `246 plan(s): 140 byte-identical, 106 would gain default fields, 0 would lose or change something`,
+  exit 0. The plans' combined sha was unchanged afterwards: it writes nothing.
+  - **result:** pass
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AN cases (P43: the plan format, pinned) | 4 | 0 | Twelve real plans, 20 shapes, 55 cases. Over 246 real plans a round trip is **additive only** — 140 byte-identical, 106 gaining defaults, 0 losing or changing anything. An unknown field used to raise `TypeError` and is now carried through; an unknown schema is still refused. `ytalbum plan --verify` writes nothing, verified by hashing the plans before and after. 780 pytest + 91 node. |
 | 2026-09-28 | the AM cases (P42: where YouTube is assumed) | 3 | n/a — read-only inventory, no code under test | 895 marked lines in 49 files (423 src, 472 tests). `youtube.py` is already a seam only four modules import; the real coupling is `video_id` as identity, the `yt_*` provenance names, and a classifier that reads a channel. Everything downstream of the plan — lyrics, timing, MB, trim, tags, the editor — is already source-neutral. Seven disk leaks, one expensive (`youtube_id` in every audio file). |
 | 2026-09-28 | the AL cases (P41: finding the tracks that wait for you) | 3 | 0 | 42 tracks across 33 albums were waiting and nothing listed them. Header chip `♪ 42 need you`, a count per card, `♪ ?` on the row. Counted on the real library read-only and it matched the pass's tally. 725 pytest + 91 node. |
 | 2026-09-28 | the AK cases (P40: remembering that there is nothing to find) | 2 | 0 | `lyrics_no_entry` on the track, a date, not a verdict — `nearMiss` renders an unknown `decided` as *unclear*, which would have claimed the aligner was undecided about an entry that does not exist. 878 lookups a run saved. 723 pytest + 88 node. |

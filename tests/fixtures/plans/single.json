@@ -1,0 +1,81 @@
+{
+  "source_url": "https://www.youtube.com/watch?v=___ci9kmRc4",
+  "source_id": "___ci9kmRc4",
+  "kind": "single",
+  "album": "Viva Vendetta (video version)",
+  "albumartist": "Lord of the Lost",
+  "year": null,
+  "cover_url": "https://i.ytimg.com/vi_webp/___ci9kmRc4/maxresdefault.webp",
+  "folder": "Lord of the Lost/Viva Vendetta (video version)",
+  "tracks": [
+    {
+      "video_id": "___ci9kmRc4",
+      "number": 1,
+      "artist": "Lord of the Lost",
+      "title": "Viva Vendetta (video version)",
+      "filename": "Lord of the Lost - Viva Vendetta (video version) - 01 - Viva Vendetta (video version).opus",
+      "provenance": {
+        "artist": "mb",
+        "title": "user"
+      },
+      "disc": 1,
+      "state": "done",
+      "error": null,
+      "error_kind": null,
+      "audio_choice": "best",
+      "ext": "opus",
+      "auto": {
+        "artist": "Lord of the Lost",
+        "title": "Viva Vendetta"
+      },
+      "in_source": true,
+      "tagged": "d78c61f78993a9ed",
+      "mbid": null,
+      "channel": "Napalm Records",
+      "trim_start": 19.8,
+      "trim_end": 408.0,
+      "trimmed": "19.80-408.00",
+      "mb_length": null,
+      "duration": 471,
+      "lyrics": "none",
+      "lyrics_id": null,
+      "lyrics_length": null,
+      "lyrics_sha": null,
+      "lyrics_rejected": [],
+      "file_length": 388.2135,
+      "source_override": null,
+      "lyrics_for_source": null,
+      "lyrics_for_length": null,
+      "lyrics_timed_by": null,
+      "lyrics_words_by": null,
+      "lyrics_published": null,
+      "lyrics_checked": null,
+      "lyrics_fit": null,
+      "lyrics_no_entry": "2026-09-28"
+    }
+  ],
+  "skipped": [],
+  "provenance": {
+    "albumartist": "yt_title",
+    "album": "user"
+  },
+  "auto": {
+    "kind": "single",
+    "album": "Viva Vendetta | Napalm Records",
+    "albumartist": "Lord of the Lost",
+    "year": null
+  },
+  "mbid": null,
+  "cover_fallback_url": null,
+  "cover_fetched": {
+    "url": "https://i.ytimg.com/vi_webp/___ci9kmRc4/maxresdefault.webp",
+    "sha1": "afc8853104a4f5497174073526f93b8f81722fd4"
+  },
+  "source_state": {
+    "ids": [
+      "___ci9kmRc4"
+    ],
+    "modified": null
+  },
+  "schema": 1
+}

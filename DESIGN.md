@@ -1261,6 +1261,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    rule explicit — a new signal has to beat every counterexample before it can decide anything
    (`docs/regression.md`, `docs/qa-catalog.md` AH).
 
+48. ✅ The plan format is pinned, and it tolerates the future (2026-09-28, P43). The plan is the only
+   state (§6), so before a refactor touches it there is a corpus of real plans — one per shape the
+   reference library holds, plus two built for shapes it does not — and a test that load-then-save
+   loses no key and changes no value. **Byte-identity is deliberately not the invariant:** a plan
+   written before a field existed omits it, and writing it back fills the default. Measured over 246
+   real plans: 140 byte-identical, 106 differing, and **every difference additive** — nothing removed,
+   nothing changed. `ytalbum plan --verify` reports that over any library and writes nothing.
+   **One rule did change.** An unknown key used to raise `TypeError` on load. Two ytalbums share a
+   library — the desktop app and a terminal — so a plan written by the newer one is read by the older
+   every time it runs; refusing to load it is bad and silently dropping the field is worse, because
+   the newer ytalbum would lose what it believed saved. Unknown keys are now carried through
+   untouched and written back where they were. An unknown *schema* is still refused: tolerating a
+   field is not tolerating a format.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

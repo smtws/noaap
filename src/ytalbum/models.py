@@ -7,7 +7,7 @@ and "tracks on the album" are different lists and are never conflated.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from enum import StrEnum
 from typing import Any
 
@@ -97,6 +97,29 @@ class Collection:
         return [e for e in self.entries if e.transient]
 
 
+# Forward compatibility, and it is a real risk rather than a theoretical one: two ytalbums share a
+# library (the desktop app and a terminal), and a plan written by the newer one is read by the older
+# every time. Before this, an unknown key raised TypeError on load; the alternative — dropping it —
+# would have been worse, because the newer ytalbum would then silently lose a field it had written.
+# So what we do not understand is carried through untouched, and written back where it was.
+_KEPT = "_unknown_fields"
+
+
+def keeping(cls: Any, d: dict[str, Any]) -> Any:
+    """Build a dataclass from `d`, remembering any key the class does not have."""
+    known = {f.name for f in fields(cls)}
+    made = cls(**{k: v for k, v in d.items() if k in known})
+    extra = {k: v for k, v in d.items() if k not in known}
+    if extra:
+        object.__setattr__(made, _KEPT, extra)
+    return made
+
+
+def kept(obj: Any) -> dict[str, Any]:
+    """The keys that were carried through, to write back beside the ones we understand."""
+    return getattr(obj, _KEPT, {})
+
+
 @dataclass
 class PlanTrack:
     video_id: str
@@ -152,6 +175,13 @@ class PlanTrack:
     # 878 of this library's 1089 wordless tracks are in this state, and they were asked every run.
     lyrics_no_entry: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), **kept(self)}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> PlanTrack:
+        return keeping(cls, d)
+
     @property
     def effective_id(self) -> str:
         """The video the audio comes from: the playlist's, unless the user chose another one.
@@ -189,10 +219,13 @@ class AlbumPlan:
         return self.kind == Kind.COMPILATION
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        out = asdict(self)
+        out["tracks"] = [t.to_dict() for t in self.tracks]
+        return {**out, **kept(self)}
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> AlbumPlan:
         if d.get("schema") != PLAN_SCHEMA:
             raise ValueError(f"unsupported plan schema {d.get('schema')!r} (expected {PLAN_SCHEMA})")
-        return cls(**{**d, "tracks": [PlanTrack(**t) for t in d["tracks"]]})
+        plan = keeping(cls, {**d, "tracks": [PlanTrack.from_dict(t) for t in d["tracks"]]})
+        return plan

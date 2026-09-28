@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import config as config_mod
-from .models import AlbumPlan, PlanTrack, SourceRef
+from .config import Config
+from .download import PLAN_FILE
+from .models import AlbumPlan, PlanTrack, SourceRef, kept
 from .service import Service, exit_code
 from .youtube import NotSupported, channel_base_url
 
@@ -41,9 +45,11 @@ def main(argv: list[str] | None = None) -> int:
     se.add_argument("--no-lyrics", action="store_true", help="do not look lyrics up at lrclib.net")
 
     pl = sub.add_parser("plan", help="write the plan into the album folder for editing, download nothing")
-    pl.add_argument("url")
+    pl.add_argument("url", nargs="?")
     pl.add_argument("--library", type=Path)
     pl.add_argument("--no-mb", action="store_true", help="skip the MusicBrainz lookup")
+    pl.add_argument("--verify", action="store_true",
+                    help="read every plan in the library and report anything a rewrite would lose; writes nothing")
 
     d = sub.add_parser("download", help="download from an (edited) plan in an album folder")
     d.add_argument("album_dir", type=Path)
@@ -120,7 +126,12 @@ def main(argv: list[str] | None = None) -> int:
         match args.cmd:
             case "config":
                 return _config(args, cfg)
+            case "plan" if args.verify:
+                return _verify_plans(cfg, getattr(args, "library", None))
             case "fetch" | "plan":
+                if not args.url:
+                    print("give a URL, or --verify to check the plans already here", file=sys.stderr)
+                    return 2
                 return _fetch(args, cfg)
             case "search":
                 return _search(args, cfg)
@@ -206,6 +217,76 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         print(f"po tokens:    {mode}{state}\n              {pot}")
     print(f"js runtime:   {' '.join(filter(None, runtime)) if runtime else 'NONE FOUND — install deno or node'}")
     return 0
+
+
+def _verify_plans(cfg: Config, library: Path | None) -> int:
+    """Read every plan and re-serialise it in memory: what would a rewrite lose? (DESIGN.md §6)
+
+    Nothing is written. Additions are expected and not faults — a plan saved before a field existed
+    gains it with its default — so only two things count: a key that disappears, or a value that
+    changes. Unknown keys are listed because they say a newer ytalbum has been here.
+    """
+    root = library or cfg.library_root
+    if not root or not root.is_dir():
+        print("set the library first: ytalbum config --library PATH", file=sys.stderr)
+        return 2
+    paths = sorted(root.glob(f"*/*/{PLAN_FILE}"))
+    identical = filled = 0
+    faults: list[str] = []
+    unknown: dict[str, int] = {}
+    for path in paths:
+        where = f"{path.parent.parent.name}/{path.parent.name}"
+        try:
+            before = json.loads(path.read_text(encoding="utf-8"))
+            plan = AlbumPlan.from_dict(before)
+        except (OSError, ValueError, TypeError) as e:
+            faults.append(f"{where}: cannot be read — {e}")
+            continue
+        after = plan.to_dict()
+        gone, changed = _plan_differences(before, after)
+        for key in _plan_unknown(plan):
+            unknown[key] = unknown.get(key, 0) + 1
+        if gone or changed:
+            faults.append(f"{where}: would lose {gone}" if gone else f"{where}: would change {changed[:3]}")
+        elif json.dumps(after, indent=2, ensure_ascii=False) + "\n" == path.read_text(encoding="utf-8"):
+            identical += 1
+        else:
+            filled += 1
+    print(f"{len(paths)} plan(s): {identical} byte-identical, {filled} would gain default fields, "
+          f"{len(faults)} would lose or change something")
+    for key, n in sorted(unknown.items()):
+        print(f"  unknown field {key!r} on {n} plan(s) — written by a newer ytalbum, carried through")
+    for fault in faults:
+        print(f"  {fault}")
+    return 1 if faults else 0
+
+
+def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str], list[str]]:
+    gone: list[str] = []
+    changed: list[str] = []
+    if isinstance(before, dict) and isinstance(after, dict):
+        gone += [f"{path}{k}" for k in before.keys() - after.keys()]
+        for k in before.keys() & after.keys():
+            g, c = _plan_differences(before[k], after[k], f"{path}{k}.")
+            gone += g
+            changed += c
+    elif isinstance(before, list) and isinstance(after, list):
+        if len(before) != len(after):
+            changed.append(f"{path}length {len(before)} -> {len(after)}")
+        for i, (b, a) in enumerate(zip(before, after, strict=False)):
+            g, c = _plan_differences(b, a, f"{path}{i}.")
+            gone += g
+            changed += c
+    elif before != after:
+        changed.append(f"{path}{before!r} -> {after!r}")
+    return gone, changed
+
+
+def _plan_unknown(plan: AlbumPlan) -> list[str]:
+    keys = list(kept(plan))
+    for track in plan.tracks:
+        keys += [f"tracks.{k}" for k in kept(track)]
+    return sorted(set(keys))
 
 
 def _fetch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
