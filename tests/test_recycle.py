@@ -116,17 +116,82 @@ def test_restore_keeps_lyrics_the_user_wrote_while_the_track_was_gone(library):
     assert entries(tmp_path)[0].words is not None
 
 
-def test_restore_refuses_when_the_album_is_gone(library):
+def test_restoring_a_track_of_a_deleted_album_rebuilds_the_album_first(library):
+    """Deleting an album is the largest decision a user can regret, and the source may be gone by
+    then — so the plan is binned too and the folder is rebuilt from it."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    s = service(tmp_path, yt)
+    s.delete_track(plan.source_id, plan.tracks[0].video_id)
+    entry = entries(tmp_path)[0]
+    s.delete_album(plan.source_id)
+    assert not album_dir.exists()
+
+    assert s.restore(entry.id).status == "ok"
+
+    back = load_plan(album_dir)
+    assert back is not None, "the folder and the plan came back"
+    assert [t.video_id for t in back.tracks] == [plan.tracks[0].video_id], "only the track asked for"
+    assert (album_dir / back.tracks[0].filename).is_file()
+    assert next(album_dir.glob("cover.*"), None), "the cover came back with the album"
+    # the album entry stays: it still names the other tracks, which are still in the bin
+    assert any(e.is_album for e in entries(tmp_path))
+
+
+def test_restoring_the_album_entry_brings_everything_still_in_the_bin(library):
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    (album_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff art")
+    s = service(tmp_path, yt)
+    s.delete_album(plan.source_id)
+
+    album = next(e for e in entries(tmp_path) if e.is_album)
+    assert s.restore(album.id).status == "ok"
+
+    back = load_plan(album_dir)
+    assert len(back.tracks) == len(plan.tracks)
+    assert [t.number for t in back.tracks] == list(range(1, len(plan.tracks) + 1))
+    assert (album_dir / "cover.jpg").read_bytes() == b"\xff\xd8\xff art"
+    assert entries(tmp_path) == [], "everything came out of the bin"
+
+
+def test_a_track_whose_album_entry_was_emptied_is_still_refused(library):
+    """The one case where today's refusal is right: there is nothing left to rebuild from."""
     tmp_path, plan, yt = library
     s = service(tmp_path, yt)
     s.delete_track(plan.source_id, plan.tracks[0].video_id)
     entry = entries(tmp_path)[0]
     s.delete_album(plan.source_id)
+    import shutil as sh
+
+    for album in [e for e in entries(tmp_path) if e.is_album]:
+        sh.rmtree(album.path)
 
     outcome = s.restore(entry.id)
     assert outcome.status == "failed"
-    assert "not in the library any more" in outcome.message
+    assert "album entry has been emptied" in outcome.message
     assert any(e.id == entry.id for e in entries(tmp_path)), "a refused restore changes nothing"
+
+
+def test_restoring_into_an_album_that_was_fetched_again_merges_by_video_id(library):
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    s = service(tmp_path, yt)
+    s.delete_album(plan.source_id)
+
+    # it comes back from the source, but with one track missing
+    fresh = build_plan(vol1())
+    fresh.tracks = [t for t in fresh.tracks if t.video_id != plan.tracks[0].video_id]
+    run(fresh, album_dir, yt)
+
+    album = next(e for e in entries(tmp_path) if e.is_album)
+    said: list[str] = []
+    s.log = said.append
+    assert s.restore(album.id).status == "ok"
+
+    back = load_plan(album_dir)
+    assert {t.video_id for t in back.tracks} == {t.video_id for t in plan.tracks}, "the gap is filled"
+    assert any("already there" in line for line in said), said
 
 
 def test_restore_refuses_a_track_that_is_already_there(library):
@@ -170,7 +235,7 @@ def test_a_restored_track_the_source_no_longer_lists_is_binned_again_by_the_next
     assert entries(tmp_path)[0].reason == "no longer in the source playlist"
 
 
-def test_deleting_an_album_bins_every_track_and_the_cover(library):
+def test_deleting_an_album_bins_every_track_the_cover_and_the_plan(library):
     tmp_path, plan, yt = library
     album_dir = tmp_path / plan.folder
     (album_dir / "cover.jpg").write_bytes(b"\xff\xd8\xff cover")
@@ -178,9 +243,12 @@ def test_deleting_an_album_bins_every_track_and_the_cover(library):
     service(tmp_path, yt).delete_album(plan.source_id)
 
     found = entries(tmp_path)
+    album = [e for e in found if e.is_album]
     assert len(found) == len(plan.tracks) + 1
-    covers = [e for e in found if not e.data.get("track")]
-    assert len(covers) == 1 and covers[0].audio.read_bytes() == b"\xff\xd8\xff cover"
+    assert len(album) == 1
+    assert album[0].cover.read_bytes() == b"\xff\xd8\xff cover"
+    assert album[0].data["plan"]["source_id"] == plan.source_id
+    assert sorted(album[0].data["tracks"]) == sorted(e.id for e in found if not e.is_album)
     assert [p.name for p in tmp_path.iterdir()] == [RECYCLE]
 
 
@@ -268,22 +336,27 @@ def test_a_binned_cover_is_called_a_cover(library):
 
     service(tmp_path, yt).delete_album(plan.source_id)
 
-    cover = next(e for e in entries(tmp_path) if not e.data.get("track"))
-    assert cover.audio and cover.audio.name == "cover.jpg", "a cover is not audio.jpg"
-    assert cover.data["moved"] == ["cover"]
+    album = next(e for e in entries(tmp_path) if e.is_album)
+    assert album.cover and album.cover.name == "cover.jpg", "a cover is not audio.jpg"
+    assert album.data["moved"] == ["plan", "cover"]
 
 
 def test_an_entry_written_before_the_rename_still_resolves(library):
-    """Entries binned by the first version call the cover `audio.jpg`; they must still list and
-    restore, because a bin that loses things is worse than no bin."""
-    tmp_path, plan, yt = library
-    (tmp_path / plan.folder / "cover.jpg").write_bytes(b"\xff\xd8\xff art")
-    service(tmp_path, yt).delete_album(plan.source_id)
-    cover = next(e for e in entries(tmp_path) if not e.data.get("track"))
-    cover.audio.rename(cover.path / "audio.jpg")          # as the old code wrote it
+    """The first version binned a cover as its own entry called `audio.jpg`. Those entries must
+    still list, because a bin that loses things is worse than no bin."""
+    import json as _json
 
-    again = next(e for e in entries(tmp_path) if not e.data.get("track"))
-    assert again.audio and again.audio.name == "audio.jpg"
+    tmp_path, plan, yt = library
+    service(tmp_path, yt).delete_track(plan.source_id, plan.tracks[0].video_id)
+    old = entries(tmp_path)[0].path
+    data = _json.loads((old / "bin.json").read_text(encoding="utf-8"))
+    data.update({"track": {}, "moved": ["cover"], "title": "(cover)"})
+    (old / "bin.json").write_text(_json.dumps(data), encoding="utf-8")
+    old.joinpath("audio.opus").rename(old / "audio.jpg")
+
+    entry = entries(tmp_path)[0]
+    assert entry.audio and entry.audio.name == "audio.jpg"
+    assert not entry.is_album
 
 
 def test_the_cli_says_why_a_restore_was_refused(library, capsys):
@@ -297,9 +370,14 @@ def test_the_cli_says_why_a_restore_was_refused(library, capsys):
     s.delete_album(plan.source_id)
     capsys.readouterr()
 
+    import shutil as sh
+
+    for album in [e for e in entries(tmp_path) if e.is_album]:
+        sh.rmtree(album.path)
+
     assert main(["recycle", "restore", "--library", str(tmp_path), entry.id]) == 1
     said = capsys.readouterr()
-    assert "not in the library any more" in said.err, f"stdout={said.out!r} stderr={said.err!r}"
+    assert "album entry has been emptied" in said.err, f"stdout={said.out!r} stderr={said.err!r}"
 
 
 def test_the_cli_restores_without_being_told_the_library(library, capsys, monkeypatch):
@@ -351,3 +429,56 @@ def test_listing_survives_being_piped_into_head(library, monkeypatch, capsys):
         assert main(["recycle", "list", "--library", str(tmp_path)]) == 0
     finally:
         monkeypatch.setattr("builtins.print", real)
+
+
+def test_restore_repairs_a_track_the_plan_still_lists(library):
+    """An interrupted delete — a crash, a Ctrl-C, a SIGPIPE from `delete | head` — leaves the audio
+    binned and the plan still naming the track. That is deliberate: binning happens *before* the
+    plan is saved, so the recoverable state is the one that survives. Restore repairs it rather
+    than refusing with "already in this album"."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    sidecar, original = with_extras(album_dir, plan)
+    track = plan.tracks[0]
+    s = service(tmp_path, yt)
+
+    # exactly what an interrupted delete_track leaves behind
+    from ytalbum.recycle import bin_track
+    from ytalbum.service import _inside
+
+    bin_track(tmp_path, album_dir, plan, track, "deleted",
+              audio=_inside(album_dir, track.filename), sidecar=sidecar)
+    assert not (album_dir / track.filename).exists()
+    assert load_plan(album_dir).tracks[0].video_id == track.video_id, "the plan never lost it"
+
+    said: list[str] = []
+    s.log = said.append
+    assert s.restore(entries(tmp_path)[0].id).status == "ok"
+
+    back = load_plan(album_dir)
+    assert (album_dir / back.tracks[0].filename).is_file()
+    assert sidecar_path(album_dir, back.tracks[0].filename).read_text(encoding="utf-8") == WORDS
+    assert (album_dir / ORIGINALS / f"{track.video_id}.{track.ext}").is_file()
+    assert len(back.tracks) == len(plan.tracks), "no duplicate was added"
+    assert [t.number for t in back.tracks] == list(range(1, len(plan.tracks) + 1))
+    assert any("repaired" in line for line in said), said
+    assert entries(tmp_path) == []
+
+
+def test_a_track_that_is_really_there_is_still_refused(library):
+    """The repair must not become "restore over whatever is on disk"."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    track = plan.tracks[0]
+    s = service(tmp_path, yt)
+
+    from ytalbum.recycle import bin_track
+    from ytalbum.service import _inside
+
+    bin_track(tmp_path, album_dir, plan, track, "deleted", audio=_inside(album_dir, track.filename))
+    (album_dir / track.filename).write_bytes(b"a different file is here now")
+
+    outcome = s.restore(entries(tmp_path)[0].id)
+    assert outcome.status == "failed"
+    assert "already in" in outcome.message
+    assert (album_dir / track.filename).read_bytes() == b"a different file is here now"

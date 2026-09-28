@@ -2703,6 +2703,33 @@ undoing that decision. No code.
   bytes, track — and the library root appears nowhere in the response.
   - **result:** pass
 
+### Two gaps the second run found (P47c)
+
+- [x] **AR6 · M** — a deleted album can be put back
+
+  The first version binned an album's tracks and its cover but not its **plan**, so restoring
+  anything from it said "fetch the album again" — advice that is no help when the playlist is gone,
+  which is exactly when somebody regrets deleting an album. `delete_album` now bins an **album
+  entry**: the plan snapshot, the cover, and the ids of its tracks' entries.
+
+  Restoring the album entry rebuilds the folder, the plan and the cover and brings back every track
+  entry still in the bin. Restoring a single track of a gone album rebuilds the shell from the album
+  entry first, then that track. An album fetched again in the meantime is **merged by video id**,
+  with what was skipped named. Only an emptied album entry still gets a refusal, and it says which.
+  - on the disposable copy: 5-track album deleted → album entry restored → folder, plan, cover and
+    all five back, numbering 01–05, bin empty
+  - **result:** pass
+
+- [x] **AR7 · M** — an interrupted delete is repaired
+
+  Binning happens **before** the plan is saved, which is the right way round: the recoverable state
+  is the one that survives an interruption. It leaves the audio in the bin and the plan still naming
+  the track, and the first version refused that with "already in this album". Restore now treats
+  "in the plan, file missing" as a repair — file, sidecar and original back, plan entry untouched,
+  and the log says *repaired*. A track that really is on disk is still refused, so the repair does
+  not become "overwrite whatever is there".
+  - **result:** pass, reproduced on the disposable copy
+
 ### Five defects the first run found, and one the fix run found
 
 `1e4d914` was run on a disposable full copy of the library. Deleting worked; **restoring did not**,
@@ -2735,6 +2762,7 @@ itself passed `_inside`, because it joins the filename without checking.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-28 | the AR cases extended (P47c) | 2 | 0 | A deleted album is now recoverable as an album: `delete_album` bins the plan and cover as an **album entry** naming its tracks' entries, and restoring one track of a gone album rebuilds the shell first. A re-fetched album merges by video id. An interrupted delete — binning happens before the plan is saved, on purpose — is a **repair**, not a refusal. Both verified on the disposable copy. 811 pytest + 91 node. |
 | 2026-09-28 | the AR cases re-run (P47 follow-up) | 6 | 6 defects in the reviewed commit, all fixed | Run on a disposable copy of the library. Restore refused every time and said nothing (`args.library` read directly; `exit_code` never prints the message). CLI `prune` still unlinked instead of binning. A binned cover was `audio.jpg`. **Restore gave two tracks the same number.** `recycle list \| head` printed a traceback. 806 pytest + 91 node. |
 | 2026-09-28 | the AR cases (P47: the recycle bin) | 5 | 0 in the design; 1 of my own, caught by the existing suite (a fallback in `bin_track` reopened the path traversal `_inside` closes, and moving is worse than unlinking) | `ytalbum never removes audio, it only moves it to the bin`. Delete, delete-album and prune all route through `<library>/.recycle/`; the kept original goes with the track, which fixes the phase-5 inconsistency. Restore is deliberately asymmetric: the user's lyrics win, tags are rewritten not replayed, a track the playlist dropped comes back and is binned again. Never empties itself. 799 pytest + 91 node. |
 | 2026-09-28 | the AQ cases (P46: several sources for one track) | 3 | n/a — design spike, no code | Candidates on a track (additive, ships before the boundary, folds in `source_override`); intake folder vs library-as-source; a **length-first** ranking rule with quality only inside the 3 s band, argued from median 0.3 s / p90 17.1 s / max 514 s over 2539 tracks; a recycle bin at the library root that never empties itself, with `prune`/`delete` routed through it. Flagged: this library has **one** `source_override` and **one** format, so it holds no evidence about ranking — that part is reasoned, not measured. |

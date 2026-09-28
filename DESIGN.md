@@ -1291,6 +1291,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    restored after its album was renamed gets today's names; and a track the source no longer lists
    **comes back as it was**, for the next `prune` to move aside again, because restore undoes one
    action rather than arguing with the playlist.
+   **A deleted album is recoverable as an album.** Its plan and cover are binned beside its tracks,
+   because the source it came from may be gone by the time somebody regrets the deletion — so the
+   folder is rebuilt from the bin rather than refetched. Restoring one track of a deleted album
+   rebuilds the shell first; restoring into an album that was fetched again merges by video id and
+   names what it skipped.
+   **The order is: bin, then save the plan.** An interrupted delete therefore leaves the audio safe
+   and the plan still listing the track — and `restore` treats that as a **repair** rather than
+   refusing. The other order would leave a plan that had forgotten tracks whose files were already
+   gone, which nothing could put right.
    **It never empties itself** — no age cap, no size cap, no sweeping. A bin that empties itself is
    one nobody can rely on, and the whole reason this exists is that the program makes judgements the
    user may disagree with. `ytalbum recycle empty` is the only thing in the program that really

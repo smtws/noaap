@@ -744,13 +744,25 @@ The web UI shows the same under **Settings › Recycle bin**, with a *Put it bac
 empties is one you cannot rely on; `ytalbum config` and the settings panel report how big it has
 grown, and `recycle empty` is the only thing in ytalbum that really deletes audio.
 
-Restoring puts the file back, returns the track to its album with its old numbering, and brings the
-sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which case yours
-stay and the restore says so. Tags are rewritten by the ordinary pass rather than replayed, so a
-track restored after its album was renamed gets the album's current names. If the album itself is
-gone the restore is refused and the entry is left alone: fetch the album again first. And a track
-the playlist no longer lists comes back the way it was — the next `prune` will move it aside again,
-which is correct, because restoring undoes one action rather than arguing with the playlist.
+Restoring puts the file back, returns the track to its album with its numbering closed up, and
+brings the sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which
+case yours stay and the restore says so. Tags are rewritten by the ordinary pass rather than
+replayed, so a track restored after its album was renamed gets the album's current names. And a
+track the playlist no longer lists comes back the way it was — the next `prune` will move it aside
+again, which is correct, because restoring undoes one action rather than arguing with the playlist.
+
+**A deleted album comes back too.** Deleting an album is the largest decision here, and by the time
+you regret it the playlist it came from may be gone — so the album's plan and cover are binned with
+its tracks. Restore the album entry and the folder, the plan, the cover and every one of its tracks
+still in the bin come back together. Restore a single track of an album that is gone and the album
+is rebuilt from the bin first, then that track. If the album was fetched again in the meantime, what
+is already there is left alone and the restore says which tracks it skipped. Only if the album entry
+itself has been emptied is there nothing to rebuild from, and then the restore says so.
+
+**An interrupted delete is repaired, not refused.** The audio is binned *before* the plan is saved,
+so a crash or a Ctrl-C halfway through leaves the file in the bin and the plan still naming the
+track — the recoverable state, on purpose. Restoring puts the file, its lyrics and its original back
+and keeps the plan entry as it is.
 
 It is not `.originals/`: that holds one untouched file per *trimmed* track so a cut can be redone or
 undone, and it stays exactly as it is.

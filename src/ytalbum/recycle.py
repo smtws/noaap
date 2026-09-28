@@ -35,6 +35,8 @@ BIN_FILE = "bin.json"
 AUDIO_STEM = "audio"
 WORDS = "words.lrc"
 ORIGINAL_STEM = "original"
+COVER_STEM = "cover"
+PLAN_SNAPSHOT = "plan.json"
 
 # why something was binned; the panel and `recycle list` show it back
 REPLACED = "replaced by a better candidate"
@@ -63,6 +65,11 @@ class Entry:
     data: dict[str, Any]
 
     @property
+    def is_album(self) -> bool:
+        """An album entry holds the plan and the cover, and names its tracks' entries."""
+        return bool(self.data.get("plan"))
+
+    @property
     def audio(self) -> Path | None:
         """The file this entry is about — a track's audio, or whatever else was binned."""
         for stem in (AUDIO_STEM, *(m for m in self.data.get("moved", []) if m not in ("words", "original"))):
@@ -73,6 +80,10 @@ class Entry:
     @property
     def original(self) -> Path | None:
         return next((p for p in sorted(self.path.glob(f"{ORIGINAL_STEM}.*"))), None)
+
+    @property
+    def cover(self) -> Path | None:
+        return next((p for p in sorted(self.path.glob(f"{COVER_STEM}.*"))), None)
 
     @property
     def words(self) -> Path | None:
@@ -145,15 +156,23 @@ def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack,
     return entry
 
 
-def bin_file(library: Path, plan: AlbumPlan, path: Path, reason: str, what: str = "cover") -> Path | None:
-    """An album-level file with no track of its own — the cover."""
-    if not path.is_file():
-        return None
+def bin_album(library: Path, plan: AlbumPlan, cover: Path | None, tracks: list[str],
+              reason: str) -> Path:
+    """The album itself: its plan, its cover, and which entries hold its tracks.
+
+    Deleting an album is the largest decision a user can regret, and the source it came from may be
+    gone by the time they regret it — so the plan is binned too, and a restore rebuilds the folder
+    from it rather than telling them to fetch it again from something that no longer exists.
+    """
     when = datetime.now(UTC)
-    entry = bin_root(library) / _entry_id(plan.source_id, what, when)
+    entry = bin_root(library) / _entry_id(plan.source_id, "album", when)
     entry.mkdir(parents=True, exist_ok=True)
-    # named for what it is: "audio.jpg" for a cover was simply wrong (catalog AR)
-    shutil.move(str(path), entry / f"{what}{path.suffix}")
+    moved = ["plan"]
+    (entry / PLAN_SNAPSHOT).write_text(
+        json.dumps(plan.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if cover and cover.is_file():
+        shutil.move(str(cover), entry / f"{COVER_STEM}{cover.suffix}")
+        moved.append("cover")
     (entry / BIN_FILE).write_text(json.dumps({
         "when": when.isoformat(timespec="seconds"),
         "reason": reason,
@@ -162,14 +181,21 @@ def bin_file(library: Path, plan: AlbumPlan, path: Path, reason: str, what: str 
         "album": plan.album,
         "albumartist": plan.albumartist,
         "artist": plan.albumartist,
-        "title": f"({what})",
+        "title": f"(the whole album, {len(tracks)} track(s))",
         "folder": plan.folder,
         "track": {},
+        "plan": plan.to_dict(),
+        "tracks": tracks,
         "tags": {},
         "ranking": {},
-        "moved": [what],
+        "moved": moved,
     }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return entry
+
+
+def album_entry(library: Path, source_id: str) -> Entry | None:
+    """The newest binned album with this source id, if one is still there."""
+    return next((e for e in entries(library) if e.is_album and e.source_id == source_id), None)
 
 
 def _size(path: Path) -> int:

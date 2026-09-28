@@ -46,7 +46,7 @@ from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Kind, PlanTrack, Provenance, SourceRef
 from .plan import build_plan, drop_album_name, merge_plans, refresh_derived, renumber, set_single_album_name, wanted_folder
-from .recycle import DELETED, PRUNED, bin_file, bin_track
+from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .tag import audio_length
 from .timing import (
@@ -1111,19 +1111,25 @@ class Service:
                          audio=audio, sidecar=sidecar, ranking=ranking)
 
     def restore(self, entry_id: str) -> Outcome:
-        """Put a binned track back where it came from (DESIGN §9, slice 49).
+        """Put something binned back where it came from (DESIGN §9, slice 49).
 
-        The plan track goes back as it was, which is the whole reason the snapshot is kept. Three
-        things are deliberately *not* symmetric with binning:
+        Three shapes, because a bin that can only undo the small decisions is not much of a bin:
 
-        * **The user's lyrics win.** If a sidecar has appeared since — the user wrote words for a
-          track that no longer existed — theirs stay and the restore says so.
-        * **A track the source no longer lists comes back anyway**, with `in_source` as it was. The
-          next `prune` will bin it again, which is correct: restore undoes one action, it does not
-          argue with the playlist.
-        * **Tags are not replayed from the snapshot.** The ordinary pass rewrites them, so a track
-          restored after its album was renamed gets the album's current names, not last week's.
+        * **an album** — the folder, the plan and the cover come back, and every track entry of it
+          still in the bin comes with them;
+        * **a track whose album is gone** — the album shell is rebuilt from its album entry first,
+          then the track. Only if that entry has been emptied too is there nothing to do;
+        * **a track the plan still lists but whose file is missing** — a *repair*. An interrupted
+          delete leaves exactly this (binning happens before the plan is saved, on purpose), and so
+          does a crash or a Ctrl-C.
+
+        Restoring is deliberately not symmetric with binning. **The user's lyrics win:** a sidecar
+        written while the track was gone is kept and the restore says so. **Tags are rewritten** by
+        the ordinary pass rather than replayed, so a track restored after its album was renamed gets
+        today's names. And a track the source no longer lists **comes back as it was** for the next
+        `prune` to move aside again — restore undoes one action, it does not argue with the playlist.
         """
+        from .recycle import album_entry
         from .recycle import find as find_entry
 
         if not self.library:
@@ -1131,18 +1137,93 @@ class Service:
         entry = find_entry(self.library, entry_id)
         if not entry:
             return Outcome("failed", message=f"no such recycle entry: {entry_id}")
+        if entry.is_album:
+            return self._restore_album(entry)
+        if not entry.data.get("track"):
+            return Outcome("failed", message=f"{entry.id} holds nothing that can be put back")
+
         found = self.find_album(entry.source_id)
         if not found:
-            return Outcome("failed", message=(
-                f"{entry.describe()}: its album is not in the library any more, so there is nowhere "
-                "to put it back. The entry is untouched; fetch the album again and restore then."))
-        album_dir, plan = found
-        if not entry.data.get("track"):
-            return Outcome("failed", message=f"{entry.id} is not a track (it holds the album cover)")
+            shell = album_entry(self.library, entry.source_id)
+            if not shell:
+                return Outcome("failed", message=(
+                    f"{entry.describe()}: its album is not in the library and its album entry has "
+                    "been emptied, so there is nothing to rebuild the folder from. Fetch the album "
+                    "again and restore then."))
+            self.log(f"{entry.data['album']} is gone; rebuilding it from the bin first")
+            rebuilt = self._restore_album(shell, only=[entry.id])
+            if rebuilt.status != "ok":
+                return rebuilt
+            found = self.find_album(entry.source_id)
+            if not found:
+                return Outcome("failed", message=f"could not rebuild {entry.data['album']}")
+        return self._restore_track(entry, *found)
 
+    def _restore_album(self, entry: Entry, only: list[str] | None = None) -> Outcome:
+        """Rebuild a binned album: the folder, the plan, the cover, and its tracks still in the bin.
+
+        `only` restores the shell and just those track entries — used when somebody asked for one
+        track of an album that is gone, so they get that track and not fifty others.
+        """
+        from .recycle import find as find_entry
+
+        assert self.library
+        plan = AlbumPlan.from_dict(entry.data["plan"])
+        album_dir = self.library / plan.folder
+        existing = load_plan(album_dir)
+        wanted = [i for i in entry.data.get("tracks", []) if only is None or i in only]
+
+        skipped: list[str] = []
+        if existing:
+            # the album was fetched again while this sat in the bin: add what is missing, touch
+            # nothing that is there, and say which tracks were left alone
+            have = {t.video_id for t in existing.tracks}
+            plan, album_dir = existing, album_dir
+            for entry_id in list(wanted):
+                binned = find_entry(self.library, entry_id)
+                if binned and binned.data.get("track", {}).get("video_id") in have:
+                    skipped.append(binned.data["track"].get("title", entry_id))
+                    wanted.remove(entry_id)
+        else:
+            album_dir.mkdir(parents=True, exist_ok=True)
+            plan.tracks = []                       # the tracks come back one entry at a time
+            if cover := entry.cover:
+                shutil.move(str(cover), album_dir / cover.name)
+            save_plan(plan, album_dir)
+
+        back = 0
+        for entry_id in wanted:
+            binned = find_entry(self.library, entry_id)
+            if not binned or not binned.data.get("track"):
+                continue
+            plan = load_plan(album_dir) or plan
+            if self._restore_track(binned, album_dir, plan).status == "ok":
+                back += 1
+
+        if not existing and not back and only is None:
+            self.log(f"{plan.album}: the folder and plan are back, but no track entry was left in the bin")
+        said = f" ({len(skipped)} already there: {', '.join(skipped[:3])})" if skipped else ""
+        if only is None:
+            self.log(f"restored {plan.albumartist} — {plan.album} with {back} track(s){said}")
+        else:
+            # the caller asked for one track and reports it itself; a track binned before the album
+            # is not in the album entry's list at all, so counting here would only confuse
+            self.log(f"rebuilt {plan.albumartist} — {plan.album} from the bin{said}")
+        plan = load_plan(album_dir) or plan
+        if only is None and not skipped:
+            shutil.rmtree(entry.path, ignore_errors=True)
+        return self.execute(plan, album_dir)
+
+    def _restore_track(self, entry: Entry, album_dir: Path, plan: AlbumPlan) -> Outcome:
+        """One track back into an album that exists — or repaired, where the plan never lost it."""
+        assert self.library
         track = PlanTrack.from_dict(entry.data["track"])
-        if any(t.video_id == track.video_id for t in plan.tracks):
+        present = next((t for t in plan.tracks if t.video_id == track.video_id), None)
+        repair = present is not None and not (album_dir / present.filename).is_file()
+        if present is not None and not repair:
             return Outcome("failed", message=f"{track.title} is already in {plan.album}")
+        if repair:
+            track = present                        # the plan's own copy stays authoritative
 
         album_dir.mkdir(parents=True, exist_ok=True)
         if (audio := entry.audio) and track.filename:
@@ -1157,18 +1238,21 @@ class Service:
             else:
                 shutil.move(str(words), sidecar_path(album_dir, track.filename))
 
-        # Put it back where it stood, then let `arrange` close the numbering. Its old number cannot
-        # simply be reused: the tracks left behind were renumbered when it went, so restoring a 1
-        # into an album that already has a 1 gives two of them — which is what the first version
-        # did. Sorting the whole list instead would interleave a multi-disc album (slice 22).
-        same_disc = [i for i, t in enumerate(plan.tracks) if t.disc == track.disc]
-        after = [i for i in same_disc if plan.tracks[i].number >= track.number]
-        plan.tracks.insert(after[0] if after else (same_disc[-1] + 1 if same_disc else len(plan.tracks)), track)
-        arrange(plan)
+        if present is None:
+            # Put it back where it stood, then let `arrange` close the numbering. Its old number
+            # cannot simply be reused: the tracks left behind were renumbered when it went, so
+            # restoring a 1 into an album that already has a 1 gives two of them. Sorting the whole
+            # list instead would interleave a multi-disc album (slice 22).
+            same_disc = [i for i, t in enumerate(plan.tracks) if t.disc == track.disc]
+            after = [i for i in same_disc if plan.tracks[i].number >= track.number]
+            plan.tracks.insert(
+                after[0] if after else (same_disc[-1] + 1 if same_disc else len(plan.tracks)), track)
+            arrange(plan)
         save_plan(plan, album_dir)
         if not said:
             shutil.rmtree(entry.path, ignore_errors=True)
-        self.log(f"restored {track.artist} - {track.title} to {plan.album}{said}")
+        what = "repaired" if repair else "restored"
+        self.log(f"{what} {track.artist} - {track.title} in {plan.album}{said}")
         return self.execute(plan, album_dir)   # renames, retags, and fixes tracktotal
 
     def empty_recycle(self, older_than_days: float | None = None) -> Outcome:
@@ -1187,17 +1271,20 @@ class Service:
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
         album_dir, plan = found
-        binned = 0
+        # Order: bin every track, then bin the album (plan + cover + the track entries' ids), then
+        # remove what is left on disk. Binning first means an interrupted delete leaves the audio
+        # safe and the plan still listing it — recoverable, and `restore` treats it as a repair. The
+        # other order would leave a plan that has forgotten tracks whose files are already gone.
+        ids = []
         for track in plan.tracks:
-            if self._bin(album_dir, plan, track, DELETED, audio=_inside(album_dir, track.filename)):
-                binned += 1
-        for cover in sorted(album_dir.glob("cover.*")):
-            if self.library and bin_file(self.library, plan, cover, DELETED):
-                binned += 1
+            if entry := self._bin(album_dir, plan, track, DELETED, audio=_inside(album_dir, track.filename)):
+                ids.append(entry.name)
+        if self.library:
+            cover = next(iter(sorted(album_dir.glob("cover.*"))), None)
+            bin_album(self.library, plan, cover, ids, DELETED)
+            self.log(f"moved the album and {len(ids)} track(s) to the recycle bin")
         for path in [*album_dir.glob("cover.*"), album_dir / PLAN_FILE]:
             path.unlink(missing_ok=True)
-        if binned:
-            self.log(f"moved {binned} file group(s) to the recycle bin")
         for folder in (album_dir / ORIGINALS, album_dir / PARTS_DIR):
             if folder.is_dir() and not any(folder.iterdir()):
                 folder.rmdir()
