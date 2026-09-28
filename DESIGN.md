@@ -1616,6 +1616,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    taken at adoption — and a snapshot is stale the moment a later pass writes anything. A sidecar
    answers to `lyrics_sha`, a cover to `cover_fetched.sha1`, both maintained by the passes that
    write them. A file whose fingerprint was never taken is kept, not removed.
+   **What the undo records is taken from the writers, not listed by hand.** The list was seven
+   fields; `build_tags` writes fifteen. A retag added `tracktotal` and `totaltracks`, the record had
+   never heard of them, and seventeen files came back carrying tags their owner never had — while
+   the comparison that was supposed to catch it compared **the same list**, so it agreed with
+   itself. The logical keys are now whatever `build_tags` returns with every branch turned on, each
+   container in its own spelling, and a guard reads the writers' own source and fails when they
+   gain a key. **A measurement that checks a list against the same list is not a measurement.**
    **Two things are refused rather than guessed:** a folder that already holds a plan, and a folder
    whose files say they are two different albums — the owner made that folder, and deciding which
    files belong together is theirs. And a replacement by `merge` in such a library takes the

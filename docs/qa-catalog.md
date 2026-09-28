@@ -3473,6 +3473,40 @@ Three faults in one crash, and the design was right about everything except the 
   - against the untouched original: **0 name differences over the whole tree**, and 18 files
     differing in byte size alone — every one among the three albums deliberately retagged.
 
+### And the one the second acceptance run found: the record was a list
+
+`adopted_tags` was seven fields, written by hand. `build_tags` writes **fifteen**. So a retag added
+`tracktotal` and `totaltracks`, the record had never heard of them, and seventeen files came back
+carrying tags their owner never had — while the comparison I reported said "0 tag fields differ",
+because it compared **the same hand-written list** rather than the files' whole tag sets. A list
+measured against itself agrees with itself.
+
+- [x] **BA8 · R** — the record is derived from the writers
+
+  The logical keys are whatever `build_tags` returns with every branch turned on, and each container
+  is recorded in **its own spelling** — 15 Vorbis comments, 13 ID3 frames, 13 MP4 atoms, including
+  the seven the writers set outside their key maps (`TRCK`, `TCMP`, `USLT`, `trkn`, `disk`, `cpil`).
+  - **result:** pass. A guard reads **the writers' own source** for every key they set and fails when
+    they set one the record does not know; a second case asserts `build_tags`' keys are a subset of
+    the Vorbis set, so that half cannot drift either.
+  - pictures are deliberately outside the record: they are not a tag one puts back from text, and
+    noaap never writes a cover into a file that had none.
+  - a third costume of the absent-value mistake, found on the way: **an empty record was skipped as
+    falsy**. An empty record *is* a record — it says the file had no tags at all, and those are
+    exactly the files a retag adds the most to.
+
+- [x] **BA9 · M** — the sequence again, and the comparison over complete tag sets
+
+  Adopt 132 → 96 sidecars → `--retag --rename` on three albums across three containers → undo the
+  root, all with the complete tag set of every file compared before and after.
+  - **result:** undo exit 0, **0 failed**, 228 removed, 18 renamed, 95 restored, **0 plans, 0
+    sidecars, no `.recycle`**. Against the untouched original, over all 2000 files: **0 name
+    differences, 0 audio streams differ, 0 files whose complete tag set differs.**
+  - what could not be undone, and was reset from the original instead: **57 files** left by runs
+    made with the unfixed code — 17 from the acceptance run, **40 from my own**. Once an album's
+    plan is gone the record is gone with it, and a fresh adoption reads the stray keys as the
+    owner's. That is the shape the fixed undo prevents by keeping the plan whenever anything fails.
+
 ### A number in my own proposal that was wrong
 
 I-144 said adoption would make **1699 renames**. The true number is **438**. The 1699 was produced
@@ -3491,7 +3525,7 @@ One `noaap repair` closes it.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
-| 2026-09-28 | the BA cases (P54: a collection in place) | 5 | 0 in the design; 1 defect found before building, fixed first | `noaap adopt` writes one plan per album and nothing else. The design was decided by a measurement: adopting naively and running one ordinary pass renamed an mp3 to `.opus` and then could not read it — **1662 of 2000 files**. Fixed at the cause, then `keep_names`/`keep_tags` so no pass touches an adopted album. Live on a 41 GB copy: dry wrote nothing, apply added **132 files, all plans, 0 changed**; retag+rename on three albums across three containers; `--undo` of all 132 in **1.3 s**, after which the copy and the untouched original agree on **every name, every audio stream and every tag field** (2000 files, 0 differences of each), with 24 files differing only in tag-block size — the documented boundary of the promise. Correction: my own proposal's 1699 renames was 438 — the 1699 was the defect being measured. 1147 pytest + 102 node. |
+| 2026-09-28 | the BA cases (P54: a collection in place) | 9 | 0 in the design; 1 defect found before building, fixed first | `noaap adopt` writes one plan per album and nothing else. The design was decided by a measurement: adopting naively and running one ordinary pass renamed an mp3 to `.opus` and then could not read it — **1662 of 2000 files**. Fixed at the cause, then `keep_names`/`keep_tags` so no pass touches an adopted album. Live on a 41 GB copy: dry wrote nothing, apply added **132 files, all plans, 0 changed**; retag+rename on three albums across three containers; `--undo` of all 132 in **1.3 s**, after which the copy and the untouched original agree on **every name, every audio stream and every tag field** (2000 files, 0 differences of each), with 24 files differing only in tag-block size — the documented boundary of the promise. Two corrections of my own: the proposal's 1699 renames was 438 — the 1699 was the defect being measured — and the undo's record of what a file said was a hand-written list of seven fields against a writer that writes fifteen, which my own comparison could not see **because it compared the same list**. Both the record and the comparison are taken from the writers now. Final: 0 name, 0 stream and 0 complete-tag-set differences over 2000 files. 1158 pytest + 102 node. |
 | 2026-09-28 | the AZ cases (P53: SoundCloud) | 6 | 0 in the design; 2 defects found by running it, both fixed | The third provider, and the first whose purpose had to be settled before the design: **SoundCloud is for music that is not on YouTube, not for better copies.** Measured, not assumed — label uploads are DRM protected (3 of 3), ordinary tracks cap at 160 kbps AAC (8 of 8), and the one file fetched live reads **16 kHz** against this library's 20–21. A shared `ytdlp.py` that may not name a site, cookies as an argument, and a province guard that runs three ways. `LISTING` split from `SEARCH`, because a provider does not declare what it cannot do. Live: 11/11 tracks in 1 m 57 s, MusicBrainz matched the release, `update` 1.3 s. Defects: an address no extractor claimed (401 from the *generic* one), and a preview that planned as the song. **CI ran once on the head of commits 1–4**, which it covers. 1121 pytest + 102 node. |
 | 2026-09-28 | the AY cases (P52e: lengths nobody asked for) | 5 | 0 | 574 finished tracks with a file and no length, and the reason is the shape of the pass: `repair` skips an album whose names are already right **before** it measures anything, so a tidy library could never close the gap. The measuring moved in front of the skip; `update` does the albums it touches; `--dry-run` on either writes nothing, which meant giving `repair` a real dry run. `file_length_by` records header vs decoded. Live on the disposable library: 556 measured in 16.8 s, all from the header, 0 left, `plan --verify` 0 changed. **What it turned on: nothing visible.** All 556 already fell back to the video duration, median 0.24 s away, so no ⏱ verdict and no album flag changed, and all 556 already have words so none gains the near-miss check. What it removes is a fallback standing in for a measurement. 1070 pytest + 102 node. |
 | 2026-09-28 | the AX cases extended (P52d: what a switch leaves behind) | 2 | 2 defects found by one live take, both fixed | The other half of *nothing is removed, it is only moved to the bin*: a switch that landed in another container left the old file in the folder, so a player saw the song twice. Every switch now bins what it displaced, found **by the name** — `audio_choice` renames in the plan before the fetch, so a rule written against the extension catches `merge` and misses that. Underneath it, a crash the retry was hiding: `.originals` is keyed by the ref, a folder's ref is a path, and reading it back as a glob raised **inside `bin_track` after the audio had moved** — an entry nothing listed and nothing could restore. Live: 0 strays across 329 albums, a copy taken through the UI with the displaced file in the bin. No screenshot: the panel can only be shown on an artist this repository does not publish. 1059 pytest + 102 node. |
