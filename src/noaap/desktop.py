@@ -16,7 +16,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-APP_ID = "ytalbum"
+APP_ID = "noaap"
+LEGACY_APP_ID = "ytalbum"   # ytalbum's launcher is left alone; `noaap migrate` offers to remove it
 ICON_SIZES = (16, 32, 48, 64, 128, 256, 512)
 BROWSERS = ("google-chrome-stable", "google-chrome", "chromium", "chromium-browser", "brave-browser", "microsoft-edge")
 
@@ -67,7 +68,7 @@ def render_entry(browser: str, url: str) -> str:
     return f"""[Desktop Entry]
 Type=Application
 Version=1.0
-Name=ytalbum
+Name=noaap
 GenericName=Music downloader
 Comment=YouTube playlists as properly tagged albums
 Exec={exec_line}
@@ -114,7 +115,22 @@ def uninstall(keep_profile: bool = True) -> list[str]:
     return done
 
 
+def legacy_installed() -> list[Path]:
+    """What ytalbum's launcher left behind: its entry, its icons, its browser profile.
+
+    The profile holds cookies and whatever the user is signed into, so it is reported and never
+    removed — not even by `--uninstall-old`.
+    """
+    entry = data_home() / "applications" / f"{LEGACY_APP_ID}.desktop"
+    icons = sorted((data_home() / "icons" / "hicolor").glob(f"*/apps/{LEGACY_APP_ID}.*"))
+    profile = data_home() / f"{LEGACY_APP_ID}-browser"
+    return [p for p in [entry, *icons, profile] if p.exists()]
+
+
 def status(url: str) -> str:
     if not desktop_file().exists():
         return "launcher: not installed (noaap app install)"
-    return f"launcher: {desktop_file()}   window class: {APP_ID}   opens {url}"
+    line = f"launcher: {desktop_file()}   window class: {APP_ID}   opens {url}"
+    if theirs := legacy_installed():
+        line += f"\n  ytalbum's launcher is still here ({len(theirs)} files): `noaap migrate` can remove it"
+    return line

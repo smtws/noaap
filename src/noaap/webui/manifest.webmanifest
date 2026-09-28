@@ -1,6 +1,6 @@
 {
-  "name": "ytalbum",
-  "short_name": "ytalbum",
+  "name": "noaap",
+  "short_name": "noaap",
   "description": "YouTube playlists as properly tagged albums",
   "start_url": "/",
   "display": "standalone",

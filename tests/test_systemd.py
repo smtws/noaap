@@ -2,6 +2,7 @@
 
 import socket
 import threading
+from pathlib import Path
 
 import httpx
 import pytest
@@ -13,8 +14,8 @@ from noaap.web import App
 
 def test_units_start_the_service_on_demand_with_node_on_the_path():
     units = render_units(Config(js_runtime="node", js_runtime_path="/opt/node/bin/node"), port=9000, idle_exit=600)
-    assert "ListenStream=127.0.0.1:9000" in units["ytalbum.socket"]
-    service = units["ytalbum.service"]
+    assert "ListenStream=127.0.0.1:9000" in units["noaap.socket"]
+    service = units["noaap.service"]
     assert "serve --idle-exit 600" in service
     assert "Environment=PATH=/opt/node/bin:" in service
 
@@ -50,7 +51,7 @@ def test_restart_refuses_while_a_job_runs(monkeypatch):
         sd.restart()
     assert calls == []
     sd.restart(force=True)  # only on purpose
-    assert calls == [("restart", "ytalbum.service")]
+    assert calls == [("restart", "noaap.service")]
 
 
 def test_installed_port_is_read_from_the_unit(tmp_path, monkeypatch):
@@ -58,7 +59,7 @@ def test_installed_port_is_read_from_the_unit(tmp_path, monkeypatch):
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     (tmp_path / "systemd" / "user").mkdir(parents=True)
-    (tmp_path / "systemd" / "user" / "ytalbum.socket").write_text("[Socket]\nListenStream=127.0.0.1:9123\n")
+    (tmp_path / "systemd" / "user" / "noaap.socket").write_text("[Socket]\nListenStream=127.0.0.1:9123\n")
     assert sd.installed_port() == 9123
 
 
@@ -93,3 +94,70 @@ def test_install_still_takes_both_flags(monkeypatch, capsys, tmp_path):
     seen.clear()
     assert cli.main(["service", "install"]) == 0
     assert seen == {"port": 8765, "idle": 900}  # the documented defaults, unchanged
+
+
+# -- and what ytalbum left on the machine (§9, slice 52) -----------------------------------
+
+
+@pytest.fixture
+def units(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    directory = tmp_path / "systemd" / "user"
+    directory.mkdir(parents=True)
+    return directory
+
+
+def theirs(units, port=8765):
+    path = units / "ytalbum.socket"
+    path.write_text(f"[Socket]\nListenStream=127.0.0.1:{port}\n")
+    (units / "ytalbum.service").write_text("[Service]\nExecStart=/somewhere/ytalbum serve\n")
+    return path
+
+
+def test_the_same_port_is_a_sentence_not_an_address_already_in_use(units, monkeypatch):
+    """systemd would answer from inside `enable --now`, which reads as a bug in noaap."""
+    import subprocess
+
+    import noaap.systemd as sd
+
+    theirs(units, port=8765)
+    monkeypatch.setattr(sd, "systemctl",
+                        lambda *a: subprocess.CompletedProcess(a, 0, "active\n", ""))
+
+    with pytest.raises(RuntimeError, match="ytalbum is already listening on port 8765"):
+        sd.install(Config(library_root=Path("/tmp")), port=8765)
+
+    assert not (units / "noaap.socket").exists(), "nothing was written before the refusal"
+
+
+def test_another_port_is_fine_and_so_is_a_stopped_ytalbum(units, monkeypatch):
+    import subprocess
+
+    import noaap.systemd as sd
+
+    theirs(units, port=8765)
+    monkeypatch.setattr(sd, "systemctl",
+                        lambda *a: subprocess.CompletedProcess(a, 0, "active\n", ""))
+    assert sd.clash(8766) is None, "a different port never clashes"
+
+    monkeypatch.setattr(sd, "systemctl",
+                        lambda *a: subprocess.CompletedProcess(a, 0, "inactive\n", ""))
+    assert sd.clash(8765) is None, "an installed but stopped socket holds nothing"
+
+
+def test_ytalbums_units_are_reported_and_never_removed(units, monkeypatch):
+    import subprocess
+
+    import noaap.systemd as sd
+
+    theirs(units)
+    monkeypatch.setattr(sd, "systemctl",
+                        lambda *a: subprocess.CompletedProcess(a, 0, "inactive\n", ""))
+
+    assert [p.name for p in sd.legacy_units()] == ["ytalbum.socket", "ytalbum.service"]
+    assert "ytalbum's units are still here (2)" in sd.status()
+
+    sd.install(Config(library_root=Path("/tmp")), port=8766)
+    sd.uninstall()
+
+    assert sd.legacy_units(), "install and uninstall leave ytalbum's alone"

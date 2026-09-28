@@ -16,7 +16,8 @@ import httpx
 
 from .config import Config
 
-UNIT = "ytalbum"
+UNIT = "noaap"
+LEGACY_UNIT = "ytalbum"          # ytalbum's units are left alone; `noaap migrate` offers to remove them
 DEFAULT_IDLE_EXIT = 900
 
 
@@ -32,7 +33,7 @@ def render_units(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EX
         path.insert(0, str(Path(node).parent))
     return {
         f"{UNIT}.socket": f"""[Unit]
-Description=ytalbum web UI (listens, starts the service on demand)
+Description=noaap web UI (listens, starts the service on demand)
 
 [Socket]
 ListenStream=127.0.0.1:{port}
@@ -41,7 +42,7 @@ ListenStream=127.0.0.1:{port}
 WantedBy=sockets.target
 """,
         f"{UNIT}.service": f"""[Unit]
-Description=ytalbum web UI (started by ytalbum.socket, stops itself when idle)
+Description=noaap web UI (started by {UNIT}.socket, stops itself when idle)
 Requires={UNIT}.socket
 After={UNIT}.socket
 
@@ -57,10 +58,40 @@ def systemctl(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["systemctl", "--user", *args], capture_output=True, text=True)
 
 
+def legacy_units() -> list[Path]:
+    """ytalbum's unit files, if this machine still has them. Nothing here removes them."""
+    return [p for name in (f"{LEGACY_UNIT}.socket", f"{LEGACY_UNIT}.service") if (p := unit_dir() / name).exists()]
+
+
+def port_of(path: Path, default: int | None = None) -> int | None:
+    match = re.search(r"ListenStream=.*?:(\d+)", path.read_text()) if path.exists() else None
+    return int(match[1]) if match else default
+
+
+def clash(port: int) -> str | None:
+    """ytalbum holding the same port, which is the one way `install` fails for a reason of ours.
+
+    Both default to 8765. systemd would answer "Address already in use" from inside an
+    `enable --now`, which reads as a bug in noaap rather than as two versions of the same program
+    wanting one port.
+    """
+    theirs = unit_dir() / f"{LEGACY_UNIT}.socket"
+    if not theirs.exists() or port_of(theirs) != port:
+        return None
+    if systemctl("is-active", f"{LEGACY_UNIT}.socket").stdout.strip() != "active":
+        return None
+    return (f"ytalbum is already listening on port {port} ({theirs}). Either give noaap another port "
+            f"(`noaap service install --port 8766`) or stop ytalbum's first "
+            f"(`systemctl --user disable --now {LEGACY_UNIT}.socket`, or `noaap migrate --apply "
+            f"--uninstall-old`). Nothing was changed.")
+
+
 def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> list[str]:
     """Write the units, enable and start the socket. Returns what was done, for the user."""
     if not cfg.library_root:
         raise ValueError("set the library first: noaap config --library PATH")
+    if message := clash(port):
+        raise RuntimeError(message)
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
     for name, text in render_units(cfg, port, idle_exit).items():
@@ -89,9 +120,9 @@ def uninstall() -> list[str]:
 
 
 def installed_port(default: int = 8765) -> int:
-    path = unit_dir() / f"{UNIT}.socket"
-    match = re.search(r"ListenStream=.*?:(\d+)", path.read_text()) if path.exists() else None
-    return int(match[1]) if match else default
+    """Our own socket's port. Deliberately not ytalbum's: restarting or talking to their service
+    from here would be acting on a program this one does not manage."""
+    return port_of(unit_dir() / f"{UNIT}.socket", default) or default
 
 
 def busy(port: int | None = None) -> bool:
@@ -117,4 +148,7 @@ def restart(force: bool = False) -> list[str]:
 def status() -> str:
     socket = systemctl("is-active", f"{UNIT}.socket").stdout.strip() or "not installed"
     service = systemctl("is-active", f"{UNIT}.service").stdout.strip()
-    return f"socket: {socket}   web UI process: {'running' if service == 'active' else 'stopped (starts on the next request)'}"
+    line = f"socket: {socket}   web UI process: {'running' if service == 'active' else 'stopped (starts on the next request)'}"
+    if theirs := legacy_units():
+        line += f"\n  ytalbum's units are still here ({len(theirs)}): `noaap migrate` can remove them"
+    return line
