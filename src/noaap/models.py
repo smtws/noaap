@@ -245,6 +245,11 @@ class PlanTrack:
     lyrics_rejected: list[int] = field(default_factory=list)  # lrclib entries the user said are not this song
     file_length: float | None = None  # seconds of audio actually on disk, after any trim
     file_length_by: str | None = None  # "header", or "decoded" when the file would not say (§9, slice 56)
+    # what this file was called and what it said when noaap adopted it, so an undo can give it
+    # back (§9, slice 58). `adopted_tags` holds only the fields noaap would overwrite, each with
+    # the value that was there — or None where the file said nothing.
+    adopted_name: str | None = None
+    adopted_tags: dict[str, Any] | None = None
     # another video to take the audio from, when the playlist's is not the recording you want
     # (a film cut, a live intro). The playlist video stays the track's identity (DESIGN.md §9, slice 34).
     source_override: str | None = None
@@ -372,6 +377,15 @@ class AlbumPlan:
     # which provider this album's audio comes from (§9, slice 51). Absent means it was written
     # before providers existed, which can only mean YouTube.
     provider: str = "youtube"
+    # **This album is the collection's, not ours** (§9, slice 58). An album adopted where it
+    # already stood keeps the names its owner gave it and the tags they wrote, and renaming or
+    # retagging it is a separate thing a person asks for — so no ordinary pass may do either.
+    # Both default to false, which is every album noaap fetched itself.
+    keep_names: bool = False   # do not rename its files and do not move its folder
+    keep_tags: bool = False    # write nothing into its audio files, by any pass
+    # what it looked like when noaap adopted it, so it can be given back (§9, slice 58):
+    # {"folder": <path at adoption>, "at": <ISO date>}. Per track, `adopted_name`/`adopted_tags`.
+    adopted: dict[str, Any] = field(default_factory=dict)
     schema: int = PLAN_SCHEMA
 
     @property

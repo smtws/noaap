@@ -55,3 +55,87 @@ def test_a_source_that_cannot_know_yet_says_nothing(collection):
     assert Entry(video_id="x", position=1, title="t").ext is None
     assert PlanTrack(video_id="x", number=1, artist="a", title="t", filename="f",
                      provenance={}).ext == "opus", "and the download default is unchanged"
+
+
+# -- the two flags that make an album stay the collection's ---------------------------------------
+
+
+def adopted(album: Path, library: Path):
+    """What commit 3 will write: a plan that says these names and these tags are the owner's."""
+    from noaap.download import save_plan
+
+    plan = build_plan(folder().collection(str(album)), source=folder())
+    plan.provider = "folder"
+    plan.keep_names = plan.keep_tags = True
+    plan.folder = str(album.relative_to(library))
+    for t in plan.tracks:
+        t.state = "done"
+        t.filename = Path(t.video_id).name
+        t.adopted_name = t.filename
+    save_plan(plan, album)
+    return plan
+
+
+def digests(album: Path) -> dict[str, str]:
+    from noaap.sources_folder import AUDIO, stream_sha
+
+    return {p.name: stream_sha(p) for p in sorted(album.iterdir()) if p.suffix.lower() in AUDIO}
+
+
+def test_an_ordinary_pass_leaves_an_adopted_album_exactly_as_it_is(collection, tmp_path):
+    """The whole promise, in one case. Without `keep_names` this renames all three files and turns
+    the mp3 into `.opus`; without `keep_tags` it rewrites every one of them."""
+    from noaap.download import run
+    from noaap.sources_folder import AUDIO
+
+    plan = adopted(collection, tmp_path)
+    audio = lambda: {p.name: (p.stat().st_mtime_ns, p.stat().st_size)  # noqa: E731
+                     for p in collection.iterdir() if p.suffix.lower() in AUDIO}
+    before, sounds = audio(), digests(collection)
+
+    run(plan, collection, folder(), track_source=lambda t: folder(), download=False)
+
+    assert audio() == before, "not one file renamed, and not one byte written"
+    assert digests(collection) == sounds
+    assert (collection / ".ytalbum.json").is_file(), "the plan is ours and is written; nothing else is"
+
+
+def test_the_folder_stays_where_its_owner_put_it(collection, tmp_path):
+    """`relocate` would move "A Band/An Album" to wherever the derived names point."""
+    from noaap.download import relocate
+
+    plan = adopted(collection, tmp_path)
+
+    assert relocate(collection, plan, tmp_path) == collection
+    assert collection.is_dir()
+
+
+def test_deriving_names_is_skipped_entirely(collection, tmp_path):
+    """`refresh_derived` is what every later pass calls, and it is where the wanting starts."""
+    from noaap.plan import refresh_derived
+
+    plan = adopted(collection, tmp_path)
+    names = [t.filename for t in plan.tracks]
+
+    refresh_derived(plan)
+
+    assert [t.filename for t in plan.tracks] == names
+    assert plan.folder == str(collection.relative_to(tmp_path))
+
+
+def test_an_album_noaap_fetched_is_untouched_by_any_of_this(collection, tmp_path):
+    """Both flags default to false, so nothing that exists today behaves differently."""
+    from noaap.download import run
+
+    plan = build_plan(folder().collection(str(collection)), source=folder())
+    plan.provider = "folder"
+    assert plan.keep_names is False and plan.keep_tags is False
+    for t in plan.tracks:
+        t.state = "done"
+        t.filename = Path(t.video_id).name
+
+    run(plan, collection, folder(), track_source=lambda t: folder(), download=False)
+
+    assert [t.filename for t in plan.tracks] != [Path(t.video_id).name for t in plan.tracks], \
+        "an ordinary album is still renamed into noaap's scheme"
+    assert (collection / plan.tracks[0].filename).is_file()

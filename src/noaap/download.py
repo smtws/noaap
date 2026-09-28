@@ -68,7 +68,12 @@ def find_plan(library: Path, source_id: str) -> tuple[Path, AlbumPlan] | None:
 
 
 def relocate(album_dir: Path, plan: AlbumPlan, library: Path) -> Path:
-    """Move the album folder to where the (edited) plan says it belongs. Never overwrites."""
+    """Move the album folder to where the (edited) plan says it belongs. Never overwrites.
+
+    An album that keeps its names stays where its owner put it (§9, slice 58).
+    """
+    if plan.keep_names:
+        return album_dir
     target = library / wanted_folder(plan)
     if not album_dir.exists() or album_dir.resolve() == target.resolve():
         plan.folder = wanted_folder(plan)
@@ -180,7 +185,7 @@ def run(
 
     for track in plan.tracks:
         check()
-        wanted = wanted_filename(plan, track)
+        wanted = track.filename if plan.keep_names else wanted_filename(plan, track)
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted
             if old.exists() and not new.exists():
@@ -218,7 +223,12 @@ def run(
             if looked_up:
                 text = update_track(lyrics, plan, track, album_dir, final)
             try:
-                if track.tagged != signature(plan, track, cover, text):
+                if plan.keep_tags:
+                    # nothing is written into this file by any pass (§9, slice 58). The words still
+                    # arrive as a sidecar beside it; the tag inside the file is the owner's.
+                    if looked_up or measured or failed_trim or reconciled:
+                        save_plan(plan, album_dir)
+                elif track.tagged != signature(plan, track, cover, text):
                     track.tagged = tag_file(final, plan, track, cover, text)
                     save_plan(plan, album_dir)
                     on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")

@@ -334,7 +334,14 @@ def wanted_filename(plan: AlbumPlan, t: PlanTrack) -> str:
 
 def refresh_derived(plan: AlbumPlan) -> AlbumPlan:
     """Update names of things not on disk yet. `folder` and the filenames of finished tracks
-    describe what IS on disk; only the executor moves those (download.relocate / download.run)."""
+    describe what IS on disk; only the executor moves those (download.relocate / download.run).
+
+    **An album that keeps its names is left entirely alone here** (§9, slice 58). Its files are
+    the owner's and are called what the owner called them; deriving a name for them would make
+    every later pass want to rename, which is the one thing adoption promises not to do.
+    """
+    if plan.keep_names:
+        return plan
     if not any(t.state == "done" for t in plan.tracks):
         plan.folder = wanted_folder(plan)  # nothing on disk yet: follow the (enriched) names
     for t in plan.tracks:
