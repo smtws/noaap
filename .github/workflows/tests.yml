@@ -25,5 +25,5 @@ jobs:
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - run: uv sync --locked --dev
       - run: uv run pytest -q
-      - run: node --check src/ytalbum/webui/app.js
+      - run: node --check src/noaap/webui/app.js
       - run: uvx ruff check src tests  # hygiene only; the code is hand-formatted, ruff format is not used
