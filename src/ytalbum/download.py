@@ -23,9 +23,10 @@ from .cover import square_if_padded
 from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
 from .models import AlbumPlan, Failure, PlanTrack
 from .plan import refresh_derived, wanted_filename, wanted_folder
+from .sources import Source
 from .tag import audio_length, audio_quality, image_mime, signature, tag_file
 from .trim import apply as apply_trim
-from .youtube import BOT_CHECK, NoAudioStream, YouTube, is_bot_check
+from .youtube import BOT_CHECK, NoAudioStream, is_bot_check
 
 log = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ def _measure_candidate(track: PlanTrack, path: Path) -> None:
 def run(
     plan: AlbumPlan,
     album_dir: Path,
-    yt: YouTube,
+    source: Source,
     on_track: Callable[[PlanTrack, str], None] = lambda t, what: None,
     check: Callable[[], None] = lambda: None,
     download: bool = True,
@@ -115,7 +116,7 @@ def run(
     """
     refresh_derived(plan)
     save_plan(plan, album_dir)
-    cover = _cover(plan, album_dir, yt, fetch=download)
+    cover = _cover(plan, album_dir, source, fetch=download)
     parts = album_dir / PARTS_DIR
 
     for track in plan.tracks:
@@ -176,10 +177,10 @@ def run(
             continue  # gone from the playlist, or we are only tidying up files
 
         if track.channel is None:
-            _follow_source(yt, track)  # whose upload this really is, and how long it runs
+            _follow_source(source, track)  # whose upload this really is, and how long it runs
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                tmp = yt.download_audio(track.effective_id, parts, track.audio_choice)
+                tmp = source.audio(track.effective_id, parts, track.audio_choice)
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length = audio_length(tmp)
                 _measure_candidate(track, tmp)
@@ -219,7 +220,7 @@ def run(
     return plan
 
 
-def _follow_source(yt: YouTube, track: PlanTrack) -> None:
+def _follow_source(source: Source, track: PlanTrack) -> None:
     """Take the uploader and the length from the video the audio actually comes from (§9, slice 34).
 
     Two things follow the *audio* rather than the identity: the channel, because "trim everything
@@ -230,7 +231,7 @@ def _follow_source(yt: YouTube, track: PlanTrack) -> None:
     moment, with a better message.
     """
     try:
-        facts = yt.probe(track.effective_id)
+        facts = source.probe(track.effective_id)
     except (DownloadError, RuntimeError, OSError) as e:
         log.info("could not read %s: %s", track.effective_id, e)
         return
@@ -248,7 +249,7 @@ def cover_candidates(url: str) -> list[str]:
     return [url]
 
 
-def _cover(plan: AlbumPlan, album_dir: Path, yt: YouTube, fetch: bool = True) -> bytes | None:
+def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True) -> bytes | None:
     """The album cover, kept as cover.* in the album folder.
 
     A cover the user put there is always used. One we saved ourselves is replaced once a
@@ -264,7 +265,7 @@ def _cover(plan: AlbumPlan, album_dir: Path, yt: YouTube, fetch: bool = True) ->
             existing = next(album_dir.glob(f"{COVER_STEM}.*"))
         if not ours or not plan.cover_url or plan.cover_url in (plan.cover_fetched.get("url"), plan.cover_fetched.get("tried")):
             return data
-        new = _download_cover(plan.cover_url, yt)
+        new = _download_cover(plan.cover_url, source)
         plan.cover_fetched["tried"] = plan.cover_url
         if not new:
             return data
@@ -274,17 +275,17 @@ def _cover(plan: AlbumPlan, album_dir: Path, yt: YouTube, fetch: bool = True) ->
     if not fetch:
         return None
     for url in filter(None, (plan.cover_url, plan.cover_fallback_url)):
-        if found := _download_cover(url, yt):
+        if found := _download_cover(url, source):
             return _save_cover(plan, album_dir, *found)
     if plan.cover_url:
         log.warning("could not fetch any cover for %s", plan.cover_url)
     return None
 
 
-def _download_cover(url: str, yt: YouTube) -> tuple[str, bytes] | None:
+def _download_cover(url: str, source: Source) -> tuple[str, bytes] | None:
     for candidate in cover_candidates(url):
         try:
-            data = yt.fetch_bytes(candidate)
+            data = source.art(candidate)
         except Exception as e:  # a missing cover must never stop the album
             log.debug("cover %s not available: %s", candidate, e)
             continue

@@ -51,14 +51,14 @@ MIN_ALBUM_TRACKS = 5
 
 def search_artist(yt, artist: str, mb: MusicBrainzAPI | None = None) -> SearchResult:
     result = SearchResult()
-    hits = yt.search_albums(artist)
+    hits = yt.find(artist)
     result.channel_url = main_channel(hits, artist)
     exact = {r.source_id for r in by_artist(hits, artist)}
     albums = [r for r in hits if r.source_id in exact or (result.channel_url and r.channel_url == result.channel_url)]
-    searched_raw = by_artist(yt.search_playlists(f"{artist} full album"), artist) + yt.search_playlists(f"{artist} album")
+    searched_raw = by_artist(yt.find_playlists(f"{artist} full album"), artist) + yt.find_playlists(f"{artist} album")
     if not result.channel_url:  # e.g. a playlist curator: no albums on YouTube Music, but its own playlists
         result.channel_url = main_channel(by_artist(searched_raw, artist), artist)
-    channel_refs = yt.list_channel(result.channel_url) if result.channel_url else []
+    channel_refs = yt.listing(result.channel_url) if result.channel_url else []
 
     mb_albums: list[str] = []
     if mb is not None:

@@ -291,6 +291,9 @@ class AlbumPlan:
     cover_fetched: dict[str, str] = field(default_factory=dict)  # {url, sha1} of the cover.* we saved
     # what the source looked like last time: lets an update skip it after one cheap request
     source_state: dict[str, Any] = field(default_factory=dict)  # {"ids": [...], "modified": "YYYYMMDD"}
+    # which provider this album's audio comes from (§9, slice 51). Absent means it was written
+    # before providers existed, which can only mean YouTube.
+    provider: str = "youtube"
     schema: int = PLAN_SCHEMA
 
     @property

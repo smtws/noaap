@@ -22,11 +22,11 @@ class CountingYouTube(FakeYouTube):
         self.ids, self.modified = ids, modified
         self.state_calls, self.full_fetches = 0, 0
 
-    def source_state(self, url):
+    def changed(self, url):
         self.state_calls += 1
         return {"ids": list(self.ids), "modified": self.modified}
 
-    def fetch(self, url):
+    def collection(self, url):
         self.full_fetches += 1
         collection = vol1()
         collection.entries = [e for e in collection.entries if e.video_id in self.ids]
@@ -113,7 +113,7 @@ def test_a_failing_quick_check_falls_back_to_reading(library):
     def boom(url):
         raise RuntimeError("network hiccup")
 
-    yt.source_state = boom
+    yt.changed = boom
     service(tmp_path, yt).update_all()
     assert yt.full_fetches == 1
 
@@ -149,13 +149,13 @@ class LostAccess:
     """The playlist still lists everything, but every video has become unreadable."""
 
     def __init__(self, collection):
-        self.collection = collection
+        self.whole = collection
 
-    def source_state(self, url):
-        return {"ids": [e.video_id for e in self.collection.entries], "modified": None}
+    def changed(self, url):
+        return {"ids": [e.video_id for e in self.whole.entries], "modified": None}
 
-    def fetch(self, url):
-        gone = copy.deepcopy(self.collection)
+    def collection(self, url):
+        gone = copy.deepcopy(self.whole)
         for e in gone.entries:
             e.skipped, e.transient = PREMIUM, False  # permanent, like a cancelled subscription
         return gone

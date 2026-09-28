@@ -22,23 +22,64 @@ def vol1() -> Collection:
 
 
 class FakeYouTube:
+    """A stand-in `Source` (§9, slice 51): the four required calls, and the capabilities it needs."""
+
+    name = "youtube"
+
     def __init__(self, template: Path) -> None:
         self.template = template
         self.downloads: list[str] = []
 
-    def download_audio(self, video_id: str, dest_dir: Path, choice: str = "best") -> Path:
-        self.downloads.append(video_id)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        out = dest_dir / f"{video_id}.opus"
+    def capabilities(self) -> frozenset[str]:
+        return frozenset({"search", "changes", "details", "clean"})
+
+    def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
+        self.downloads.append(ref)
+        into.mkdir(parents=True, exist_ok=True)
+        out = into / f"{ref}.opus"
         shutil.copy(self.template, out)
         return out
 
-    def probe(self, video_id: str) -> Entry:
-        """What the real client answers about one video: enough to follow an uploader (§9, slice 34)."""
-        return Entry(video_id=video_id, position=1, title=video_id, channel="Napalm Records", duration=1.0)
+    def probe(self, ref: str) -> Entry:
+        """What the real client answers about one item: enough to follow an uploader (§9, slice 34)."""
+        return Entry(video_id=ref, position=1, title=ref, channel="Napalm Records", duration=1.0)
 
-    def fetch_bytes(self, url: str) -> bytes:
+    def art(self, url: str) -> bytes:
         return JPEG
+
+    def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
+        from ytalbum.titles import parse_video_title
+
+        return parse_video_title(entry.title, entry.channel)
+
+    def url_for(self, ref: str) -> str | None:
+        return f"https://www.youtube.com/watch?v={ref}"
+
+    def one_ref(self, text: str) -> str | None:
+        from ytalbum.youtube import one_video
+
+        return one_video(text)
+
+    # The capability calls a particular test does not care about. A real provider answers these or
+    # says it cannot; a double that is never asked may as well answer emptily, and the tests that do
+    # care override them.
+    def collection(self, url: str):
+        return vol1()
+
+    def changed(self, plan_state, url):
+        return None
+
+    def listing(self, url):
+        return []
+
+    def find(self, query, limit=12):
+        return []
+
+    def find_playlists(self, query, limit=10):
+        return []
+
+    def details(self, url):
+        return None
 
 
 @pytest.fixture(scope="module")
@@ -238,7 +279,7 @@ def test_our_cover_is_upgraded_when_a_better_source_appears(tmp_path, yt):
     assert load_plan(album_dir).cover_fetched["url"] == plan.cover_url
 
     square = b"\xff\xd8\xff\xe0" + b"\2" * 64
-    yt.fetch_bytes = lambda url: square if "coverartarchive" in url else JPEG
+    yt.art = lambda url: square if "coverartarchive" in url else JPEG
     plan = load_plan(album_dir)
     plan.cover_fallback_url, plan.cover_url = plan.cover_url, "https://coverartarchive.org/release-group/x/front-500"
     events = []
@@ -266,7 +307,7 @@ def test_missing_cover_art_falls_back(tmp_path, yt):
             raise OSError("404")
         return JPEG
 
-    yt.fetch_bytes = fetch
+    yt.art = fetch
     plan = build_plan(vol1())
     plan.cover_fallback_url, plan.cover_url = plan.cover_url, "https://coverartarchive.org/release-group/x/front-500"
     album_dir = tmp_path / plan.folder

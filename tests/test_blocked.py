@@ -77,7 +77,7 @@ def test_partial_data_changes_nothing_on_disk(tmp_path):
     class BlockedYT:
         cfg = Config(musicbrainz=False)
 
-        def fetch(self, url):
+        def collection(self, url):
             c = vol1()
             for e in c.entries[1:]:
                 # a provider says both: the words a person reads, and the kind the pipeline
@@ -105,11 +105,11 @@ def test_download_stops_at_the_first_bot_check(tmp_path):
     class BlockedDownloads:
         calls = 0
 
-        def download_audio(self, video_id, dest_dir, choice="best"):
+        def audio(self, video_id, dest_dir, choice="best"):
             self.calls += 1
             raise DownloadError(BOT)
 
-        def fetch_bytes(self, url):
+        def art(self, url):
             raise OSError("offline")
 
     yt = BlockedDownloads()
@@ -132,7 +132,7 @@ def test_an_album_of_unusable_videos_is_not_written(tmp_path):
         e.skipped, e.transient = PREMIUM, False
 
     class OnlyPremium:
-        def fetch(self, url):
+        def collection(self, url):
             return collection
 
     service = Service(Config(library_root=tmp_path), tmp_path, yt=OnlyPremium(), mb=None)

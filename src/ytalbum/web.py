@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from . import config as config_mod
+from . import sources
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
@@ -56,7 +57,7 @@ from .timing import (
     verifies_with,
 )
 from .trim import original_path
-from .youtube import Cancelled, YouTube
+from .youtube import Cancelled
 
 log = logging.getLogger(__name__)
 
@@ -213,8 +214,8 @@ class Details:
     PAUSE = 1.0  # between playlists, per worker
     BACKOFF = 600.0  # after a bot check
 
-    def __init__(self, youtube: Callable[[], Any]) -> None:
-        self._youtube = youtube
+    def __init__(self, source: Callable[[], Any]) -> None:
+        self._source = source
         self.known: dict[str, dict[str, Any]] = {}
         self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._pending: set[str] = set()
@@ -243,7 +244,7 @@ class Details:
                 self.known[source_id] = {"unknown": True}
             else:
                 try:
-                    self.known[source_id] = self._youtube().playlist_details(url) or {"unknown": True}
+                    self.known[source_id] = self._source().details(url) or {"unknown": True}
                 except Exception as e:
                     self.known[source_id] = {"unknown": True}
                     if "not a bot" in str(e):
@@ -267,7 +268,7 @@ class App:
         self._thumbs: dict[str, tuple[bytes, str]] = {}
         self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel))
         self.jobs = Jobs(self._service_factory)
-        self.details = Details(lambda: YouTube(self.cfg))
+        self.details = Details(lambda: sources.get(None, self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running
         # (today: what lrclib already holds for a track, §9, slice 42). Built once, because its lyrics cache

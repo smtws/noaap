@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import sources
 from .config import Config
 from .download import PARTS_DIR, PLAN_FILE, find_plan, iter_plans, load_plan, relocate, run, save_plan
 from .enrich import enrich
@@ -64,7 +65,7 @@ from .timing import (
 )
 from .timing import provider as timing_provider
 from .trim import ORIGINALS, kept_originals, originals_of
-from .youtube import BOT_CHECK, Cancelled, YouTube, channel_base_url, one_video
+from .youtube import BOT_CHECK, Cancelled, channel_base_url, one_video
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class Service:
         log: Callable[[str], None] = lambda s: None,
         on_plan: Callable[[AlbumPlan], None] = lambda p: None,
         on_track: Callable[[PlanTrack, str], None] = lambda t, what: None,
-        yt: YouTube | None = None,
+        yt: sources.Source | None = None,
         mb: MusicBrainz | None = None,
         cancel: threading.Event | None = None,
         lrclib: LyricsAPI | None = None,
@@ -117,7 +118,10 @@ class Service:
         self.library = library.expanduser() if library else None
         self.log, self.on_plan, self.on_track = log, on_plan, on_track
         self.cancel = cancel
-        self.yt = yt or YouTube(cfg, cancel)
+        # `yt` is the one provider a Service was built with; a plan that belongs to another asks
+        # the registry for its own (§9, slice 51). Tests pass a stand-in here, which is why it stays.
+        self.yt = yt or sources.get(None, cfg, cancel)
+        self._cancel = cancel
         self._mb = mb
         self._lrclib = lrclib
 
@@ -156,7 +160,7 @@ class Service:
         """Read a playlist/video, enrich it, merge with the library, then (unless told not to) download."""
         self.check()
         self.log(f"reading {url} …")
-        collection = self.yt.fetch(url)
+        collection = self.source_for().collection(url)
         self.check()
         if dump:
             dump.write_text(json.dumps(collection.to_dict(), indent=2, ensure_ascii=False) + "\n")
@@ -353,7 +357,7 @@ class Service:
     def execute(self, plan: AlbumPlan, album_dir: Path) -> Outcome:
         todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, lyrics=self.lrclib)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, lyrics=self.lrclib)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))
         if any(t.error_kind == Failure.BOT_CHECK for t in failed):
@@ -418,7 +422,7 @@ class Service:
         if waiting:
             return None  # something is still missing here
         try:
-            now = self.yt.source_state(plan.source_url)
+            now = self.source_for(plan).changed(plan.source_url)
         except Cancelled:
             raise
         except Exception as e:
@@ -444,7 +448,7 @@ class Service:
 
     def channel(self, url: str) -> list[tuple[str, list[SourceRef]]]:
         self.log(f"reading channel {url} …")
-        refs = self.yt.list_channel(url)
+        refs = self.source_for().listing(url)
         groups = [
             (label, [r for r in refs if r.tab == tab])
             for tab, label in (("releases", "Releases (official albums and singles)"), ("playlists", "Playlists"))
@@ -560,7 +564,7 @@ class Service:
         save_plan(plan, album_dir)
         # retag through the ordinary pass, with no lyrics client: it rewrites the LYRICS tag from
         # the sidecar as every pass does, and downloads nothing
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -702,6 +706,17 @@ class Service:
         return {"timed": timed.to_dict(), "by": timed.by, "lines": len(timed.lines),
                 "placed": len(timed.lines) - len(timed.unplaced), "text": text}
 
+    def source_for(self, plan: AlbumPlan | None = None):
+        """The provider this plan belongs to — the one the Service was built with when they agree.
+
+        A Service holds one provider because a run is usually about one album; a plan from another
+        provider gets its own. Tests inject a stand-in as `yt`, and it stands in for the default.
+        """
+        wanted = getattr(plan, "provider", None) or sources.DEFAULT
+        if wanted == getattr(self.yt, "name", sources.DEFAULT):
+            return self.yt
+        return sources.get(wanted, self.cfg, self._cancel)
+
     def _timing(self, capability: str, what: str):
         """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40)."""
         engine = timing_provider(self.cfg, capability)
@@ -731,7 +746,7 @@ class Service:
             mine = " — yours from now on" if t.provenance.get("lyrics") == Provenance.USER else ""
             self.log(f"{t.title}: {t.lyrics}{mine}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -814,7 +829,7 @@ class Service:
             self.log(f"{track.title}: lrclib's words are this song's, its timings are {track.lyrics_fit['why']}'s — "
                      f"kept the words and timed them to this file with {timed.by}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -946,7 +961,7 @@ class Service:
         track.lyrics_timed_by = None
         track.lyrics_fit = {**(track.lyrics_fit or {}), "decided": "words by hand"}
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
         save_plan(plan, album_dir)
         self.log(f"{track.title}: took lrclib's words without their timings, on your say-so")
         return Outcome("ok", plan, album_dir)
@@ -1004,12 +1019,12 @@ class Service:
         else:
             self.log(f"{track.title}: nothing lrclib has fits this recording")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)  # the tag follows the file
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)  # the tag follows the file
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
     def _lyrics_pass(self, plan: AlbumPlan, album_dir: Path, api: LyricsAPI) -> Outcome:
-        run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False, lyrics=api)
+        run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False, lyrics=api)
         return Outcome("ok", plan, album_dir)
 
     # -- offline repair --------------------------------------------------------------------
@@ -1066,7 +1081,7 @@ class Service:
             self.log(f"=== {plan.albumartist} — {plan.album}")
             save_plan(plan, album_dir)
             album_dir = relocate(album_dir, plan, self.library)
-            run(plan, album_dir, self.yt, on_track=self.on_track, check=self.check, download=False)
+            run(plan, album_dir, self.source_for(plan), on_track=self.on_track, check=self.check, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
         self.log(f"{len(outcomes)} album(s) tidied up")
         return outcomes

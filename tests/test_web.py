@@ -193,11 +193,11 @@ def test_details_runner_fills_counts_in_the_background(server):
     resolved = []
 
     class FakeYT:
-        def playlist_details(self, url):
+        def details(self, url):
             resolved.append(url)
             return {"count": 13, "thumbnail": "https://i.ytimg.com/vi/x/hq.jpg", "title": "T"}
 
-    app.details._youtube = lambda: FakeYT()
+    app.details._source = lambda: FakeYT()
     app.details.PAUSE = 0
     refs = [{"id": "PL1", "url": "https://www.youtube.com/playlist?list=PL1"}]
     assert c.post("/api/details", json={"refs": refs}, headers=HDR).json() == {}  # queued, nothing known yet
@@ -958,7 +958,7 @@ def test_the_spelling_hint_names_both_ways_to_run_repair(tmp_path, opus_template
 def previewing_server(library, opus_template, collection):
     """A server whose YouTube answers with one fixed collection, so a preview can be driven."""
     yt = FakeYouTube(opus_template)
-    yt.fetch = lambda url: collection
+    yt.collection = lambda url: collection
     app = App(Config(musicbrainz=False), library, port=0,
               service_factory=lambda job: Service(Config(musicbrainz=False), library, log=job.log.append, yt=yt))
     srv = app.make_server()

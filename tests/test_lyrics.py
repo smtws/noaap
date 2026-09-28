@@ -574,10 +574,15 @@ def service(tmp_path, api):
 
 
 class NoNetwork:
-    def download_audio(self, *a, **k):
+    name = "youtube"
+
+    def capabilities(self):
+        return frozenset()
+
+    def audio(self, *a, **k):
         raise AssertionError("fetching lyrics must not download audio")
 
-    def fetch_bytes(self, *a, **k):
+    def art(self, *a, **k):
         raise AssertionError("fetching lyrics must not ask YouTube")
 
 

@@ -13,10 +13,10 @@ from ytalbum.service import Service, track_spelling
 class NoNetwork(FakeYouTube):
     """Any call to YouTube fails the test."""
 
-    def download_audio(self, *a, **k):
+    def audio(self, *a, **k):
         raise AssertionError("repair must not download")
 
-    def fetch_bytes(self, *a, **k):
+    def art(self, *a, **k):
         raise AssertionError("repair must not fetch")
 
 
@@ -105,7 +105,7 @@ def test_a_harmonised_artist_lands_in_the_right_folder_at_once(tmp_path, opus_te
         e.video_id = "x" + e.video_id[1:]
         e.music.artist = "SALTATIO MORTIS"
     service = Service(Config(library_root=tmp_path, musicbrainz=False), tmp_path, yt=FakeYouTube(opus_template))
-    service.yt.fetch = lambda url: shouting
+    service.yt.collection = lambda url: shouting
 
     outcome = service.fetch("https://www.youtube.com/playlist?list=PL-second")
     assert outcome.plan.albumartist == "Saltatio Mortis"  # the library's spelling wins
@@ -131,7 +131,7 @@ def test_a_dry_run_shows_the_artist_the_fetch_would_write(tmp_path, opus_templat
     save_plan(first, tmp_path / first.folder)
 
     svc = Service(Config(library_root=tmp_path, musicbrainz=False), tmp_path, yt=NoNetwork(opus_template))
-    svc.yt.fetch = lambda url: shouting_second_playlist()
+    svc.yt.collection = lambda url: shouting_second_playlist()
     outcome = svc.fetch("https://www.youtube.com/playlist?list=PL-second", dry=True)
     assert outcome.status == "dry"
     assert outcome.plan.albumartist == "Saltatio Mortis"  # what a real fetch would write
@@ -141,7 +141,7 @@ def test_a_dry_run_shows_the_artist_the_fetch_would_write(tmp_path, opus_templat
 
 def test_a_dry_run_without_a_library_still_works(tmp_path, opus_template):
     svc = Service(Config(musicbrainz=False), None, yt=NoNetwork(opus_template))
-    svc.yt.fetch = lambda url: shouting_second_playlist()
+    svc.yt.collection = lambda url: shouting_second_playlist()
     outcome = svc.fetch("https://www.youtube.com/playlist?list=PL-second", dry=True)
     assert outcome.status == "dry" and outcome.plan.albumartist == "SALTATIO MORTIS"
 
@@ -482,7 +482,7 @@ def test_a_fetched_single_is_named_after_its_enriched_track(tmp_path, opus_templ
     collection.channel = "DOMINUM"
 
     svc = Service(Config(library_root=tmp_path, musicbrainz=False), tmp_path, yt=FakeYouTube(opus_template))
-    svc.yt.fetch = lambda url: collection
+    svc.yt.collection = lambda url: collection
     outcome = svc.fetch(collection.source_url)
     saved = next(p for _, p in iter_plans(tmp_path))
     assert saved.kind == "single"

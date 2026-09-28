@@ -17,7 +17,7 @@ def ref(title, tab, source_id=None, artist=None, channel_url=None, count=None):
 
 
 class FakeYouTube:
-    def search_albums(self, query):
+    def find(self, query):
         return [
             ref("XV - Best Of (Deluxe Edition)", "ytmusic", "OLAK-xv", "fauntube", FAUNTUBE, 26),
             ref("Von den Elben", "ytmusic", "OLAK-elben", "fauntube", FAUNTUBE, 13),
@@ -26,7 +26,7 @@ class FakeYouTube:
             ref("The Tale of the Faun", "ytmusic", "OLAK-tale", "Emperiom", "https://www.youtube.com/channel/UCemp", 3),
         ]
 
-    def list_channel(self, url):
+    def listing(self, url):
         assert url == FAUNTUBE
         return [
             ref("HEX", "releases", "OLAK-hex"),
@@ -35,7 +35,7 @@ class FakeYouTube:
             ref("FAUN - Official Videos", "playlists", "PL-videos"),
         ]
 
-    def search_playlists(self, query):
+    def find_playlists(self, query):
         return [ref("Faun - Luna (Full album) - 2014", "search", "PL-luna", "Mel Satyria"), ref("FAUN - Official Videos", "search", "PL-videos", "fauntube")]
 
 
@@ -65,13 +65,13 @@ def test_without_musicbrainz_the_track_count_decides():
 
 def test_curator_channel_found_through_its_playlists():
     class Curator(FakeYouTube):
-        def search_albums(self, query):
+        def find(self, query):
             return []
 
-        def search_playlists(self, query):
+        def find_playlists(self, query):
             return [ref("My Dark Lullabies Vol.15 - Sleep Distortion", "search", "PL15", "My Dark Lullabies", "https://www.youtube.com/@MyDarkLullabies")]
 
-        def list_channel(self, url):
+        def listing(self, url):
             assert url == "https://www.youtube.com/@MyDarkLullabies"
             return [ref(f"My Dark Lullabies Vol. {n}", "playlists", f"PL{n}") for n in (20, 15, 1)]
 
@@ -81,7 +81,7 @@ def test_curator_channel_found_through_its_playlists():
 
 
 def test_no_channel_without_a_name_match():
-    hits = FakeYouTube().search_albums("x")[3:]
+    hits = FakeYouTube().find("x")[3:]
     assert main_channel(hits, "Faun") is None
 
 
