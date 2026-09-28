@@ -444,8 +444,9 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         print("set the library first: noaap config --library PATH", file=sys.stderr)
         return 2
     paths = sorted(root.glob(f"*/*/{PLAN_FILE}"))
-    identical = filled = 0
+    identical = filled = converted = 0
     faults: list[str] = []
+    moved: list[str] = []
     unknown: dict[str, int] = {}
     for path in paths:
         where = f"{path.parent.parent.name}/{path.parent.name}"
@@ -459,24 +460,37 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         gone, changed = _plan_differences(before, after)
         for key in _plan_unknown(plan):
             unknown[key] = unknown.get(key, 0) + 1
+        rewrites = [c for c in changed if _is_conversion(c[1], c[2], path.parent, root)]
+        changed = [c for c in changed if c not in rewrites]
+        converted += len(rewrites)
+        if rewrites and not (gone or changed):
+            moved.append(f"{where}: {len(rewrites)} ref(s) would become relative to the library")
         if gone or changed:
-            faults.append(f"{where}: would lose {gone}" if gone else f"{where}: would change {changed[:3]}")
+            faults.append(f"{where}: would lose {gone}" if gone
+                          else f"{where}: would change {[f'{k}: {b!r} -> {a!r}' for k, b, a in changed[:3]]}")
         elif json.dumps(after, indent=2, ensure_ascii=False) + "\n" == path.read_text(encoding="utf-8"):
             identical += 1
         else:
             filled += 1
     print(f"{len(paths)} plan(s): {identical} byte-identical, {filled} would gain default fields, "
-          f"{len(faults)} would lose or change something")
+          + (f"{converted} ref(s) in {len(moved)} plan(s) would become relative, " if converted else "")
+          + f"{len(faults)} would lose or change something")
     for key, n in sorted(unknown.items()):
         print(f"  unknown field {key!r} on {n} plan(s) — written by a newer noaap, carried through")
+    for line in moved[:5]:
+        print(f"  {line}")
+    if len(moved) > 5:
+        print(f"  …and {len(moved) - 5} more")
     for fault in faults:
         print(f"  {fault}")
     return 1 if faults else 0
 
 
-def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str], list[str]]:
+def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str], list[tuple[str, Any, Any]]]:
+    """(keys that disappeared, values that changed). A change carries both values, because whether
+    it is a fault or a conversion can only be told by looking at them (§9, slice 60)."""
     gone: list[str] = []
-    changed: list[str] = []
+    changed: list[tuple[str, Any, Any]] = []
     if isinstance(before, dict) and isinstance(after, dict):
         gone += [f"{path}{k}" for k in before.keys() - after.keys()]
         for k in before.keys() & after.keys():
@@ -485,14 +499,28 @@ def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str
             changed += c
     elif isinstance(before, list) and isinstance(after, list):
         if len(before) != len(after):
-            changed.append(f"{path}length {len(before)} -> {len(after)}")
+            changed.append((f"{path}length", len(before), len(after)))
         for i, (b, a) in enumerate(zip(before, after, strict=False)):
             g, c = _plan_differences(b, a, f"{path}{i}.")
             gone += g
             changed += c
     elif before != after:
-        changed.append(f"{path}{before!r} -> {after!r}")
+        changed.append((path.rstrip("."), before, after))
     return gone, changed
+
+
+def _is_conversion(before: Any, after: Any, album_dir: Path, library: Path) -> bool:
+    """Is this change **exactly** the rewrite of an absolute path into a relative one?
+
+    Nothing else may hide behind it. The value must be a path that was absolute, is now relative,
+    and names the same file under this album or this library — anything else is a change a person
+    has to be told about (§9, slice 60).
+    """
+    if not isinstance(before, str) or not isinstance(after, str):
+        return False
+    if not before.startswith("/") or after.startswith("/") or not after:
+        return False
+    return any((root / after).as_posix() == before for root in (album_dir, library))
 
 
 def _watch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
