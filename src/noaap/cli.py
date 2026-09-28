@@ -121,6 +121,10 @@ def main(argv: list[str] | None = None) -> int:
     mr.add_argument("--library", type=Path, help="the library to merge into (overrides the config)")
     mr.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
     mr.add_argument("--undecided", action="store_true", help="list only what it will not decide")
+    mr.add_argument("--new", action="store_true",
+                    help="also fetch the albums this library does not have at all")
+    mr.add_argument("--only", metavar="ARTIST", help="one artist's albums, on both sides")
+    mr.add_argument("--album", metavar="NAME", help="one album, on both sides")
 
     mg = sub.add_parser("migrate", help="take over what ytalbum left on this machine (shows first)")
     mg.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
@@ -183,7 +187,8 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 from . import merge as merge_pass
                 from .ranking import Verdict
-                found = merge_pass.survey(Path(args.source).expanduser(), library, log=print)
+                found = merge_pass.survey(Path(args.source).expanduser(), library, log=print,
+                                          artist=args.only, album=args.album)
                 wanted = [Verdict.UNDECIDED] if args.undecided else None
                 for line in merge_pass.report(found, verdicts=wanted, applying=args.apply):
                     print(line)
@@ -191,6 +196,17 @@ def main(argv: list[str] | None = None) -> int:
                     done = merge_pass.carry_out(found, library, log=print)
                     print(f"{done['replaced']} replaced, {done['filled']} filled"
                           + (f", {done['failed']} could not be taken" if done["failed"] else ""))
+                if args.new:
+                    service = _service(cfg, library)
+                    print("albums this library does not have:")
+                    if not args.apply:
+                        for album_dir, tracks in sorted(merge_pass.unpaired_albums(found).items()):
+                            plan = tracks[0].plan
+                            print(f"  {plan.albumartist} — {plan.album} ({len(tracks)} track(s))")
+                        print("nothing was fetched. `--new --apply` does it.")
+                    else:
+                        got = merge_pass.take_new(found, lambda url: service.fetch(url), log=print)
+                        print(f"{got['taken']} album(s) fetched, {got['held']} already here and left alone")
                 return 0
             case "migrate":
                 from . import migrate

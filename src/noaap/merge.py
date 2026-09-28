@@ -24,6 +24,7 @@ from .plan import wanted_filename
 from .ranking import Facts, Judgement, Verdict, consider
 from .recycle import bin_track
 from .service import _inside
+from .text import key as text_key
 
 
 @dataclass
@@ -73,15 +74,37 @@ class Survey:
         return out
 
 
+def wanted(side: Side, artist: str | None, album: str | None) -> bool:
+    """Is this track inside the scope the user named? An unnamed scope is every track."""
+    if artist and text_key(side.plan.albumartist) != text_key(artist):
+        return False
+    return not (album and text_key(side.plan.album) != text_key(album))
+
+
+def in_scope(incoming: list[Side], existing: list[Side], artist: str | None,
+             album: str | None) -> tuple[list[Side], list[Side]]:
+    """`--only` narrows both sides; `--album` narrows only the library being changed.
+
+    An album's name is rarely the same on both sides — a folder called "Trust In Rust" answers to a
+    library album called "Trust in Rust (Deluxe Edition)" — so filtering the incoming side by album
+    would drop exactly the tracks the user asked to merge into it. The artist is safe on both.
+    """
+    return ([s for s in incoming if wanted(s, artist, None)],
+            [s for s in existing if wanted(s, artist, album)])
+
+
 def survey(source: Path, target: Path, log: Callable[[str], None] = lambda s: None,
-           judge: Callable[[Pair], Judgement] = consider) -> Survey:
+           judge: Callable[[Pair], Judgement] = consider,
+           artist: str | None = None, album: str | None = None) -> Survey:
     """Measure both libraries and decide, touching nothing.
 
     Measuring is the expensive half — two decodes a pair — so the log says how far along it is
     rather than going quiet for ten minutes over two thousand files.
     """
-    incoming = list(sides(iter_plans(source)))
-    existing = list(sides(iter_plans(target)))
+    incoming, existing = in_scope(list(sides(iter_plans(source))), list(sides(iter_plans(target))),
+                                  artist, album)
+    if artist or album:
+        log(f"only {album or artist}")
     log(f"{len(incoming)} tracks here, {len(existing)} there")
     found = pair(incoming, existing)
     log(f"{found.counts()['pairs']} pairs, {found.counts()['ambiguous']} ambiguous, "
@@ -134,8 +157,9 @@ def report(found: Survey, *, verdicts: Iterable[Verdict] | None = None, show_unp
     if show_unpaired and found.pairing.ambiguous:
         lines.append(f"{len(found.pairing.ambiguous)} track(s) match more than one here and are left alone")
     if show_unpaired and found.pairing.unpaired:
-        lines.append(f"{len(found.pairing.unpaired)} track(s) are not in this library at all "
-                     "— `--new` imports their albums")
+        albums = len(unpaired_albums(found))
+        lines.append(f"{len(found.pairing.unpaired)} track(s) in {albums} album(s) are not in this "
+                     "library at all — `--new` fetches those albums")
     lines.append("about to do it." if applying else "nothing was changed. `noaap merge --apply` does it.")
     return lines
 
@@ -156,6 +180,18 @@ def numbers(proposal: Proposal) -> dict[str, object]:
     if j.old:
         out["displaced"] = _facts(j.old)
     return out
+
+
+def remember(candidate: Candidate | None, facts: Facts) -> None:
+    """Write a measurement onto the candidate it is about. An absent number is left absent."""
+    if candidate is None:
+        return
+    for name, value in (("length", facts.length), ("codec", facts.codec), ("bitrate", facts.bitrate),
+                        ("bytes", facts.bytes), ("cutoff_khz", facts.band.cutoff)):
+        if value is not None:
+            setattr(candidate, name, value)
+    if facts.band.known:
+        candidate.full_band = facts.band.full
 
 
 def _facts(f: Facts) -> dict[str, object]:
@@ -196,6 +232,15 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
     track.ext = incoming.suffix.lstrip(".").lower() or track.ext
     wanted = wanted_filename(plan, track)
 
+    # Ruling 5's other half. `write_sidecar` records what timed words were written against, but a
+    # sidecar older than that field says nothing — and most of this library's do. At the moment of
+    # a replacement we know exactly what the stamps belong to: the file about to go to the bin,
+    # whose length was just measured. Recording it here is what lets `timings_stale` speak
+    # afterwards (§9, slice 54).
+    if track.lyrics == "synced" and not track.lyrics_for_source and proposal.verdict.old:
+        track.lyrics_for_source = old.track.effective_id
+        track.lyrics_for_length = proposal.verdict.old.length
+
     if was and was.is_file():
         bin_track(library, album_dir, plan, track,
                   reason=f"replaced by a copy from {new.plan.provider}: {proposal.verdict.why}",
@@ -209,11 +254,13 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
 
     ref = new.track.video_id
     if not track.candidate(ref):
-        track.candidates.append(Candidate(
-            ref=ref, provider=new.plan.provider, length=proposal.verdict.new.length,
-            codec=proposal.verdict.new.codec, bitrate=proposal.verdict.new.bitrate,
-            bytes=proposal.verdict.new.bytes, added_by="pass", why=proposal.verdict.why,
-            when=dt.date.today().isoformat()))
+        track.candidates.append(Candidate(ref=ref, provider=new.plan.provider, added_by="pass",
+                                          why=proposal.verdict.why, when=dt.date.today().isoformat()))
+    # both sides keep what was measured, so the next pass decides nothing twice and the panel has
+    # the same numbers the report printed (§9, slice 54)
+    remember(track.candidate(ref), proposal.verdict.new)
+    if track.candidate(old_ref := old.track.effective_id) and proposal.verdict.old:
+        remember(track.candidate(old_ref), proposal.verdict.old)
     track.chosen = track.source_override = ref
     save_plan(plan, album_dir)
     log(f"  took {track.artist} - {track.title} ({proposal.verdict.why})")
@@ -225,3 +272,21 @@ def unpaired_albums(found: Survey) -> dict[Path, list[Side]]:
     for side in found.pairing.unpaired:
         out.setdefault(side.album_dir, []).append(side)
     return out
+
+
+def take_new(found: Survey, fetch: Callable[[str], object],
+             log: Callable[[str], None] = lambda s: None) -> dict[str, int]:
+    """Fetch the albums this library does not have, by the ordinary path.
+
+    Nothing special happens here: each one goes through `fetch`, which already refuses to touch an
+    album whose artist and name are in the library and says how many titles overlap instead
+    (§9, slice 53). **A deluxe edition never quietly grows the album that is already here.**
+    """
+    done = {"taken": 0, "held": 0}
+    for album_dir, tracks in sorted(unpaired_albums(found).items()):
+        plan = tracks[0].plan
+        log(f"  {plan.albumartist} — {plan.album} ({len(tracks)} track(s) this library lacks)")
+        outcome = fetch(plan.source_url)
+        status = getattr(outcome, "status", "")
+        done["held" if status == "held" else "taken"] += 1
+    return done

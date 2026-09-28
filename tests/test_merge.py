@@ -350,3 +350,128 @@ def test_a_merged_track_keeps_saying_where_its_audio_came_from(tmp_path):
     assert reloaded.provider == "youtube", "the album is still YouTube's"
     assert reloaded.tracks[0].candidate("Intake-1").provider == "folder"
     assert reloaded.tracks[0].provider_in(reloaded) == "folder", "and its audio is the folder's"
+
+
+def test_both_candidates_keep_what_was_measured(tmp_path):
+    """R-173: the bin entry had every number and the plan had none, so the panel could show
+    nothing and the next pass would decode both files again."""
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    taken, displaced = track.candidate("Intake-1"), track.candidate("Album-1")
+    assert (taken.codec, taken.cutoff_khz, taken.full_band) == ("flac", 22, True)
+    assert taken.length == 200.0 and taken.bytes
+    assert (displaced.codec, displaced.cutoff_khz, displaced.full_band) == ("opus", 20, False), \
+        "the one that lost keeps its numbers too — that is why it lost"
+
+
+def test_a_replacement_records_what_the_stamps_belonged_to(tmp_path):
+    """Most of this library's sidecars predate `lyrics_for_source`, so nothing could tell that
+    their stamps were made against another file. A replacement is the one moment anyone knows."""
+    from noaap.download import load_plan
+    from noaap.lyrics import timings_stale
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    before = load_plan(target / plan.folder)
+    before.tracks[0].lyrics = "synced"          # timed words, and nothing recorded about them
+    save_plan(before, target / plan.folder)
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    track = load_plan(target / plan.folder).tracks[0]
+    assert track.lyrics_for_source == "Album-1", "the file that just went to the bin"
+    assert track.lyrics_for_length == 200.0
+    assert timings_stale(track), "and the check can say so now"
+
+
+def test_words_that_were_never_timed_are_left_alone(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import carry_out
+
+    source, _ = real_library(tmp_path / "source", "Intake", "One", ext="flac", provider="folder")
+    target, plan = real_library(tmp_path / "target", "Album", "One")
+    before = load_plan(target / plan.folder)
+    before.tracks[0].lyrics = "plain"
+    save_plan(before, target / plan.folder)
+
+    carry_out(survey(source, target, judge=fixed(Verdict.REPLACE)), target)
+
+    assert load_plan(target / plan.folder).tracks[0].lyrics_for_source is None
+
+
+# -- scope, and the albums this library does not have --------------------------------------------------
+
+
+def test_only_one_artist_is_looked_at(tmp_path):
+    source = library(tmp_path / "source", plan_with("Intake", "One"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    other = AlbumPlan(source_url="x://o", source_id="o", kind=Kind.OFFICIAL_ALBUM, album="Theirs",
+                      albumartist="Another Band", year=None, cover_url=None, folder="Another Band/Theirs",
+                      tracks=[PlanTrack(video_id="o-1", number=1, artist="Another Band", title="One",
+                                        filename="01 - One.opus", provenance={})])
+    save_plan(other, tmp_path / "target" / other.folder)
+
+    mine = survey(source, target, judge=fixed(Verdict.REPLACE), artist="A Band")
+    theirs = survey(source, target, judge=fixed(Verdict.REPLACE), artist="Another Band")
+
+    assert mine.counts()["replace"] == 1
+    assert theirs.counts()["replace"] == 0, "the other artist's album is not even paired"
+
+
+def test_only_one_album_of_this_library_is_changed(tmp_path):
+    """`--album` narrows the library being changed, not the source: an album's name is rarely the
+    same on both sides — a folder called "Trust In Rust" answers to "Trust in Rust (Deluxe
+    Edition)" — so filtering the incoming side by it would drop the very tracks being merged in."""
+    source = library(tmp_path / "source", plan_with("Intake", "One"))
+    target = library(tmp_path / "target", plan_with("Album", "One"), plan_with("Another", "One"))
+
+    found = survey(source, target, judge=fixed(Verdict.REPLACE), album="Another")
+
+    assert [d.name for d in found.albums()] == ["Another"]
+    assert found.counts()["replace"] == 1, "the differently named source album still pairs into it"
+
+
+def test_new_fetches_the_albums_this_library_lacks(tmp_path):
+    from noaap.merge import take_new
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    found = survey(source, target, judge=fixed(Verdict.KEEP))
+    asked: list[str] = []
+
+    done = take_new(found, lambda url: asked.append(url) or type("O", (), {"status": "ok"})())
+
+    assert asked == ["x://Intake"], "by the ordinary path, once per album"
+    assert done == {"taken": 1, "held": 0}
+
+
+def test_an_album_already_here_is_counted_as_held_not_extended(tmp_path):
+    """R-164 ruling 6: a deluxe edition with extra tracks is shown, never grown into the album
+    that is already here. `fetch` is what refuses; `--new` only has to not work around it."""
+    from noaap.merge import take_new
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    found = survey(source, target, judge=fixed(Verdict.KEEP))
+
+    done = take_new(found, lambda url: type("O", (), {"status": "held"})())
+
+    assert done == {"taken": 0, "held": 1}
+
+
+def test_the_report_names_the_albums_not_just_the_tracks(tmp_path):
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere", "Also"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+
+    lines = report(survey(source, target, judge=fixed(Verdict.KEEP)))
+
+    assert any("2 track(s) in 1 album(s)" in line and "`--new` fetches those albums" in line
+               for line in lines)

@@ -190,6 +190,8 @@ class Candidate:
     sample_rate: int | None = None
     channels: int | None = None
     length_by: str | None = None         # "decoded" when the container would not say (§9, slice 53)
+    cutoff_khz: int | None = None        # where this file's audio stops, measured (§9, slice 54)
+    full_band: bool | None = None        # …and whether that is all its sample rate allows
     bytes: int | None = None             # how big the file is, where there is a file
     # the audio stream's own digest: the same recording in two files, told apart from two
     # encodings of it (§9, slice 53). Tag edits do not change it; a re-encode does, correctly.

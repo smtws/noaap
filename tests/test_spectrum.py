@@ -129,11 +129,22 @@ def test_two_files_at_their_ceilings_are_not_told_apart_by_this():
     assert better(Spectrum(cutoff=22, full=True), Spectrum(cutoff=24, full=True)) == 0
 
 
-def test_a_kilohertz_decides_and_nothing_less_does():
-    """R-164: wider by at least 1 kHz replaces; within 1 kHz is undecided."""
-    assert better(Spectrum(cutoff=21, full=False), Spectrum(cutoff=20, full=False)) == 1
+def test_one_kilohertz_is_inside_one_encoders_own_spread():
+    """R-173, correcting R-164: Opus reads 20 kHz on 219 of the collection's files and 21 on 107,
+    so "21 against 20" says nothing about which file is better. It decided 37 of 88 replacements
+    before this was measured."""
+    assert better(Spectrum(cutoff=21, full=False), Spectrum(cutoff=20, full=False)) == 0
+    assert better(Spectrum(cutoff=20, full=False), Spectrum(cutoff=21, full=False)) == 0
+
+    assert better(Spectrum(cutoff=22, full=False), Spectrum(cutoff=20, full=False)) == 1
     assert better(Spectrum(cutoff=19, full=False), Spectrum(cutoff=21, full=False)) == -1
-    assert better(Spectrum(cutoff=20, full=False), Spectrum(cutoff=20, full=False)) == 0
+
+
+def test_a_file_at_its_ceiling_still_beats_one_that_is_not_by_any_margin():
+    """The other half of the rule: the margin is about two band-limited files. A file that kept
+    everything its rate allows is better than one that did not, however close the numbers."""
+    assert better(Spectrum(cutoff=22, full=True), Spectrum(cutoff=21, full=False)) == 1
+    assert better(Spectrum(cutoff=24, full=True), Spectrum(cutoff=23, full=False)) == 1
 
 
 def test_an_unmeasured_file_never_wins_or_loses_by_being_unmeasured():

@@ -112,7 +112,13 @@ def measure(path: Path, window: tuple[float, float] = WINDOW) -> Spectrum:
                     why="at this file's ceiling" if cutoff >= ceiling else "band-limited")
 
 
-def better(a: Spectrum, b: Spectrum, margin: int = 1) -> int:
+# How much wider a band has to be before it means anything. One kilohertz was too loose: Opus
+# itself reads 20 kHz on 219 of the collection's files and 21 on 107, so "21 against 20" is inside
+# one encoder's own spread and decided 37 of 88 replacements on nothing (R-173).
+MARGIN = 2
+
+
+def better(a: Spectrum, b: Spectrum, margin: int = MARGIN) -> int:
     """1 if `a` holds more audio than `b`, -1 if less, 0 if there is nothing to choose.
 
     **Reaching its own ceiling beats a wider number.** A CD rip stops at 22 kHz because that is
