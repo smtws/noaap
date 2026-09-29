@@ -11,7 +11,11 @@ from dataclasses import asdict, dataclass, field, fields
 from enum import StrEnum
 from typing import Any
 
-PLAN_SCHEMA = 1
+PLAN_SCHEMA = 2
+# What this version can read. A plan is schema 2 only when it actually holds a path written
+# relative to its own folder; everything else stays 1 and is byte-for-byte what it always was
+# (§9, slice 60).
+PLAN_SCHEMAS = (1, 2)
 
 
 class Kind(StrEnum):
@@ -399,8 +403,9 @@ class AlbumPlan:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> AlbumPlan:
-        if d.get("schema") != PLAN_SCHEMA:
-            raise ValueError(f"unsupported plan schema {d.get('schema')!r} (expected {PLAN_SCHEMA})")
+        if d.get("schema") not in PLAN_SCHEMAS:
+            raise ValueError(f"unsupported plan schema {d.get('schema')!r} "
+                             f"(this version reads {', '.join(str(s) for s in PLAN_SCHEMAS)})")
         plan = keeping(cls, {**d, "tracks": [PlanTrack.from_dict(t) for t in d["tracks"]]})
         plan.own_the_candidates()
         return plan

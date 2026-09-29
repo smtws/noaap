@@ -14,6 +14,7 @@ import shutil
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 from mutagen import MutagenError
 
@@ -37,27 +38,76 @@ RETRY_DELAY = 5
 # -- plan files ------------------------------------------------------------------------
 
 
+# A path inside the album's own folder is written as `./name`, and read back as the folder it is
+# in (§9, slice 60). **One marker and one rule**: `./` cannot be a YouTube id, a SoundCloud id, a
+# URL or a bare file name, so nothing has to guess which strings are paths. A path that is not
+# inside this album — an intake folder somewhere else — stays exactly as it is, because it is not
+# this library's to rewrite.
+#
+# In memory a plan holds what it always held, so no reader changes. This is a property of the file.
+HERE = "./"
+
+
+def portable(value: Any, album_dir: Path) -> Any:
+    """What is written: a path inside this album becomes `./…`, everything else is untouched."""
+    if isinstance(value, dict):
+        return {k: portable(v, album_dir) for k, v in value.items()}
+    if isinstance(value, list):
+        return [portable(v, album_dir) for v in value]
+    if not isinstance(value, str) or not value.startswith("/"):
+        return value
+    where = Path(value)
+    if where == album_dir:
+        return HERE
+    return f"{HERE}{where.relative_to(album_dir)}" if album_dir in where.parents else value
+
+
+def resolved(value: Any, album_dir: Path) -> Any:
+    """What is read: `./…` becomes the file it names in this folder."""
+    if isinstance(value, dict):
+        return {k: resolved(v, album_dir) for k, v in value.items()}
+    if isinstance(value, list):
+        return [resolved(v, album_dir) for v in value]
+    if not isinstance(value, str) or not value.startswith(HERE):
+        return value
+    rest = value[len(HERE):]
+    return str(album_dir / rest) if rest else str(album_dir)
+
+
 def load_plan(album_dir: Path) -> AlbumPlan | None:
     path = album_dir / PLAN_FILE
     if not path.exists():
         return None
-    return AlbumPlan.from_dict(json.loads(path.read_text()))
+    return AlbumPlan.from_dict(resolved(json.loads(path.read_text()), album_dir))
 
 
 def save_plan(plan: AlbumPlan, album_dir: Path) -> Path:
     album_dir.mkdir(parents=True, exist_ok=True)
     path = album_dir / PLAN_FILE
+    written = portable(plan.to_dict(), album_dir)
+    # **only a plan that really holds one says so.** Every YouTube and SoundCloud album keeps
+    # schema 1 and stays byte-for-byte what it was, readable by ytalbum 0.9.1 and by every noaap
+    # up to 1.5.0 (R-207, ruling 1).
+    written["schema"] = 2 if _has_relative(written) else 1
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False) + "\n")
+    tmp.write_text(json.dumps(written, indent=2, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
     return path
+
+
+def _has_relative(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(_has_relative(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_relative(v) for v in value)
+    return isinstance(value, str) and value.startswith(HERE)
 
 
 def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
     """Every album folder in the library (<library>/<artist>/<album>/.ytalbum.json)."""
     for path in sorted(library.glob(f"*/*/{PLAN_FILE}")):
         try:
-            yield path.parent, AlbumPlan.from_dict(json.loads(path.read_text()))
+            yield path.parent, AlbumPlan.from_dict(resolved(json.loads(path.read_text()), path.parent))
         except (ValueError, KeyError, TypeError) as e:
             log.warning("ignoring unreadable plan %s: %s", path, e)
 

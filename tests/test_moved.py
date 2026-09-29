@@ -59,3 +59,136 @@ def test_verify_tells_a_conversion_from_a_loss(tmp_path, capsys):
     assert _verify_plans(Config(), tmp_path) == 0
     said = capsys.readouterr().out
     assert "1 byte-identical" in said and "would become relative" not in said
+
+
+# -- what is written, and what is read back --------------------------------------------------------
+
+
+def an_album(root: Path, name: str = "An Album", provider: str = "folder"):
+    from noaap.download import save_plan
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+
+    album_dir = root / "A Band" / name
+    album_dir.mkdir(parents=True, exist_ok=True)
+    (album_dir / "01 - One.opus").write_bytes(b"audio")
+    track = PlanTrack(video_id=str(album_dir / "01 - One.opus"), number=1, artist="A Band",
+                      title="One", filename="01 - One.opus", provenance={}, state="done")
+    plan = AlbumPlan(source_url=str(album_dir), source_id=str(album_dir), kind=Kind.OFFICIAL_ALBUM,
+                     album=name, albumartist="A Band", year=None, cover_url=str(album_dir),
+                     folder=f"A Band/{name}", tracks=[track], provider=provider)
+    save_plan(plan, album_dir)
+    return album_dir
+
+
+def test_a_path_inside_the_album_is_written_relative_to_it(tmp_path):
+    album_dir = an_album(tmp_path)
+
+    written = json.loads((album_dir / ".ytalbum.json").read_text())
+
+    assert written["source_id"] == "./" and written["source_url"] == "./"
+    assert written["tracks"][0]["video_id"] == "./01 - One.opus"
+    assert written["tracks"][0]["filename"] == "01 - One.opus", "a bare name was never a path"
+    assert written["schema"] == 2
+
+
+def test_and_read_back_as_the_file_it_names(tmp_path):
+    """In memory a plan holds what it always held, so nothing that reads one had to change."""
+    from noaap.download import load_plan
+
+    album_dir = an_album(tmp_path)
+
+    plan = load_plan(album_dir)
+
+    assert plan.tracks[0].video_id == str(album_dir / "01 - One.opus")
+    assert Path(plan.tracks[0].video_id).is_file()
+    assert plan.source_id == str(album_dir)
+
+
+def test_a_path_that_is_not_this_album_is_left_exactly_as_it_is(tmp_path):
+    """An intake folder is somewhere else by nature, and it is not this library's to rewrite."""
+    from noaap.download import load_plan, save_plan
+
+    album_dir = an_album(tmp_path)
+    plan = load_plan(album_dir)
+    plan.source_url = plan.source_id = "/somewhere/else/An Album"
+    plan.tracks[0].video_id = "/somewhere/else/An Album/01 - One.opus"
+    save_plan(plan, album_dir)
+
+    written = json.loads((album_dir / ".ytalbum.json").read_text())
+    assert written["source_id"] == "/somewhere/else/An Album"
+    assert written["tracks"][0]["video_id"] == "/somewhere/else/An Album/01 - One.opus"
+
+
+# -- and what does not change ------------------------------------------------------------------------
+
+
+def test_an_album_with_no_path_in_it_stays_schema_one_and_byte_identical(tmp_path):
+    """R-207, ruling 1. Every YouTube and SoundCloud album is this one, and it stays readable by
+    ytalbum 0.9.1 and by every noaap up to 1.5.0."""
+    from noaap.download import load_plan, save_plan
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+
+    album_dir = tmp_path / "A Band" / "An Album"
+    track = PlanTrack(video_id="aaaaaaaaaaa", number=1, artist="A Band", title="One",
+                      filename="01 - One.opus", provenance={}, state="done")
+    plan = AlbumPlan(source_url="https://www.youtube.com/playlist?list=X", source_id="X",
+                     kind=Kind.OFFICIAL_ALBUM, album="An Album", albumartist="A Band", year=None,
+                     cover_url="https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg",
+                     folder="A Band/An Album", tracks=[track])
+    save_plan(plan, album_dir)
+    was = (album_dir / ".ytalbum.json").read_bytes()
+
+    save_plan(load_plan(album_dir), album_dir)
+
+    assert (album_dir / ".ytalbum.json").read_bytes() == was
+    assert json.loads(was)["schema"] == 1
+
+
+@pytest.mark.parametrize("schema,reads", [(1, True), (2, True), (3, False), (None, False)])
+def test_which_schemas_this_version_reads(tmp_path, schema, reads):
+    from noaap.models import AlbumPlan
+
+    body = {"source_url": "u", "source_id": "s", "kind": "official_album", "album": "a",
+            "albumartist": "b", "year": None, "cover_url": None, "folder": "b/a", "tracks": [],
+            "schema": schema}
+
+    if reads:
+        assert AlbumPlan.from_dict(body).album == "a"
+    else:
+        with pytest.raises(ValueError, match="unsupported plan schema"):
+            AlbumPlan.from_dict(body)
+
+
+# -- the promise --------------------------------------------------------------------------------------
+
+
+def test_a_library_that_is_copied_recognises_its_own_files(tmp_path):
+    """The whole package. Measured on the real one first: **all 2000 refs of a copied collection
+    resolved — into the original**, so the copy worked by reading somebody else's files."""
+    import shutil
+
+    from noaap.download import iter_plans
+
+    here, there = tmp_path / "here", tmp_path / "there"
+    an_album(here)
+    shutil.copytree(here, there)
+
+    for root in (here, there):
+        for album_dir, plan in iter_plans(root):
+            ref = Path(plan.tracks[0].video_id)
+            assert ref.parent == album_dir, f"{root.name}: a ref pointing out of its own library"
+            assert ref.is_file()
+
+
+def test_a_library_that_is_copied_and_the_original_deleted_still_holds(tmp_path):
+    import shutil
+
+    from noaap.download import iter_plans
+
+    here, there = tmp_path / "here", tmp_path / "there"
+    an_album(here)
+    shutil.copytree(here, there)
+    shutil.rmtree(here)
+
+    for album_dir, plan in iter_plans(there):
+        assert Path(plan.tracks[0].video_id).is_file()
