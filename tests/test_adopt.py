@@ -314,7 +314,7 @@ def test_a_sidecar_the_user_edited_is_kept_and_one_noaap_wrote_is_not(library):
 
     assert not sidecar_path(album_dir, ours.filename).exists(), "ours goes"
     assert sidecar_path(album_dir, theirs.filename).is_file(), "theirs stays"
-    assert done["kept"] == 1 and any("not the file noaap wrote" in line for line in said)
+    assert done["kept"] == 1 and any("nothing here proves noaap wrote it" in line for line in said)
 
 
 def test_an_undo_without_a_record_refuses_rather_than_guesses(library):

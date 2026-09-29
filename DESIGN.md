@@ -1863,6 +1863,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    compared as one. The record of a cover, the record of a sidecar and the picture in a file are the same
    kind of answer to the same question, and they belong in the same place.
 
+65. ✅ **What an undo may delete, and what it may only set aside** (2026-09-29, P55d follow-up, R-223).
+   Slice 64 gave the undo a second proof for a cover — the picture inside the album's own files — and
+   with it a risk that had to be ruled on rather than measured away: **an undo removes by deleting**, so
+   a wrong positive is somebody's own file gone for good. Three answers, and they are ordered by what
+   each one costs if it is wrong.
+   **What was in the folder when the album was adopted is recorded, and is never removed by any pass.**
+   Every non-audio file, by its path relative to the album and its hash. It settles the hardest case
+   there is — an owner's cover that is *byte for byte* the picture inside their own files — and it
+   settles it without asking anything of the pass that later writes or removes files.
+   **The weaker proof bins; only a recorded hash deletes.** A cover whose hash noaap itself wrote down
+   is removed, because the record is proof. A cover recognised only by the picture goes to the bin, with
+   an entry saying which proof found it and that noaap had recorded nothing — and it can be put back,
+   which is the whole reason for not deleting it.
+   **A library adopted by an earlier version has no record of what was there**, and for those the weaker
+   proof is all there is. It still applies, still through the bin, and the run says how many files it
+   could not decide about and left — as a sentence, not as one number among seven.
+   Measured on the reference collection: **0 of its 132 cover files** would be claimed by the weaker
+   proof, because its albums have either a cover file or an embedded picture and never both; the sixteen
+   the undo had refused to give back are all of them the picture inside their own album's files.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

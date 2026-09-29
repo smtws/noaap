@@ -717,6 +717,14 @@ def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace)
         print(f"{albums} adopted album(s). Nothing was changed. `--undo --apply` does it.")
         return 0
     print(f"{albums} album(s) given back: " + ", ".join(f"{v} {k}" for k, v in sorted(totals.items())))
+    if totals.get("kept"):
+        # said as a sentence and not only as one number among seven (R-223, ruling 3): an album adopted
+        # before slice 65 has no record of what was in its folder, so this is what could not be decided.
+        print(f"{totals['kept']} file(s) left where they are: nothing proves noaap wrote them. An album "
+              "adopted by an earlier version has no record of what was in its folder.")
+    if totals.get("binned"):
+        print(f"{totals['binned']} cover file(s) moved to the bin rather than deleted: noaap wrote "
+              "them, but only the weaker proof says so. `noaap recycle` lists them.")
     if trouble:
         print(f"\n{len(trouble)} album(s) not fully given back:", file=sys.stderr)
         for line in trouble:

@@ -83,6 +83,11 @@ class Entry:
         return next((p for p in sorted(self.path.glob(f"{ORIGINAL_STEM}.*"))), None)
 
     @property
+    def is_file_entry(self) -> bool:
+        """One file that is not a track's audio — a cover an undo was not sure enough to delete."""
+        return bool(self.data.get("where")) and not self.data.get("track")
+
+    @property
     def cover(self) -> Path | None:
         return next((p for p in sorted(self.path.glob(f"{COVER_STEM}.*"))), None)
 
@@ -160,6 +165,43 @@ def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack,
         # reads when they want to know what happened to a file of theirs (§9, slice 63).
         "evidence": evidence or {},
         "moved": moved,
+    }, album_dir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return entry
+
+
+FILE_STEM = "file"
+
+
+def bin_file(library: Path, album_dir: Path, plan: AlbumPlan, path: Path, reason: str,
+             *, evidence: dict[str, Any] | None = None) -> Path | None:
+    """One file that is not a track's audio, moved to the bin with where it belongs (§9, slice 65).
+
+    **An undo deletes; this keeps.** A file noaap recognises by a hash it recorded itself is removed
+    outright, because the record is proof. A file recognised only by the weaker proof — a cover whose
+    bytes are the picture inside the album's own files — comes here instead, because a wrong positive
+    there is somebody's own file gone for good (R-223).
+    """
+    when = datetime.now(UTC)
+    entry = bin_root(library) / _entry_id(plan.source_id, str(path.relative_to(album_dir)), when)
+    entry.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+        entry.rmdir()
+        return None
+    where = str(path.relative_to(album_dir))
+    shutil.move(str(path), entry / f"{FILE_STEM}{path.suffix}")
+    (entry / BIN_FILE).write_text(json.dumps(portable({
+        "when": when.isoformat(timespec="seconds"),
+        "reason": reason,
+        "source_id": plan.source_id,
+        "video_id": where,          # what this entry is about, in the terms a file has
+        "album": plan.album,
+        "albumartist": plan.albumartist,
+        "artist": plan.albumartist,
+        "title": where,
+        "folder": plan.folder,
+        "where": where,             # and where it goes back to, relative to the album
+        "evidence": evidence or {},
+        "moved": [FILE_STEM],
     }, album_dir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return entry
 

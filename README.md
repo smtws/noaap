@@ -283,7 +283,11 @@ removed — unless you have edited it since, in which case it is yours now and i
 says so. That includes a **cover file** noaap saved for an album that had none: it is recognised
 either by the hash noaap recorded or by being byte-for-byte the picture inside the album's own files,
 which is what makes it removable in a library written by 1.4.0 or 1.5.0, where the record was lost.
-A cover of your own stays, as everything of yours does. The tag *block* does not come back byte for byte: mutagen rewrites it whole, and a writer
+A cover of your own stays, as everything of yours does: adoption writes down every non-audio file
+that was already in the folder, and nothing noaap does afterwards removes one of those. And because
+the picture proof is the weaker of the two, a cover found that way is moved to the recycle bin rather
+than deleted — `noaap recycle` lists it and can put it back. Only a file whose hash noaap itself
+recorded is deleted outright. The tag *block* does not come back byte for byte: mutagen rewrites it whole, and a writer
 putting the same values back cannot put the same padding back. The names, the fields and the audio
 are the promise.
 

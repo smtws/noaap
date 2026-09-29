@@ -27,7 +27,9 @@ from .download import COVER_STEM, PLAN_FILE, save_plan
 from .lyrics import rename_sidecar, sidecar_path
 from .models import AlbumPlan
 from .plan import build_plan, wanted_filename
+from .recycle import bin_file
 from .service import _inside
+from .sources_folder import AUDIO
 from .tag import embedded_cover, raw_tags, restore_tags, tag_file
 from .text import key as text_key
 
@@ -86,7 +88,13 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
     plan.own_the_candidates()
     plan.keep_names = plan.keep_tags = True
     plan.folder = str(album_dir.relative_to(library))
-    plan.adopted = {"folder": plan.folder, "at": dt.date.today().isoformat()}
+    plan.adopted = {"folder": plan.folder, "at": dt.date.today().isoformat(),
+                    # **what was already in this folder** (§9, slice 65, R-223 ruling 1). Every
+                    # non-audio file, by its path relative to the album and its hash. A file in here was
+                    # the owner's before noaap ever ran, and **no pass removes one**, whatever else is
+                    # true of it — which is the only answer that cannot cost somebody a file, since an
+                    # undo removes by deleting.
+                    "found": found_already(album_dir)}
 
     if outside := [t.title for t in plan.tracks if not where.get(t.video_id)]:
         return Adoption(album_dir, refused=f"{len(outside)} file(s) are not inside this folder — "
@@ -165,6 +173,36 @@ __all__ = ["Adoption", "Survey", "carry_out", "examine", "in_scope", "report", "
 # -- giving it back ------------------------------------------------------------------------------
 
 
+def found_already(album_dir: Path) -> dict[str, str]:
+    """Every non-audio file in the album folder now, by its path relative to it and its hash.
+
+    Audio is not in here because audio is never noaap's to remove anyway (§9, slice 55), and a hidden
+    folder is not because nothing ever writes into one of the owner's.
+    """
+    out = {}
+    for path in sorted(album_dir.rglob("*")):
+        here = path.relative_to(album_dir)
+        if not path.is_file() or path.suffix.lower() in AUDIO \
+                or any(part.startswith(".") for part in here.parts):
+            continue
+        out[str(here)] = hashlib.sha1(path.read_bytes()).hexdigest()
+    return out
+
+
+@dataclass(frozen=True)
+class Ours:
+    """One file noaap put in an album folder, and what would prove it (§9, slice 65).
+
+    **Two strengths, because the consequences differ.** A hash noaap recorded itself is proof enough to
+    delete the file. The picture inside the album's own files is weaker — an owner's cover could be the
+    same bytes — so a file recognised only that way goes to the bin instead.
+    """
+
+    path: Path
+    strong: tuple[str, ...] = ()
+    weak: tuple[str, ...] = ()
+
+
 def cover_proofs(album_dir: Path, plan: AlbumPlan) -> tuple[str, ...]:
     """The fingerprints that would prove a cover file is one noaap wrote (§9, slice 64).
 
@@ -178,7 +216,7 @@ def cover_proofs(album_dir: Path, plan: AlbumPlan) -> tuple[str, ...]:
 
     A cover whose bytes are neither stays, as it always did: it is the owner's.
     """
-    proofs = [plan.cover_fetched.get("sha1") or ""]
+    proofs = []
     for track in plan.tracks:
         audio = _inside_album(album_dir, track.filename)
         if audio and audio.is_file() and (picture := embedded_cover(audio)):
@@ -194,7 +232,7 @@ def _inside_album(album_dir: Path, filename: str) -> Path | None:
     return path if path != root and root in path.parents else None
 
 
-def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[tuple[Path, tuple[str, ...]]]:
+def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[Ours]:
     """Everything noaap put into this folder, each with the fingerprints that would prove it is ours.
 
     **Every one of them already records its own**, and that is the point: a snapshot taken at
@@ -208,14 +246,20 @@ def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[tuple[Path, tuple[str,
     Not the audio and not one file that was here before — those are the owner's, and the only thing
     that ever displaces one is the bin (§9, slice 55).
     """
-    out: list[tuple[Path, tuple[str, ...]]] = [(album_dir / PLAN_FILE, ())]
+    theirs = plan.adopted.get("found") or {}
+
+    def was_here(path: Path) -> bool:
+        return str(path.relative_to(album_dir)) in theirs
+
+    out: list[Ours] = [Ours(album_dir / PLAN_FILE)]
     for track in plan.tracks:
         words = sidecar_path(album_dir, track.filename)
-        if words.is_file():
-            out.append((words, (track.lyrics_sha,) if track.lyrics_sha else ()))
-    covers = sorted(p for p in album_dir.glob(f"{COVER_STEM}.*") if p.is_file())
-    proofs = cover_proofs(album_dir, plan) if covers else ()
-    out.extend((cover, proofs) for cover in covers)
+        if words.is_file() and not was_here(words):
+            out.append(Ours(words, strong=(track.lyrics_sha,) if track.lyrics_sha else ()))
+    covers = [p for p in sorted(album_dir.glob(f"{COVER_STEM}.*")) if p.is_file() and not was_here(p)]
+    weak = cover_proofs(album_dir, plan) if covers else ()
+    recorded = plan.cover_fetched.get("sha1")
+    out.extend(Ours(cover, strong=(recorded,) if recorded else (), weak=weak) for cover in covers)
     return out
 
 
@@ -248,9 +292,16 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
     saying it was would be a lie.
 
     A file noaap added and the user has since changed is **kept**, and this says so: it is theirs
-    now, whatever put it there.
+    now, whatever put it there. So is a file that was already in the folder when the album was adopted:
+    the plan records those, and **no pass removes one** (§9, slice 65).
+
+    **What is deleted and what is only set aside** (R-223): a file whose hash noaap itself recorded is
+    removed, because the record is proof. A cover recognised only by the picture inside the album's own
+    files goes to the bin instead — an owner's cover could be those same bytes, and an undo deletes.
     """
-    done = {"renamed": 0, "restored": 0, "removed": 0, "kept": 0, "failed": 0}
+    # `kept` is the count ruling 3 asks to be said out loud: a file nothing here could decide about.
+    # One counter, not two — a second name for the same number is a second thing to drift.
+    done = {"renamed": 0, "restored": 0, "removed": 0, "binned": 0, "kept": 0, "failed": 0}
     if not plan.adopted:
         raise Refused(f"{plan.album}: there is no record of an adoption to undo")
 
@@ -282,15 +333,26 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
         save_plan(plan, album_dir)
         return done
 
-    for path, wrote in added_by_us(album_dir, plan):
+    for mine in added_by_us(album_dir, plan):
+        path = mine.path
         if not path.is_file():
             continue
-        if path.name != PLAN_FILE and not ours_still(path, wrote):
-            log(f"  kept {path.name}: it is not the file noaap wrote")
-            done["kept"] += 1
+        if path.name == PLAN_FILE or ours_still(path, mine.strong):
+            path.unlink()
+            done["removed"] += 1
             continue
-        path.unlink()
-        done["removed"] += 1
+        if ours_still(path, mine.weak):
+            if bin_file(library, album_dir, plan, path,
+                        reason="noaap saved this cover for an album that had none; recognised by the "
+                               "picture inside the album's own files, not by a hash noaap recorded",
+                        evidence={"proof": "the album's own embedded picture",
+                                  "sha1": hashlib.sha1(path.read_bytes()).hexdigest(),
+                                  "recorded": plan.cover_fetched.get("sha1") or None}):
+                log(f"  {path.name} moved to the bin: noaap wrote it, but only the weaker proof says so")
+                done["binned"] += 1
+            continue
+        log(f"  kept {path.name}: nothing here proves noaap wrote it")
+        done["kept"] += 1
 
     was = library / str(plan.adopted.get("folder") or plan.folder)
     if was != album_dir and not was.exists():

@@ -3966,6 +3966,11 @@ library got it. `~/Music/legacy` was never written and every comparison is again
   look at every file ran *after* an undo in which those covers had never been written at all: my damage
   run had said "129 of 132 albums were unchanged", so `run` never reached them. The reviewer's run used
   `--deep`. **A comparison that leaves a file type out cannot find a file of that type.**
+  - **and the reason my run differed, established since** (R-223 corrected me: the acceptance did not
+    use `--deep`): my damage ran on a library that had already been through this session's 1.6.0 passes,
+    so 1.5.0 found 129 of 132 albums unchanged and never reached their covers. On a library freshly reset
+    from the collection, a plain `update --no-mb --no-lyrics` writes all sixteen — 212 extra files in
+    all. **The state a run starts from is part of the run**, and mine was not the one a user has.
   - **cause, established:** no record at all. `run` saves the plan *before* it fetches the cover and then
     only when a track changes something, which for an adopted album is never. Reproduced at 1.5.0 and at
     1.6.0: `cover_fetched: {}` in the saved plan beside a `cover.jpg` just written. Fixed at the cause —
@@ -3976,8 +3981,26 @@ library got it. `~/Music/legacy` was never written and every comparison is again
     picture, never both.
   - **result:** on the library as the acceptance left it, re-adopting and undoing again removed **148
     files (132 plans + the 16 covers)** and kept the owner's 60, leaving **2153 files identical in name,
-    size and mtime, 0 extra, 0 missing**, with the 64 strays still in the bin. From a fresh damage with
-    `--deep`, the same, end to end.
+    size and mtime, 0 extra, 0 missing**, with the 64 strays still in the bin. From a fresh damage, the
+    same end to end — and under BF8's ruling the sixteen are **binned** rather than deleted.
+
+- [x] **BF8** — what an undo may delete, and what it may only set aside (R-223)
+
+  The risk BF7 measured, ruled on rather than argued away: an undo **deletes**, so a wrong positive is
+  an owner's file gone for good.
+  - **result:** three answers, ordered by what each costs if it is wrong. Adoption records every
+    non-audio file that was already in the folder, by path and hash, and **no pass removes one** — which
+    settles the hardest case, an owner's cover that is byte for byte the picture inside their own files.
+    A cover whose hash noaap recorded is deleted; one recognised **only** by the picture goes to the
+    **bin**, with an entry naming the proof and saying that noaap had recorded nothing, and it can be
+    restored. A library adopted by an earlier version has no record of what was there, so the weaker
+    proof is all it has: it applies, through the bin, and the run says how many files it could not decide
+    about and left, as a sentence.
+  - **six more cases**, one per ruling and one for the hardest case: the record is written at adoption
+    (audio excluded, hidden folders excluded); a file that was there at adoption survives an undo even
+    when it matches the weaker proof exactly; the weaker proof bins and the entry says so; a recorded
+    hash deletes outright and writes no entry; a binned cover restores; and the count of the undecided
+    is printed.
 
 ### What the collisions cost, exactly (R-220, item 4)
 

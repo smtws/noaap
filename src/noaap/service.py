@@ -1508,6 +1508,8 @@ class Service:
             return Outcome("failed", message=f"no such recycle entry: {entry_id}")
         if entry.is_album:
             return self._restore_album(entry)
+        if entry.is_file_entry:
+            return self._restore_file(entry)
         if not entry.data.get("track"):
             return Outcome("failed", message=f"{entry.id} holds nothing that can be put back")
 
@@ -1527,6 +1529,22 @@ class Service:
             if not found:
                 return Outcome("failed", message=f"could not rebuild {entry.data['album']}")
         return self._restore_track(entry, *found)
+
+    def _restore_file(self, entry: Entry) -> Outcome:
+        """Put back one file that is not a track's audio — a cover an undo set aside (§9, slice 65)."""
+        assert self.library
+        where = entry.data.get("where") or ""
+        album_dir = self.library / str(entry.data.get("folder") or "")
+        back = _inside(album_dir, where)
+        held = entry.audio
+        if back is None or held is None:
+            return Outcome("failed", message=f"{entry.describe()}: nothing to put back")
+        if back.exists():
+            return Outcome("held", message=f"{where} is there again; the bin keeps its copy")
+        back.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(held), back)
+        self.log(f"{where} is back in {album_dir.name}")
+        return Outcome("ok", message=f"{where} restored")
 
     def _restore_album(self, entry: Entry, only: list[str] | None = None) -> Outcome:
         """Rebuild a binned album: the folder, the plan, the cover, and its tracks still in the bin.
