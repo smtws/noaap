@@ -28,7 +28,7 @@ from .lyrics import rename_sidecar, sidecar_path
 from .models import AlbumPlan
 from .plan import build_plan, wanted_filename
 from .service import _inside
-from .tag import raw_tags, restore_tags, tag_file
+from .tag import embedded_cover, raw_tags, restore_tags, tag_file
 from .text import key as text_key
 
 
@@ -165,37 +165,71 @@ __all__ = ["Adoption", "Survey", "carry_out", "examine", "in_scope", "report", "
 # -- giving it back ------------------------------------------------------------------------------
 
 
-def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[tuple[Path, str | None]]:
-    """Everything noaap put into this folder, each with the fingerprint noaap wrote.
+def cover_proofs(album_dir: Path, plan: AlbumPlan) -> tuple[str, ...]:
+    """The fingerprints that would prove a cover file is one noaap wrote (§9, slice 64).
+
+    **Two of them, and either is enough** (R-222, do 2). The first is the hash the pass that saved it
+    recorded. The second is the picture the album's own tracks carry, because a cover noaap saved for a
+    folder album *is* those bytes — the provider hands over the embedded picture and the file is written
+    unchanged — and the record of it was lost by every version up to 1.6.0: `run` saves the plan before
+    it fetches the cover and only again when a track changes something, which for an adopted album is
+    never. Sixteen real covers in a 41 GB library had no record at all, and all sixteen are byte for
+    byte a picture inside one of their album's own files.
+
+    A cover whose bytes are neither stays, as it always did: it is the owner's.
+    """
+    proofs = [plan.cover_fetched.get("sha1") or ""]
+    for track in plan.tracks:
+        audio = _inside_album(album_dir, track.filename)
+        if audio and audio.is_file() and (picture := embedded_cover(audio)):
+            proofs.append(hashlib.sha1(picture).hexdigest())
+    return tuple(dict.fromkeys(p for p in proofs if p))  # one picture in twelve files is one proof
+
+
+def _inside_album(album_dir: Path, filename: str) -> Path | None:
+    """`album_dir / filename` when that really is inside the album — a plan can name `../..`."""
+    if not filename or Path(filename).is_absolute():
+        return None
+    root, path = album_dir.resolve(), (album_dir / filename).resolve()
+    return path if path != root and root in path.parents else None
+
+
+def added_by_us(album_dir: Path, plan: AlbumPlan) -> list[tuple[Path, tuple[str, ...]]]:
+    """Everything noaap put into this folder, each with the fingerprints that would prove it is ours.
 
     **Every one of them already records its own**, and that is the point: a snapshot taken at
     adoption is stale the moment a later pass writes a sidecar, and the first live undo kept 80 of
     them as "edited" when noaap had written every one (found 2026-09-28). A sidecar answers to
     `lyrics_sha` — *the bytes we wrote; anything else is the user's* — and a cover to
-    `cover_fetched.sha1`, both maintained by the passes that write them.
+    `cover_fetched.sha1` **or to the picture inside the album's own files** (see `cover_proofs`).
 
-    The plan carries `None`: it is ours whatever it says, and an undo removes it.
+    The plan carries none: it is ours whatever it says, and an undo removes it.
 
     Not the audio and not one file that was here before — those are the owner's, and the only thing
     that ever displaces one is the bin (§9, slice 55).
     """
-    out: list[tuple[Path, str | None]] = [(album_dir / PLAN_FILE, None)]
+    out: list[tuple[Path, tuple[str, ...]]] = [(album_dir / PLAN_FILE, ())]
     for track in plan.tracks:
         words = sidecar_path(album_dir, track.filename)
         if words.is_file():
-            out.append((words, track.lyrics_sha))
-    for cover in sorted(album_dir.glob(f"{COVER_STEM}.*")):
-        if cover.is_file():
-            out.append((cover, plan.cover_fetched.get("sha1")))
+            out.append((words, (track.lyrics_sha,) if track.lyrics_sha else ()))
+    covers = sorted(p for p in album_dir.glob(f"{COVER_STEM}.*") if p.is_file())
+    proofs = cover_proofs(album_dir, plan) if covers else ()
+    out.extend((cover, proofs) for cover in covers)
     return out
 
 
-def ours_still(path: Path, wrote: str | None) -> bool:
-    """Is this file still the one noaap wrote? A fingerprint we never took answers no."""
-    if wrote is None:
+def ours_still(path: Path, proofs: tuple[str, ...] | str | None) -> bool:
+    """Is this file still one noaap wrote? **Any one of the fingerprints proves it**; none answers no.
+
+    `lyrics_sha` is a 16-character prefix, so a proof shorter than a digest is compared as one.
+    """
+    if isinstance(proofs, str) or proofs is None:
+        proofs = (proofs,) if proofs else ()
+    if not proofs:
         return False
     digest = hashlib.sha1(path.read_bytes()).hexdigest()
-    return digest == wrote or digest[:len(wrote)] == wrote
+    return any(digest == proof or digest[:len(proof)] == proof for proof in proofs)
 
 
 def give_back(album_dir: Path, plan: AlbumPlan, library: Path,

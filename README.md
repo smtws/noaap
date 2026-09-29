@@ -280,7 +280,10 @@ comment. Neither runs on an album whose record of what it was is missing, becaus
 **`--undo` gives an album back.** Every file answers to the name it had, every field noaap would
 ever write has the value your file gave it, and the audio stream is untouched. What noaap added is
 removed — unless you have edited it since, in which case it is yours now and it stays, and the undo
-says so. The tag *block* does not come back byte for byte: mutagen rewrites it whole, and a writer
+says so. That includes a **cover file** noaap saved for an album that had none: it is recognised
+either by the hash noaap recorded or by being byte-for-byte the picture inside the album's own files,
+which is what makes it removable in a library written by 1.4.0 or 1.5.0, where the record was lost.
+A cover of your own stays, as everything of yours does. The tag *block* does not come back byte for byte: mutagen rewrites it whole, and a writer
 putting the same values back cannot put the same padding back. The names, the fields and the audio
 are the promise.
 

@@ -27,7 +27,14 @@ from typing import Any
 from . import sources
 from .config import Config
 from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
-from .tag import PATIENCE, audio_length, audio_quality, decoded_length, measured_length
+from .tag import (
+    PATIENCE,
+    audio_length,
+    audio_quality,
+    decoded_length,
+    embedded_cover,
+    measured_length,
+)
 from .text import key as text_key
 from .text import split_feat
 
@@ -193,34 +200,6 @@ def ignored_in(folder: Path) -> dict[str, int]:
         else:
             out[path.suffix.lower().lstrip(".") or "no suffix"] = out.get(path.suffix.lower().lstrip(".") or "no suffix", 0) + 1
     return out
-
-
-def embedded_cover(path: Path) -> bytes | None:
-    """The picture inside a file, for a folder that has no cover of its own."""
-    import mutagen
-    from mutagen.flac import FLAC
-    from mutagen.id3 import ID3NoHeaderError
-
-    try:
-        if path.suffix.lower() == ".flac":
-            pictures = FLAC(path).pictures
-            return pictures[0].data if pictures else None
-        if path.suffix.lower() == ".mp3":
-            from mutagen.id3 import ID3
-            try:
-                art = ID3(path).getall("APIC")
-            except ID3NoHeaderError:
-                return None
-            return art[0].data if art else None
-        import base64
-
-        from mutagen.flac import Picture
-        tags = (mutagen.File(path).tags or {}) if mutagen.File(path) else {}
-        if raw := tags.get("metadata_block_picture"):
-            return Picture(base64.b64decode(raw[0])).data
-    except Exception:  # an unreadable picture is no picture; it must not stop the album
-        return None
-    return None
 
 
 # How good a copy is, before anything ranks them. flac first because it is the only lossless

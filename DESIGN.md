@@ -1837,6 +1837,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    was destroyed is a copy by a copy, and with it anything a user had done to the first one — a sidecar,
    a retag — before this pass ever ran. That is the part no measurement can give back.
 
+64. ✅ **A cover noaap wrote, and how an undo can tell** (2026-09-29, P55d follow-up). `adopt --undo`
+   removes what noaap added and keeps what the owner made, deciding by fingerprint: *the bytes we wrote
+   are ours, anything else is theirs.* For a cover file that failed, and it failed **silently** — the
+   undo said *"kept cover.jpg: it is not the file noaap wrote"* about sixteen covers noaap had written
+   into a real library, and the album was therefore never given back completely.
+   **Why: there was no record at all.** `run` saves the plan *before* it fetches the cover and then only
+   again when a track changes something — which for an adopted album is never, because every track is
+   already done. So `cover_fetched` died with the process while the file stayed on disk. Reproduced at
+   1.5.0 and at 1.6.0, both leaving `cover_fetched: {}` beside a `cover.jpg` they had just written. The
+   record is now saved the moment it changes.
+   **Two proofs, and either is enough** (R-222): the hash the saving pass recorded, or **the picture
+   inside the album's own files** — because a cover for a folder album *is* those bytes, handed over by
+   the provider and written unchanged. That second proof is what recovers every library already written
+   by 1.4.0 and 1.5.0, where no record exists: all sixteen real covers are byte for byte a picture in one
+   of their album's own files.
+   **What the second proof costs, measured before accepting it.** A cover the *owner* put there that
+   happens to be byte-identical to the picture inside their own files would be read as ours and removed.
+   On the reference collection that is **0 of 132**: its albums have either a cover file or an embedded
+   picture, never both. The narrowing, if it is ever wanted, is to record at adoption whether the album
+   had a cover file of its own — which would protect such a collection but recover nothing from the
+   libraries already damaged, since they carry no such record either.
+   **And a fingerprint is now a set.** `ours_still` takes every proof there is for a file and asks
+   whether any of them holds; `lyrics_sha` is a 16-character prefix, so a proof shorter than a digest is
+   compared as one. The record of a cover, the record of a sidecar and the picture in a file are the same
+   kind of answer to the same question, and they belong in the same place.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -3957,6 +3957,28 @@ library got it. `~/Music/legacy` was never written and every comparison is again
     collection in name, size and mtime, 0 outside the bin that the collection does not have, 64 audio
     files in the bin.**
 
+- [x] **BF7 · R** — sixteen covers the undo would not give back (R-222)
+
+  The reviewer's acceptance found it: after `--strays --apply` and `adopt --undo --apply`, the tree
+  differed from the collection by **16 `cover.jpg`/`cover.png`** that noaap had written, each one kept
+  with *"it is not the file noaap wrote"*. **My own report said the tree equalled the collection**, and
+  it did in my run — because my comparison script compared audio files only, and the one check that did
+  look at every file ran *after* an undo in which those covers had never been written at all: my damage
+  run had said "129 of 132 albums were unchanged", so `run` never reached them. The reviewer's run used
+  `--deep`. **A comparison that leaves a file type out cannot find a file of that type.**
+  - **cause, established:** no record at all. `run` saves the plan *before* it fetches the cover and then
+    only when a track changes something, which for an adopted album is never. Reproduced at 1.5.0 and at
+    1.6.0: `cover_fetched: {}` in the saved plan beside a `cover.jpg` just written. Fixed at the cause —
+    the record is saved the moment it changes.
+  - **and a second proof** (R-222, do 2): the picture inside the album's own files. All 16 real covers
+    are byte for byte such a picture. Measured before accepting it: of the collection's **132** cover
+    files, **0** would be claimed by that proof — its albums have either a cover file or an embedded
+    picture, never both.
+  - **result:** on the library as the acceptance left it, re-adopting and undoing again removed **148
+    files (132 plans + the 16 covers)** and kept the owner's 60, leaving **2153 files identical in name,
+    size and mtime, 0 extra, 0 missing**, with the 64 strays still in the bin. From a fresh damage with
+    `--deep`, the same, end to end.
+
 ### What the collisions cost, exactly (R-220, item 4)
 
 In *Sturm aufs Paradies* three names exist on **both** discs, and each pair is **two different

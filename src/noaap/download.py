@@ -388,7 +388,15 @@ def run(
     refresh_derived(plan)
     save_plan(plan, album_dir)
     whose = track_source or (lambda _t: source)
+    recorded = dict(plan.cover_fetched)
     cover = _cover(plan, album_dir, source, fetch=download)
+    if plan.cover_fetched != recorded:
+        # **the record of a cover we just wrote is saved now, not when a track happens to change**
+        # (§9, slice 64). The plan is written above and then only again by a track that did something,
+        # which for an adopted album is never — so every version up to 1.6.0 left a cover file on disk
+        # with no record that noaap had written it, and an undo then kept it as the owner's. Sixteen
+        # of them in one real library.
+        save_plan(plan, album_dir)
     parts = album_dir / PARTS_DIR
 
     for track in plan.tracks:
