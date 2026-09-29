@@ -864,10 +864,18 @@ Nothing outside this repository implements it yet; when something does, it gets 
 
 ## Limits
 
-- **A library cannot be moved yet.** An album taken in from a folder records where its files are as
-  an absolute path, so moving, copying or restoring a library to a different path — a share that
-  mounts somewhere else, a backup put back in another place — leaves every album unable to
-  recognise its own files. Known, and the next thing to be fixed.
+- **A library survives being moved — once its plans have been converted.** An album taken in from a
+  folder used to record where its files are as an absolute path, so a copy of the library kept
+  using the *original's* files and only a deletion of the original showed it. Since 1.6.0 a path
+  inside an album's own folder is written as `./…`, and `noaap repair` converts a whole library in
+  one pass. Do that **before** you move, copy or back it up. A library that was already moved while
+  its plans still held absolute paths cannot be repaired where it stands: nothing in the new place
+  is inside those albums, so finding the files again is a separate job and not yet written.
+- **A converted album cannot be read by an older version.** Only an album whose plan really holds a
+  relative path says `schema: 2`, and only a collection taken in with `noaap adopt` does — every
+  YouTube and SoundCloud album keeps `schema: 1` and stays byte-for-byte the file it was, readable
+  by ytalbum 0.9.1 and by every noaap up to 1.5.0. An older version refuses a schema it does not
+  know rather than guessing, so it will say so plainly about the adopted ones.
 - **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
   uploader provided. No setting can make that better, and FLAC it will never be.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also

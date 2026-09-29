@@ -1667,6 +1667,44 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    (three tries, then named and left), a loose file at the top that is not an album. What it writes
    down names the watch and the album inside it, never a path on the disk.
 
+60. ✅ **A library that survives being moved** (2026-09-29, P55b). A plan writes a path that is
+   **inside the album's own folder** as `./…`, and reads it back as the file it names. One marker,
+   one rule: everything else — an intake folder somewhere else, a source that was never in this
+   library — stays exactly the absolute path it was, because it is not this album's to rewrite.
+   **The fact this exists for is not that a moved library breaks. It is that a moved library
+   works — by using the files of the library it was copied from.** Measured on a real one: a
+   1.5.0-style copy of four albums held 52 refs and **all 52 pointed into the original, none into
+   itself**, every one of them on disk over there. So the copy played, measured and merged from
+   somebody else's folder, and nothing said anything was wrong; deleting the original was the day
+   it would have been found out. The same copy after conversion: 52 refs, all 52 relative, all 52
+   resolving inside itself — and with the original moved away, all four albums re-read, 0 tracks
+   added, every plan byte-identical. On the 132-album collection: 8396 refs, all relative, all
+   resolving inside the copy, 0 outside it.
+   **Only a plan that really holds one says `schema: 2`.** Every YouTube and SoundCloud album keeps
+   schema 1 and stays byte-for-byte the file it was, readable by ytalbum 0.9.1 and by every noaap up
+   to 1.5.0. A relative ref is what an older version cannot read, so it is the only thing that
+   raises the number — and what raises it is an adopted collection, which no older version ever
+   wrote. The reader takes 1 and 2 and refuses 3, as it always has.
+   **The conversion is a load away.** Reading a plan gives what it always gave, so nothing that
+   reads one had to change; writing it converts it. `noaap repair` walks the library and saves every
+   album whose written form differs from its file, which is how one command converts a whole
+   collection — 132 albums, 8396 refs, in one pass. `plan --verify` reports a conversion **as a
+   change and not as a fault**, with its own count, and the three counts it prints are exclusive.
+   **What a save writes is decided in one place.** `plan --verify` had its own copy of the rule and
+   `repair` a third, and the third recomputed the schema line with a string search. Asking the
+   round-trip question honestly then found a real defect behind it: a track synthesises the
+   candidate for its own ref and must default it to YouTube, because a track cannot know its
+   album's provider — only the load corrected that, so every `adopt --apply` left a folder album's
+   candidates claiming YouTube in the file until something re-read and re-saved it.
+   **Two absences are not one.** A track whose *own file* is missing is a broken library and is
+   named as that. A track whose *source* has gone — an album taken in from a folder that is no
+   longer mounted — is complete, and saying otherwise would tell someone their library is broken
+   when only a re-fetch would be.
+   **And a library that moved before it was converted cannot be converted where it stands**: its
+   refs name the original's folders, which are not inside this album, so `repair` correctly leaves
+   them alone and `plan --verify` correctly calls it byte-identical. Finding those files where they
+   now are is its own question, and its own slice.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
