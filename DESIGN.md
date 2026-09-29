@@ -1790,7 +1790,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `youtube` there instead would silence it and **lie to every noaap from 1.1.0 to 1.5.0**, which reads
    that field verbatim and would then ask YouTube for a path itself. So the true provider is written
    inside, the older program's verify reports its own claiming, and nothing is lost either way: this is
-   a disagreement about a value, not a field that goes missing (R-215).
+   a disagreement about a value, not a field that goes missing. **The criterion is what noaap loads after
+   an older version has saved** (R-217), and what remains true of those albums is said plainly in the
+   README: an older version can read, play and save one, and loses nothing — but asked to *fetch* such a
+   track again, it asks the wrong source.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

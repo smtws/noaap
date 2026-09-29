@@ -884,6 +884,11 @@ Nothing outside this repository implements it yet; when something does, it gets 
   holds a relative path says `schema: 2`, and only a collection taken in with `noaap adopt` does —
   every YouTube and SoundCloud album keeps `schema: 1`. An older version refuses a schema it does not
   know rather than guessing, so it says so plainly about the adopted ones and reads all the rest.
+- **An album holding a copy from another source is safe with an older version, until it fetches.**
+  Since `merge` there can be a YouTube album whose chosen copy came from a folder. ytalbum 0.9.1 and
+  noaap 1.1.0 to 1.5.0 can all read, play and save such an album, and nothing is lost — noaap puts back
+  what they change. But if one of those older versions is asked to **fetch that track again**, it asks
+  the wrong source, because it takes the copy for the album's own. Fetch it with 1.6.0 or later.
 - **1.1.0 to 1.5.0 broke that, and 1.6.0 fixes it.** Those versions wrote a copy's newer measurements
   *inside* the copy, where ytalbum 0.9.1 builds one with a bare constructor and refuses the whole
   plan — `Candidate.__init__() got an unexpected keyword argument 'length_by'`, on 153 of one real
