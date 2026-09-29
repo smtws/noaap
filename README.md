@@ -276,8 +276,15 @@ its own first line, so an error page in the middle of a chapter refuses the trac
 a hole in it (an empty segment is fine: that is a silence). A playlist of playlists, an encrypted one
 (no key is ever fetched), one that is still being written, one whose segments are byte ranges of
 another file and one that lists the same segment twice are each refused by name, as is more than
-**600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line
-says what it did cost.
+**600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line says what it did cost — the
+requests, the segments, the bytes, and which of the two timestamp conventions the segments used.
+
+**Run against a real post on 2026-09-29:** one post whose captions are a playlist of **48 segments**,
+taken in **49 requests**, joined into **341 lines** whose last stamp sits 4.08 s inside the audio's
+23:31, written as one `.lrc` of 27,903 bytes beside the track — with nothing in the file's tag and
+no address of any kind in the plan. What that run did *not* exercise: a post serving a plain caption
+file, captions the platform generated, any of the refusals against the live site, and more than one
+post.
 
 **And its audio does not go to a timing provider that is not this machine.** Aligning words or
 drafting them sends the *recording* — so for an album from a private source that only happens with a
@@ -308,8 +315,7 @@ day — **one real fetch**: the shortest of the five posts, a 23½-minute narrat
 of the video (16.6 MB kept, aac 96 kbps, 44.1 kHz, length matching the source manifest to four
 decimals, measured cutoff 15 kHz), tagged, and `update` run once over it, which changed nothing.
 What is still **untried against the live site**: a post that holds audio as a file, a post with
-attachments, a post outside the tier, more than one post in a run, captions (no caption file has ever
-been fetched — that needs your word first), and the cover (the one cover this
+attachments, a post outside the tier, more than one post in a run, and the cover's fallback (the one cover this
 provider has been asked for could not be fetched, which is what led to the fix in the paragraph
 above). Treat those as new.
 

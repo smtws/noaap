@@ -2216,7 +2216,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    second segments is an hour and a half of narration, and a program that would fetch two thousand
    files for one track's words has stopped asking whether it should.
    **And the cost is said before it is paid.** A dry run names the shape and the budget — it makes no
-   request for captions — and the track's own line says the exact number of requests afterwards.
+   request for captions — and the track's own line says afterwards what it actually cost: requests,
+   segments, bytes, and **which convention the segments turned out to use**. The first live run could
+   only infer that from the shape of its own result and could not say the bytes at all, though they
+   had been counted for the cap; a number that exists and is dropped is the same defect as a number
+   that is only in a log. None of it reaches a plan: it describes the transfer, not the words.
+   **Measured live on 2026-09-29:** a playlist of 48 segments, 49 requests, 341 lines, the same map
+   on every segment, the last stamp 4.08 s inside a 23:31 recording, 27,903 bytes of `.lrc` beside
+   the track — and not one word of it in the file, the plan, or anything this repository holds.
    **Four corrections from the review of it** (R-263), all of the same family — *a list is judged as
    a list*: every segment must be a caption file **by its own first line**, so an error page or a
    truncated answer refuses the track and names which segment it was, instead of reading as a

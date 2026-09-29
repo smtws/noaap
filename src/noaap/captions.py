@@ -165,7 +165,12 @@ def timestamp_base(text: str) -> tuple[float | None, bool]:
     return int(mpegts[1]) / MPEG_CLOCK - seconds(local[1]), True
 
 
-def read_segments(texts: list[str]) -> tuple[list[tuple[float, str]], str | None]:
+# which of the two conventions a set of segments turned out to use. Recorded and said, because the
+# first live run could only *infer* it from the shape of the result (§9, slice 76, R-266).
+NO_MAP, SAME_MAP, RESTARTING = "no map", "the same map on every segment", "a map per segment"
+
+
+def read_segments(texts: list[str]) -> tuple[list[tuple[float, str]], str | None, str]:
     """Every segment's cues as one list on the audio's clock — or a refusal, and nothing partial.
 
     **What the timestamp map is used for, and what it is not.** The stamps have to land on the audio
@@ -180,26 +185,29 @@ def read_segments(texts: list[str]) -> tuple[list[tuple[float, str]], str | None
     """
     bases: list[float | None] = []
     seen: list[tuple[float, str]] = []
+    convention = NO_MAP
     for n, text in enumerate(texts, 1):
         # **a segment that is not a caption file is not an empty one** (R-263, defect 1). An error
         # page or a truncated answer read as "no cues" and left a hole in the middle of a chapter
         # with nothing said. An *empty* WebVTT segment — header, no cues — stays perfectly legal.
         if not is_webvtt(text):
-            return [], f"its caption segment {n} of {len(texts)} is not a WebVTT file"
+            return [], f"its caption segment {n} of {len(texts)} is not a WebVTT file", convention
     for text in texts:
         base, present = timestamp_base(text)
         if present and base is None:
-            return [], "its captions carry a timestamp map this program cannot read"
+            return [], "its captions carry a timestamp map this program cannot read", convention
         bases.append(base if present else None)
     said = [b is not None for b in bases]
     if any(said) and not all(said):
-        return [], "some of its caption segments carry a timestamp map and some do not"
+        return [], "some of its caption segments carry a timestamp map and some do not", convention
+    if all(said) and bases:
+        convention = SAME_MAP if len(set(bases)) == 1 else RESTARTING
     zero = bases[0] if bases and bases[0] is not None else 0.0
     for text, base in zip(texts, bases, strict=True):
         shift = (base - zero) if base is not None else 0.0
         for start, said_words in read(text):
             if start + shift < -0.001:
-                return [], "its caption stamps land before the start of the audio"
+                return [], "its caption stamps land before the start of the audio", convention
             seen.append((round(max(start + shift, 0.0), 3), said_words))
     # a cue that spans a segment border is written in both of them, and is one cue
-    return sorted(dict.fromkeys(seen), key=lambda c: c[0]), None
+    return sorted(dict.fromkeys(seen), key=lambda c: c[0]), None, convention

@@ -136,7 +136,10 @@ def test_the_creators_own_captions_are_taken(monkeypatch):
     found = decides(monkeypatch, a_post())
 
     assert found["by"] == "patreon" and found["language"] == "en"
-    assert captions.read(found["bytes"])[0][0] == 7.12
+    assert captions.read(found["file"])[0][0] == 7.12
+    # what it cost and what it was, recorded beside the words themselves (§9, slice 76)
+    assert found["bytes"] == len(VTT.encode()) and found["segments"] == 1
+    assert found["map"] == captions.NO_MAP, "this file carries no timestamp map"
 
 
 def test_captions_the_platform_generated_are_refused(monkeypatch):
@@ -199,7 +202,7 @@ def test_the_words_are_written_beside_the_track_and_marked_as_the_creators(tmp_p
     plan, track = an_album(), None
     track = plan.tracks[0]
 
-    said = _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, track, tmp_path)
+    said = _words_from_source(Gave({"by": "patreon", "file": VTT.encode()}), plan, track, tmp_path)
 
     sidecar = tmp_path / "01 Chapter One.lrc"
     assert sidecar.exists() and "[00:07.12]" in sidecar.read_text(encoding="utf-8")
@@ -285,7 +288,7 @@ def test_captions_open_no_lookup(tmp_path, monkeypatch):
     monkeypatch.setattr("noaap.mb.MusicBrainz", WouldTell)
 
     plan = an_album()
-    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], tmp_path)
+    _words_from_source(Gave({"by": "patreon", "file": VTT.encode()}), plan, plan.tracks[0], tmp_path)
 
     assert (tmp_path / "01 Chapter One.lrc").exists()
 
@@ -336,7 +339,7 @@ def test_an_edit_does_not_turn_the_creators_words_into_the_users(tmp_path, words
     from noaap.download import _words_from_source, load_plan
 
     album_dir, plan = a_library(tmp_path)
-    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    _words_from_source(Gave({"by": "patreon", "file": VTT.encode()}), plan, plan.tracks[0], album_dir)
     from noaap.download import save_plan
 
     save_plan(plan, album_dir)
@@ -363,7 +366,7 @@ def test_clearing_them_gives_the_mark_up_and_what_is_written_next_is_the_users(t
     from noaap.lyrics import publishable
 
     album_dir, plan = a_library(tmp_path)
-    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    _words_from_source(Gave({"by": "patreon", "file": VTT.encode()}), plan, plan.tracks[0], album_dir)
     save_plan(plan, album_dir)
     service = a_service(tmp_path)
 
@@ -386,7 +389,7 @@ def test_no_route_writes_the_creators_words_into_the_file(tmp_path):
     from noaap.download import _words_from_source, load_plan, run, save_plan
 
     album_dir, plan = a_library(tmp_path)
-    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    _words_from_source(Gave({"by": "patreon", "file": VTT.encode()}), plan, plan.tracks[0], album_dir)
     save_plan(plan, album_dir)
     service = a_service(tmp_path)
 
@@ -707,7 +710,8 @@ def test_segments_without_any_map_are_taken_as_they_are(monkeypatch):
 def test_a_plain_caption_file_still_works(monkeypatch):
     found = serving(monkeypatch, {"https://manifest.edgemv.mux.com/x.vtt": VTT.encode()})
 
-    assert found["requests"] == 1 and "bytes" in found and "cues" not in found
+    assert found["requests"] == 1 and found["file"] == VTT.encode() and "cues" not in found
+    assert found["bytes"] == len(VTT.encode()) and found["segments"] == 1
 
 
 def test_the_track_line_says_what_the_captions_cost(tmp_path):
@@ -715,8 +719,11 @@ def test_the_track_line_says_what_the_captions_cost(tmp_path):
 
     plan = an_album()
     said = _words_from_source(Gave({"by": "patreon", "cues": [(1.0, "a line"), (2.0, "another")],
-                                    "requests": 3}), plan, plan.tracks[0], tmp_path)
-    assert "2 line(s)" in said and "(3 requests)" in said
+                                    "requests": 3, "segments": 2, "bytes": 2048,
+                                    "map": captions.SAME_MAP}), plan, plan.tracks[0], tmp_path)
+    assert "2 line(s)" in said
+    for number in ("3 requests", "2 segments", "2.0 kB", captions.SAME_MAP):
+        assert number in said, f"the line does not say {number!r}: {said}"
 
     refused = _words_from_source(Gave({"by": "patreon", "refused": "its captions are encrypted",
                                        "requests": 1}), an_album(), a_track(), tmp_path)
@@ -860,3 +867,51 @@ def test_a_failed_request_is_still_a_request_that_was_made(monkeypatch):
 
     assert "segment 2 could not be read" in found["refused"]
     assert found["requests"] == 3 == len(found["asked"]), "the playlist, the one that worked, the one that did not"
+
+
+def test_which_convention_was_met_is_recorded_and_not_inferred(monkeypatch):
+    """The first live run could only guess, from the shape of the result, which of the two the
+    segments had used — and could not say how many bytes they were, though the number had been
+    counted for the cap. Both are recorded now (§9, slice 76, R-266)."""
+    same = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": SEG0.encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": SEG1.encode()})
+    assert same["map"] == captions.SAME_MAP
+    assert same["bytes"] == len(SEG0.encode()) + len(SEG1.encode()) and same["segments"] == 2
+
+    restarting = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": RESTARTING.format(ts=900000, said="one").encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": RESTARTING.format(ts=1800000, said="two").encode()})
+    assert restarting["map"] == captions.RESTARTING
+
+    plain = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode()})
+    assert plain["map"] == captions.NO_MAP
+
+    # and a refusal still says what it had already cost, in bytes as well as requests
+    refused = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": SEG0.encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": b"not a caption file at all"})
+    assert refused["bytes"] == len(SEG0.encode()) + len(b"not a caption file at all")
+    assert "refused" in refused and "cues" not in refused
+
+
+def test_none_of_that_is_written_into_the_plan(tmp_path):
+    """It describes the transfer, not the words: a plan says whose the words are and nothing about
+    how many requests they took."""
+    import json
+
+    from noaap.download import _words_from_source, written
+
+    plan = an_album()
+    _words_from_source(Gave({"by": "patreon", "cues": [(1.0, "a line")], "requests": 9,
+                             "segments": 8, "bytes": 4096, "map": captions.RESTARTING}),
+                       plan, plan.tracks[0], tmp_path)
+
+    text = json.dumps(written(plan, tmp_path))
+    for gone in ("requests", "segments", "4096", captions.RESTARTING, "map"):
+        assert gone not in text, f"the plan carries {gone!r}"

@@ -21,8 +21,12 @@
 > first segment**, never as an absolute origin, because the audio is copied out of an mp4 that
 > carries no such clock. The measurement §2 asked for did happen: a real rendition's audio starts at
 > `0.000`.
-> **Still untried live: the words themselves.** No caption segment has been fetched, so whether a
-> real file parses, how many lines a chapter holds and where its first cue begins are still open.
+> **Done, on 2026-09-29 at 20:57.** A real post's captions are a playlist of 48 segments; taking
+> them cost 49 requests and produced 341 lines, first stamp 0.13 s, last 4.08 s inside the audio.
+> §2's open question is answered: the first cue begins at the first spoken word, near enough, and the
+> stamps land on the audio without any correction — the segments carried the same map throughout.
+> §1's estimate of "300–500 cues for a 30-minute narration" was right (341 for 23½ minutes), and so
+> was its ~35 KB (27,903 bytes). Nothing of the text is in this repository.
 
 **Nothing here ships.** R-249 asked for a proposal and R-250 kept it a proposal after the user said
 they like the idea. It is written to be built from: what the format holds, whether its stamps land on

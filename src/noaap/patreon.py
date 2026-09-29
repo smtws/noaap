@@ -643,15 +643,18 @@ class Patreon:
         except sources.SourceError as e:
             return {**said, "refused": f"its captions could not be read: {e}"}
         if captions.is_webvtt(raw):
-            return {**said, "bytes": raw, "language": language, "requests": 1}
+            return {**said, "bytes": len(raw), "file": raw, "language": language,
+                    "map": captions.NO_MAP if not captions.timestamp_base(
+                        raw.decode("utf-8-sig", "replace"))[1] else captions.SAME_MAP,
+                    "segments": 1, "requests": 1}
         if not captions.is_playlist(raw):
             return {**said, "refused": NOT_WEBVTT}
-        cues, refused, asked = self._caption_segments(url, raw)
+        found, refused, asked = self._caption_segments(url, raw)
         if refused:
-            return {**said, "refused": refused, "requests": asked}
-        return {**said, "cues": cues, "language": language, "requests": asked}
+            return {**said, **found, "refused": refused, "requests": asked}
+        return {**said, **found, "language": language, "requests": asked}
 
-    def _caption_segments(self, where: str, raw: bytes) -> tuple[list[tuple[float, str]], str | None, int]:
+    def _caption_segments(self, where: str, raw: bytes) -> tuple[dict[str, Any], str | None, int]:
         """Fetch a caption playlist's segments in order and join them (§9, slice 76).
 
         **Every address is checked before it is asked**, the relative ones after they are resolved
@@ -662,38 +665,41 @@ class Patreon:
         segments, problem = captions.playlist(raw)
         asked = 1                      # the playlist itself
         if problem:
-            return [], problem, asked
+            return {}, problem, asked
         if not segments:
-            return [], "its caption playlist lists no segments", asked
+            return {}, "its caption playlist lists no segments", asked
         if len(segments) > CAPTION_SEGMENTS:
-            return [], (f"its caption playlist lists {len(segments)} segments, more than the "
+            return {}, (f"its caption playlist lists {len(segments)} segments, more than the "
                         f"{CAPTION_SEGMENTS} this program will fetch"), asked
         # **every address is resolved and checked before any of them is asked** (R-263, defect 2). It
         # was one at a time, so a foreign third segment was found only after two requests had already
         # gone out. The list is judged as a list, and then it is fetched.
         addresses = [urljoin(where, part) for part in segments]
         if not all(_is_media_address(one) for one in addresses):
-            return [], CAPTIONS_ELSEWHERE, asked
+            return {}, CAPTIONS_ELSEWHERE, asked
         if len(set(addresses)) != len(addresses):
-            return [], "its caption playlist lists the same segment twice", asked
+            return {}, "its caption playlist lists the same segment twice", asked
         texts, total = [], 0
         for position, address in enumerate(addresses, 1):
             asked += 1      # counted before the attempt: a request that failed was still made
             try:
                 body = self._media_bytes(address, accept="text/vtt,*/*")
             except sources.SourceError as e:
-                return [], f"its caption segment {position} could not be read: {e}", asked
+                return {}, f"its caption segment {position} could not be read: {e}", asked
             total += len(body)
             if total > CAPTION_BYTES:
-                return [], (f"its caption segments are larger than the "
+                return {}, (f"its caption segments are larger than the "
                             f"{CAPTION_BYTES // 1_000_000} MB this program will read"), asked
             texts.append(body.decode("utf-8-sig", "replace"))
-        cues, problem = captions.read_segments(texts)
+        cues, problem, convention = captions.read_segments(texts)
         if problem:
-            return [], problem, asked
+            return {"bytes": total, "map": convention}, problem, asked
         if not cues:
-            return [], "its caption segments hold no lines", asked
-        return cues, None, asked
+            return {"bytes": total, "map": convention}, "its caption segments hold no lines", asked
+        # **what it cost and what it met**, recorded rather than inferred from the shape of the
+        # result afterwards (§9, slice 76, R-266). Neither ever reaches a plan: they describe the
+        # transfer, not the words.
+        return {"cues": cues, "bytes": total, "map": convention, "segments": len(addresses)}, None, asked
 
     def probe(self, ref: str) -> Entry:
         """One media on its own, for a track whose post is not being read as a whole."""

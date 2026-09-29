@@ -450,12 +450,11 @@ def _words_from_source(provider: Any, plan: AlbumPlan, track: PlanTrack,
     found = getattr(provider, "last_captions", None)
     if not isinstance(found, dict):
         return None
-    asked = found.get("requests")
-    cost = f" ({asked} request{'s' if asked != 1 else ''})" if asked else ""
+    cost = _captions_cost(found)
     if refused := found.get("refused"):
         return f"no words beside this track: {refused}{cost}"
     # a provider may hand over a file to read or the lines it already joined out of several
-    cues = found.get("cues") or captions.read(found.get("bytes") or b"")
+    cues = found.get("cues") or captions.read(found.get("file") or b"")
     if not cues:
         return f"no words beside this track: its caption file holds no lines{cost}"
     whose = str(found.get("by") or "the source")
@@ -470,6 +469,28 @@ def _words_from_source(provider: Any, plan: AlbumPlan, track: PlanTrack,
     write_sidecar(album_dir, track, text)
     return (f"{len(cues)} line(s) of {whose}'s own captions{cost}, kept beside the track "
             "and nowhere else")
+
+
+def _captions_cost(found: dict[str, Any]) -> str:
+    """What the captions cost and what they turned out to be — said, not left to be inferred.
+
+    The first live run of a caption playlist could only *guess* which timestamp-map convention it had
+    met, from the shape of the result, and could not say how many bytes the segments were although
+    the number had been counted for the cap (§9, slice 76, R-266). Both are said here and neither is
+    written into a plan: they describe the transfer, not the words.
+    """
+    asked, segments = found.get("requests"), found.get("segments")
+    size, convention = found.get("bytes"), found.get("map")
+    parts = []
+    if asked:
+        parts.append(f"{asked} request{'s' if asked != 1 else ''}")
+    if segments:
+        parts.append(f"{segments} segment{'s' if segments != 1 else ''}")
+    if size:
+        parts.append(f"{size / 1000:.1f} kB")
+    if convention:
+        parts.append(str(convention))
+    return f" ({', '.join(parts)})" if parts else ""
 
 
 def run(
