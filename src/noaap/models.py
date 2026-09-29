@@ -223,6 +223,11 @@ class PlanTrack:
     number: int
     artist: str
     title: str
+    # **the track's own file, as a path relative to the album folder** (§9, slice 61). For everything
+    # noaap downloads that is a bare name and always was. For an adopted album it is whatever the
+    # owner's layout says, `cd1/…` included — a plan that can only hold a bare name cannot say where
+    # a disc-folder track lives, and every pass then "found" the file missing and copied it into the
+    # album root under a name of noaap's own.
     filename: str
     provenance: dict[str, str]  # field name -> Provenance
     disc: int = 1

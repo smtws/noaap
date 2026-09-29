@@ -240,11 +240,11 @@ def _put_away(album_dir: Path, plan: AlbumPlan, track: PlanTrack, final: Path) -
     library = library_of(album_dir, plan)
     if library is None:
         return
-    for path in sorted(album_dir.iterdir()):
+    for path in sorted(final.parent.iterdir()):  # beside the new file, which need not be the root
         if not path.is_file() or path == final or path.suffix.lower() not in AUDIO \
                 or path.stem != final.stem:
             continue
-        now, track.filename = track.filename, path.name
+        now, track.filename = track.filename, str(path.relative_to(album_dir))
         try:
             bin_track(library, album_dir, plan, track, reason=f"replaced by {now}", audio=path)
         finally:
@@ -348,7 +348,11 @@ def run(
                 # raises) and left as a name that lies about its contents (§9, slice 53).
                 if (got := tmp.suffix.lstrip(".").lower()) and got != track.ext:
                     track.ext = got
-                    track.filename = wanted_filename(plan, track)
+                    # **an adopted album keeps its name here too** (§9, slice 61): only the suffix
+                    # follows the file, because deriving the whole name is the one thing adoption
+                    # promised not to do — and it would move the file out of its own folder.
+                    track.filename = str(Path(track.filename).with_suffix(f".{got}")) \
+                        if plan.keep_names else wanted_filename(plan, track)
                     final = album_dir / track.filename
                 text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
                 track.file_length, track.file_length_by = measure(tmp)

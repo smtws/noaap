@@ -501,8 +501,9 @@ class Service:
                 continue
             here = Path(track.video_id)
             if here.is_file() and here.parent == album_dir:
-                track.filename, track.state = here.name, "done"
-                track.adopted_name = track.adopted_name or here.name
+                where = str(here.relative_to(album_dir)) if album_dir in here.parents else here.name
+                track.filename, track.state = where, "done"
+                track.adopted_name = track.adopted_name or where
                 track.adopted_tags = track.adopted_tags if track.adopted_tags is not None \
                     else dict(raw_tags(here))
         save_plan(merged, album_dir)
@@ -1508,7 +1509,9 @@ class Service:
 
         album_dir.mkdir(parents=True, exist_ok=True)
         if (audio := entry.audio) and track.filename:
-            shutil.move(str(audio), album_dir / track.filename)
+            back = album_dir / track.filename
+            back.parent.mkdir(parents=True, exist_ok=True)  # a disc sub-folder may have gone with it
+            shutil.move(str(audio), back)
         if original := entry.original:
             (album_dir / ORIGINALS).mkdir(exist_ok=True)
             shutil.move(str(original), album_dir / ORIGINALS / f"{trim_key(track.effective_id)}{original.suffix}")
@@ -1640,9 +1643,18 @@ def _minutes(audio: Path) -> str:
 
 
 def _inside(album_dir: Path, filename: str) -> Path | None:
-    """album_dir/filename, but only if that really is a file directly in the album folder."""
+    """album_dir/filename, but only if that really is a path inside the album folder.
+
+    **Inside it at any depth, not only directly in it** (§9, slice 61): an adopted album's files may
+    sit in disc sub-folders and the plan says so by naming them relative to the album. A plan is a
+    file on disk and a tampered one can name `../../something` or an absolute path, so the answer is
+    only ever something that resolves within this album.
+    """
+    if not filename or Path(filename).is_absolute():
+        return None
+    root = album_dir.resolve()
     path = (album_dir / filename).resolve()
-    return path if path.parent == album_dir.resolve() and path.name == filename else None
+    return path if path != root and root in path.parents else None
 
 
 def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:

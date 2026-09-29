@@ -87,10 +87,19 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
     for track in plan.tracks:
         # the file is here and finished: that is what adoption means. Its name is the owner's.
         track.state = "done"
-        track.filename = Path(track.video_id).name
-        track.adopted_name = track.filename
+        track.filename = track.adopted_name = _where(Path(track.video_id), album_dir)
         track.adopted_tags = _was(Path(track.video_id), plan, track)
     return Adoption(album_dir, plan=plan)
+
+
+def _where(audio: Path, album_dir: Path) -> str:
+    """The file, as the plan names it: its path relative to the album folder (§9, slice 61).
+
+    A disc-folder album is `cd1/…`, and everything else is the bare name it has always been. Taking
+    only `.name` here is what let one `update` copy all 67 tracks of three real albums into their
+    album roots under noaap's own naming scheme, three of them onto each other's names.
+    """
+    return str(audio.relative_to(album_dir)) if album_dir in audio.parents else audio.name
 
 
 def _was(audio: Path, plan: AlbumPlan, track: Any) -> dict[str, Any]:
@@ -220,6 +229,7 @@ def give_back(album_dir: Path, plan: AlbumPlan, library: Path,
             here = _inside(album_dir, track.filename)
             want = album_dir / track.adopted_name
             if here and here != want and here.is_file():
+                want.parent.mkdir(parents=True, exist_ok=True)  # its disc folder, if it is in one
                 here.rename(want)
                 done["renamed"] += 1
             # `is not None`, not truthiness: **an empty record is a record** — it says the file
@@ -286,7 +296,10 @@ def rename(album_dir: Path, plan: AlbumPlan, log: Callable[[str], None] = lambda
     moved = 0
     for track in plan.tracks:
         here = _inside(album_dir, track.filename)
-        want = wanted_filename(plan, track)
+        # **renamed where it stands** (§9, slice 61): a track in a disc sub-folder keeps that folder,
+        # because the layout is the owner's as much as the names were, and this pass was asked for
+        # the names. Nothing here moves a file between folders.
+        want = str(Path(track.filename).parent / wanted_filename(plan, track))
         if here is None or not here.is_file() or track.filename == want:
             continue
         if (album_dir / want).exists():

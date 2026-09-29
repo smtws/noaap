@@ -436,8 +436,12 @@ def _same_artist(ours: str, theirs: str) -> bool:
 
 
 def sidecar_path(album_dir: Path, filename: str) -> Path:
-    """`01 Artist - Title.lrc` beside `01 Artist - Title.opus` — where players look for it."""
-    return album_dir / (Path(filename).stem + SUFFIX)
+    """`01 Artist - Title.lrc` beside `01 Artist - Title.opus` — where players look for it.
+
+    **Beside it**, which for a track in a disc sub-folder means inside that folder: the filename is
+    the path relative to the album, so the sidecar keeps its parent (§9, slice 61).
+    """
+    return album_dir / Path(filename).with_suffix(SUFFIX)
 
 
 def read_sidecar(album_dir: Path, track: PlanTrack) -> str | None:

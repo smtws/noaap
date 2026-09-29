@@ -288,7 +288,9 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
     # **an album that keeps its names keeps them through a replacement too** (§9, slice 58): the
     # displaced file's own stem, with the container the new file actually is. Putting noaap's name
     # on it would be this pass deciding something the adoption promised not to decide.
-    wanted = (f"{Path(was.name).stem}.{track.ext}" if plan.keep_names and was
+    # the displaced file's own stem **in its own folder** (§9, slice 61): `.name` alone would take a
+    # disc-folder track's replacement out of the disc folder and into the album root.
+    wanted = (str(Path(track.filename).with_suffix(f".{track.ext}")) if plan.keep_names and was
               else wanted_filename(plan, track))
 
     # Ruling 5's other half. `write_sidecar` records what timed words were written against, but a
@@ -305,7 +307,7 @@ def _take(proposal: Proposal, library: Path, log: Callable[[str], None]) -> None
                   reason=f"replaced by a copy from {new.plan.provider}: {proposal.verdict.why}",
                   audio=was, ranking=numbers(proposal))
 
-    album_dir.mkdir(parents=True, exist_ok=True)
+    (album_dir / wanted).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(incoming, album_dir / wanted)
     track.filename = wanted
     # measured from the file that is now there, so `file_length_by` describes this file and not the
