@@ -177,8 +177,8 @@ Set the key to an absolute path if you keep it elsewhere.
 | **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the ⏱ column says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what may be done with them — here, that these are LRCLIB's words and so not yours to give back. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing, the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. Nothing is written until Save. |
 | ![Settings](docs/screenshots/settings.jpg) | ![Channel listing](docs/screenshots/search.jpg) |
 | **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. A key that is set reads `•••••••• (set)` and is never shown again. Below: what noaap found — config file, JS runtime, token generator. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
-| ![Library](docs/screenshots/library.jpg) | |
-| **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. |  |
+| ![Library](docs/screenshots/library.jpg) | ![Two copies of one song](docs/screenshots/copies.jpg) |
+| **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | **Two copies of one song:** what `merge` could not decide, kept where you can decide it — the panel of one track, opened with **⇄**. Every copy is named by the last two parts of its path (the whole path is in its tooltip) and carries what was measured: codec, bitrate, where the audio stops, length, size. The one in use says so; the other says what stopped the pass from ranking it — here two files that are the same recording by every number there is and **3 seconds apart**, which is inside the range where this program shows you rather than decides. **take this one** fetches it, **not this one** is remembered for good, and the count on the album card can only fall. |
 
 The compilations throughout these screenshots are
 [**My Dark Lullabies**](https://www.youtube.com/@MyDarkLullabies) — *"a curated collection
@@ -188,6 +188,10 @@ another AI-assisted project by this repository's owner, and it is the reason hal
 tool exists: twenty volumes of thirteen different bands each, where no release, no
 tracklist and no cover exists to look up — so the names have to be earned from the video
 titles and MusicBrainz one track at a time.
+
+The one exception is **Two copies of one song**, which is a 1970s rock compilation: none of the
+twenty Lullabies volumes holds a copy nobody could choose between, and a panel about two copies has
+to be photographed where there are two.
 
 ## How it works
 
@@ -241,8 +245,24 @@ SoundCloud link with a note is read as *that* service's track, because that is w
 
 **What it never does:** fetch anything your tier does not include (that post says so and is skipped, and
 the album goes on), fetch for anybody but you, go near DRM or any access control, or crawl a creator.
-And it has **never been run against Patreon**: it is built and tested against written fixtures only, so
-treat it as new until you have tried it on a creator you support.
+
+**It has now been run against Patreon, once, on 2026-09-29** — one campaign the owner of this
+installation supports, its five newest posts, read with their own Chrome session. What that run
+exercised: the session (Chrome's cookie store, read by yt-dlp, nothing stored), the campaign listing
+with `patreon_post_cap = 5` against a campaign of 584 posts, and five full post reads. What it did
+**not** exercise: downloading, tagging or `update`, because every one of those five posts is video
+and this provider does not take a video post's audio track. So a real fetch is still untried, and a
+post holding audio, a locked post and an attachment have still only ever been seen as written
+fixtures. Treat those as new.
+
+Two things that run taught, both of them traps:
+
+- **A flat campaign listing gives no titles.** Patreon answers a feed with bare addresses, so the
+  picker shows each post's *address slug* — the creator's own words, not the post's real title. The
+  title arrives when the post itself is read.
+- **On Linux, reading Chrome's cookies needs a keyring that is unlocked, and `secretstorage`
+  installed.** Without it yt-dlp cannot decrypt a `v11` cookie: it drops them silently, and Patreon
+  then answers as if you were a stranger. A session that looks set and does not work is this.
 
 **A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
 own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath

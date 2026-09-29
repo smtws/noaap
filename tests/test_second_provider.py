@@ -287,3 +287,35 @@ def test_the_shared_client_shortens_in_two_steps() -> None:
     whole = ytdlp.trim("ERROR: [somewhere] abc123: Video unavailable. This video is private")
     assert whole == "Video unavailable. This video is private"
     assert ytdlp.one_sentence(whole) == "Video unavailable"
+
+
+# -- a listing nobody shows is a listing nobody has (§9, slice 71) -----------------------------------
+
+
+def test_a_channel_shows_every_tab_a_provider_mints(tmp_path):
+    """`service.channel` grouped by a table of the three tabs YouTube and the folder source use, so
+    Patreon's `posts` refs were filtered out of their own listing: the live campaign read came back
+    with five posts and the CLI said "this channel has no releases or playlists". Found by running it,
+    not by a case — every case so far called `listing()` and never what shows it."""
+    from noaap import service
+    from noaap.models import SourceRef
+
+    class Owner:
+        name = "owner"
+
+        def handles(self, address): return True
+        def capabilities(self): return frozenset({sources.LISTING})
+        def listing(self, address):
+            return [SourceRef(url="u1", source_id="1", title="a post", tab="posts"),
+                    SourceRef(url="u2", source_id="2", title="an album", tab="releases"),
+                    SourceRef(url="u3", source_id="3", title="something new", tab="zines")]
+
+    svc = service.Service.__new__(service.Service)
+    svc.source_for_address = lambda url: Owner()
+    svc.log = lambda *a, **k: None
+    svc._said = lambda url, source: url
+
+    groups = svc.channel("https://example.test/owner")
+
+    assert [label for label, _ in groups] == ["Releases (official albums and singles)", "Posts", "Zines"]
+    assert [r.title for _, refs in groups for r in refs] == ["an album", "a post", "something new"]

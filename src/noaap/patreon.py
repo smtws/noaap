@@ -467,6 +467,20 @@ def _campaign_id(info: dict[str, Any]) -> str | None:
     return None
 
 
+def _slug_title(url: str) -> str | None:
+    """The words in a post address, when the listing gives no title.
+
+    Measured, not assumed: a flat read of a campaign returns `{"url": …, "ie_key": "Patreon"}` and
+    nothing else — no title, no id, no date — so the picker printed five bare URLs and a patron had
+    nothing to choose by (§9, slice 71). The slug is the creator's own words in their own address;
+    it is shown verbatim, hyphens and all, because it is a fragment of a title and not the title.
+    The real one arrives with the post itself.
+    """
+    tail = (url or "").rstrip("/").rsplit("/", 1)[-1].split("?")[0]
+    words = re.sub(r"-?\d+$", "", tail)
+    return words or None
+
+
 class _Listing:
     """The part of `listing` that is arithmetic: which posts belong, and when to stop."""
 
@@ -496,7 +510,7 @@ class _Listing:
             self._seen.add(post)
             self.refs.append(SourceRef(
                 url=post_url(post), source_id=post_url(post),
-                title=(item.get("title") or post_url(post)),
+                title=(item.get("title") or _slug_title(url) or post_url(post)),
                 # a post is not a release and never a playlist somebody arranged: it is a post
                 tab="posts",
                 artist=(item.get("channel") or page.get("channel") or page.get("uploader") or None),

@@ -19,7 +19,7 @@ import pytest
 
 from noaap import sources
 from noaap.config import Config
-from noaap.patreon import NOT_IN_TIER, Patreon, campaign_of, is_address, media_id, one_ref, post_id, ref_for
+from noaap.patreon import NOT_IN_TIER, VIDEO_ONLY, Patreon, campaign_of, is_address, media_id, one_ref, post_id, ref_for
 from noaap.sources_patreon import PatreonSource
 
 FIXTURES = Path(__file__).parent / "fixtures" / "patreon"
@@ -300,7 +300,11 @@ def test_no_fixture_carries_a_session():
 
     banned = re.compile(r"session|cookie|csrf|bearer|authorization|patreon_device_id"
                         r"|[?&](token|key|sig|signature|policy)=", re.I)
-    real_host = re.compile(r"https?://(?:www\.)?patreon\.com/(?!posts/\d|c/acreator|m/\d)", re.I)
+    # the invented creator is `acreator`, and a real listing gives its posts under the vanity
+    # (`/acreator/posts/<slug>-<id>`) as well as bare (`/posts/<id>`) — both are allowed, any
+    # other patreon.com page is somebody real (§9, slice 71)
+    real_host = re.compile(r"https?://(?:www\.)?patreon\.com/"
+                           r"(?!posts/\d|c/acreator|m/\d|acreator(?:/|\"|$))", re.I)
 
     for path in sorted(FIXTURES.glob("*.json")):
         text = path.read_text(encoding="utf-8")
@@ -446,3 +450,61 @@ def test_the_provider_asks_its_own_title_rules(client):
         client.fetch("https://www.patreon.com/posts/100001").entries[0])
 
     assert got == (None, "winter-light")
+
+
+# -- a refusal is an answer, not a stack trace (§9, slice 71, P58 live run) --------------------------
+
+
+def test_a_provider_refusal_is_one_sentence_and_an_exit_code(monkeypatch, capsys, tmp_path):
+    """The first live fetch of a real Patreon post ended in
+    `noaap.sources.NoAudio: this post holds video, not audio` — a traceback, because the CLI caught
+    only `NotSupported`. Every failure a provider may raise is an answer somebody asked for."""
+    from noaap import cli, sources
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    for failure, expected in ((sources.NoAudio("this post holds video, not audio"), 1),
+                              (sources.Blocked("Patreon is refusing requests for now"), 1),
+                              (sources.SourceError("could not read that post"), 1),
+                              (sources.Cancelled("stopped"), 130)):
+        def boom(*a, _f=failure, **k):
+            raise _f
+
+        monkeypatch.setattr(cli, "_fetch", boom)
+        code = cli.main(["fetch", "--dry-run", "https://www.patreon.com/posts/1"])
+        said = capsys.readouterr().err
+
+        assert code == expected, f"{failure!r} exited {code}"
+        assert "Traceback" not in said
+        assert (str(failure) if expected == 1 else "stopped") in said
+
+
+# -- what a live campaign listing actually returns (§9, slice 71, P58) ------------------------------
+
+
+def test_a_flat_listing_carries_only_a_url(monkeypatch):
+    """The measured answer, and it was not what the written fixtures said. A flat read of a real
+    campaign returns entries of exactly `{"_type": "url", "ie_key": "Patreon", "url": …}` — no id, no
+    title, no date, no campaign id. So the post id comes out of the address, the title out of the
+    creator's own slug, and the picker that printed five bare URLs has words in it again."""
+    pt = Patreon(with_session())
+    monkeypatch.setattr(pt, "_read", lambda url, **extra: recorded("campaign_flat_bare"))
+
+    refs = pt.list_owner("https://www.patreon.com/cw/acreator")
+
+    assert [r.source_id for r in refs] == ["https://www.patreon.com/posts/100002",
+                                           "https://www.patreon.com/posts/100001",
+                                           "https://www.patreon.com/posts/100000"]
+    assert [r.title for r in refs] == ["three-takes-of-winter-light", "winter-light-studio",
+                                       "https://www.patreon.com/posts/100000"]
+    assert all(r.tab == "posts" and r.artist == "acreator" for r in refs)
+
+
+def test_a_video_post_is_refused_in_the_shape_patreon_really_sends(client):
+    """Patreon's own video is a Mux HLS manifest: four `avc1`+`mp4a` formats, no audio-only format,
+    no duration, no filesize, and an `id` that is the **post's** id. Every post of the campaign the
+    live run was pointed at had exactly this shape, so this is what the refusal has to recognise."""
+    with pytest.raises(sources.NoAudio) as refusal:
+        client.fetch("https://www.patreon.com/posts/100004")
+
+    assert str(refusal.value) == VIDEO_ONLY

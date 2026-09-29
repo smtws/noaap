@@ -122,6 +122,15 @@ class Outcome:
         return self.status == "blocked"
 
 
+TAB_LABELS = {
+    "releases": "Releases (official albums and singles)",
+    "playlists": "Playlists",
+    "ytmusic": "On YouTube Music",
+    "folders": "Albums in this folder",
+    "posts": "Posts",
+}
+
+
 class Service:
     def __init__(
         self,
@@ -621,12 +630,15 @@ class Service:
                 "give the address of one album instead.")
         self.log(f"reading {self._said(url, source)} …")
         refs = source.listing(url)
-        groups = [
-            (label, [r for r in refs if r.tab == tab])
-            for tab, label in (("releases", "Releases (official albums and singles)"),
-                               ("playlists", "Playlists"),
-                               ("folders", "Albums in this folder"))
-        ]
+        # **every tab a provider minted is shown.** This was a table of the three tabs YouTube and
+        # the folder source use, and a provider that named its own — Patreon's `posts` — had its whole
+        # listing dropped on the floor: the campaign read fine and the CLI said "this channel has no
+        # releases or playlists" (§9, slice 71). Known tabs keep their order and their sentence;
+        # anything else is shown under its own name rather than not at all.
+        seen = [r.tab for r in refs]
+        order = [t for t in TAB_LABELS if t in seen] + sorted(set(seen) - set(TAB_LABELS))
+        groups = [(TAB_LABELS.get(tab) or tab.replace("_", " ").capitalize(),
+                   [r for r in refs if r.tab == tab]) for tab in order]
         return [g for g in groups if g[1]]
 
     def search(self, artist: str) -> SearchResult:

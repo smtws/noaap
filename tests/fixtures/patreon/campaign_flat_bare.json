@@ -1,0 +1,22 @@
+{
+ "_type": "playlist",
+ "id": "70001",
+ "title": "acreator",
+ "channel": "acreator",
+ "channel_id": "70001",
+ "channel_url": "https://www.patreon.com/c/acreator",
+ "uploader": "acreator",
+ "uploader_url": "https://www.patreon.com/acreator",
+ "webpage_url": "https://www.patreon.com/c/acreator/posts",
+ "playlist_count": 584,
+ "requested_entries": [1, 2, 3, 4, 5],
+ "thumbnail": "https://c10.patreonusercontent.com/invented/campaign.jpg",
+ "entries": [
+  {"_type": "url", "ie_key": "Patreon",
+   "url": "https://www.patreon.com/acreator/posts/three-takes-of-winter-light-100002"},
+  {"_type": "url", "ie_key": "Patreon",
+   "url": "https://www.patreon.com/acreator/posts/winter-light-studio-100001"},
+  {"_type": "url", "ie_key": "Patreon",
+   "url": "https://www.patreon.com/posts/100000"}
+ ]
+}

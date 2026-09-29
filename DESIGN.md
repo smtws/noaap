@@ -2016,6 +2016,39 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    URLs. A guard greps the whole directory for sessions, tokens, addresses and any Patreon page that is
    not invented — the one thing standing between a live run and this repository.
 
+71. ✅ **The first live run against Patreon** (2026-09-29, P58). One campaign the user supports, read
+   with their own Chrome session, `patreon_post_cap = 5`, under this session's own XDG directories.
+   **Four defects, in the first four minutes, none of which a fixture could have shown.**
+   **A setting the file cannot say is not a setting.** `patreon_cookies_from_browser` and
+   `patreon_post_cap` were on `Config`, in the README's settings table and in the provider's
+   `settings()` — and `load()` never read either out of the file. The run began with a configuration
+   that did nothing. Every field of `Config` is now written into a file and read back by a case, so the
+   next setting that is only half-added fails a test rather than a run.
+   **A listing nobody shows is a listing nobody has.** `service.channel` grouped refs by a table of the
+   three tabs YouTube and the folder source happen to use, so Patreon's `posts` refs were dropped out of
+   their own listing: the campaign read fine and the CLI said *this channel has no releases or
+   playlists*. Every tab a provider mints is shown now, known ones in their order, anything else under
+   its own name.
+   **A refusal is an answer, not a stack trace.** The first real fetch ended in
+   `noaap.sources.NoAudio: this post holds video, not audio` — a traceback, because only `NotSupported`
+   was caught at the top. Every failure a provider may raise is one sentence and an exit code.
+   **A session that is set and does not work.** Chrome keeps cookies encrypted with a key in the desktop
+   keyring; without `secretstorage` yt-dlp decrypts nothing, drops every `v11` cookie with a warning
+   nobody sees, and the site answers as it answers a stranger. Reported now in `noaap config`, next to
+   ffmpeg — reported, not enforced.
+   **What the campaign actually answers** (and what the written fixtures had wrong): a flat listing is
+   `{"_type": "url", "ie_key": "Patreon", "url": …}` per post and nothing else — no id, no title, no
+   date, no campaign id. The post id comes out of the address; the title now falls back to the
+   creator's own slug, because five bare URLs are not a choice. Note what the missing campaign id means:
+   against this shape the #10013 filter has nothing to compare and drops nothing.
+   **And what the creator turned out to be.** The user's words were *"use it, but it's not actually
+   music or album shaped"*. All five posts are Mux HLS video — four `avc1`+`mp4a` renditions, no
+   audio-only format, English subtitles, `has_drm: false` — narrated stories, an episode each, one
+   `id` that is the post's own. So the provider refused all five, correctly by R-239 ruling 7, and
+   **the download half of this provider is still untried**: no fetch, no tag, no `update`. A post is
+   still the right unit for a post holding audio; for this creator the honest answer is that there is
+   nothing here to take, not that the mapping is wrong.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

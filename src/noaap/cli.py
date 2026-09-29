@@ -24,7 +24,7 @@ from .download import (
 )
 from .models import AlbumPlan, PlanTrack, SourceRef, kept
 from .service import Service, collection_address, exit_code
-from .sources import NotSupported
+from .sources import Cancelled, NotSupported, SourceError
 
 PROV_MARK = {"mb": "MB", "yt_music": "YTM", "yt_title": "title", "playlist": "playlist",
              "user": "user", "file_tags": "tags", "folder_name": "folder", "file_name": "name"}
@@ -339,6 +339,16 @@ def main(argv: list[str] | None = None) -> int:
     except NotSupported as e:
         print(f"not supported: {e}", file=sys.stderr)
         return 2
+    except Cancelled:
+        print("stopped", file=sys.stderr)
+        return 130
+    except SourceError as e:
+        # **a refusal is an answer, not a crash.** "this post holds video, not audio" came out of the
+        # first live Patreon fetch as a traceback ending in `noaap.sources.NoAudio`, because only
+        # `NotSupported` was caught here (§9, slice 71). Every failure a provider is allowed to raise
+        # is one sentence and an exit code.
+        print(str(e), file=sys.stderr)
+        return 1
     except config_mod.Refused as e:
         # a wrong setting or a wrong argument is answered in one sentence, never with a stack
         # trace: a traceback for "nothing is watched yet" hides the only line worth reading
@@ -486,7 +496,24 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
               + ("" if not count else " — `noaap recycle list`"))
     ffmpeg = cfg.resolved_ffmpeg()
     print(f"ffmpeg:       {ffmpeg or 'NOT FOUND — downloading and trimming will fail; apt install ffmpeg'}")
+    _say_cookie_trouble(cfg)
     return 0
+
+
+def _say_cookie_trouble(cfg: config_mod.Config) -> None:
+    """A browser whose cookies cannot actually be read, named here rather than at the moment of use.
+
+    Reported, not enforced, like ffmpeg above it. The live Patreon run began with a correct setting
+    and no session: yt-dlp could not decrypt Chrome's store and said so in a warning nobody sees
+    (§9, slice 71).
+    """
+    from .ytdlp import browser_cookie_trouble
+
+    for setting, browser in (("cookies_from_browser", cfg.cookies_from_browser),
+                             ("soundcloud_cookies_from_browser", cfg.soundcloud_cookies_from_browser),
+                             ("patreon_cookies_from_browser", cfg.patreon_cookies_from_browser)):
+        if trouble := browser_cookie_trouble(browser):
+            print(f"cookies:      {setting}: {trouble}")
 
 
 def _recycle(args: argparse.Namespace, cfg: Config) -> int:
