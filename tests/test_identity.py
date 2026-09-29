@@ -56,9 +56,9 @@ def test_equal_packets_are_believed_without_decoding(tmp_path):
     same = tmp_path / "same.mp3"
     shutil.copy2(one, same)
 
-    found = identity.matches(identity.of(one), None, [same], cheap=stream_sha(one))
+    found, decoded = identity.matches(identity.of(one), None, [same], cheap=stream_sha(one))
 
-    assert found == [same]
+    assert found == [same] and decoded == 0, "believed on the cheap digest, nothing decoded"
 
 
 # -- and the terms two identities are compared on ---------------------------------------------------
@@ -125,9 +125,10 @@ def test_matches_finds_the_one_file_that_holds_it(tmp_path):
     moved.parent.mkdir()
     shutil.copy2(one, moved)
 
-    found = identity.matches(identity.of(one), 31.0, [other, moved])
+    found, decoded = identity.matches(identity.of(one), 31.0, [other, moved])
 
     assert found == [moved]
+    assert decoded == 2, "both were the right length, so both had to be decoded — and that is the cost"
 
 
 @pytest.mark.parametrize("sha,by", [("abc", None), (None, "decoded/x"), (None, None)])

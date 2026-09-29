@@ -1352,7 +1352,42 @@ class Service:
             done["tracks"] += len(gone)
         return done
 
-    def repair(self, dry_run: bool = False, strays: bool = False, apply: bool = False) -> list[Outcome]:
+    def find_moved(self, plan: AlbumPlan, album_dir: Path, apply: bool = False) -> dict[str, int]:
+        """Tracks whose file was renamed or moved, found again by what the file holds (§9, slice 66).
+
+        `find_again` asks the provider *where a ref's file is*, which answers a plan that recorded a name
+        without its folder. This answers the cases where the name itself is gone: a file the owner
+        renamed, or moved into a disc folder, or into another album. The identity decides, and where it
+        does not decide, the track is named and left.
+
+        **Nothing on disk is touched** (R-227, ruling 2): what changes is what the plan says.
+        """
+        from . import moved as moved_mod
+
+        lost = [t for t in plan.tracks
+                if t.state == "done" and t.filename and not (album_dir / t.filename).is_file()]
+        if not lost:
+            return {}
+        library = self.library
+        # the wider look is a *callable* so that it costs nothing unless the album itself has no answer:
+        # a rename inside an album is the commonest case by far, and it never reads another folder
+        wider = (lambda: moved_mod.audio_under(library)) if library and library.is_dir() else None
+        out = moved_mod.look(album_dir, plan, library, lost=lost, also=wider)
+        for one in out.found:
+            self.log(f"  {'found' if apply else 'would find'} “{one.title}”: {one.was} → {one.now}")
+        for one in out.left:
+            self.log(f"  left “{one.title}” ({one.was}): {one.why}")
+        # **`moved` is what was done, not what could be.** Counting a dry run's findings here made
+        # `repair` save the plan it had only looked at, which is the one thing a dry run may not do.
+        done = {"moved": 0, "would_move": len(out.found), "left": len(out.left), "decoded": out.decoded}
+        if apply:
+            done["moved"], measured = moved_mod.re_attach(plan, album_dir, out.found)
+            done["would_move"] = 0
+            done["decoded"] += measured
+        return done
+
+    def repair(self, dry_run: bool = False, strays: bool = False, apply: bool = False,
+               find_moved: bool = False) -> list[Outcome]:
         """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
         Fixes albums downloaded before those rules existed — renames and retags only. With
@@ -1360,6 +1395,7 @@ class Service:
         """
         outcomes = []
         lengths = 0
+        moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
             before = (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks))
@@ -1415,6 +1451,16 @@ class Service:
             # is saved even when nothing else about the album needs tidying.
             stale = rewritten(album_dir, plan)
             refound = self.find_again(plan, album_dir, dry_run=dry_run)
+            # after `find_again`, which is cheap and asks the provider: only what is still missing is
+            # worth decoding for (§9, slice 66)
+            elsewhere = self.find_moved(plan, album_dir, apply=apply and not dry_run) if find_moved else {}
+            if elsewhere:
+                acted = elsewhere["moved"]
+                self.log(f"{acted or elsewhere['would_move']} track(s) "
+                         f"{'found again' if acted else 'would be found again'}, "
+                         f"{elsewhere['left']} left, {elsewhere['decoded']} file(s) decoded")
+                for key in ("moved", "would_move", "left", "decoded"):
+                    moved_total[key] += elsewhere[key]
             misplaced = album_dir != self.library / wanted_folder(plan)
             # **before the skip, not after it.** An album whose names are already right used to be
             # dropped here, and with it the only pass that would have measured its files — which is
@@ -1422,7 +1468,7 @@ class Service:
             filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
             lengths += filled
             if not misplaced and not borrowed and not filled and not stale and not refound \
-                    and not swept.get("binned") \
+                    and not swept.get("binned") and not elsewhere.get("moved") \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
@@ -1434,6 +1480,11 @@ class Service:
             album_dir = relocate(album_dir, plan, self.library)
             run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
+        if moved_total["moved"] or moved_total["would_move"] or moved_total["left"]:
+            self.log(f"{moved_total['moved'] or moved_total['would_move']} track(s) "
+                     f"{'were' if moved_total['moved'] else 'would be'} found again by what their file "
+                     f"holds, {moved_total['left']} left as they are; "
+                     f"{moved_total['decoded']} file(s) decoded")
         if lengths:
             self.log(f"{lengths} track(s) {'would get' if dry_run else 'got'} the length of their file")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")

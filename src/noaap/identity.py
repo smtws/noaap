@@ -86,23 +86,33 @@ def worth_decoding(want: float | None, path: Path) -> bool:
     return want is None or here is None or abs(here - want) <= CLOSE
 
 
-def matches(want: Identity, length: float | None, files: Iterable[Path],
-            cheap: str | None = None) -> list[Path]:
-    """Every file that holds this recording, shortlisted by length first.
+def matches(want: Identity | None, length: float | None, files: Iterable[Path],
+            cheap: str | None = None) -> tuple[list[Path], int]:
+    """Every file that holds this recording, and **how many files had to be decoded to say so**.
 
-    `cheap` is the packet digest of the file we are looking for, when one is known: where it matches, the
-    audio matches, and the decode can be skipped. It is never used to rule a file *out*.
+    Shortlisted by length first. Two things can answer, and either is enough:
+
+    * `cheap`, the packet digest the plan recorded for the file — **a file that was renamed or moved is
+      byte for byte what it was**, so this finds it for nothing. It is the common case and it costs no
+      decode at all.
+    * `want`, the identity, for a file that was also rewritten since it was last measured: a re-tag
+      changes the packet digest and not the recording.
+
+    The count is returned rather than logged because what a pass costs is a number somebody asked for.
     """
-    found = []
+    found, decoded = [], 0
     for path in files:
         if not worth_decoding(length, path):
             continue
         if cheap and stream_sha(path) == cheap:
             found.append(path)
             continue
+        if want is None:
+            continue
+        decoded += 1
         if want.same_as(of(path)):
             found.append(path)
-    return found
+    return found, decoded
 
 
 __all__ = ["CLOSE", "Identity", "identity_of", "matches", "of", "recorded", "remember", "worth_decoding"]
