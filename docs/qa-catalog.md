@@ -4165,10 +4165,90 @@ session's own XDG directories. No publish was sent to lrclib.net.
     nothing about the list's appearance changed — what changed is where it scrolls to.
 
 
+## BI. Patreon as a source (P56, DESIGN §9, slice 70)
+
+**Nothing here was run against Patreon.** The cases are written fixtures in the shape yt-dlp's
+extractor returns; the provider has never had a session and has never fetched a post. The one thing
+that *was* measured against the live site is BI1, and it is the reason the rest of the package looks
+the way it does. Live numbers go in this section when there are any.
+
+- [x] **BI1 · R** — there is no anonymous path, measured
+
+  One metadata read (no download) of the **public** post in yt-dlp's own test list,
+  `patreon.com/posts/22809430`, with no cookies.
+  - **result:** `ERROR: [patreon] 22809430: Unable to download JSON metadata: HTTP Error 403: Forbidden`.
+  - **why:** the extractor sends Patreon's mobile user agent only when a `session_id` cookie exists and
+    asks for TLS impersonation otherwise; this installation has `curl_cffi` missing and
+    `_get_available_impersonate_targets()` empty. So: the patron's own session, or nothing.
+  - **what follows:** no `curl-cffi` dependency (R-239, ruling 1), and every call without a session
+    refuses with the sentence naming both settings rather than trying anonymously.
+
+- [x] **BI2** — a post is a collection, and a media is a track
+
+  Fixtures: one post with one file, one with three, a locked post, a video post, two embeds.
+  - **result:** one file → one track named by the file; three files → **three tracks in the post's
+    order** with no number invented and no album claimed; `is_release` false for good. A post address is
+    never one ref, because a post id cannot name one of three files.
+
+- [x] **BI3** — what a post may hold that this provider will not take
+  - a post the tier does not include → `NoAudio`, *this post is not in your tier*, per track, album
+    continues; a video post → `NoAudio`, *this post holds video, not audio*; a lapsed session or a 429 →
+    `Blocked`, because they stop everything; missing cookies → `NotSupported`. A message nobody has seen
+    stays a plain `SourceError` carrying Patreon's own words.
+
+- [x] **BI4 · R** — the listing checks whose posts it was handed
+
+  A fixture whose listing contains a post of **another campaign**, which is yt-dlp
+  [#10013](https://github.com/yt-dlp/yt-dlp/issues/10013): asking for one campaign returned every
+  membership the account had.
+  - **result:** one ref comes back, the foreign post is dropped and counted. The extractor filters
+    correctly today; this compares anyway, because the cost is one comparison and the cost of trusting it
+    is somebody's whole membership on their disk.
+  - **and the cap is asked for**, not applied afterwards: `playlistend` stops yt-dlp, and a case asserts
+    the option that is passed. *Reading two thousand posts and keeping 200 is rudeness with a filter.*
+
+- [x] **BI5** — the artist a post title does not carry
+
+  Each rule points at something real: `Episode 166: …` is the extractor's own first test case,
+  `[Patron-only]` and `(early access)` are what creators write, an `alt_title` is a file name.
+  - **result:** no artist is invented. The only split taken is a deliberate em or en dash, and not even
+    then when the left side is the creator's own name; a hyphen is not a separator, so *Winter Light -
+    studio* keeps its whole title. `creator_is_artist` admits *Wind Rose* and refuses *Cognitive
+    Dissonance Podcast*, *A Creator's Music Corner* and *Some Records*.
+
+- [x] **BI6 · R** — two defects of mine, both found by a guard rather than by care
+  1. the project's **provider-boundary grep** refused `patreon.py` importing yt-dlp until Patreon had a
+     province of its own, and `sources.known()` had to learn there is a fourth provider. Both are now
+     cases, so its host, its post and campaign shapes, its `patreon:media:` ref and
+     `current_user_can_view` cannot appear outside its two files.
+  2. handing the other providers in (R-241) made an embed nobody claimed fall through and become
+     **`patreon:media:dQw4w9WgXcQ`** — a ref `media_id` refuses and `audio` could never fetch. A media id
+     is digits; anything else is not ours, and it is refused where it is made.
+  - and one correction of my own proposal: I had written a paging loop around an invented `__next_page`
+    key. yt-dlp pages the feed itself.
+
+- [x] **BI7** — nothing of the session, and nothing built
+  - the two settings are Patreon's own and default to nothing; a case proves SoundCloud's cookies are not
+    inherited and another that what reaches yt-dlp carries only Patreon's. Nothing is stored but the
+    setting.
+  - a case makes `Config` and `sources.get` raise, and recognising an embed still works: **a provider
+    builds neither its neighbours nor a configuration** (R-241, ruling 1).
+  - the fixture guard covers the whole `tests/fixtures/patreon/` directory — sessions, tokens, addresses,
+    and any Patreon page that is not invented.
+
+### What a live run needs, and what it would not do
+
+Whenever the user chooses: which creator they support, which two or three posts, their own words that
+their browser session may be used for it, and which browser profile. It would read those posts' metadata,
+fetch **one** file into a scratch library, and stop. It would not touch another campaign, list their
+membership, keep the cookies, or run twice without asking again.
+
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BI cases (P56: Patreon as a source) | 7 | 0 in the design; **2 defects of mine, both caught by a guard**; 1 correction of my own proposal | **Never run against Patreon** — written fixtures only, and the section says so. The one live measurement is the one that shaped the package: a metadata read of the *public* post in yt-dlp's own test list answered **403**, because the extractor needs either a `session_id` cookie or TLS impersonation and this install has neither. So no dependency was added and every call without a session refuses by naming its two settings. A post is the collection, the campaign the owner, a media the ref; no track number is invented and `is_release` is false for good. An embed belongs to its own provider, and an embed nobody claims is **not** turned into a Patreon ref — that defect appeared the moment the providers were handed in rather than built, which is the other ruling. The listing checks every post's campaign against the one asked for (yt-dlp #10013 returned *every membership the account had*) and asks for its cap with `playlistend` instead of reading everything and discarding. Tier too low is `NoAudio`, a lapsed session `Blocked`. Nothing of the session is stored, nothing is built — a case makes `Config` and `sources.get` raise — and a guard greps the whole fixture directory for sessions, tokens and real addresses. 1400 pytest + 118 node. |
 | 2026-09-29 | the BH cases (P57: two things the user found in the app) | 2 | 0 in the design; both were **defects the user hit in the installed app** | The rolling lyrics list scrolled the line being sung out of view: `offsetTop` is measured from the nearest positioned ancestor, which inside a table is the `td`. Measured on 173 timed lines — in the **editor's preview** the box sits **645 px** below that `td`, so every step aimed **28 lines** too low and **166 of 173** lines landed outside the box, worst 571 px; in the read-only panel the same mistake is 36 px against a 254 px box, so it only drifts. *The editor is where it is ruinous and the panel is where it hides.* After: **173 of 173 fully in view, 0 px overhang**, at 420 px and 1600 px wide, **171 of 173 with a line's margin**, and the page never scrolled. And a Deepgram draft could not be claimed: the editor sent `words_by` back on every save, so the refusal's own advice was impossible to follow. Now a statement — *I have corrected these words, they are mine* — clears the mark, editing alone does not, the refusal names that control in the page's own words (with a grep case), and `lyrics_timed_by` is untouched. Verified on the user's own track in a copy: saved without the statement it stayed refused; with it the badge went, *yours* stayed and the publish was offered — and never pressed. 1348 pytest + 118 node. |
 | 2026-09-29 | the BG cases (P55c: finding a file by what it holds) | 8 | 0 in the design; **2 defects of my own found by running it**, both fixed; **1 of the user's files written by mistake** | BD8's cause, to the byte: 7699 of 7700 packets identical and the last one differing by exactly the **128-byte trailing ID3v1 tag** that ffmpeg hands over as audio data. So an identity is the **decoded** digest; the packet digest is a pre-check in one direction — and that direction is worth a lot, because **a renamed or moved file is byte for byte what it was and is found with 0 decodes**. Costs measured per container (2000 files: 167 s packets, 557 s decoded), which is why the identity is never measured during a collection read. `repair --find-moved` over 128 albums: **7.7 s**. It never guesses: one unclaimed match re-attaches, two or none are named and left, and a file found in **another album** is named and not taken — the first version re-attached it and left a plan naming a file it could not find. An album folder renamed by hand needs none of it (slice 60's relative refs; 0 lost, 128 plans byte-identical). The intake half refused once correctly, on a recording the collection holds twice. And the worst of it: `config --library` is a **setter** and I had been using it as a report, which rewrote the user's library root until they found the app empty — one line of their config, audited, and now a setter says what it changed while a report writes nothing. And one the acceptance caught: **a dry finding was not a dry pass** — only the finding held back while the rest of `repair` saved every plan it tidied, which a hash over 132 plans showed and which my own case had asserted as if it were the design. 1343 pytest + 102 node. |
 | 2026-09-29 | the BF cases (P55d: taking the copies back out) | 6 | 0 in the design; **1 defect in the cases themselves**, fixed; **1 ruling corrected** | The other half of BD, on damage **made with 1.5.0's own code** on a 41 GB copy: adopt + `update` = **64 files the collection does not have**. A file is removed only when all four conditions hold — adopted album with discs in sub-folders, a name the plan points at or noaap's scheme would write, **decoded** audio identical to a disc file's, and that disc file one the plan holds, which the *provider* says because a ref is opaque. The digest decodes because `stream_sha` called 14 of 22 real copies different from their originals (BD8). Dry by default, which no other part of `repair` is. Live: 64 would be binned and nothing written; with `--apply` **64 moved to the bin (507.7 MB)**, the plans back to 24/22/21 tracks all pointing into disc folders, `plan --verify` 132 byte-identical, nothing missing — then `adopt --undo --apply` **0 failed** where the damaged album had refused, and the tree is the collection again: **2000 files identical in name, size and mtime, 0 outside the bin that the collection does not have**. The corrected ruling: "its name follows noaap's scheme" is true for 61 of 64 and wrong for the three whose ID3 title is clipped at 30 characters — the mechanism is the name **the plan** held. The defect in the cases: every generated file was the same 440 Hz sine, so all of them decoded alike and the pass could match any twin. Collisions: three names exist on both discs of one album, each pair two different recordings, so 21 copies became 18 files; nothing of the owner's is lost, and what is not recoverable is work done to a copy before it was overwritten. 1290 pytest + 102 node. |

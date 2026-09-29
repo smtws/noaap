@@ -31,7 +31,20 @@ class PatreonSource:
 
     def __init__(self, cfg: Config, cancel: Any = None) -> None:
         self.cfg = cfg
-        self.pt = Patreon(cfg, cancel)
+        # the adapter is where the registry is reachable, so it is the adapter that hands the other
+        # providers over — built once, lazily, and only if a post turns out to hold an embed (R-241)
+        self.pt = Patreon(cfg, cancel, others=lambda: self._others(cancel))
+
+    def _others(self, cancel: Any) -> list[Any]:
+        out = []
+        for name in sources.known():
+            if name == NAME:
+                continue
+            try:
+                out.append(sources.get(name, self.cfg, cancel))
+            except Exception:   # a provider that cannot be built says nothing about any address
+                continue
+        return out
 
     def handles(self, address: str) -> bool:
         return is_address(address)

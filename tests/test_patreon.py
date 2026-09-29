@@ -41,8 +41,12 @@ def with_session(**extra: Any) -> Config:
 
 @pytest.fixture
 def client(monkeypatch) -> Patreon:
-    """A client whose one connection to the internet is replaced by the fixtures."""
-    pt = Patreon(with_session())
+    """A client whose one connection to the internet is replaced by the fixtures.
+
+    It is built the way the adapter builds it — with the other providers handed in — because that is
+    now where they come from: a provider does not construct its neighbours (R-241, ruling 1).
+    """
+    pt = PatreonSource(with_session()).pt
     by_url = {
         "https://www.patreon.com/posts/100001": recorded("post_one_audio"),
         "https://www.patreon.com/posts/100002": recorded("post_three_attachments"),
@@ -211,9 +215,48 @@ def test_an_embedded_youtube_video_belongs_to_youtube(client):
 
 
 def test_an_embed_of_something_unknown_is_left_out(client):
-    """Named rather than guessed at: there is no provider for it, so there is no track."""
+    """Named rather than guessed at: there is no provider for it, so there is no track.
+
+    And **not turned into a Patreon ref either**: an embed nobody claimed once fell through and became
+    `patreon:media:dQw4w9WgXcQ`, a ref this provider cannot read back and `audio` could never fetch.
+    A media id is digits; anything else is not ours.
+    """
     with pytest.raises(sources.NoAudio):
         client.fetch("https://www.patreon.com/posts/100006")
+
+
+def test_a_media_id_that_is_not_patreons_shape_is_not_a_track(client):
+    from noaap.patreon import media_id
+
+    entry = client._entry({"id": "dQw4w9WgXcQ", "ext": "mp3", "acodec": "mp3", "vcodec": "none"},
+                          1, {"title": "a post"})
+
+    assert entry is None
+    assert media_id("patreon:media:dQw4w9WgXcQ") is None, "and it could never have been read back"
+
+
+def test_handling_an_embed_constructs_nothing(monkeypatch):
+    """R-241, ruling 1. A provider does not build a configuration, its own or another's — so this holds
+    that recognising an embed builds no provider and no `Config` at all."""
+    from noaap import config as config_mod
+    from noaap.patreon import _other_provider
+
+    class Never:
+        name = "never"
+
+        def handles(self, url: str) -> bool:
+            return False
+
+    monkeypatch.setattr(config_mod, "Config", _refuse("a Config"))
+    monkeypatch.setattr(sources, "get", _refuse("a provider"))
+
+    assert _other_provider({"url": "https://example.invalid/x"}, [Never()]) is None
+
+
+def _refuse(what: str):
+    def no(*args: Any, **kwargs: Any):
+        raise AssertionError(f"built {what}, which this provider may not do")
+    return no
 
 
 # -- the failures, onto the four there are (R-239, ruling 2) ----------------------------------------

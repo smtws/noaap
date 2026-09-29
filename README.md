@@ -225,6 +225,25 @@ album name (the genre an uploader writes into it for the search box is stripped)
 set's, the track numbers are the running order, and a "(snip)" is marked as the preview it is rather
 than planned as the song.
 
+**Patreon is the fourth, and it needs your own session — there is no other way in.** It is for music
+you already pay a creator for: their own releases, stems, alternate takes. yt-dlp can only reach Patreon
+with a logged-in session cookie, and without one even a *public* post answers `403` (measured, not
+assumed), so noaap reads the cookies of **your** browser and otherwise refuses and says which setting to
+set. **Nothing of that session is stored** — not the cookie, not a copy, not a token; only the setting
+saying which browser or file to read, and Patreon's settings are its own, never SoundCloud's.
+
+`noaap fetch https://www.patreon.com/posts/<id>` takes one **post**, which is this provider's album:
+nothing on Patreon is a release, so a post holding three files is three tracks in the order the post
+lists them, with no track numbers invented and no year claimed. `noaap fetch https://www.patreon.com/<creator>`
+lists that campaign's posts, newest first, **at most 200 of them** (`patreon_post_cap`), and checks that
+every post it was handed really belongs to the campaign you asked for. A post that is a YouTube or
+SoundCloud link with a note is read as *that* service's track, because that is whose audio it is.
+
+**What it never does:** fetch anything your tier does not include (that post says so and is skipped, and
+the album goes on), fetch for anybody but you, go near DRM or any access control, or crawl a creator.
+And it has **never been run against Patreon**: it is built and tested against written fixtures only, so
+treat it as new until you have tried it on a creator you support.
+
 **A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
 own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath
 and asks which. Nothing is written, moved or re-encoded where it was read, and what is not a track
@@ -854,6 +873,9 @@ confirm — and the change, if there is one to make, is yours.
 | `library_root` | – | Where albums are stored. |
 | `cookies_from_browser` | – | `firefox`, `chrome`, `chrome:Profile 1`, … |
 | `cookies_file` | – | An exported `cookies.txt` instead. |
+| `soundcloud_cookies_from_browser`, `soundcloud_cookies_file` | – | SoundCloud's own, used by nothing else. |
+| `patreon_cookies_from_browser`, `patreon_cookies_file` | – | **Patreon's own**, and required: without one of them every Patreon call refuses. Read from your browser by yt-dlp, never stored or copied. |
+| `patreon_post_cap` | `200` | How many of a campaign's posts a listing reads before it stops and says so. |
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
 | `lyrics` | `true` | Fetch lyrics from lrclib.net (`.lrc` beside the file + `LYRICS` tag). |
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |

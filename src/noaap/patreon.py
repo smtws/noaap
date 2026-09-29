@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -117,9 +118,15 @@ def campaign_of(address: str) -> str | None:
 class Patreon:
     """The reads this provider makes, and the only place a Patreon answer is shaped."""
 
-    def __init__(self, cfg: Config, cancel: Any = None) -> None:
+    def __init__(self, cfg: Config, cancel: Any = None,
+                 others: Callable[[], list[Any]] | None = None) -> None:
         self.cfg = cfg
         self.cancel = cancel
+        # **who else there is, from the caller** (R-241, ruling 1). A post is often a YouTube or
+        # SoundCloud link with a note, and saying whose that audio is takes asking them — but a
+        # provider does not build a configuration, its own or anybody else's, to find out. The adapter
+        # passes this in; without it an embed is simply not recognised, which is the safe answer.
+        self._others = others or (lambda: [])
 
     # -- the one connection to the internet -------------------------------------------
 
@@ -215,7 +222,7 @@ class Patreon:
         if not isinstance(item, dict):
             return None
         creator = (post.get("channel") or post.get("uploader") or None)
-        if (other := _other_provider(item)) is not None:
+        if (other := _other_provider(item, self._others())) is not None:
             name, ref = other
             # **the copy carries whose it is** — that is what a candidate is for, and the core reads
             # the provider off it when it comes to fetching (§9, slices 50 and 51)
@@ -228,7 +235,14 @@ class Patreon:
             return None
         if (media := item.get("id")) is None:
             return None
+        # **a ref this provider could not read back is not a ref** (found by handing the providers in:
+        # an embed nobody claimed fell through to here and became `patreon:media:dQw4w9WgXcQ`, which
+        # `media_id` refuses and `audio` could never fetch). A media id is digits; anything else is
+        # not ours, and saying so here beats writing a plan that names nothing.
         ref = ref_for(str(media).rsplit("-", 1)[-1])
+        if media_id(ref) is None:
+            log.info("not a Patreon media id, so not ours: %r", media)
+            return None
         copy = Candidate(ref=ref, provider=NAME, added_by="source", why="a file of this post",
                          when=_today(), bytes=_int(item.get("filesize")),
                          length=_seconds(item.get("duration")))
@@ -385,26 +399,27 @@ def _has_video(info: dict[str, Any]) -> bool:
     return any(_is_video(one) for one in (items or []) if isinstance(one, dict))
 
 
-def _other_provider(item: dict[str, Any]) -> tuple[str, str] | None:
-    """`(provider, ref)` when this entry is an embed noaap has a provider for (R-239, ruling 4).
+def _other_provider(item: dict[str, Any], others: list[Any]) -> tuple[str, str] | None:
+    """`(provider, ref)` when this entry is an embed one of `others` handles (R-239, ruling 4).
 
     A Patreon post often *is* a YouTube or SoundCloud link with a note. The audio is then that
     service's, and saying so is both honest and what makes the track fetchable at all — the alternative
     is a ref only Patreon could resolve and Patreon does not host.
+
+    **The providers are handed in.** Nothing here builds one, and nothing here builds a configuration to
+    build one with: asking who owns an address is a question about addresses, and a provider that
+    constructs its neighbours has taken a decision that belongs to whoever assembled them (R-241).
     """
     url = str(item.get("url") or item.get("webpage_url") or "")
     if not url:
         return None
-    for name in sources.known():
-        if name == NAME:
-            continue
-        try:
-            other = sources.get(name, Config())
-        except Exception:      # a provider that cannot be built says nothing about this URL
+    for other in others:
+        name = getattr(other, "name", None)
+        if not name or name == NAME:
             continue
         try:
             if other.handles(url):
-                return name, (other.one_ref(url) or url)
+                return name, (other.one_ref(url) if hasattr(other, "one_ref") else None) or url
         except Exception:      # `handles` is cheap and must not raise; if it does, it is not ours
             continue
     return None

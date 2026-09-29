@@ -1976,6 +1976,46 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    without the statement, still a draft and still refused; ticked and saved, the mark gone from the
    plan, the badge gone, *yours* still there, and the publish offered — which was never pressed.
 
+70. ✅ **Patreon as a source** (2026-09-29, P56). Music a patron already pays for and can only reach
+   while logged in. **Written and tested against fixtures only: it has never been run against Patreon**,
+   and until it has, everything below is a design and a set of refusals rather than a measurement.
+   **It cannot work without the patron's own session, and that part *is* measured.** yt-dlp's extractor
+   uses Patreon's mobile user agent only when a `session_id` cookie exists for patreon.com, and asks for
+   TLS impersonation otherwise — which this installation has not got and will not get (R-239, ruling 1).
+   Asked anonymously for the **public** post in yt-dlp's own test list, Patreon answered
+   `HTTP Error 403: Forbidden`. So there is no anonymous path to be tempted by: without a session every
+   call refuses with the sentence that names the two settings.
+   **A post is the collection, the campaign is the owner, a track's ref is the media.** Nothing on
+   Patreon is an album: one post holding three files is three tracks, in the order the post lists them,
+   and `is_release` is false for good. No track number is invented — a post title carries an episode
+   number at most. A post address is therefore never one ref, because a post id cannot name one of three
+   files.
+   **An embed belongs to its own provider.** A post is often a YouTube or SoundCloud link with a note;
+   the entry then carries that provider and that service's own id on its candidate, because the
+   alternative is a ref only Patreon could resolve and Patreon does not host. An embed of anything else
+   is left out by name — and **not turned into a Patreon ref**: a media id is digits, and a ref this
+   provider cannot read back is not a ref (found by handing the providers in, below).
+   **Nothing is stored but the setting.** Two fields of its own, defaulting to nothing, read by no other
+   provider; SoundCloud's cookies are SoundCloud's. The cookie itself is never copied, logged or written.
+   **The listing checks whose posts it was handed, and stops.** yt-dlp #10013 reported asking for one
+   campaign and getting every membership the account had; the extractor filters now and this compares
+   every post's campaign anyway, because the cost of checking is one comparison and the cost of trusting
+   it is somebody's whole membership on their disk. The cap is **asked for** with `playlistend` rather
+   than applied afterwards: reading two thousand posts and keeping 200 is rudeness with a filter on top.
+   **Four failures, and which is which** (R-239, ruling 2): a lapsed session and a rate limit are
+   `Blocked`, because they stop everything; a post the tier does not include is `NoAudio` — it exists and
+   there is no stream for this listener, exactly as for a geo-blocked track, and the album goes on; a
+   video post is `NoAudio` for that post, because the provider *can* read it and there is no audio in it;
+   missing cookies are `NotSupported`. Anything nobody has seen before stays a plain `SourceError`
+   carrying what Patreon said.
+   **A provider does not build its neighbours** (R-241, ruling 1). Recognising an embed means asking who
+   owns an address, and the providers to ask are handed in by whoever assembled them — nothing here
+   constructs a provider, and nothing constructs a `Config` to construct one with. A case holds that by
+   making both constructors raise.
+   **The fixtures are written, not recorded**, because a real recording carries a patron's session in its
+   URLs. A guard greps the whole directory for sessions, tokens, addresses and any Patreon page that is
+   not invented — the one thing standing between a live run and this repository.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
