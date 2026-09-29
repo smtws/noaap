@@ -187,18 +187,41 @@ def test_a_track_nothing_was_ever_measured_about_says_so(album, tmp_path):
 # -- dry by default --------------------------------------------------------------------------------
 
 
-def test_without_apply_it_changes_nothing_of_its_own(album, tmp_path):
-    """`--find-moved` is dry unless asked. `repair` still does its own work — it is `--dry-run` that
-    makes the whole pass write nothing — so what this case holds is that the *plan's names* are untouched.
+def plan_hashes(library: Path) -> dict[str, str]:
+    import hashlib
+
+    return {str(p.relative_to(library)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(library.glob("*/*/.ytalbum.json"))}
+
+
+@pytest.mark.parametrize("asked", [{"find_moved": True}, {"strays": True},
+                                   {"find_moved": True, "strays": True}])
+def test_a_dry_finding_is_a_dry_pass(album, tmp_path, asked):
+    """R-234, and it was wrong before: only the *finding* held back, while the rest of `repair` ran and
+    saved every plan it tidied. Somebody who asks what would happen got a library that had been written
+    to — measured on a real one as a hash over all 132 plans changing. So the hash of every plan is what
+    this case holds, for each dry form.
     """
     album_dir = adopt_it(tmp_path)
     (album_dir / "cd1" / "A Band - An Album - 01 - One.mp3").rename(album_dir / "cd1" / "renamed.mp3")
-    before = names(tmp_path, album_dir)
+    before = plan_hashes(tmp_path)
+    assert before, "there is a plan to hash"
 
-    service(tmp_path).repair(find_moved=True)          # no --apply
+    service(tmp_path).repair(**asked)                  # no --apply
 
-    assert names(tmp_path, album_dir) == before
-    assert "cd1/A Band - An Album - 01 - One.mp3" in before
+    assert plan_hashes(tmp_path) == before
+    assert "cd1/A Band - An Album - 01 - One.mp3" in names(tmp_path, album_dir)
+
+
+def test_and_with_apply_the_whole_pass_acts(album, tmp_path):
+    album_dir = adopt_it(tmp_path)
+    (album_dir / "cd1" / "A Band - An Album - 01 - One.mp3").rename(album_dir / "cd1" / "renamed.mp3")
+    before = plan_hashes(tmp_path)
+
+    service(tmp_path).repair(find_moved=True, apply=True)
+
+    assert plan_hashes(tmp_path) != before
+    assert "cd1/renamed.mp3" in names(tmp_path, album_dir)
 
 
 def test_and_a_dry_run_writes_nothing_at_all(album, tmp_path):

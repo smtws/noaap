@@ -1422,7 +1422,15 @@ class Service:
 
         Fixes albums downloaded before those rules existed — renames and retags only. With
         `dry_run` nothing at all is written: it says what it would do and stops there.
+
+        **A dry finding is a dry pass** (R-234). `--strays` and `--find-moved` are dry until `--apply`,
+        and it used to be only *their own* half that held back: the rest of `repair` ran and saved every
+        plan it tidied, so somebody who asked what would happen got a library that had been written to —
+        measured, as a hash over all 132 plans changing during a dry run. Without `--apply` the whole run
+        writes nothing.
         """
+        if (strays or find_moved) and not apply:
+            dry_run = True
         outcomes = []
         lengths = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}

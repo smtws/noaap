@@ -83,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --find-moved: also look under FOLDER for the source folder an album was "
                          "taken in from, when that folder has moved")
     rp.add_argument("--apply", action="store_true",
-                    help="with --strays or --find-moved: actually do it")
+                    help="with --strays or --find-moved: actually do it. Without it those two make the "
+                         "whole run a dry one — nothing at all is written, plans included")
 
     ly = sub.add_parser("lyrics", help="fetch lyrics for tracks that have none yet (.lrc beside the file + tag)")
     ly.add_argument("--library", type=Path)

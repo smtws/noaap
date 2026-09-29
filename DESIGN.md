@@ -1916,6 +1916,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **A whole album folder renamed needs none of this.** Slice 60 made every ref relative, so the plan
    travels with the folder: measured live, an album folder renamed by hand, 0 tracks lost, and
    `plan --verify` byte-identical afterwards.
+   **A dry finding is a dry pass** (R-234). `--strays` and `--find-moved` are dry until `--apply`, and it
+   was only *their own* half that held back at first: the rest of `repair` ran and saved every plan it
+   tidied, so somebody who asked what would happen got a library that had been written to — a hash over
+   132 real plans changed during a dry run. Without `--apply` the whole run now writes nothing.
    **The intake folder that moved** is the other half: an album taken in from one keeps its files here
    and its refs over there, so its own files are what find it again. All of the album in one folder or
    nothing: a provider names a collection by a folder. The provider reads that folder and mints the new
