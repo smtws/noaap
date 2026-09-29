@@ -105,6 +105,12 @@ class Entry:
     # arrives", which is what a download does. **The core may not read it off the ref**: a ref is
     # opaque, and the one time it was parsed for a suffix it renamed 1662 real files into a lie.
     ext: str | None = None
+    # Where this entry's audio is, **relative to the collection**, when the source knows — a folder
+    # does, and `cd1/…` is the answer for a disc in a sub-folder (§9, slice 61). `None` means the
+    # source cannot say, which is every source that has to fetch before there is a file.
+    # **The same boundary as `ext`, broken the same way:** adoption read the path out of the ref, kept
+    # only its `.name`, and every later pass then copied 67 real files into their album roots.
+    where: str | None = None
     # every copy of this recording the source can offer, best first — `video_id` is the first.
     # A folder holding an album twice, once as flac and once as mp3, is the case this is for.
     copies: list[Candidate] = field(default_factory=list)

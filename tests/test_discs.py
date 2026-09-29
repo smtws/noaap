@@ -202,3 +202,121 @@ def test_what_a_pass_writes_beside_the_audio_is_noaaps_and_an_undo_takes_it_back
 
     left = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file())
     assert left == before, "and an undo leaves the collection exactly as it was"
+
+
+# -- and the libraries 1.5.0 already adopted (R-210, do 1) ------------------------------------------
+
+
+def as_1_5_0_adopted(album_dir: Path) -> None:
+    """The plan as 1.5.0 wrote it: the bare name of a file that is in a disc sub-folder."""
+    from noaap.download import load_plan, save_plan
+
+    plan = load_plan(album_dir)
+    for track in plan.tracks:
+        track.filename = track.adopted_name = Path(track.filename).name
+    save_plan(plan, album_dir)
+
+
+def test_repair_finds_the_files_a_1_5_0_plan_lost(discs, tmp_path):
+    """**Fixing the writer does not fix the plans already written.** Without this, a library adopted
+    by 1.5.0 still has its files copied into the album root by the first `update` after the upgrade.
+    """
+    from noaap.download import load_plan, lost_files
+    from noaap.service import Service
+
+    album_dir, _ = adopt_it(tmp_path)
+    as_1_5_0_adopted(album_dir)
+    assert len(lost_files(album_dir, load_plan(album_dir))) == 4, "the plan has lost all four"
+
+    cfg = Config()
+    cfg.library_root = tmp_path
+    Service(cfg, tmp_path).repair(dry_run=False)
+
+    plan = load_plan(album_dir)
+    assert lost_files(album_dir, plan) == []
+    assert sorted(t.filename for t in plan.tracks) == sorted(t.adopted_name for t in plan.tracks)
+    assert all("/" in t.filename for t in plan.tracks)
+
+
+def test_and_then_no_pass_copies_anything(discs, tmp_path):
+    from noaap.service import Service
+
+    album_dir, _ = adopt_it(tmp_path)
+    as_1_5_0_adopted(album_dir)
+    was = audio_in(tmp_path)
+
+    cfg = Config()
+    cfg.library_root = tmp_path
+    service = Service(cfg, tmp_path)
+    service.repair(dry_run=False)
+    service.update_all()
+
+    assert audio_in(tmp_path) == was
+
+
+def test_a_dry_run_finds_them_and_writes_nothing(discs, tmp_path):
+    from noaap.download import PLAN_FILE
+    from noaap.service import Service
+
+    album_dir, _ = adopt_it(tmp_path)
+    as_1_5_0_adopted(album_dir)
+    before = (album_dir / PLAN_FILE).read_bytes()
+
+    cfg = Config()
+    cfg.library_root = tmp_path
+    assert Service(cfg, tmp_path).find_again.__doc__  # it is the documented pass, not a side effect
+    Service(cfg, tmp_path).repair(dry_run=True)
+
+    assert (album_dir / PLAN_FILE).read_bytes() == before
+
+
+def test_a_track_whose_file_really_is_gone_is_left_alone_and_still_reported(discs, tmp_path):
+    """Slice 60's two absences: this pass finds files, it does not paper over a broken library."""
+    from noaap.download import load_plan, lost_files
+    from noaap.service import Service
+
+    album_dir, plan = adopt_it(tmp_path)
+    (album_dir / plan.tracks[0].filename).unlink()
+
+    cfg = Config()
+    cfg.library_root = tmp_path
+    Service(cfg, tmp_path).repair(dry_run=False)
+
+    assert len(lost_files(album_dir, load_plan(album_dir))) == 1
+
+
+# -- what a provider may not be asked (R-210, do 1) ------------------------------------------------
+
+
+def test_an_album_whose_files_are_not_inside_it_is_refused_not_adopted(tmp_path):
+    """A disc spelled as a *sibling* folder: the collection reaches outside the album folder, so no
+    name relative to it can describe the file. The collection has none of these; the code supports
+    them, and adopting one would be the copy defect all over again.
+    """
+    from noaap.adopt import examine
+
+    for disc in (1, 2):
+        for n, title in enumerate(["One", "Two"], 1):
+            encode(tmp_path / "A Band" / f"An Album CD{disc}" / f"{n:02d} - {title}.mp3",
+                   title=title, artist="A Band", album="An Album", album_artist="A Band",
+                   track=str(n), disc=str(disc))
+
+    taken = examine(tmp_path / "A Band" / "An Album CD1", folder(), tmp_path)
+
+    assert taken.plan is None
+    assert "not inside this folder" in (taken.refused or "")
+
+
+def test_an_adopted_track_is_never_fetched_again_whatever_the_plan_says(discs, tmp_path):
+    """The guard under the fix: even with a plan that names the file wrongly, the executor does not
+    copy. It is the rule that makes this whole class of defect impossible rather than fixed once.
+    """
+    from noaap.download import load_plan, run
+
+    album_dir, _ = adopt_it(tmp_path)
+    as_1_5_0_adopted(album_dir)
+    was = audio_in(tmp_path)
+
+    run(load_plan(album_dir), album_dir, folder(), track_source=lambda t: folder(), download=True)
+
+    assert audio_in(tmp_path) == was, "nothing was copied, though every track's file was 'missing'"

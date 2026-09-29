@@ -3521,7 +3521,92 @@ noaap downloaded much of it. **A measurement taken through a defect measures the
 One `noaap repair` closes it.
 
 
-## BB. A library that survives being moved (P55b, DESIGN §9, slice 60)
+## BB. A folder that is watched (P55, DESIGN §9, slice 59)
+
+Written after the fact, from the runs recorded in the implementor session of 2026-09-29. **Every
+number below is from one of those runs unless it says "quoted from the results row"** — the row was
+written on the day and the one timing it carries was not re-measured for this section. Two watches were
+configured: `drop`, an intake folder, and `collection`, the 41 GB adopted library at
+`~/Musik/noaap-inplace` watching itself. `~/Music/legacy` was never written.
+
+- [x] **BB1** — what is already there is not an arrival
+
+  Start the watcher on a configured intake folder and on a library of 135 album folders.
+  - **result:** `watching 2 folder(s), looking every 10s, settling after 20s`, then
+    `drop: 1 folder(s) already there, which is not an arrival` and `collection: 135 folder(s)
+    already there, which is not an arrival`. Nothing was handed over. This is not a defect and was
+    worth finding: a watcher notices what **arrives**, and on an adopted library the first look sees
+    every album it holds.
+
+- [x] **BB2** — a drop is taken in, and the same drop again is not
+
+  Drop an album into the intake folder; later drop an album the library already holds.
+  - **result:** `Take in drop: Night is Calling | 13/13 tracks done`, and the same for
+    `Hey Living People` and `Hey Living People Again` — 13/13 each. The album already held:
+    `Take in drop: Live at Wacken | already in the library as Dominum/Live at Wacken 2025 : 13`,
+    reported and left. Choosing between two copies is slice 54's question and a person's.
+  - the notice itself came **21 s after the drop** — *quoted from the results row*, not re-measured.
+
+- [x] **BB3** — a library that watches itself takes a new file as a new track
+
+  Add one file to an album inside the library; remove one from another; re-read an album that
+  changed in no way.
+  - **result:** `Read mine: Dominum/Cannibal Corpses | 1 new, 0 no longer in the folder`, then
+    `0 new, 1 no longer in the folder`, then `0 new, 0 no longer in the folder`. **The removal was
+    recorded and nothing was deleted.** The new file kept its own name — see the defects below.
+
+- [x] **BB4** — an album that came from somewhere else is refused, by name
+
+  Let the watcher re-read an album the intake pass had imported.
+  - **result:** `Read mine: Dominum/Hey Living People | Dominum — Hey Living People came from
+    somewhere else; \`update\` re-checks it`. Held, not attempted. Without this the album doubled:
+    13 tracks became 26, measured live.
+
+- [x] **BB5** — what the app will not take is said once and then left
+
+  Point the watcher at a name the web service's config did not list.
+  - **result:** `collection: Van Canto/Voices of Fire — refused: {"error": "no watched folder called
+    'collection'"}` on each of three looks, then
+    `collection: Van Canto/Voices of Fire was not taken after 3 tries, leaving it` — the same for
+    `Various Artists/Classic Rock Hits` and `Mono Inc/Ravenblack`. After the config was corrected and
+    the watcher restarted, the same folders were handed over and accepted:
+    `drop: Live at Wacken — Take in drop: Live at Wacken` and `collection: Mono Inc/Ravenblack — Read
+    collection: Mono Inc/Ravenblack`. **A refusal is not a loss:** the arrival is offered again until
+    `TRIES` is spent, and then named rather than dropped silently.
+
+- [x] **BB6** — what it writes down names no path on the disk
+
+  Read the state file after a run.
+  - **result:** `drop | looked 2026-09-29 01:15 | folders 1 | waiting {}` and
+    `collection | looked 2026-09-29 01:15 | folders 135 | waiting {}`, with the folders keyed by the
+    watch-relative name — `['Night is Calling', 'Live at Wacken']`,
+    `['Feuerschwanz/Prima Nocte ', 'Feuerschwanz/Walhalligalli']`. A watch's name and a path inside
+    it, never an absolute path.
+
+- [x] **BB7 · acceptance** — the reviewer's own run (R-203)
+
+  *Recorded from R-203, not from my runs.* Six jobs on the reviewer's own pass: an intake drop taken
+  in **5 of 5**; the same album dropped again reported with nothing changed; the library watcher
+  refusing the album the intake had made; a file added = **1 new under its own name**; a file removed
+  recorded with nothing deleted; a file retagged in place followed, with provenance `file_tags`.
+  **No home path in any job**, and the state file and the config at **mode 600**.
+
+### Three defects, all found by running it on a real album
+
+- **`fetch` on an album's own folder wrote a newly dropped file over an existing one's name.** The
+  provider names an entry by its *best* copy, so the new file changed that entry's ref, the merge read
+  it as a new track, and the download half placed it under the old one's name. The library shape is
+  `reread` because of this, and `reread` copies nothing.
+- **An imported album re-read as its own folder doubled**, 13 tracks to 26. A re-read now refuses an
+  album whose `source_id` is not the folder it sits in.
+- **A new arrival got a derived name that collided with an existing file.** It is adopted under its
+  own name with `state="done"` instead — the same promise adoption makes.
+
+All three were in the library shape, all three wrote or would have written over somebody's file, and
+**none of them was reachable without a real album.**
+
+
+## BC. A library that survives being moved (P55b, DESIGN §9, slice 60)
 
 Run on copies under `~/Musik/` only. `~/Music/legacy` and `~/Music/YouTube Downloads` were never
 written. Two libraries: the **41 GB adopted collection** (`noaap-inplace`, 132 albums / 2000 tracks)
@@ -3530,7 +3615,7 @@ from `~/Music/legacy`). Where a case says the original was "gone", it was moved 
 moved back afterwards: for the copy that is indistinguishable from a deletion, and the copies the
 earlier packages rely on stay.
 
-- [x] **BB1 · R** — the measurement the design is for
+- [x] **BC1 · R** — the measurement the design is for
 
   Write a small real library the way 1.5.0 wrote one — every path absolute, `schema: 1` — copy it,
   and ask the copy what it is made of.
@@ -3542,14 +3627,14 @@ earlier packages rely on stay.
     stands, because the refs are not inside these albums to rewrite. **Deleting the original is the
     day it would have been found out.**
 
-- [x] **BB2** — the same library, converted before it is copied
+- [x] **BC2** — the same library, converted before it is copied
 
   `noaap repair` on the original, then copy, then move the original away.
   - **result:** 4 plans at schema 2, **52 refs, all 52 relative, all 52 resolving inside the copy**,
     0 outside it, 0 missing on disk. With the original gone: **4 of 4 albums re-read ok, 0 tracks
     added**, `plan --verify` 4 byte-identical, `repair` 0 tidied.
 
-- [x] **BB3** — one command converts the whole collection
+- [x] **BC3** — one command converts the whole collection
 
   `noaap plan --verify` on the 132-album collection, then `noaap repair`, then verify again.
   - **result:** before, `132 plan(s): 0 byte-identical, 8396 ref(s) in 132 plan(s) would become
@@ -3560,7 +3645,7 @@ earlier packages rely on stay.
     which was 8396 + one `schema` line per plan: the schema reads 2 *because* the plan now holds a
     relative ref, so it belongs to the conversion and is not a change of its own.
 
-- [x] **BB4** — 41 GB at a different path
+- [x] **BC4** — 41 GB at a different path
 
   `cp -a` the converted collection to a second path, point noaap at the copy, and re-read every
   album of it.
@@ -3571,7 +3656,7 @@ earlier packages rely on stay.
     pre-existing case the code names — an album artist unified earlier without moving the folder —
     and `rewritten` says **0 of 132 stale**, so the conversion has converged.
 
-- [x] **BB5** — what still reads what
+- [x] **BC5** — what still reads what
 
   `noaap plan --verify` on a copy of the YouTube library, `repair`, verify again — and then **noaap
   1.5.0's own reader** over both libraries.
@@ -3583,7 +3668,7 @@ earlier packages rely on stay.
     `unsupported plan schema 2 (expected 1)`, which is the cost, said in one sentence rather than
     guessed at.
 
-- [x] **BB6** — two absences are not one
+- [x] **BC6** — two absences are not one
 
   A finished track whose own file is missing, and an album whose *source* folder is gone.
   - **result:** the first is named as a broken library; the second is not named at all, because the
@@ -3605,7 +3690,7 @@ gives back.**
 ### Open, queued behind this package
 
 A library that was moved **before** its plans were converted cannot be repaired where it stands, and
-BB1 is that library: `repair` correctly leaves refs alone that are not inside these albums, and
+BC1 is that library: `repair` correctly leaves refs alone that are not inside these albums, and
 `plan --verify` correctly calls the plans byte-identical. Finding those files where they now are is
 `repair --find-moved`, its own package.
 
@@ -3614,8 +3699,8 @@ BB1 is that library: `repair` correctly leaves refs alone that are not inside th
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
-| 2026-09-29 | the BB cases (P55b: a library that survives being moved) | 6 | 0 in the design; **1 defect the round-trip check found in the package itself**, fixed | A path inside an album's own folder is written `./…` and read back as the file it names; one marker, one rule, and everything else stays the absolute path it was. **The fact it exists for is not that a moved library breaks — it is that a moved library works, by using the original's files.** Measured: a 1.5.0-style copy held **52 refs, 0 inside itself, all 52 pointing into the original**, every one of them on disk over there, and neither `repair` nor `plan --verify` can fix that where it stands. Converted first: 52 relative, 52 inside, and with the original gone 4 of 4 albums re-read, 0 tracks added. On the 41 GB collection: **8396 refs converted in one `repair`**, then at a second path **8396 of 8396 resolving inside the copy, 132 of 132 albums re-read ok, 0 tracks added, 132 plans byte-identical** — the same with the original moved away. Only a plan that really holds a relative path says `schema: 2`: **noaap 1.5.0 reads all 329 albums of the YouTube library and writes them back byte for byte**, and refuses the 132 adopted ones in one sentence. The defect: `plan --verify` and `repair` each had their own copy of the rule, and asking the round-trip question from one place showed that **every `adopt --apply` left a folder album's candidates claiming YouTube in the file** — a track cannot know its album's provider, and only the load corrected it. 1245 pytest + 102 node. |
-| 2026-09-29 | the P55 cases (a folder that is watched) — no section of its own; the cases are this row | 5 | 0 in the design; **3 defects found by running it**, all fixed | `noaap watch` notices and hands over; it never does the work. It polls, because a full walk of 2153 files costs 0.01 s and inotify cannot see another client's writes on a share — measured before choosing. The settle window belongs to the folder, not the file. Two shapes that are opposite in one place: an intake reports an album the library already has, a library watching itself takes a new file as a new track. Live as a service: an album dropped and a file added were both noticed 21 s later and both handled correctly. The three defects were all in the library shape and all wrote, or would have written, over somebody's file — none of them was reachable without a real album. 1208 pytest + 102 node. |
+| 2026-09-29 | the BC cases (P55b: a library that survives being moved) | 6 | 0 in the design; **1 defect the round-trip check found in the package itself**, fixed | A path inside an album's own folder is written `./…` and read back as the file it names; one marker, one rule, and everything else stays the absolute path it was. **The fact it exists for is not that a moved library breaks — it is that a moved library works, by using the original's files.** Measured: a 1.5.0-style copy held **52 refs, 0 inside itself, all 52 pointing into the original**, every one of them on disk over there, and neither `repair` nor `plan --verify` can fix that where it stands. Converted first: 52 relative, 52 inside, and with the original gone 4 of 4 albums re-read, 0 tracks added. On the 41 GB collection: **8396 refs converted in one `repair`**, then at a second path **8396 of 8396 resolving inside the copy, 132 of 132 albums re-read ok, 0 tracks added, 132 plans byte-identical** — the same with the original moved away. Only a plan that really holds a relative path says `schema: 2`: **noaap 1.5.0 reads all 329 albums of the YouTube library and writes them back byte for byte**, and refuses the 132 adopted ones in one sentence. The defect: `plan --verify` and `repair` each had their own copy of the rule, and asking the round-trip question from one place showed that **every `adopt --apply` left a folder album's candidates claiming YouTube in the file** — a track cannot know its album's provider, and only the load corrected it. 1245 pytest + 102 node. |
+| 2026-09-29 | the BB cases (P55: a folder that is watched) | 7 | 0 in the design; **3 defects found by running it**, all fixed | `noaap watch` notices and hands over; it never does the work. It polls, because a full walk of 2153 files costs 0.01 s and inotify cannot see another client's writes on a share — measured before choosing. The settle window belongs to the folder, not the file. Two shapes that are opposite in one place: an intake reports an album the library already has, a library watching itself takes a new file as a new track. Live as a service: an album dropped and a file added were both noticed 21 s later and both handled correctly. The three defects were all in the library shape and all wrote, or would have written, over somebody's file — none of them was reachable without a real album. **Section BB was written after the fact**, from the runs recorded in the session: every number in it is from one of those runs except the 21 s notice, which is quoted from this row. 1208 pytest + 102 node. |
 | 2026-09-28 | the BA cases (P54: a collection in place) | 9 | 0 in the design; 1 defect found before building, fixed first | `noaap adopt` writes one plan per album and nothing else. The design was decided by a measurement: adopting naively and running one ordinary pass renamed an mp3 to `.opus` and then could not read it — **1662 of 2000 files**. Fixed at the cause, then `keep_names`/`keep_tags` so no pass touches an adopted album. Live on a 41 GB copy: dry wrote nothing, apply added **132 files, all plans, 0 changed**; retag+rename on three albums across three containers; `--undo` of all 132 in **1.3 s**, after which the copy and the untouched original agree on **every name, every audio stream and every tag field** (2000 files, 0 differences of each), with 24 files differing only in tag-block size — the documented boundary of the promise. Two corrections of my own: the proposal's 1699 renames was 438 — the 1699 was the defect being measured — and the undo's record of what a file said was a hand-written list of seven fields against a writer that writes fifteen, which my own comparison could not see **because it compared the same list**. Both the record and the comparison are taken from the writers now. Final: 0 name, 0 stream and 0 complete-tag-set differences over 2000 files. 1158 pytest + 102 node. |
 | 2026-09-28 | the AZ cases (P53: SoundCloud) | 6 | 0 in the design; 2 defects found by running it, both fixed | The third provider, and the first whose purpose had to be settled before the design: **SoundCloud is for music that is not on YouTube, not for better copies.** Measured, not assumed — label uploads are DRM protected (3 of 3), ordinary tracks cap at 160 kbps AAC (8 of 8), and the one file fetched live reads **16 kHz** against this library's 20–21. A shared `ytdlp.py` that may not name a site, cookies as an argument, and a province guard that runs three ways. `LISTING` split from `SEARCH`, because a provider does not declare what it cannot do. Live: 11/11 tracks in 1 m 57 s, MusicBrainz matched the release, `update` 1.3 s. Defects: an address no extractor claimed (401 from the *generic* one), and a preview that planned as the song. **CI ran once on the head of commits 1–4**, which it covers. 1121 pytest + 102 node. |
 | 2026-09-28 | the AY cases (P52e: lengths nobody asked for) | 5 | 0 | 574 finished tracks with a file and no length, and the reason is the shape of the pass: `repair` skips an album whose names are already right **before** it measures anything, so a tidy library could never close the gap. The measuring moved in front of the skip; `update` does the albums it touches; `--dry-run` on either writes nothing, which meant giving `repair` a real dry run. `file_length_by` records header vs decoded. Live on the disposable library: 556 measured in 16.8 s, all from the header, 0 left, `plan --verify` 0 changed. **What it turned on: nothing visible.** All 556 already fell back to the video duration, median 0.24 s away, so no ⏱ verdict and no album flag changed, and all 556 already have words so none gains the near-miss check. What it removes is a fallback standing in for a measurement. 1070 pytest + 102 node. |

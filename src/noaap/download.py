@@ -336,6 +336,18 @@ def run(
             continue
         if not track.in_source or not download:
             continue  # gone from the playlist, or we are only tidying up files
+        if plan.keep_names and track.state == "done":
+            # **a finished track of an adopted album is never fetched again** (§9, slice 61). Its
+            # source *is* this folder, so "fetching" it copies a file the library already holds to a
+            # second name inside the same album — which is exactly what happened: 67 tracks of three
+            # real albums, copied into their album roots because their plans named the file without
+            # the disc sub-folder it sits in. Whatever the plan says, the answer to a file that is not
+            # where it should be is to find it (`repair`) or to report it (slice 60), never to make
+            # another one.
+            log.warning("%s: not where the plan says, and an adopted album is never re-fetched — "
+                        "run `noaap repair`", track.filename)
+            on_track(track, "missing")
+            continue
 
         if track.channel is None:
             _follow_source(whose, track)  # whose upload this really is, and how long it runs

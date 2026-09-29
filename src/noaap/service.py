@@ -27,6 +27,7 @@ from .download import (
     find_plan,
     iter_plans,
     load_plan,
+    lost_files,
     relocate,
     rewritten,
     run,
@@ -496,16 +497,19 @@ class Service:
         # existing file and the track, being `pending`, would be fetched and written over it.
         # Found live on a real album (§9, slice 59). It is adopted exactly as every other track of
         # this album was: the file it came from, under the name its owner gave it.
+        # where each file is comes from the provider, never off the ref (§9, slice 61) — and it is
+        # what makes a file dropped into a **disc sub-folder** arrive as that disc's track instead of
+        # staying pending and being copied into the album root under a name of ours.
+        found = {entry.video_id: entry.where for entry in collection.entries}
         for track in merged.tracks:
             if track.state == "done" or not track.video_id:
                 continue
-            here = Path(track.video_id)
-            if here.is_file() and here.parent == album_dir:
-                where = str(here.relative_to(album_dir)) if album_dir in here.parents else here.name
-                track.filename, track.state = where, "done"
-                track.adopted_name = track.adopted_name or where
-                track.adopted_tags = track.adopted_tags if track.adopted_tags is not None \
-                    else dict(raw_tags(here))
+            if not (where := found.get(track.video_id)) or not (here := album_dir / where).is_file():
+                continue
+            track.filename, track.state = where, "done"
+            track.adopted_name = track.adopted_name or where
+            track.adopted_tags = track.adopted_tags if track.adopted_tags is not None \
+                else dict(raw_tags(here))
         save_plan(merged, album_dir)
         added = sum(t.video_id not in {x.video_id for x in plan.tracks} for t in merged.tracks)
         gone = sum(not t.in_source for t in merged.tracks)
@@ -1263,6 +1267,44 @@ class Service:
 
     # -- offline repair --------------------------------------------------------------------
 
+    def find_again(self, plan: AlbumPlan, album_dir: Path, dry_run: bool = False) -> int:
+        """Tracks whose file is not where the plan says, found where the collection says it is.
+
+        **A library that 1.5.0 adopted needs this before anything else touches it** (§9, slice 61).
+        Its plans hold a bare name for a track whose file is in a disc sub-folder, so the file is not
+        at `album_dir / filename` — and the next `update` reads that as a missing file and copies it
+        into the album root under a name of noaap's own. Fixing the writer does not fix those plans;
+        this does, and `noaap repair` is where a library is brought up to date.
+
+        Only an album that **is its own source** is asked, and only the provider says where a file is.
+        A track the collection no longer offers is left exactly as it is: a plan that names a file
+        nobody can find is a broken library and slice 60 reports it as one.
+        """
+        if not plan.keep_names or not lost_files(album_dir, plan):
+            return 0
+        if Path(plan.source_id).resolve() != album_dir.resolve():
+            return 0  # it came from somewhere else, and `update` is what re-checks that one
+        try:
+            collection = sources.for_plan(plan, self.cfg, self.cancel).collection(str(album_dir))
+        except sources.SourceError as e:
+            self.log(f"cannot read the folder to look for the files: {e}")
+            return 0
+        where = {entry.video_id: entry.where for entry in collection.entries}
+        found = 0
+        for track in plan.tracks:
+            if track.state != "done" or not track.filename or (album_dir / track.filename).is_file():
+                continue
+            if not (there := where.get(track.video_id)) or not (album_dir / there).is_file():
+                continue
+            if track.adopted_name == track.filename:
+                track.adopted_name = there  # the record held the same wrong value, and it is a record
+            track.filename = there
+            found += 1
+        if found:
+            self.log(f"{found} track(s) {'would be' if dry_run else 'were'} found where the "
+                     f"collection says they are")
+        return found
+
     def repair(self, dry_run: bool = False) -> list[Outcome]:
         """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
@@ -1315,13 +1357,14 @@ class Service:
             # written form differs from the file — a path inside the album that is still absolute —
             # is saved even when nothing else about the album needs tidying.
             stale = rewritten(album_dir, plan)
+            refound = self.find_again(plan, album_dir, dry_run=dry_run)
             misplaced = album_dir != self.library / wanted_folder(plan)
             # **before the skip, not after it.** An album whose names are already right used to be
             # dropped here, and with it the only pass that would have measured its files — which is
             # why a tidy library kept hundreds of tracks with no length at all (§9, slice 56).
             filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
             lengths += filled
-            if not misplaced and not borrowed and not filled and not stale \
+            if not misplaced and not borrowed and not filled and not stale and not refound \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"

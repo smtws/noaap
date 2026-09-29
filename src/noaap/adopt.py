@@ -77,6 +77,10 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
         # the owner made this folder; deciding which files are one album is theirs, not ours
         return Adoption(album_dir, refused=f"{len(albums)} different albums by their own tags")
 
+    # **where each file is, from the provider and never off the ref** (§9, slice 61). A source that
+    # cannot say has files that are not inside this folder — a disc spelled as a sibling folder is the
+    # case — and such an album is refused rather than adopted with a name that points somewhere else.
+    where = {entry.video_id: entry.where for entry in collection.entries}
     plan = build_plan(collection, source=source)
     plan.provider = getattr(source, "name", sources.DEFAULT)
     plan.own_the_candidates()
@@ -84,22 +88,16 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
     plan.folder = str(album_dir.relative_to(library))
     plan.adopted = {"folder": plan.folder, "at": dt.date.today().isoformat()}
 
+    if outside := [t.title for t in plan.tracks if not where.get(t.video_id)]:
+        return Adoption(album_dir, refused=f"{len(outside)} file(s) are not inside this folder — "
+                                           "adopt the folder that holds them")
     for track in plan.tracks:
-        # the file is here and finished: that is what adoption means. Its name is the owner's.
+        # the file is here and finished: that is what adoption means. Its name is the owner's, and so
+        # is the folder it is in — both of which `filename` now carries (§9, slice 61).
         track.state = "done"
-        track.filename = track.adopted_name = _where(Path(track.video_id), album_dir)
-        track.adopted_tags = _was(Path(track.video_id), plan, track)
+        track.filename = track.adopted_name = where[track.video_id]
+        track.adopted_tags = _was(album_dir / track.filename, plan, track)
     return Adoption(album_dir, plan=plan)
-
-
-def _where(audio: Path, album_dir: Path) -> str:
-    """The file, as the plan names it: its path relative to the album folder (§9, slice 61).
-
-    A disc-folder album is `cd1/…`, and everything else is the bare name it has always been. Taking
-    only `.name` here is what let one `update` copy all 67 tracks of three real albums into their
-    album roots under noaap's own naming scheme, three of them onto each other's names.
-    """
-    return str(audio.relative_to(album_dir)) if album_dir in audio.parents else audio.name
 
 
 def _was(audio: Path, plan: AlbumPlan, track: Any) -> dict[str, Any]:

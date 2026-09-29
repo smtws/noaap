@@ -296,7 +296,7 @@ class FolderSource:
     # -- required ----------------------------------------------------------------------
 
     def collection(self, address: str) -> Collection:
-        folder = self._folder(address)
+        folder = home = self._folder(address)
         parts = disc_folders(folder)
         siblings = [] if parts else disc_siblings(folder)
         discs = parts or siblings
@@ -347,6 +347,10 @@ class FolderSource:
                 # download. Said by the provider, because the ref it is read off is opaque to
                 # everyone else (§9, slice 58).
                 ext=Path(copies[0].ref).suffix.lstrip(".").lower() or None,
+                # and where the file is, for the same reason and with the same boundary: relative to
+                # the folder that was asked for, or `None` when it is not inside it — which is what a
+                # disc spelled as a *sibling* folder is (§9, slice 61).
+                where=str(path.relative_to(home)) if home in path.parents else None,
                 music=Music(artist=tags.get("artist"), track=tags.get("title"),
                             album=tags.get("album"), year=tags.get("year")),
             ))

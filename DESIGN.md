@@ -1705,6 +1705,46 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    them alone and `plan --verify` correctly calls it byte-identical. Finding those files where they
    now are is its own question, and its own slice.
 
+61. ✅ **A plan says where a track's file is, not only what it is called** (2026-09-29, P55c).
+   `filename` is the track's path **relative to the album folder**. For everything noaap downloads
+   that is a bare name and always was; for an adopted album it is whatever the owner's layout says,
+   `cd1/…` included.
+   **The defect this fixed is the worst one this project has produced.** Adoption recorded
+   `Path(ref).name`, so for a track in a disc sub-folder `album_dir / filename` was not the file.
+   Every pass then found the track's own file missing and fetched it again — which for a folder
+   provider is a **copy** — into the album root under noaap's own naming scheme. One `noaap update`
+   on a library that had **never been moved** wrote 64 files for the 67 tracks of three real albums,
+   and three of those copies landed on each other's names, so two different recordings became one
+   file with two tracks pointing at it. A later read of the folder saw both copies and appended them
+   as new tracks: 24 tracks became 48. On the acceptance library, which took more passes: **102 files
+   that the collection does not have**, against 67 of the owner's still identical in name, size and
+   mtime. It breaks slice 58's whole promise — an adopted album keeps its names and nothing is
+   copied into it — and it breaks it for the albums a collection is least likely to have a second
+   copy of.
+   **Slice 60's own check named it on the day and nobody read it.** Straight after `adopt --apply`,
+   `noaap config` said *67 track(s) in 3 album(s) are not where their plan says*. An instrument that
+   reports a fault nobody looks at has not found it.
+   **What moved with the meaning:** a sidecar keeps its parent, so an `.lrc` goes into the disc
+   folder beside its audio; the guard that answers "is this file inside the album" accepts any depth
+   and still refuses a path that climbs out or is absolute; a replacement by `merge` stays in the
+   folder the displaced file was in; what a fetch displaces is looked for beside the new file rather
+   than in the album root; a restore recreates the disc folder if it went away; `--rename` renames
+   **where the file stands**, because the layout is the owner's as much as the names were; and a
+   fetched container that surprises the plan no longer derives a whole new name for an album that
+   keeps its own.
+   **The rule, and it is a test:** after `repair`, `repair --dry-run`, `reread`, the executor itself,
+   `update`, `update --dry-run` and `update --deep`, the set of audio files in an adopted library is
+   the set it had, **name for name**, and no `filename` or `adopted_name` has changed. 1245 tests
+   passed over the broken behaviour; not one of them had an album with a sub-folder in it.
+   **And an undo cannot take the 102 files back.** `added_by_us` lists the plan, the sidecars and the
+   cover — never audio, because *the only thing that ever displaces a file is the bin* (slice 49).
+   Nor can the record prove which file was the owner's: the old code wrote `adopted_name` as the bare
+   basename, which is exactly the name the copy took in the album root, so in one album **24 of the
+   35 root files answer to an `adopted_name`**. What is provable is that nothing was lost — every one
+   of the owner's files is still in its disc folder, byte for byte — and that each stray decodes to
+   the same audio as the disc file it was copied from. A pass that bins them on that evidence is its
+   own slice and not this one.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
