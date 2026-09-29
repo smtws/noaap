@@ -4734,6 +4734,40 @@ the stopping.
   has none). 115 tracks across 11 albums. The whole library took **0.34 s**, and nothing was written:
   no plan file in the copy is newer than the run that read it.
 
+## BS. It was the handshake (P64b, DESIGN §9, slice 80)
+
+**Part 1, on paper.** gallery-dl's Patreon extractor sets no `browser`, no `ciphers`, and leaves
+`tls12` true, so `_build_requests_adapter` is reached with `ssl_options=0, ssl_ciphers=None,
+ssl_ctx=None` and builds its adapter with **`ssl_context=None`** — urllib3's default
+(`gallery_dl/extractor/common.py`, the extractor defaults and the adapter builder). yt-dlp's two
+handlers both go through `make_ssl_context` (`yt_dlp/networking/_helper.py`), which sets
+`set_alpn_protocols(['http/1.1'])` and, unless `legacy_support`, **pins a cipher string of its own**
+and `minimum_version = TLSv1_2`. So the difference below the headers is one thing: **who customises
+the cipher list**, and it is this program.
+
+**Part 2, live — two requests, and the second is the one that proves it.**
+
+| # | time | call | ciphers | result |
+|---|---|---|---|---|
+| 1 | 01:30:07 | Python stdlib, gallery-dl's exact query and headers | Python default | **200**, `application/vnd.api+json`, 6491 bytes, 0.7 s |
+| 2 | 01:30:44 | the same call, one line changed | yt-dlp's pinned string | **403**, `text/html`, 0.1 s |
+
+Same cookies, same process, thirty-seven seconds apart. The headers and the query are not the
+difference; the handshake is.
+
+- [x] **BS1** — one further probe, through noaap's own reader: `legacyserverconnect` (yt-dlp's own
+  documented option, which takes the branch that sets OpenSSL's `DEFAULT` list) — **answered at
+  01:31**, four formats and the English captions, 2.1 s, with no browser opened since 20:57.
+- [x] **BS2** — it is set for this provider and for nothing else: a case asserts the shared client
+  and every other source keep yt-dlp's defaults.
+- [x] **BS3** — the refusal sentence loses the advice that is no longer true. A `403` means the login
+  has ended: *sign in again*.
+- **What it costs, said out loud:** the same option also permits legacy TLS renegotiation
+  (`SSL_OP_LEGACY_SERVER_CONNECT`) for this provider's requests. It is not impersonation — nothing is
+  shaped to look like a browser, and the connection is *less* customised than before, not more — but
+  it is a relaxation, and it is the reviewer's and the user's to accept.
+- Probe budget: 2 allowed for part 2, 3 more allowed for narrowing; **3 used**, 2 unspent.
+
 ## BR. Why this program is refused where another is not (P64, DESIGN §9, slice 79)
 
 Measured, not built. Eight reads of one post, at most one per variant, each logged with its time,
@@ -4768,6 +4802,7 @@ to Cloudflare"* for the non-app path.
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BS cases (P64b: it was the handshake) | 3 | 0 | Two requests settled what eight could not: same cookies, same query, same headers, 37 s apart — **Python's default cipher list answered 200, and the cipher string yt-dlp pins answered 403 in 0.1 s**. The bot check reads the TLS hello, and ours was the unusual one; gallery-dl, on paper, customises nothing below the headers. The fix is one documented yt-dlp option for this provider alone, and it is *less* shaping, not more — measured through noaap's own reader at 01:31, four formats and the captions, with no browser opened since 20:57. Its cost, said out loud: the same option permits legacy TLS renegotiation for this provider. The week-old advice to open the browser first is gone from the README and the refusal. 1548 pytest + 129 node. |
 | 2026-09-30 | the BR probes (P64: why we are refused where another tool is not) | 6 probes, 8 requests | nothing built, and three deviations of mine | Eight reads settled what it is **not**: not the millisecond cookie expiry (yt-dlp already divides it), not the session, not the browser, not the header set, not the app version string, not the HTTP client library — yt-dlp prefers its Requests handler when `requests` is installed and is refused just the same. What answered: **gallery-dl, same machine, same session, same minute, 200 on the same post**. So the difference is below the headers this program can set. Nothing was built: that route is GPL-2.0 against MIT (a subprocess, a second JSON shape) and would rest on an unexplained difference. My deviations: 8 requests where 6 were allowed, two media hosts touched by the probe, and no build. 1545 pytest + 129 node. |
 | 2026-09-30 | the BQ cases (P63b: `merge --rejudge`) | 6 | 0 | The rule changed, so the copies already listed are asked again — **without opening one audio file**, because each carries the numbers it was measured with. Dry by default; `--apply` does what a merge does with that verdict and nothing more, bin included. A pair with a number missing is left alone and counted, and a track the user worked on is left alone with that reason, asked before the numbers are. On a copy of the user's 329 plans: **170 listed copies, 115 would become replace, 45 unchanged, 10 left alone**, 115 tracks in 11 albums, 0.34 s for the library. 1545 pytest + 129 node. |
 | 2026-09-30 | the BP cases (P63: eight the user asked for) | 8 | 1 of my own, caught before reporting; 2 caused by a fix and caught by the suite | The ranking rule the user gave: a lossless copy that gives up nothing takes a lossy one's place, and only in that direction. A switch of its own for the audio, so `lookups` means a title again. An address two parsers read differently is refused. Copies of one song in two libraries get labels that differ, and "3s apart" says what it measured. `file_length_by` was empty on **4583 of the installed library's tracks against 559** — every plan written before the field existed. And the playback report: **click-to-sound 8–117 ms over fifteen clicks, no stall reproduced**, but a jump past the trim end silently started the next song; plus three server defects (audio/ogg for every file, HEAD 501, HTTP/1.0) and two the HTTP/1.1 fix caused. Four hypotheses died on the way, one after a measurement that compared a fresh media element with a used one. 1530 pytest + 129 node. |

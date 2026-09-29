@@ -74,13 +74,25 @@ _VIDEO_REF = re.compile(r"^patreon:video:(\d+)$")
 NO_COOKIES = ("Patreon needs your own session: set `patreon_cookies_from_browser` "
               "(for example `firefox`) or `patreon_cookies_file`")
 NOT_IN_TIER = "this post is not in your tier"
+# **the one option that makes this provider usable at all** (§9, slice 80). yt-dlp pins a cipher list
+# of its own on every connection (`networking/_helper.py`, `set_ciphers('@SECLEVEL=2:ECDH+AESGCM:…')`),
+# and Patreon's bot check refuses that handshake: measured, same cookies, same minute, same query and
+# headers — Python's default ciphers answered `200` and yt-dlp's string answered `403` in 0.1 s. This
+# option takes the other branch of the same function, which sets OpenSSL's `DEFAULT` list instead.
+#
+# **It is less shaping, not more**: nothing here is made to look like a browser, and no impersonation
+# library is involved — the connection simply stops being customised. The one cost is the other half
+# of that branch, `SSL_OP_LEGACY_SERVER_CONNECT`, which allows renegotiation with servers that predate
+# RFC 5746; it applies to this provider's requests and to nothing else in the program.
+PLAIN_TLS = {"legacyserverconnect": True}
+
 # **it says what to do, and does not claim to know which of the two it is** (§9, slice 72). Patreon
 # answers 403 both when a login has lapsed and when Cloudflare wants its bot check again — and the
 # bot-check cookie `__cf_bm` lives **thirty minutes**, so a session that worked an hour ago fails
 # with a login that is perfectly valid. Measured: the P59 live run was refused while `session_id` was
 # good for another year and `__cf_bm` had expired 45 minutes earlier. One action fixes both.
-LAPSED = ("Patreon would not answer for this session — open patreon.com in the browser noaap reads "
-          "cookies from (that renews the login and the bot check alike), then try again")
+LAPSED = ("Patreon would not answer for this session — sign in again in the browser noaap reads "
+          "cookies from, then try again")
 _STALE = re.compile(r"HTTP Error 40[13]|forbidden|unauthorized|log ?in|sign ?in", re.I)
 _RATE = re.compile(r"HTTP Error 429|rate.?limit|too many requests", re.I)
 _NO_ACCESS = re.compile(r"do not have access", re.I)
@@ -337,7 +349,8 @@ class Patreon:
         if not self.has_session():
             raise sources.NotSupported(NO_COOKIES)
         return ytdlp.params(cookies_file=self.cfg.patreon_cookies_file,
-                            cookies_from_browser=self.cfg.patreon_cookies_from_browser, **extra)
+                            cookies_from_browser=self.cfg.patreon_cookies_from_browser,
+                            **{**PLAIN_TLS, **extra})
 
     def has_session(self) -> bool:
         return bool(self.cfg.patreon_cookies_file or self.cfg.patreon_cookies_from_browser)

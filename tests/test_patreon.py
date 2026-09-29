@@ -292,7 +292,7 @@ def test_trouble_nobody_has_seen_before_is_returned_not_guessed_at():
 @pytest.mark.parametrize("said,kind,says", [
     ("HTTP Error 429: Too Many Requests", sources.Blocked, "refusing requests"),
     ("You do not have access to this post", sources.NoAudio, NOT_IN_TIER),
-    ("Unable to download JSON metadata: HTTP Error 403: Forbidden", sources.Blocked, "open patreon.com"),
+    ("Unable to download JSON metadata: HTTP Error 403: Forbidden", sources.Blocked, "sign in again"),
     ("HTTP Error 404: Not Found", sources.NoAudio, "no longer on Patreon"),
 ])
 def test_and_the_decided_ones_are_raised_by_name(said, kind, says):
@@ -695,10 +695,9 @@ def test_the_post_of_a_video_ref_is_a_link_a_person_can_open():
 
 
 def test_the_refusal_tells_somebody_what_to_do_rather_than_what_it_guesses(client, monkeypatch):
-    """Patreon answers 403 for a lapsed login **and** for Cloudflare's bot check, whose cookie lasts
-    thirty minutes — the P59 live run was refused with a `session_id` good for another year and a
-    `__cf_bm` that had expired 45 minutes before. So the sentence names the one action that fixes
-    either, and claims neither diagnosis."""
+    """It used to say *open patreon.com in the browser*, because a thirty-minute bot cookie was the
+    only thing that made a read work. That turned out to be the handshake (§9, slice 80), so the
+    remaining reason for a 403 is a login that has ended — and that is what it says."""
     from noaap.patreon import LAPSED
 
     with pytest.raises(sources.Blocked) as refused:
@@ -706,8 +705,8 @@ def test_the_refusal_tells_somebody_what_to_do_rather_than_what_it_guesses(clien
                         "https://www.patreon.com/posts/100001")
 
     assert str(refused.value) == LAPSED
-    assert "open patreon.com" in LAPSED and "bot check" in LAPSED
-    assert "gone stale" not in LAPSED, "it no longer asserts which of the two it is"
+    assert "sign in again" in LAPSED and "browser noaap reads" in LAPSED
+    assert "bot check" not in LAPSED, "that is not what a 403 means any more"
 
 
 # -- the cover, and what a download cost (§9, slice 73, R-254) --------------------------------------
@@ -803,3 +802,37 @@ def test_a_download_that_throws_most_of_itself_away_says_so(monkeypatch, tmp_pat
     # a provider that keeps no such number, and one where nothing was thrown away, say nothing
     assert dl.transfer_line(object()) is None
     assert dl.transfer_line(type("S", (), {"last_transfer": {"downloaded": 5, "kept": 5}})()) is None
+
+
+# -- the handshake, which is what was being refused (§9, slice 80, R-277) ---------------------------
+
+
+def test_this_provider_does_not_let_yt_dlp_pin_a_cipher_list():
+    """**Measured, not guessed**: same cookies, same query, same headers, 37 seconds apart — Python's
+    default ciphers answered `200`, and the cipher string yt-dlp sets answered `403` in 0.1 s. The
+    option takes the other branch of yt-dlp's own `make_ssl_context`, which uses OpenSSL's `DEFAULT`
+    list. It is *less* shaping of the connection, not more: nothing is made to look like a browser."""
+    from noaap.patreon import PLAIN_TLS
+
+    options = Patreon(with_session())._options()
+
+    assert options["legacyserverconnect"] is True
+    assert PLAIN_TLS == {"legacyserverconnect": True}
+
+
+def test_and_no_other_provider_is_changed_by_it():
+    """It is this provider's own answer to this provider's own refusal. The shared client, and every
+    other source built on it, keeps yt-dlp's defaults."""
+    from noaap import ytdlp
+
+    assert "legacyserverconnect" not in ytdlp.params()
+    assert "legacyserverconnect" not in ytdlp.params(cookies_from_browser="firefox")
+
+
+def test_the_refusal_no_longer_sends_anybody_to_refresh_a_cookie():
+    """The advice was to open the browser, because a thirty-minute bot cookie was the only thing that
+    made a read work. With the handshake accepted, what is left to say is: sign in."""
+    from noaap.patreon import LAPSED
+
+    assert "sign in again" in LAPSED
+    assert "bot check" not in LAPSED and "renews" not in LAPSED

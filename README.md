@@ -331,12 +331,14 @@ Two things that run taught, both of them traps:
 - **On Linux, reading Chrome's cookies needs a keyring that is unlocked, and `secretstorage`
   installed.** Without it yt-dlp cannot decrypt a `v11` cookie: it drops them silently, and Patreon
   then answers as if you were a stranger. A session that looks set and does not work is this.
-- **Open patreon.com in that browser first, and use noaap within the next half hour.** Measured, not
-  folklore: with a fresh visit every read works, and without one every read is refused with a `403`
-  in a third of a second — whichever browser holds the session, however valid the login is. What runs
-  out is Cloudflare's own thirty-minute cookie, and only a browser can mint a new one. (Other tools
-  are not refused in the same state; why is not established, and until it is, this is the honest
-  advice rather than a promise noaap cannot keep.)
+- **You do not have to open the browser first.** noaap used to need a visit to patreon.com within
+  the last half hour, and that turned out to be about the *handshake*, not the session: yt-dlp pins
+  a cipher list of its own on every connection, and Patreon's bot check refuses that — measured, same
+  cookies and same minute, Python's default ciphers answering `200` where the pinned list answered
+  `403`. For Patreon, noaap now lets the connection be an ordinary Python one. Nothing is made to
+  look like a browser and no impersonation library is involved; the one cost is that this provider's
+  requests also permit legacy TLS renegotiation, which is the other half of the option that does it.
+  A `403` now means what it says: **sign in again**.
 
 **A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
 own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath

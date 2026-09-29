@@ -2305,6 +2305,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    none. 115 tracks across 11 albums, and the run took 0.34 s for the whole library, which is what
    "opens no audio file" is worth.
 
+80. ✅ **It was the handshake** (2026-09-30, P64b). Two requests settled what eight could not.
+   Same cookies, same post, same query and headers, thirty-seven seconds apart, through Python's own
+   standard library: with the **default** cipher list, `200` and 6491 bytes of JSON; with the cipher
+   string yt-dlp pins on every connection (`networking/_helper.py`: `set_ciphers('@SECLEVEL=2:
+   ECDH+AESGCM:ECDH+CHACHA20:ECDH+AES:DHE+AES:!aNULL:!eNULL:!aDSS:!SHA1:!AESCCM')`), `403` in 0.1 s.
+   The bot check reads the TLS hello, and yt-dlp's hello is the unusual one.
+   **What gallery-dl does below the headers: nothing.** Its Patreon extractor sets no `browser`, no
+   `ciphers` and keeps `tls12`, so its adapter is built with `ssl_context=None`
+   (`extractor/common.py`) — urllib3's default. The tool that worked was not doing something clever;
+   this program was doing something unusual.
+   **The fix is one documented option, and it is *less* shaping, not more.** `legacyserverconnect`
+   takes the other branch of yt-dlp's own `make_ssl_context`, which sets OpenSSL's `DEFAULT` list.
+   Nothing is made to look like a browser and no impersonation library is involved — the connection
+   simply stops being customised. The cost is the other half of that branch,
+   `SSL_OP_LEGACY_SERVER_CONNECT`, and it is confined to this provider.
+   **Measured through the program's own reader**: refused at 01:13, 01:13, 01:14, 01:15 and 01:16,
+   with every header set and both browsers; answered at 01:31 with this one option, four formats and
+   the English captions, no browser opened in between.
+   **And the advice that was true for a week is now false**, so it is gone: a `403` means the login
+   has ended, and the sentence says *sign in again*.
+
 79. ⏸ **Why this program is refused where another is not** (2026-09-30, P64 — measured, not built).
    The question: noaap needs the browser opened at patreon.com within the last half hour, and the
    user's own tool does not. Eight reads settled what it is *not*, and one comparison settled what it
