@@ -81,18 +81,48 @@ def load_plan(album_dir: Path) -> AlbumPlan | None:
     return AlbumPlan.from_dict(resolved(json.loads(path.read_text()), album_dir))
 
 
-def save_plan(plan: AlbumPlan, album_dir: Path) -> Path:
-    album_dir.mkdir(parents=True, exist_ok=True)
-    path = album_dir / PLAN_FILE
-    written = portable(plan.to_dict(), album_dir)
+def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
+    """The exact object a save puts in the file — **the one place that decides it** (§9, slice 60).
+
+    `plan --verify` has to compare a file against what a save would write, and `repair` has to tell
+    whether a save would change it; both ask here rather than rebuilding the rule, because a second
+    copy of it is a second thing to get wrong.
+    """
+    out = portable(plan.to_dict(), album_dir)
     # **only a plan that really holds one says so.** Every YouTube and SoundCloud album keeps
     # schema 1 and stays byte-for-byte what it was, readable by ytalbum 0.9.1 and by every noaap
     # up to 1.5.0 (R-207, ruling 1).
-    written["schema"] = 2 if _has_relative(written) else 1
+    out["schema"] = 2 if _has_relative(out) else 1
+    return out
+
+
+def as_saved(value: dict[str, Any]) -> str:
+    """What the file holds, byte for byte, for the object `written` returned."""
+    return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+
+
+def save_plan(plan: AlbumPlan, album_dir: Path) -> Path:
+    album_dir.mkdir(parents=True, exist_ok=True)
+    path = album_dir / PLAN_FILE
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(written, indent=2, ensure_ascii=False) + "\n")
+    tmp.write_text(as_saved(written(plan, album_dir)))
     os.replace(tmp, path)
     return path
+
+
+def rewritten(album_dir: Path, plan: AlbumPlan) -> bool:
+    """Would saving this plan change the file it came from?
+
+    The question `repair` asks of every album: a plan whose paths are still absolute answers yes, and
+    that is how one command converts a whole library (§9, slice 60, R-207 ruling 2).
+    """
+    path = album_dir / PLAN_FILE
+    if not path.is_file():
+        return True
+    try:
+        return written(plan, album_dir) != json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
 
 
 def _has_relative(value: Any) -> bool:

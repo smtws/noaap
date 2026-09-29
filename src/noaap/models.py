@@ -397,6 +397,13 @@ class AlbumPlan:
         return self.kind == Kind.COMPILATION
 
     def to_dict(self) -> dict[str, Any]:
+        # **before the tracks are written, not only after they are read** (§9, slice 60): a track
+        # synthesises the candidate for its own `video_id` and has to default it to youtube, because
+        # a track cannot know. `from_dict` has always corrected that on load — so a plan built in
+        # memory and saved once, which is every `adopt --apply`, left a folder album's candidates
+        # claiming YouTube in the file until something re-read and re-saved it. Found by the
+        # round-trip check itself: what is written must be what a load gives back.
+        self.own_the_candidates()
         out = asdict(self)
         out["tracks"] = [t.to_dict() for t in self.tracks]
         return {**out, **kept(self)}

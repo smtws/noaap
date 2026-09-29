@@ -13,7 +13,7 @@ from typing import Any
 
 from . import config as config_mod
 from .config import Config
-from .download import PLAN_FILE
+from .download import PLAN_FILE, as_saved, written
 from .models import AlbumPlan, PlanTrack, SourceRef, kept
 from .service import Service, collection_address, exit_code
 from .sources import NotSupported
@@ -493,27 +493,36 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
     for path in paths:
         where = f"{path.parent.parent.name}/{path.parent.name}"
         try:
-            before = json.loads(path.read_text(encoding="utf-8"))
+            raw = path.read_text(encoding="utf-8")
+            before = json.loads(raw)
             plan = AlbumPlan.from_dict(before)
         except (OSError, ValueError, TypeError) as e:
             faults.append(f"{where}: cannot be read — {e}")
             continue
-        after = plan.to_dict()
+        # what a *save* would write, which is not `to_dict()`: a path inside the album is written
+        # relative to it, and that rewrite is exactly what this has to be able to report (§9, slice 60)
+        after = written(plan, path.parent)
         gone, changed = _plan_differences(before, after)
         for key in _plan_unknown(plan):
             unknown[key] = unknown.get(key, 0) + 1
-        rewrites = [c for c in changed if _is_conversion(c[1], c[2], path.parent, root)]
-        changed = [c for c in changed if c not in rewrites]
-        converted += len(rewrites)
-        if rewrites and not (gone or changed):
-            moved.append(f"{where}: {len(rewrites)} ref(s) would become relative to the library")
+        refs = [c for c in changed if _is_conversion(c[1], c[2], path.parent, root)]
+        # the schema reads 2 *because* the plan now holds a relative ref, so it is part of the same
+        # conversion and not a value that changed behind the owner's back (§9, slice 60)
+        bump = [c for c in changed if c[0] == "schema"] if refs else []
+        changed = [c for c in changed if c not in refs and c not in bump]
+        converted += len(refs)
+        if refs and not (gone or changed):
+            moved.append(f"{where}: {len(refs)} ref(s) would become relative to the library")
         if gone or changed:
             faults.append(f"{where}: would lose {gone}" if gone
                           else f"{where}: would change {[f'{k}: {b!r} -> {a!r}' for k, b, a in changed[:3]]}")
-        elif json.dumps(after, indent=2, ensure_ascii=False) + "\n" == path.read_text(encoding="utf-8"):
-            identical += 1
-        else:
-            filled += 1
+        elif not refs:
+            # **the three counts are exclusive.** A converted plan is neither byte-identical nor a
+            # plan gaining defaults, and counting it twice would make the totals lie (§9, slice 60).
+            if as_saved(after) == raw:
+                identical += 1
+            else:
+                filled += 1
     print(f"{len(paths)} plan(s): {identical} byte-identical, {filled} would gain default fields, "
           + (f"{converted} ref(s) in {len(moved)} plan(s) would become relative, " if converted else "")
           + f"{len(faults)} would lose or change something")

@@ -322,3 +322,83 @@ def test_a_scope_that_matches_something_still_works(tmp_path):
     assert code == 0, said
     assert "matched no" not in said, "the scope found its folder; what it then said about it is its own answer"
     assert "An Album" in said
+
+
+# -- one rule, and one command that applies it to a whole library ------------------------------------
+
+
+def old_style(album_dir: Path) -> dict:
+    """The file as noaap 1.5.0 wrote it: every path absolute, schema 1."""
+    from noaap.download import PLAN_FILE, load_plan
+
+    plan = load_plan(album_dir)
+    data = plan.to_dict()
+    data["schema"] = 1
+    (album_dir / PLAN_FILE).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return data
+
+
+def test_a_plan_whose_paths_are_still_absolute_would_be_written_differently(tmp_path):
+    """`rewritten` is the question repair asks of every album, and the only one it needs to."""
+    from noaap.download import load_plan, rewritten, save_plan
+
+    album_dir = an_album(tmp_path)
+    old_style(album_dir)
+
+    assert rewritten(album_dir, load_plan(album_dir)) is True
+    save_plan(load_plan(album_dir), album_dir)
+    assert rewritten(album_dir, load_plan(album_dir)) is False
+
+
+def test_what_a_save_writes_is_decided_in_one_place(tmp_path):
+    """Two callers ask the same function, because a second copy of the rule is a second thing to
+    get wrong — which is how `plan --verify` first reported a conversion as a plan losing a field."""
+    from noaap.download import PLAN_FILE, as_saved, load_plan, written
+
+    album_dir = an_album(tmp_path)
+
+    assert as_saved(written(load_plan(album_dir), album_dir)) == (album_dir / PLAN_FILE).read_text()
+
+
+def test_verify_reports_the_conversion_and_counts_it_once(tmp_path, capsys):
+    """R-207, ruling 2. The three counts are exclusive: a converted plan is not also byte-identical
+    and not also a plan gaining defaults."""
+    from noaap.cli import _verify_plans
+    from noaap.config import Config
+
+    album_dir = an_album(tmp_path)
+    old_style(album_dir)
+
+    assert _verify_plans(Config(), tmp_path) == 0
+    said = capsys.readouterr().out
+    assert "0 byte-identical" in said and "0 would gain default fields" in said
+    assert "6 ref(s) in 1 plan(s) would become relative" in said
+    assert "0 would lose or change something" in said
+
+
+def test_repair_converts_a_whole_library(tmp_path):
+    """R-207, ruling 2: one command, and every album in the library is written the new way."""
+    from noaap.download import PLAN_FILE
+    from noaap.service import Service
+
+    for name in ("An Album", "Another Album"):
+        old_style(an_album(tmp_path, name))
+
+    service = Service(Config_of(tmp_path), tmp_path)
+    service.repair(dry_run=True)
+    assert all(json.loads((tmp_path / "A Band" / n / PLAN_FILE).read_text())["schema"] == 1
+               for n in ("An Album", "Another Album")), "a dry run writes nothing"
+
+    service.repair(dry_run=False)
+
+    for name in ("An Album", "Another Album"):
+        data = json.loads((tmp_path / "A Band" / name / PLAN_FILE).read_text())
+        assert data["schema"] == 2 and data["source_id"] == "./"
+
+
+def Config_of(root: Path):
+    from noaap.config import Config
+
+    cfg = Config()
+    cfg.library_root = root
+    return cfg

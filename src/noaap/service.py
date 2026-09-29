@@ -21,7 +21,17 @@ from typing import Any
 
 from . import sources
 from .config import Config
-from .download import PARTS_DIR, PLAN_FILE, find_plan, iter_plans, load_plan, relocate, run, save_plan
+from .download import (
+    PARTS_DIR,
+    PLAN_FILE,
+    find_plan,
+    iter_plans,
+    load_plan,
+    relocate,
+    rewritten,
+    run,
+    save_plan,
+)
 from .enrich import enrich
 from .lyrics import (
     Lrclib,
@@ -1300,13 +1310,17 @@ class Service:
                 self.log(f"the single is named after its track: “{named}”")
             # a plan can be right while the folder is not: the album artist was unified
             # earlier without moving anything (fixed 2026-09-24, but the folders remain)
+            # **a whole library is converted here** (§9, slice 60, R-207 ruling 2): a plan whose
+            # written form differs from the file — a path inside the album that is still absolute —
+            # is saved even when nothing else about the album needs tidying.
+            stale = rewritten(album_dir, plan)
             misplaced = album_dir != self.library / wanted_folder(plan)
             # **before the skip, not after it.** An album whose names are already right used to be
             # dropped here, and with it the only pass that would have measured its files — which is
             # why a tidy library kept hundreds of tracks with no length at all (§9, slice 56).
             filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
             lengths += filled
-            if not misplaced and not borrowed and not filled \
+            if not misplaced and not borrowed and not filled and not stale \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
