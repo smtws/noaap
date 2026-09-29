@@ -4310,9 +4310,10 @@ session's own XDG directories, a scratch library under `~/Musik/`, nothing kept 
   subtitles, `has_drm: false`, `id` = the post's own id. Narrated science-fiction stories, an
   episode each — the user's *"not music or album shaped"*, exactly.
   - **result:** five refusals, *this post holds video, not audio*, which is R-239 ruling 7 working.
-  - **and therefore:** the download half of this provider is **still untried**. No fetch, no tag,
-    no measurement, no `update`. A post holding audio, a locked post and an attachment have still
-    only ever been seen as written fixtures.
+  - **and therefore, at the time of this section:** the download half of this provider was untried.
+    (It was exercised later the same day — see BL: one video post fetched, its audio copied, tagged
+    and `update`d. A post holding audio as a file, an attachment and a locked post are still only
+    written fixtures.)
   - **on the mapping:** post = album still reads right for a post holding audio; for this creator
     the honest answer is that there is nothing here to take, not that the unit is wrong. What a
     *spoken* story would want — an episode number, a series as the album, a narrator as the artist —
@@ -4383,14 +4384,55 @@ find those on musicbrainz"*.
   only, no values): `session_id` valid for another year, `__cf_bm` — Cloudflare's bot cookie, **thirty
   minutes** — expired 45 minutes earlier. So the refusal is the bot check, not the login.
   - **what follows:** the sentence no longer asserts *its session has gone stale*; it names the one
-    action that renews either. And the fetch, the tag, the measurement and the `update` are still
-    untried against the live site — the README says so in those words rather than implying the
-    fixtures cover it.
+    action that renews either.
+  - **and it was run**, once the owner had opened the site in the browser it reads: see BL below.
+
+## BL. The run that happened, and the three things it left behind (P59b, DESIGN §9, slice 73)
+
+The live run of the previous section, once the owner had opened the site in the browser noaap reads:
+**one post fetched end to end.** The shortest of the five (1411.5 s, found by summing the chosen
+rendition's segment durations — neither the listing nor a post read carries a duration), audio copied
+out of the video, tagged, `update` run once.
+
+- [x] **BL1** — the fetch itself
+
+  1 min 19.7 s. Kept **17,389,568 bytes**; aac, 95,998 bps, 44,100 Hz, stereo; length 1411.5437 s,
+  which matches the source manifest to four decimals — the copy is the whole stream. Cutoff **15 kHz**,
+  `full_band: false`, written because the candidate says `from_video`. No scratch directory left, no
+  video file anywhere under the library or `/tmp`, two files in the album folder. `update` afterwards:
+  3.7 s, *0 new, 0 no longer in the source*, and the audio file's sha256 identical before and after.
+  Both lookups were **on** in the configuration on purpose, and neither LRCLIB nor MusicBrainz was
+  asked anything: the rule, not the setting, is what kept them quiet.
+
+- [x] **BL2 · R** — the plan had stored a signed address
+
+  Found by the reviewer looking at what the run wrote. `cover_url` held the post image's address with
+  `token-hash` and `token-time` in the query. **Decision: a private album's plan holds no address at
+  all**, rather than the address without its query — a de-signed address answers 403 for ever, reads
+  as live to every pass, and would be retried on every run. Stripped in the one place that decides
+  what a save writes, so old plans are cleaned by their next save; guarded by a grep over every value
+  of a written plan for `token`, `Policy`, `Signature`, `Key-Pair-Id`.
+
+- [x] **BL3 · R** — the cover failure, and my wrong account of it
+
+  I reported that the address's token had expired. **It had not** — `token-time` was two weeks in the
+  future, and the address came from the post read seconds earlier, not from the listing. The fault was
+  the request: an image address handed back to the provider matched neither a post nor a campaign, so
+  it was passed to yt-dlp as a *page*. Media-host addresses are fetched as files now, with the session
+  and a referer, and the warning carries the reason instead of keeping it at debug level.
+  *A reason that is only in a log nobody turns on is not a reason anybody has.*
+
+- [x] **BL4** — bytes downloaded beside bytes kept
+
+  The same lesson in a second place: both numbers had been measured and neither could be reported. A
+  provider may now say what its last download moved and kept; the core asks with `getattr`, says
+  nothing when there is no answer or nothing was thrown away, and prints it on the track's line.
 
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BL cases (P59b: the run that happened) | 4 | 3 defects, all found in what the run **wrote**, not in whether it passed | One post fetched end to end: 1 min 20 s, 16.6 MB kept, aac 96 kbps, length matching the source manifest to four decimals, cutoff 15 kHz, no video left anywhere, `update` afterwards changed nothing (identical digest), and neither LRCLIB nor MusicBrainz was asked a thing although both were switched on. Then the three defects: the plan had stored the **signed** address of a paid post's image (decision: a private album's plan holds no address at all — a de-signed one answers 403 for ever and looks live; guarded by a grep over every written value); the cover failure was **not** the expiry I had reported but an image address being read as a page, and the real reason had been sitting at debug level; and bytes downloaded could not be reported although it had been measured. 1433 pytest + 118 node. |
 | 2026-09-29 | the BK cases (P59: the audio inside a video post) | 6 of 7 | the live run is the seventh and it was **refused before it began** | The creator posts audiobooks as video, so refusing every video post refused everything they publish. `patreon_audio_from_video`, off by default: the audio stream is **copied** (`-vn -map 0:a:0 -c:a copy`, never an encoder), the rendition is chosen by its audio and then by the smallest picture carrying it (the same AAC rides every rung of Patreon's ladder), and the video lives outside the library and is deleted after success and after failure alike. Protection of any kind is refused without a request being built. With it, R-250: **nothing from a private source is offered to anyone** — no publish, no seed, and no lookup either, since a lookup sends a title, a creator and a length to somebody else's server; it is a capability the provider declares and the core enforces, never a name in a list. The live run answered 403 at the listing: `session_id` good for a year, Cloudflare's 30-minute `__cf_bm` long expired — so the refusal now names the one action that renews either, and the README says plainly that fetching from Patreon is still untried. 1424 pytest + 118 node. |
 | 2026-09-29 | the BJ cases (P58: the first live run against Patreon) | 6 | **4 defects, all found in the first four minutes of using it** | One campaign the user supports, their own Chrome session, `patreon_post_cap = 5` against **584** posts, own XDG directories, a scratch library, nothing kept. Not one of the four was reachable from a fixture: `load()` never read the two Patreon settings out of the config file (the run began with a configuration that did nothing); `service.channel` grouped by YouTube's three tabs, so a listing that read fine printed *this channel has no releases or playlists*; a refusal came out as a traceback because only `NotSupported` was caught; and without `secretstorage` Chrome's cookies decrypt to nothing, so a correct setting answers like a stranger — **6 patreon cookies with it, 2 empty ones without**. Fixtures corrected by hand: a flat listing is `{url, ie_key}` and nothing else, so titles now fall back to the address slug. All five posts are Mux HLS video, refused correctly — so the **download half of this provider is still untried** and the README says exactly that. Also: the ⇄ copies panel is photographed again, one track, one album between its two copies, under the user's condition. 1406 pytest + 118 node. |
 | 2026-09-29 | the BI cases (P56: Patreon as a source) | 7 | 0 in the design; **2 defects of mine, both caught by a guard**; 1 correction of my own proposal | **Never run against Patreon** — written fixtures only, and the section says so. The one live measurement is the one that shaped the package: a metadata read of the *public* post in yt-dlp's own test list answered **403**, because the extractor needs either a `session_id` cookie or TLS impersonation and this install has neither. So no dependency was added and every call without a session refuses by naming its two settings. A post is the collection, the campaign the owner, a media the ref; no track number is invented and `is_release` is false for good. An embed belongs to its own provider, and an embed nobody claims is **not** turned into a Patreon ref — that defect appeared the moment the providers were handed in rather than built, which is the other ruling. The listing checks every post's campaign against the one asked for (yt-dlp #10013 returned *every membership the account had*) and asks for its cap with `playlistend` instead of reading everything and discarding. Tier too low is `NoAudio`, a lapsed session `Blocked`. Nothing of the session is stored, nothing is built — a case makes `Config` and `sources.get` raise — and a guard greps the whole fixture directory for sessions, tokens and real addresses. 1400 pytest + 118 node. |

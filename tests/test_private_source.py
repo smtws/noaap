@@ -13,6 +13,8 @@ these cases assert on the client that would have been called, never on a network
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from noaap import sources
@@ -160,3 +162,70 @@ def test_the_rule_is_a_capability_and_not_a_name():
                  if '"patreon"' in line and "register" not in line and "DEFAULT" not in line]
     assert not offenders, f"the core names a provider to decide privacy: {offenders}"
     assert sources.private("patreon") and not sources.private("youtube")
+
+
+# -- and nothing of the session reaches the file (§9, slice 73, R-254) ------------------------------
+
+SIGNED_COVER = ("https://c10.mediahost.invalid/4/media/p/post/100004/da364cac/eyJ3IjoxMDgwfQ%3D%3D/"
+                "1.jpeg?token-hash=kqZv17OGDTNzuX7KzgTtWhul-fnROE7E&token-time=1791936000")
+
+
+def test_a_private_albums_plan_never_holds_a_signed_address(tmp_path):
+    """Found by the reviewer's acceptance run on the first real fetch: the plan had stored the signed
+    address of a paid post's image — `token-hash` and `token-time` in the query. A signed address is
+    a piece of the session, and the rule is that nothing of the session is stored."""
+    from noaap.download import save_plan, written
+
+    plan = an_album()
+    plan.cover_url = SIGNED_COVER
+    plan.cover_fallback_url = SIGNED_COVER + "&size=large"
+    plan.cover_fetched = {"url": SIGNED_COVER, "sha1": "deadbeef"}
+
+    out = written(plan, tmp_path)
+
+    assert out["cover_url"] is None and out["cover_fallback_url"] is None
+    assert out["cover_fetched"]["url"] is None
+    assert out["cover_fetched"]["sha1"] == "deadbeef", "what is not an address is kept"
+
+    # and the same plan from anywhere else is untouched: this is a rule about private sources
+    public = an_album(provider="youtube")
+    public.cover_url = SIGNED_COVER
+    assert written(public, tmp_path)["cover_url"] == SIGNED_COVER
+
+    # …and it holds through a real save
+    save_plan(plan, tmp_path)
+    assert "token-hash" not in (tmp_path / ".ytalbum.json").read_text(encoding="utf-8")
+
+
+def test_a_plan_written_before_the_rule_is_cleaned_by_the_next_write(tmp_path):
+    """The library already holds one such plan. Nothing rewrites plans for fun, so the cleaning has to
+    happen wherever a save happens — which is the one place that decides what a save writes."""
+    from noaap.download import PLAN_FILE, load_plan, save_plan
+
+    plan = an_album()
+    (tmp_path / PLAN_FILE).write_text(json.dumps({**plan.to_dict(), "cover_url": SIGNED_COVER}),
+                                      encoding="utf-8")
+    loaded = load_plan(tmp_path)
+    assert loaded is not None and loaded.cover_url == SIGNED_COVER, "it is read as it stands"
+
+    save_plan(loaded, tmp_path)
+
+    assert "token-hash" not in (tmp_path / PLAN_FILE).read_text(encoding="utf-8")
+    assert json.loads((tmp_path / PLAN_FILE).read_text(encoding="utf-8"))["cover_url"] is None
+
+
+@pytest.mark.parametrize("marker", ["token", "Policy", "Signature", "Key-Pair-Id"])
+def test_no_written_value_of_a_private_album_carries_a_signing_parameter(tmp_path, marker):
+    """The rule as a grep, not as a list of fields somebody has to remember to extend. Every value of
+    a written plan is searched, whatever field it sits in and however deep."""
+    from noaap.download import written
+
+    plan = an_album()
+    plan.cover_url = f"https://c10.mediahost.invalid/1.jpeg?{marker}=abc123"
+    plan.cover_fallback_url = f"https://d.cloudfront.invalid/2.jpg?Expires=1&{marker}=xyz"
+    plan.tracks[0].candidates[0].why = f"taken from https://c10.mediahost.invalid/3?{marker}=nope"
+    plan.source_state = {"art": f"https://c10.mediahost.invalid/4?{marker}=deep"}
+
+    text = json.dumps(written(plan, tmp_path))
+
+    assert marker.lower() not in text.lower(), f"a private plan carries {marker}: {text}"

@@ -41,6 +41,8 @@ log = logging.getLogger(__name__)
 NAME = "patreon"
 HOST = "patreon.com"
 BASE = f"https://www.{HOST}/"
+# where a post's images and files live; a page it is not, and it is read as neither
+MEDIA_HOST = "patreonusercontent.com"
 
 # `patreon.com/posts/<id>` (with or without a slug before it) is a post — the unit this provider
 # treats as a collection. A campaign is an owner: `/<vanity>`, `/c/<vanity>`, `/cw/<vanity>`,
@@ -169,6 +171,12 @@ def _copy_audio(video: Path, out: Path) -> None:
                                   + (ytdlp.one_sentence(done.stderr) or "ffmpeg refused"))
 
 
+def _is_media_address(url: str) -> bool:
+    """An address of Patreon's media host — a file, not a page. Never a post or campaign address."""
+    text = (url or "").strip().lower()
+    return text.startswith(("http://", "https://")) and MEDIA_HOST in text
+
+
 def _protected(info: dict[str, Any]) -> bool:
     """Any sign of access control on this post — and it is never argued with (R-249, item 3).
 
@@ -233,6 +241,7 @@ class Patreon:
                  others: Callable[[], list[Any]] | None = None) -> None:
         self.cfg = cfg
         self.cancel = cancel
+        self.last_transfer: dict[str, Any] | None = None
         # **who else there is, from the caller** (R-241, ruling 1). A post is often a YouTube or
         # SoundCloud link with a note, and saying whose that audio is takes asking them — but a
         # provider does not build a configuration, its own or anybody else's, to find out. The adapter
@@ -442,6 +451,7 @@ class Patreon:
         Patreon offers whatever the creator uploaded and nothing else, so `choice` has nothing to
         decide here — it stays in the signature because every provider answers the same call.
         """
+        self.last_transfer = None   # what the last download cost, for whoever reports it
         if (post := video_post(ref)) is not None:
             return self._audio_out_of_video(post, into)
         media = media_id(ref)
@@ -495,6 +505,12 @@ class Patreon:
             video = max(arrived, key=lambda f: f.stat().st_size)
             out = into / f"{post}.{suffix}"
             _copy_audio(video, out)
+            # **what this cost is reported, not buried in a log nobody turns on** (§9, slice 73). The
+            # first live fetch was asked for exactly these two numbers and could not answer: they were
+            # written at INFO and the run was not verbose. A download that throws most of itself away
+            # says so where the track line is.
+            self.last_transfer = {"downloaded": video.stat().st_size, "kept": out.stat().st_size,
+                                  "thrown_away": "video"}
             log.info("patreon %s: %d byte(s) of video carried %d byte(s) of audio, and the video is gone",
                      post, video.stat().st_size, out.stat().st_size)
             return out
@@ -519,18 +535,33 @@ class Patreon:
         return entry
 
     def fetch_bytes(self, address: str) -> bytes:
-        """The post's image, or the campaign's — whichever this address is."""
+        """The post's image, the campaign's, or **an image address already in hand**.
+
+        The third case is why this changed (§9, slice 73). A cover address that a post read gave us
+        minutes ago was handed back here and re-read *as though it were a post*: not a post address,
+        not a campaign address, so it went to yt-dlp's extractor as a page — which is not what a JPEG
+        is. The live run reported `could not fetch any cover` for an address whose signature was good
+        for another two weeks. An address of the media host is now simply fetched, with the session
+        and the referer a browser would send.
+        """
+        if _is_media_address(address):
+            return self._image_bytes(address)
         info = self._read(address if post_id(address) else (campaign_of(address) or address),
                           extract_flat=True)
         url = _image(info)
         if not url:
             raise sources.SourceError(f"no cover for {address}")
+        return self._image_bytes(url)
+
+    def _image_bytes(self, url: str) -> bytes:
+        """One GET, with this provider's session and the referer its host expects."""
+        from yt_dlp.networking import Request
+
         with YoutubeDL(self._options()) as ydl:
             try:
-                data = ydl.urlopen(url).read()
+                return ydl.urlopen(Request(url, headers={"Referer": BASE, "Accept": "image/*,*/*"})).read()
             except Exception as e:  # a missing cover must never stop an album
                 raise sources.SourceError(f"could not read the cover: {ytdlp.one_sentence(str(e))}") from None
-        return data
 
 
 # -- reading yt-dlp's answers, and nothing else -------------------------------------------

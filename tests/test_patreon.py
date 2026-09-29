@@ -708,3 +708,98 @@ def test_the_refusal_tells_somebody_what_to_do_rather_than_what_it_guesses(clien
     assert str(refused.value) == LAPSED
     assert "open patreon.com" in LAPSED and "bot check" in LAPSED
     assert "gone stale" not in LAPSED, "it no longer asserts which of the two it is"
+
+
+# -- the cover, and what a download cost (§9, slice 73, R-254) --------------------------------------
+
+
+def test_an_image_address_is_fetched_as_an_image_and_not_read_as_a_post(monkeypatch):
+    """The live run said *could not fetch any cover* for an address whose signature was good for
+    another two weeks. The address came from the post read seconds earlier and was handed back to the
+    provider, which — finding it was neither a post nor a campaign address — asked yt-dlp to extract
+    it *as a page*. A JPEG is not a page. It is fetched now, with the session and a referer."""
+    from noaap import patreon as mod
+
+    pt = Patreon(with_session())
+    monkeypatch.setattr(pt, "_read", lambda *a, **k: pytest.fail("an image address was read as a post"))
+    asked: dict[str, Any] = {}
+
+    class FakeYDL:
+        def __init__(self, options): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def urlopen(self, request):
+            asked["url"], asked["headers"] = request.url, dict(request.headers)
+            return type("R", (), {"read": staticmethod(lambda: b"\xff\xd8\xff the bytes")})()
+
+    monkeypatch.setattr(mod, "YoutubeDL", FakeYDL)
+
+    data = pt.fetch_bytes("https://c10.patreonusercontent.com/4/x/1.jpeg?token-hash=abc&token-time=1")
+
+    assert data == b"\xff\xd8\xff the bytes"
+    assert asked["url"].endswith("token-time=1"), "fetched exactly the address it was given"
+    assert any(k.lower() == "referer" for k in asked["headers"]), "with the referer its host expects"
+
+
+def test_a_post_address_still_goes_through_the_post(client):
+    """The other two cases are unchanged: a post address is read as a post, and its image taken."""
+    from noaap import patreon as mod
+
+    seen: dict[str, str] = {}
+
+    class FakeYDL:
+        def __init__(self, options): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def urlopen(self, request):
+            seen["url"] = request.url
+            return type("R", (), {"read": staticmethod(lambda: b"\xff\xd8\xff")})()
+
+    monkeypatch_target = mod.YoutubeDL
+    mod.YoutubeDL = FakeYDL
+    try:
+        client.fetch_bytes("https://www.patreon.com/posts/100004")
+    finally:
+        mod.YoutubeDL = monkeypatch_target
+
+    assert "invented/post.jpg" in seen["url"], "the post's own image, from the post"
+
+
+def test_a_download_that_throws_most_of_itself_away_says_so(monkeypatch, tmp_path):
+    """The first live fetch was asked for bytes downloaded beside bytes kept and could not answer:
+    both numbers existed, in a log that was not turned on. Now the provider keeps them and the run
+    says the line."""
+    from noaap import download as dl
+    from noaap import patreon as mod
+
+    pt = reading(taking_video(), monkeypatch, p100004=recorded("post_video"))
+
+    class FakeYDL:
+        def __init__(self, options): self.options = options
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def download(self, urls):
+            out = Path(self.options["outtmpl"]["default"] if isinstance(self.options["outtmpl"], dict)
+                       else self.options["outtmpl"])
+            (out.parent / "100004.mp4").write_bytes(b"x" * 52_000_000)
+
+    monkeypatch.setattr(mod, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(mod, "_copy_audio", lambda video, out: out.write_bytes(b"a" * 17_000_000))
+
+    assert pt.last_transfer is None, "nothing is claimed before a download"
+    pt.download_audio("patreon:video:100004", tmp_path / "parts")
+
+    assert pt.last_transfer == {"downloaded": 52_000_000, "kept": 17_000_000, "thrown_away": "video"}
+    line = dl.transfer_line(PatreonSource(taking_video()))  # nothing downloaded yet: nothing said
+    assert line is None
+
+    class Moved:
+        def __init__(self):
+            self.last_transfer = {"downloaded": 52_000_000, "kept": 17_000_000, "thrown_away": "video"}
+
+    said = dl.transfer_line(Moved())
+    assert "52.0 MB fetched" in said and "17.0 MB kept" in said and "video was thrown away" in said
+
+    # a provider that keeps no such number, and one where nothing was thrown away, say nothing
+    assert dl.transfer_line(object()) is None
+    assert dl.transfer_line(type("S", (), {"last_transfer": {"downloaded": 5, "kept": 5}})()) is None

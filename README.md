@@ -254,6 +254,12 @@ setting. A post with DRM, a password or any other protection is refused by name,
 attempted against it. The track's copy records that its audio came out of a video, what the file
 measures as, and where its audio stops.
 
+**A private album's plan holds no address of its own.** The addresses Patreon hands out for a paid
+post's image are *signed* — they carry a token in the query — and a signed address is a piece of your
+session, so nothing of the sort is written into a plan. The cover is fetched while the post is being
+read, with the address that read just produced, or it is not fetched at all; a plan written before
+this rule is cleaned the next time anything saves it.
+
 **Nothing from Patreon is offered to anyone else.** A track whose audio came from there cannot be
 published to LRCLIB, its album cannot be seeded to MusicBrainz, and — because a *lookup* also sends a
 title, a creator and a length to somebody else's server — such an album is not looked up at either of
@@ -263,15 +269,17 @@ anyway, set `"lookups": true` in that album's `.ytalbum.json`; nothing in noaap 
 **What it never does:** fetch anything your tier does not include (that post says so and is skipped, and
 the album goes on), fetch for anybody but you, go near DRM or any access control, or crawl a creator.
 
-**It has been run against Patreon on 2026-09-29** — one campaign the owner of this installation
-supports, read with their own Chrome session. What those runs exercised: the session (Chrome's cookie
-store, read by yt-dlp, nothing stored), the campaign listing with `patreon_post_cap = 5` against a
-campaign of 584 posts, and five full post reads. What is still **untried against the live site**:
-downloading, tagging and `update` — the first run found every post of that creator to be video, and
-the second, which was there to fetch one of them as audio, was refused before it began (Patreon
-answers `403` when Cloudflare's `__cf_bm` cookie has expired, which takes thirty minutes). So taking
-audio out of a video post is tested on written fixtures only, and a post holding audio, a locked post
-and an attachment have never been seen at all. Treat all of it as new.
+**It has been run against Patreon on 2026-09-29**, against one campaign the owner of this
+installation supports, with their own Chrome session. What those runs exercised: the session
+(Chrome's cookie store, read by yt-dlp, nothing stored), the campaign listing with
+`patreon_post_cap = 5` against a campaign of 584 posts, five full post reads, and — at the end of the
+day — **one real fetch**: the shortest of the five posts, a 23½-minute narration, its audio copied out
+of the video (16.6 MB kept, aac 96 kbps, 44.1 kHz, length matching the source manifest to four
+decimals, measured cutoff 15 kHz), tagged, and `update` run once over it, which changed nothing.
+What is still **untried against the live site**: a post that holds audio as a file, a post with
+attachments, a post outside the tier, more than one post in a run, and the cover (the one cover this
+provider has been asked for could not be fetched, which is what led to the fix in the paragraph
+above). Treat those as new.
 
 Two things that run taught, both of them traps:
 

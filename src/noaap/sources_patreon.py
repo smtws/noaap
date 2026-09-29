@@ -67,6 +67,15 @@ class PatreonSource:
     def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
         return self.pt.download_audio(ref, into, choice)
 
+    @property
+    def last_transfer(self) -> dict[str, Any] | None:
+        """What the last download moved and what it kept, when they differ (§9, slice 73).
+
+        Optional on any provider: the core asks with `getattr` and says nothing when nobody answers.
+        Only this one has an answer, because only here does a download throw most of itself away.
+        """
+        return self.pt.last_transfer
+
     def probe(self, ref: str) -> Entry:
         return self.pt.probe(ref)
 

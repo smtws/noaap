@@ -431,7 +431,7 @@ class Service:
         todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
         run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan),
-            on_track=self.on_track, check=self.check,
+            on_track=self.on_track, check=self.check, say=self.log,
             lyrics=self.lrclib if self.may_look_up(plan) else None)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))

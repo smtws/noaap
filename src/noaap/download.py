@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from collections.abc import Callable, Iterator
@@ -177,6 +178,48 @@ def widen_candidates(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+# What a signed address looks like, whoever signed it: Patreon's own `token-hash`/`token-time`, and
+# the CloudFront and S3 parameters every other CDN uses. A guard in the suite greps a written plan for
+# these, because the rule is not "we remembered to strip the cover" but "nothing of the session is in
+# the file" (§9, slice 73).
+SIGNED = re.compile(r"[?&](token-hash|token-time|token|policy|signature|key-pair-id|expires|"
+                    r"x-amz-[a-z-]+)=", re.I)
+# the fields that hold an address of the collection rather than of the program's own making
+ADDRESS_FIELDS = ("cover_url", "cover_fallback_url", "thumbnail", "art_url")
+
+
+def kept_private(data: dict[str, Any], provider: str | None) -> dict[str, Any]:
+    """Drop what a private source's plan may not carry (§9, slice 73).
+
+    **Decision: none, rather than the address without its query.** A signed address is a piece of the
+    session and is never written; a *de-signed* one is worse than nothing — it answers 403 for ever,
+    looks like a live address to every pass that reads the field, and would be retried on every run.
+    The only honest source of a private album's cover is the provider, at the moment the cover is
+    wanted, from a read it makes then. So the field is empty and the fetch asks again.
+
+    It runs on **every** save, so a plan written before this rule existed is cleaned the next time
+    anything writes it — which is what `repair` does to a whole library in one pass.
+    """
+    from . import sources
+
+    if not sources.private(provider):
+        return data
+    for name in ADDRESS_FIELDS:
+        if data.get(name):
+            data[name] = None
+    # and a belt for anything holding one that nobody thought of: a value is dropped, never trimmed
+    def sweep(value: Any) -> Any:
+        if isinstance(value, str):
+            return None if SIGNED.search(value) else value
+        if isinstance(value, dict):
+            return {k: sweep(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [sweep(v) for v in value]
+        return value
+
+    return {k: sweep(v) for k, v in data.items()}
+
+
 def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
     """The exact object a save puts in the file — **the one place that decides it** (§9, slice 60).
 
@@ -184,7 +227,7 @@ def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
     whether a save would change it; both ask here rather than rebuilding the rule, because a second
     copy of it is a second thing to get wrong.
     """
-    out = narrow_candidates(portable(plan.to_dict(), album_dir))
+    out = kept_private(narrow_candidates(portable(plan.to_dict(), album_dir)), plan.provider)
     # **only a plan that really holds one says so.** Every YouTube and SoundCloud album keeps
     # schema 1 and stays byte-for-byte what it was, readable by ytalbum 0.9.1 and by every noaap
     # up to 1.5.0 (R-207, ruling 1).
@@ -376,6 +419,25 @@ def _put_away(album_dir: Path, plan: AlbumPlan, track: PlanTrack, final: Path) -
             track.filename = now
 
 
+def transfer_line(provider: Any) -> str | None:
+    """What the last download moved, when a provider has an answer and the two numbers differ.
+
+    Optional everywhere (§9, slice 73): asked with `getattr`, and silent when the provider does not
+    keep the number or when nothing was thrown away. It exists because a download that fetches 52 MB
+    to keep 17 is a fact somebody should see once, and the first live run of such a fetch could not
+    report it — the numbers were written to a log that was not turned on.
+    """
+    moved = getattr(provider, "last_transfer", None)
+    if not isinstance(moved, dict):
+        return None
+    got, kept = moved.get("downloaded"), moved.get("kept")
+    if not got or not kept or got <= kept:
+        return None
+    away = moved.get("thrown_away") or "the rest"
+    return (f"{got / 1e6:.1f} MB fetched, {kept / 1e6:.1f} MB kept "
+            f"({away} was thrown away, {100 - kept * 100 // got}% of it)")
+
+
 def run(
     plan: AlbumPlan,
     album_dir: Path,
@@ -388,6 +450,7 @@ def run(
     check: Callable[[], None] = lambda: None,
     download: bool = True,
     lyrics: LyricsAPI | None = None,
+    say: Callable[[str], None] = lambda line: None,
 ) -> AlbumPlan:
     """Download, tag and place every track that is not done yet; rename/retag finished ones.
 
@@ -486,7 +549,10 @@ def run(
             _follow_source(whose, track)  # whose upload this really is, and how long it runs
         for attempt in range(1, ATTEMPTS + 1):
             try:
-                tmp = whose(track).audio(track.effective_id, parts, track.audio_choice)
+                provider = whose(track)
+                tmp = provider.audio(track.effective_id, parts, track.audio_choice)
+                if line := transfer_line(provider):
+                    say(f"  {track.number:02d} {line}")
                 # **the file decides what it is.** `ext` was only ever set from a YouTube audio
                 # choice — opus, or m4a for a combined stream — so a provider that hands over an
                 # mp3 or a flac would have had it filed under `.opus`, tagged as Opus (which
@@ -593,20 +659,29 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
 
     if not fetch:
         return None
+    why: list[str] = []
     for url in filter(None, (plan.cover_url, plan.cover_fallback_url)):
-        if found := _download_cover(url, source):
+        if found := _download_cover(url, source, why):
             return _save_cover(plan, album_dir, *found)
     if plan.cover_url:
-        log.warning("could not fetch any cover for %s", plan.cover_url)
+        log.warning("could not fetch any cover for %s%s", plan.cover_url,
+                    f" — {'; '.join(dict.fromkeys(why))}" if why else "")
     return None
 
 
-def _download_cover(url: str, source: Source) -> tuple[str, bytes] | None:
+def _download_cover(url: str, source: Source, why: list[str] | None = None) -> tuple[str, bytes] | None:
+    """The cover bytes, or None — and `why` collects the reasons, because *could not* is not a reason.
+
+    The live Patreon fetch warned `could not fetch any cover` and the reason was at debug level,
+    where nobody saw it; the address turned out to be good and the request shape wrong (§9, slice 73).
+    """
     for candidate in cover_candidates(url, source):
         try:
             data = source.art(candidate)
         except Exception as e:  # a missing cover must never stop the album
             log.debug("cover %s not available: %s", candidate, e)
+            if why is not None:
+                why.append(str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__)
             continue
         if image_mime(data):
             return url, data

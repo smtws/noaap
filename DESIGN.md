@@ -2045,9 +2045,9 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    music or album shaped"*. All five posts are Mux HLS video — four `avc1`+`mp4a` renditions, no
    audio-only format, English subtitles, `has_drm: false` — narrated stories, an episode each, one
    `id` that is the post's own. So the provider refused all five, correctly by R-239 ruling 7, and
-   **the download half of this provider is still untried**: no fetch, no tag, no `update`. A post is
-   still the right unit for a post holding audio; for this creator the honest answer is that there is
-   nothing here to take, not that the mapping is wrong.
+   the download half of this provider was untried at that point — it was exercised the same evening
+   (slice 73). A post is still the right unit for a post holding audio; for this creator the honest
+   answer is that there is nothing here to take *as audio*, not that the mapping is wrong.
 
 72. ✅ **The audio inside a video post, and what a private source is** (2026-09-29, P59). The user's
    creator posts audiobooks as video, so the provider that refused every one of them was refusing the
@@ -2082,6 +2082,33 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    expiry only). The refusal used to say *its session has gone stale*; it now names the one action
    that fixes either cause and claims neither. Taking audio out of a video post is therefore tested
    on written fixtures and **not yet on the live site**, which the README says in those words.
+
+73. ✅ **One post fetched, and what the plan may not remember** (2026-09-29, P59b). The live run of
+   slice 72 finally happened: the shortest of five posts, a 23½-minute narration, audio copied out of
+   the video in 1 min 20 s — **16.6 MB kept**, aac 96 kbps, 44.1 kHz, length matching the source
+   manifest to four decimals, cutoff 15 kHz, no video anywhere afterwards, and `update` over it
+   changed nothing (same digest before and after). It also left three defects behind, and every one
+   of them was found by somebody *looking at what the run wrote* rather than by the run passing.
+   **A signed address is a piece of the session, and the plan had stored one.** The cover address of
+   a paid post carries a token in its query; the plan kept it in `cover_url`. The rule was already
+   written — *nothing of the session is stored* — and it had been read as being about cookies.
+   **Decision: none, not the address without its query.** A de-signed address is worse than no
+   address: it answers 403 for ever, it looks live to every pass that reads the field, and it would
+   be retried on every run. A private album's plan holds no address; the cover is fetched from the
+   read that is happening anyway, or not at all. The stripping lives in the one place that decides
+   what a save writes, so a plan written before the rule is cleaned by the next save — and the guard
+   is a grep over **every value** of a written plan for `token`, `Policy`, `Signature`,
+   `Key-Pair-Id`, not a list of fields somebody has to remember to extend.
+   **The cover failure was not what I said it was.** I reported that its token had expired; it had
+   not — it was good for another two weeks. The address was fine and the *request* was wrong: an
+   image address, handed back to the provider, was neither a post address nor a campaign address, so
+   it went to yt-dlp's extractor as a page. A JPEG is not a page. Addresses of the media host are
+   fetched as files now, with the session and a referer. And the warning says the reason: *could not*
+   is not a reason, and the reason had been at debug level where nobody reads it.
+   **A number that exists in a log nobody turns on does not exist.** The task asked for bytes
+   downloaded beside bytes kept and the program could not answer, though both numbers had been
+   measured. A provider may now say what its last download moved, the core asks with `getattr`, and a
+   fetch that throws most of itself away says so on the track's own line.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
