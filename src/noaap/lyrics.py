@@ -29,7 +29,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from . import config, user_agent
+from . import config, sources, user_agent
 from .models import AlbumPlan, PlanTrack, Provenance
 from .tag import measured_length, tagged_lyrics
 from .text import key as text_key
@@ -656,6 +656,12 @@ def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
     The rules are all one idea: **only offer what is the user's own work and would be new to them.**
     A publish cannot be taken back, so every doubt resolves to "no".
     """
+    if sources.private_track(track):
+        # **nothing from a private source is offered to anyone** (§9, slice 72). The user, about the
+        # audiobooks their creator posts: *"i guess the authors wouldnt be thrilled to find those on
+        # musicbrainz"*. It is first because it is the one reason that does not depend on the words.
+        return ("this track's audio came from a source one person paid its creator for, and nothing "
+                "from there is given to anybody else")
     if track.state != "done":
         return "there is no file beside these words yet"
     if (track.lyrics or "") == "instrumental":

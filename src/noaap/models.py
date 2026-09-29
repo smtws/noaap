@@ -219,6 +219,11 @@ class Candidate:
     # `adopt` of 2000 files from 167 s to 700 s for a question those passes never ask.
     audio_sha: str | None = None
     audio_sha_by: str | None = None
+    # **this audio was copied out of a video** (§9, slice 72). It is here because a track whose file
+    # came out of a video post is not the same claim as one a creator uploaded as audio, and whoever
+    # looks at the plan in a year is owed that fact rather than a codec that happens to be AAC. It is
+    # also what makes the core measure this file's cutoff: an unusual provenance earns one decode.
+    from_video: bool = False
     added_by: str = "source"             # source | user | pass
     # a copy the merge pass found and could not rank against the one in use (§9, slice 55). It is
     # listed and nothing was copied: the pass had two files' numbers and no reason to prefer either,
@@ -406,6 +411,11 @@ class AlbumPlan:
     # Both default to false, which is every album noaap fetched itself.
     keep_names: bool = False   # do not rename its files and do not move its folder
     keep_tags: bool = False    # write nothing into its audio files, by any pass
+    # **whether anything about this album may be asked of lrclib or MusicBrainz** (§9, slice 72).
+    # `None` leaves the decision to the provider, which is what every album has said until now; a
+    # private source means no, and only the owner of the album can say otherwise, by setting this to
+    # `true` for that one album. Nothing sets it automatically.
+    lookups: bool | None = None
     # what it looked like when noaap adopted it, so it can be given back (§9, slice 58):
     # {"folder": <path at adoption>, "at": <ISO date>}. Per track, `adopted_name`/`adopted_tags`.
     adopted: dict[str, Any] = field(default_factory=dict)

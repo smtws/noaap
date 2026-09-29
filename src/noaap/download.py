@@ -310,6 +310,15 @@ def _measure_candidate(track: PlanTrack, path: Path) -> None:
         candidate.length = track.file_length or candidate.length
         for name, value in audio_quality(path).items():
             setattr(candidate, name, value)
+        if candidate.from_video:
+            # **audio that came out of a video earns one decode** (§9, slice 72). Every other
+            # download is trusted to be what its source called it; this one is a stream copied out
+            # of a picture nobody kept, so where it stops is written down at the moment the file
+            # exists — it is the number the next pass would otherwise have to guess at.
+            from .spectrum import measure as spectrum_of
+
+            band = spectrum_of(path)
+            candidate.cutoff_khz, candidate.full_band = band.cutoff, band.full
 
 
 def library_of(album_dir: Path, plan: AlbumPlan) -> Path | None:

@@ -20,7 +20,7 @@ from typing import Any
 from . import sources
 from .config import Config
 from .models import Collection, Entry, SourceRef
-from .patreon import NAME, Patreon, campaign_of, is_address, one_ref
+from .patreon import NAME, Patreon, campaign_of, is_address, one_ref, post_url, video_post
 from .titles_patreon import clean_title, creator_is_artist
 
 
@@ -50,7 +50,14 @@ class PatreonSource:
         return is_address(address)
 
     def capabilities(self) -> frozenset[str]:
-        return frozenset({sources.LISTING, sources.CHANGES, sources.CLEAN})
+        """…and `PRIVATE`: a post is what one patron paid one creator for (§9, slice 72).
+
+        The user's own words about their creator: *"i guess the authors wouldnt be thrilled to find
+        those on musicbrainz"*. So nothing from here is published to lrclib or seeded to MusicBrainz,
+        and nothing about such an album — its title, its creator, its length — is sent to either of
+        them even to ask a question.
+        """
+        return frozenset({sources.LISTING, sources.CHANGES, sources.CLEAN, sources.PRIVATE})
 
     # -- required ----------------------------------------------------------------------
 
@@ -92,10 +99,12 @@ class PatreonSource:
     def url_for(self, ref: str) -> str | None:
         """A media has no page of its own; its post does, and that is the honest link.
 
-        Only the provider may build a link from a ref (§9, slice 51) — and here it cannot: a media ref
-        does not carry its post. So there is no link, rather than a wrong one.
+        Only the provider may build a link from a ref (§9, slice 51). A **media** ref does not carry
+        its post, so there is no link rather than a wrong one — but the ref for the audio inside a
+        post's video carries the post itself, and that link is the post's own page (§9, slice 72).
         """
-        return None
+        post = video_post(ref)
+        return post_url(post) if post else None
 
     def is_release(self, collection: Collection) -> bool:
         """**Never.** Nothing on Patreon is a release: a post is a thing somebody posted, and calling

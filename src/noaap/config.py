@@ -150,6 +150,11 @@ class Config:
     # how many of a campaign's posts a listing reads before it stops and says so. A creator with two
     # thousand posts is not a library and nobody asked for a backup of them (§9, slice 70).
     patreon_post_cap: int = 200
+    # **off, and it stays off until somebody says otherwise** (§9, slice 72). A creator who posts a
+    # narrated story as video has audio in it and nothing else; with this on, that audio is copied out
+    # — never re-encoded, never the picture, and never for a post with any protection on it. Off, such
+    # a post is refused in a sentence that names this setting.
+    patreon_audio_from_video: bool = False
     # bgutil PO-token generator, needed for some streams (DESIGN.md §3.9).
     # "server": local HTTP server started on demand, stops after pot_idle seconds idle
     # (script mode stays configured as fallback); "script": a Node process per request; "off".
@@ -245,6 +250,7 @@ def load(path: Path | None = None) -> Config:
     cfg.patreon_cookies_from_browser = data.get("patreon_cookies_from_browser") or None
     if cap := data.get("patreon_post_cap"):
         cfg.patreon_post_cap = int(cap)
+    cfg.patreon_audio_from_video = bool(data.get("patreon_audio_from_video", False))
     if pot := data.get("pot_provider_home"):
         cfg.pot_provider_home = Path(pot).expanduser()
     cfg.pot_mode = str(data.get("pot_mode", "server"))

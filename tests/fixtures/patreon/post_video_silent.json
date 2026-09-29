@@ -1,0 +1,20 @@
+{
+ "id": "100008",
+ "title": "A clip with no sound",
+ "webpage_url": "https://www.patreon.com/posts/100008",
+ "uploader": "acreator",
+ "channel": "A Creator",
+ "channel_id": "70001",
+ "timestamp": 1758200000,
+ "ext": "mp4",
+ "protocol": "m3u8_native",
+ "has_drm": false,
+ "acodec": "none",
+ "vcodec": "avc1.64002a",
+ "url": "https://manifest.edgemv.invalid/silent.m3u8",
+ "formats": [
+  {"format_id": "294", "ext": "mp4", "protocol": "m3u8_native", "height": 270,
+   "vcodec": "avc1.64001e", "acodec": "none", "tbr": 294.8,
+   "url": "https://manifest.edgemv.invalid/silent.m3u8"}
+ ]
+}

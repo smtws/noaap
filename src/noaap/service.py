@@ -155,6 +155,19 @@ class Service:
         self._mb = mb
         self._lrclib = lrclib
 
+    def may_look_up(self, plan: AlbumPlan) -> bool:
+        """Whether anything about this album may be asked of lrclib or MusicBrainz (§9, slice 72).
+
+        A private source means no, and it means no for the *question* as much as for the answer: a
+        lookup sends a title, a creator and a duration to somebody else's server, and for an album a
+        patron paid a creator for, nobody asked for that to happen. The album's owner can say
+        otherwise for that one album by setting `"lookups": true` in its plan; nothing sets it for
+        them, and no pass ever changes it.
+        """
+        if plan.lookups is not None:
+            return plan.lookups
+        return not sources.private_album(plan, self.cfg)
+
     def check(self) -> None:
         """Stop here if the job was cancelled (only called where stopping is safe)."""
         if self.cancel is not None and self.cancel.is_set():
@@ -227,7 +240,10 @@ class Service:
             self.log(msg)
             return Outcome("failed", plan, message=msg)
 
-        if mb := self.mb:
+        if not self.may_look_up(plan):
+            self.log("  nothing about this album is looked up anywhere: its audio came from a source "
+                     "one person paid for (set \"lookups\": true in its plan to change that)")
+        if (mb := self.mb) and self.may_look_up(plan):
             stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")),
                            source=self.source_for(plan))
             self.log("MusicBrainz: " + ("release matched" if stats["release"] else f"{stats['tracks']}/{stats['looked_up']} tracks matched"))
@@ -414,7 +430,9 @@ class Service:
     def execute(self, plan: AlbumPlan, album_dir: Path) -> Outcome:
         todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, lyrics=self.lrclib)
+        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan),
+            on_track=self.on_track, check=self.check,
+            lyrics=self.lrclib if self.may_look_up(plan) else None)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))
         if any(t.error_kind == Failure.BOT_CHECK for t in failed):
@@ -705,6 +723,11 @@ class Service:
             albums = [(d, p) for d, p in albums if p.albumartist.casefold() == artist.casefold()]
         if source_id:
             albums = [(d, p) for d, p in albums if p.source_id == source_id]
+        if kept := [p for _, p in albums if not self.may_look_up(p)]:
+            # said, not silently skipped: a user who asked for lyrics is owed the reason there are none
+            self.log(f"{len(kept)} album(s) are not looked up anywhere: their audio came from a source "
+                     "one person paid for")
+            albums = [(d, p) for d, p in albums if self.may_look_up(p)]
         outcomes: list[Outcome] = []
         for i, (album_dir, plan) in enumerate(albums, 1):
             self.check()
@@ -1017,6 +1040,9 @@ class Service:
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
         album_dir, plan = found
+        if not self.may_look_up(plan):
+            return Outcome("failed", message=("nothing about this album is asked of lrclib: its audio "
+                                              "came from a source one person paid its creator for"))
         track = next((t for t in plan.tracks if t.video_id == video_id), None)
         if not track:
             return Outcome("failed", message="no such track in this album")
@@ -1114,6 +1140,8 @@ class Service:
 
         wanted: list[tuple[AlbumPlan, PlanTrack]] = []
         for _, plan in albums:
+            if not self.may_look_up(plan):
+                continue
             for track in plan.tracks:
                 if track.state != "done" or (track.lyrics or "none") != "none" or not track.file_length:
                     continue

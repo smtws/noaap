@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from . import config, user_agent
+from . import config, sources, user_agent
 from .text import key as text_key
 
 log = logging.getLogger(__name__)
@@ -90,6 +90,9 @@ def seed_release(plan: Any, lengths: dict[str, float] | None = None) -> dict[str
 
 def seedable(plan: Any) -> str:
     """Empty when this album may be offered to MusicBrainz; otherwise why not (§9, slice 43)."""
+    if sources.private_album(plan):
+        return ("this album's audio came from a source one person paid its creator for — it is not "
+                "offered to MusicBrainz, and nothing about it is sent there")
     if plan.mbid:
         return "MusicBrainz already has this release"
     if plan.is_compilation:

@@ -19,7 +19,19 @@ import pytest
 
 from noaap import sources
 from noaap.config import Config
-from noaap.patreon import NOT_IN_TIER, VIDEO_ONLY, Patreon, campaign_of, is_address, media_id, one_ref, post_id, ref_for
+from noaap.patreon import (
+    NO_RENDITION,
+    NOT_IN_TIER,
+    PROTECTED,
+    VIDEO_ONLY,
+    Patreon,
+    campaign_of,
+    is_address,
+    media_id,
+    one_ref,
+    post_id,
+    ref_for,
+)
 from noaap.sources_patreon import PatreonSource
 
 FIXTURES = Path(__file__).parent / "fixtures" / "patreon"
@@ -54,6 +66,8 @@ def client(monkeypatch) -> Patreon:
         "https://www.patreon.com/posts/100004": recorded("post_video"),
         "https://www.patreon.com/posts/100005": recorded("post_embed_youtube"),
         "https://www.patreon.com/posts/100006": recorded("post_embed_unknown"),
+        "https://www.patreon.com/posts/100007": recorded("post_video_drm"),
+        "https://www.patreon.com/posts/100008": recorded("post_video_silent"),
     }
 
     def read(url: str, **extra: Any) -> dict[str, Any]:
@@ -94,9 +108,10 @@ def test_a_post_address_is_not_a_track():
 def test_the_provider_declares_only_what_it_can_do():
     got = PatreonSource(Config()).capabilities()
 
-    assert got == frozenset({sources.LISTING, sources.CHANGES, sources.CLEAN})
+    assert got == frozenset({sources.LISTING, sources.CHANGES, sources.CLEAN, sources.PRIVATE})
     assert sources.SEARCH not in got, "Patreon has no public search of posts by name"
     assert sources.DETAILS not in got, "a track count needs the post read in full"
+    assert sources.private("patreon"), "and what it hands over is nobody else's (§9, slice 72)"
 
 
 # -- and what it refuses to do at all ---------------------------------------------------------------
@@ -277,7 +292,7 @@ def test_trouble_nobody_has_seen_before_is_returned_not_guessed_at():
 @pytest.mark.parametrize("said,kind,says", [
     ("HTTP Error 429: Too Many Requests", sources.Blocked, "refusing requests"),
     ("You do not have access to this post", sources.NoAudio, NOT_IN_TIER),
-    ("Unable to download JSON metadata: HTTP Error 403: Forbidden", sources.Blocked, "gone stale"),
+    ("Unable to download JSON metadata: HTTP Error 403: Forbidden", sources.Blocked, "open patreon.com"),
     ("HTTP Error 404: Not Found", sources.NoAudio, "no longer on Patreon"),
 ])
 def test_and_the_decided_ones_are_raised_by_name(said, kind, says):
@@ -311,8 +326,11 @@ def test_no_fixture_carries_a_session():
         assert not banned.search(text), f"{path.name} mentions something that could be a session"
         assert "@" not in text, f"{path.name} carries what could be an address"
         assert not real_host.search(text), f"{path.name} names a Patreon page that is not invented"
-        assert "patreonusercontent.com/invented/" in text or "patreon.invalid" in text or \
-            "youtube.com" in text or "vimeo.invalid" in text or "campaign" in path.name, \
+        # every media address here is either the invented usercontent path, a host in the reserved
+        # `.invalid` domain (RFC 2606: it can never resolve, which is the property this wants), or a
+        # public embed. A listing has no media address at all, hence the file-name case.
+        assert "patreonusercontent.com/invented/" in text or ".invalid" in text or \
+            "youtube.com" in text or "campaign" in path.name, \
             f"{path.name} has no invented marker"
 
 
@@ -508,3 +526,185 @@ def test_a_video_post_is_refused_in_the_shape_patreon_really_sends(client):
         client.fetch("https://www.patreon.com/posts/100004")
 
     assert str(refusal.value) == VIDEO_ONLY
+
+
+# -- the audio inside a video post (§9, slice 72, R-249) --------------------------------------------
+
+
+def taking_video(**extra: Any) -> Config:
+    """A configuration whose owner has turned the setting on."""
+    return with_session(patreon_audio_from_video=True, **extra)
+
+
+def reading(cfg: Config, monkeypatch, **by_url: dict[str, Any]) -> Patreon:
+    pt = PatreonSource(cfg).pt
+    urls = {f"https://www.patreon.com/posts/{k.lstrip('p')}": v for k, v in by_url.items()}
+    monkeypatch.setattr(pt, "_read", lambda url, **extra: urls[url])
+    return pt
+
+
+def test_off_a_video_post_is_refused_and_the_sentence_names_the_setting(client):
+    """Off is the default and stays it: nothing about a creator's video is taken without being asked."""
+    with pytest.raises(sources.NoAudio) as refusal:
+        client.fetch("https://www.patreon.com/posts/100004")
+
+    assert "patreon_audio_from_video" in str(refusal.value)
+    assert not client.cfg.patreon_audio_from_video
+
+
+def test_on_a_video_post_is_one_track_whose_copy_says_where_it_came_from(monkeypatch):
+    pt = reading(taking_video(), monkeypatch, p100004=recorded("post_video"))
+
+    collection = pt.fetch("https://www.patreon.com/posts/100004")
+
+    assert len(collection.entries) == 1
+    track = collection.entries[0]
+    assert track.title == "Studio video"
+    assert track.video_id == "patreon:video:100004", "the ref says which of the two shapes it is"
+    assert track.ext == "m4a", "an AAC stream copied out of an mp4 lands in an m4a"
+    copy = track.copies[0]
+    assert copy.provider == "patreon" and copy.from_video is True
+    assert "copied out of this post's video" in copy.why
+    # and the post is the collection, exactly as before: no number, no year, no series
+    assert collection.is_playlist and not PatreonSource(taking_video()).is_release(collection)
+
+
+def test_the_rendition_is_chosen_by_its_audio_and_then_by_the_smallest_picture(monkeypatch):
+    """Patreon's ladder carries the same AAC in every rung, so the 270p rung is the whole saving —
+    measured live: 21.9 MB of 270p video for the same audio a 1080p rung would have cost 139 MB."""
+    from noaap.patreon import rendition
+
+    ladder = {"formats": [
+        {"format_id": "1865", "acodec": "mp4a.40.2", "vcodec": "avc1", "tbr": 1865.6, "height": 1080},
+        {"format_id": "294", "acodec": "mp4a.40.2", "vcodec": "avc1", "tbr": 294.8, "height": 270},
+        {"format_id": "972", "acodec": "mp4a.40.2", "vcodec": "avc1", "tbr": 972.4, "height": 720}]}
+    assert rendition(ladder)["format_id"] == "294"
+
+    # better audio wins even when it comes with more picture — the choice is never about the picture
+    mixed = {"formats": [
+        {"format_id": "small", "acodec": "mp4a.40.2", "abr": 64, "vcodec": "avc1", "tbr": 200, "height": 270},
+        {"format_id": "good", "acodec": "mp4a.40.2", "abr": 128, "vcodec": "avc1", "tbr": 1800, "height": 1080}]}
+    assert rendition(mixed)["format_id"] == "good"
+
+    # and an audio-only format has no picture at all, so it wins on its own terms
+    both = {"formats": [
+        {"format_id": "audio", "acodec": "mp4a.40.2", "abr": 128, "vcodec": "none"},
+        {"format_id": "video", "acodec": "mp4a.40.2", "abr": 128, "vcodec": "avc1", "tbr": 1800}]}
+    assert rendition(both)["format_id"] == "audio"
+
+
+def test_a_protected_post_is_refused_by_name_and_nothing_is_attempted(monkeypatch, tmp_path):
+    """`has_drm` on the post or on a rendition. Nothing is downloaded, nothing is opened, nothing is
+    tried once to see (R-249, item 3)."""
+    pt = reading(taking_video(), monkeypatch, p100007=recorded("post_video_drm"))
+    monkeypatch.setattr(pt, "_options", lambda **extra: pytest.fail("a protected post was touched"))
+
+    with pytest.raises(sources.NoAudio) as refusal:
+        pt.fetch("https://www.patreon.com/posts/100007")
+    assert str(refusal.value) == PROTECTED
+
+    with pytest.raises(sources.NoAudio) as again:
+        pt.download_audio("patreon:video:100007", tmp_path)
+    assert str(again.value) == PROTECTED
+
+
+def test_a_video_with_no_audio_stream_says_so(monkeypatch):
+    pt = reading(taking_video(), monkeypatch, p100008=recorded("post_video_silent"))
+
+    with pytest.raises(sources.NoAudio) as refusal:
+        pt.fetch("https://www.patreon.com/posts/100008")
+
+    assert str(refusal.value) == NO_RENDITION
+
+
+def test_the_video_is_gone_when_the_track_is_done(monkeypatch, tmp_path):
+    """The picture is paid for once and never kept: not in the library, not in a temp directory, not
+    after a failure. The scratch directory is remembered here and asserted gone afterwards."""
+    from noaap import patreon as mod
+
+    pt = reading(taking_video(), monkeypatch, p100004=recorded("post_video"))
+    seen: dict[str, Path] = {}
+
+    class FakeYDL:
+        def __init__(self, options): self.options = options
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def download(self, urls):
+            out = Path(self.options["outtmpl"]["default"] if isinstance(self.options["outtmpl"], dict)
+                       else self.options["outtmpl"])
+            seen["scratch"] = out.parent
+            (out.parent / "100004.mp4").write_bytes(b"a pretend rendition")
+
+    monkeypatch.setattr(mod, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(mod, "_copy_audio",
+                        lambda video, out: out.write_bytes(b"the audio, copied"))
+
+    got = pt.download_audio("patreon:video:100004", tmp_path / "parts")
+
+    assert got == tmp_path / "parts" / "100004.m4a" and got.read_bytes() == b"the audio, copied"
+    assert not seen["scratch"].exists(), "the scratch directory is gone"
+    assert [f.name for f in (tmp_path / "parts").iterdir()] == ["100004.m4a"], "no video in the library"
+
+
+def test_the_video_is_gone_when_the_copy_fails(monkeypatch, tmp_path):
+    from noaap import patreon as mod
+
+    pt = reading(taking_video(), monkeypatch, p100004=recorded("post_video"))
+    seen: dict[str, Path] = {}
+
+    class FakeYDL:
+        def __init__(self, options): self.options = options
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def download(self, urls):
+            out = Path(self.options["outtmpl"]["default"] if isinstance(self.options["outtmpl"], dict)
+                       else self.options["outtmpl"])
+            seen["scratch"] = out.parent
+            (out.parent / "100004.mp4").write_bytes(b"a pretend rendition")
+
+    def refuses(video, out):
+        raise sources.SourceError("could not copy the audio out of the video: ffmpeg refused")
+
+    monkeypatch.setattr(mod, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(mod, "_copy_audio", refuses)
+
+    with pytest.raises(sources.SourceError):
+        pt.download_audio("patreon:video:100004", tmp_path / "parts")
+
+    assert not seen["scratch"].exists(), "a failure leaves no video behind either"
+    assert list((tmp_path / "parts").iterdir()) == []
+
+
+def test_a_copy_is_a_copy_and_never_an_encode():
+    """The one thing that must not drift: `-c:a copy`, and no encoder named anywhere near it."""
+    from noaap import patreon as mod
+
+    source = Path(mod.__file__).read_text(encoding="utf-8")
+    line = next(one for one in source.splitlines() if '"-c:a", "copy"' in one)
+    assert '"-vn"' in source and "0:a:0" in source
+    assert "-b:a" not in source and "libmp3lame" not in source and "-acodec" not in line
+
+
+def test_the_post_of_a_video_ref_is_a_link_a_person_can_open():
+    """A media ref carries no post and gets no link; this one carries its post, so it gets the post."""
+    source = PatreonSource(taking_video())
+
+    assert source.url_for("patreon:video:100004") == "https://www.patreon.com/posts/100004"
+    assert source.url_for("patreon:media:900041") is None
+    assert source.one_ref("patreon:video:100004") == "patreon:video:100004"
+
+
+def test_the_refusal_tells_somebody_what_to_do_rather_than_what_it_guesses(client, monkeypatch):
+    """Patreon answers 403 for a lapsed login **and** for Cloudflare's bot check, whose cookie lasts
+    thirty minutes — the P59 live run was refused with a `session_id` good for another year and a
+    `__cf_bm` that had expired 45 minutes before. So the sentence names the one action that fixes
+    either, and claims neither diagnosis."""
+    from noaap.patreon import LAPSED
+
+    with pytest.raises(sources.Blocked) as refused:
+        client._failure(Exception("ERROR: unable to download webpage: HTTP Error 403: Forbidden"),
+                        "https://www.patreon.com/posts/100001")
+
+    assert str(refused.value) == LAPSED
+    assert "open patreon.com" in LAPSED and "bot check" in LAPSED
+    assert "gone stale" not in LAPSED, "it no longer asserts which of the two it is"

@@ -26,6 +26,11 @@ LISTING = "listing"      # say what one owner publishes, given their address (§
 CHANGES = "changes"      # say cheaply whether a collection changed
 DETAILS = "details"      # enrich a search hit with a cover and a track count
 CLEAN = "clean"          # its titles carry conventions worth stripping (DESIGN §5)
+# **what it hands over is nobody else's** (§9, slice 72). One person paid a creator for it: it is not
+# offered to lrclib or MusicBrainz, and nothing about it — not a title, not a creator, not a duration
+# — is sent to either of them to ask a question. A provider declares this; the core enforces it, and
+# never by name, so the next private source inherits the rule instead of being added to a list.
+PRIVATE = "private"
 
 DEFAULT = "youtube"      # a plan with no `provider` was written before providers existed
 
@@ -217,3 +222,39 @@ def _load() -> None:
         sources_soundcloud,
         sources_youtube,
     )
+
+
+# -- what may leave this machine (§9, slice 72) ------------------------------------------------------
+
+
+def private(name: str | None, cfg: Config | None = None) -> bool:
+    """Whether this provider's audio is nobody else's to offer. An unknown name is not private.
+
+    Asked by name so that nothing outside a provider decides it. Building one costs no request: a
+    provider that talks to a site on construction would be broken for other reasons.
+    """
+    if not name:
+        return False
+    try:
+        from .config import Config as Settings
+
+        return can(get(name, cfg or Settings()), PRIVATE)
+    except Exception:      # a provider that cannot be built says nothing about anybody's privacy
+        return False
+
+
+def private_track(track: Any, cfg: Config | None = None) -> bool:
+    """Whether the copy this track actually uses came from a private source."""
+    chosen = track.candidate(track.effective_id) if hasattr(track, "candidate") else None
+    return private(getattr(chosen, "provider", None), cfg)
+
+
+def private_album(plan: Any, cfg: Config | None = None) -> bool:
+    """…and for an album: its own provider, or any track that is using a private copy.
+
+    Both halves are needed: a Patreon album is private as a whole, and one Patreon track inside an
+    album from somewhere else makes that album's offering a decision nobody asked for.
+    """
+    if private(getattr(plan, "provider", None), cfg):
+        return True
+    return any(private_track(t, cfg) for t in getattr(plan, "tracks", []))

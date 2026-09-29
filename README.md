@@ -243,17 +243,35 @@ lists that campaign's posts, newest first, **at most 200 of them** (`patreon_pos
 every post it was handed really belongs to the campaign you asked for. A post that is a YouTube or
 SoundCloud link with a note is read as *that* service's track, because that is whose audio it is.
 
+**A video post's audio, if you ask for it.** Some creators post what is really an audiobook or a
+narration as video. `patreon_audio_from_video = true` takes the **audio stream** out of such a post —
+copied, never re-encoded, so what lands in your library is the creator's own stream bit for bit. The
+rendition is chosen by its *audio* and then by the smallest picture carrying it (Patreon's ladder
+repeats the same AAC at every size, so this is a large saving in bytes and none in quality); the video
+itself is downloaded into a scratch directory outside your library, never kept, and deleted whether
+the copy worked or failed. Off by default, and a video post is then refused in a sentence naming this
+setting. A post with DRM, a password or any other protection is refused by name, and nothing is
+attempted against it. The track's copy records that its audio came out of a video, what the file
+measures as, and where its audio stops.
+
+**Nothing from Patreon is offered to anyone else.** A track whose audio came from there cannot be
+published to LRCLIB, its album cannot be seeded to MusicBrainz, and — because a *lookup* also sends a
+title, a creator and a length to somebody else's server — such an album is not looked up at either of
+them at all. It is what one person paid one creator for. If you want one particular album looked up
+anyway, set `"lookups": true` in that album's `.ytalbum.json`; nothing in noaap sets it for you.
+
 **What it never does:** fetch anything your tier does not include (that post says so and is skipped, and
 the album goes on), fetch for anybody but you, go near DRM or any access control, or crawl a creator.
 
-**It has now been run against Patreon, once, on 2026-09-29** — one campaign the owner of this
-installation supports, its five newest posts, read with their own Chrome session. What that run
-exercised: the session (Chrome's cookie store, read by yt-dlp, nothing stored), the campaign listing
-with `patreon_post_cap = 5` against a campaign of 584 posts, and five full post reads. What it did
-**not** exercise: downloading, tagging or `update`, because every one of those five posts is video
-and this provider does not take a video post's audio track. So a real fetch is still untried, and a
-post holding audio, a locked post and an attachment have still only ever been seen as written
-fixtures. Treat those as new.
+**It has been run against Patreon on 2026-09-29** — one campaign the owner of this installation
+supports, read with their own Chrome session. What those runs exercised: the session (Chrome's cookie
+store, read by yt-dlp, nothing stored), the campaign listing with `patreon_post_cap = 5` against a
+campaign of 584 posts, and five full post reads. What is still **untried against the live site**:
+downloading, tagging and `update` — the first run found every post of that creator to be video, and
+the second, which was there to fetch one of them as audio, was refused before it began (Patreon
+answers `403` when Cloudflare's `__cf_bm` cookie has expired, which takes thirty minutes). So taking
+audio out of a video post is tested on written fixtures only, and a post holding audio, a locked post
+and an attachment have never been seen at all. Treat all of it as new.
 
 Two things that run taught, both of them traps:
 
@@ -896,6 +914,7 @@ confirm — and the change, if there is one to make, is yours.
 | `soundcloud_cookies_from_browser`, `soundcloud_cookies_file` | – | SoundCloud's own, used by nothing else. |
 | `patreon_cookies_from_browser`, `patreon_cookies_file` | – | **Patreon's own**, and required: without one of them every Patreon call refuses. Read from your browser by yt-dlp, never stored or copied. |
 | `patreon_post_cap` | `200` | How many of a campaign's posts a listing reads before it stops and says so. |
+| `patreon_audio_from_video` | `false` | Take the audio stream out of a video post — copied, never re-encoded; the video is deleted and never enters the library. Off, such a post is refused. |
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
 | `lyrics` | `true` | Fetch lyrics from lrclib.net (`.lrc` beside the file + `LYRICS` tag). |
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |

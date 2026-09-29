@@ -2049,6 +2049,40 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    still the right unit for a post holding audio; for this creator the honest answer is that there is
    nothing here to take, not that the mapping is wrong.
 
+72. ✅ **The audio inside a video post, and what a private source is** (2026-09-29, P59). The user's
+   creator posts audiobooks as video, so the provider that refused every one of them was refusing the
+   only thing that creator publishes. `patreon_audio_from_video` — **off by default** — copies the
+   audio stream out of such a post and takes nothing else.
+   **A copy, never an encode.** ffmpeg runs `-vn -map 0:a:0 -c:a copy`, so what lands in the library
+   is the creator's own stream bit for bit; a codec no container on the list can hold is refused
+   rather than transcoded, because a transcode is a different recording wearing the same name.
+   **Chosen by the audio, paid for in picture.** The rendition is picked by its audio (bitrate, then
+   sample rate) and, among equals, by the smallest picture carrying it. Patreon's Mux ladder repeats
+   the same AAC at 270p and 1080p, so this is the whole difference in bytes and none in quality. The
+   video lives in a scratch directory outside the library, is never written into it, and is deleted
+   in `finally` — after success, after a failed copy, after a cancel.
+   **A second ref shape, because the first could not be read back.** A video post's `id` is the
+   *post's* id and the media API knows nothing about it, so the audio inside a post's video is
+   `patreon:video:<post>` rather than `patreon:media:<id>`. It carries its post, which is why it is
+   also the one Patreon ref that can offer a link a person can open.
+   **Anything with protection on it is refused by name** and nothing is attempted against it: DRM on
+   the post or on any rendition, a password, anything yt-dlp marked. A case replaces the option
+   builder with one that fails the test if it is called at all.
+   **And the rule the user asked for in the same breath** (R-250): *"i guess the authors wouldnt be
+   thrilled to find those on musicbrainz"*. Nothing from a private source is offered to anyone — no
+   publish to LRCLIB, no seed to MusicBrainz — and **no lookup either**, because a lookup sends a
+   title, a creator and a duration to somebody else's server to ask a question nobody asked for. It
+   is a **capability**, `sources.PRIVATE`, declared by the provider and enforced by the core: the next
+   private source inherits the rule instead of being added to a list. The album's owner can turn
+   lookups on for one album with `"lookups": true` in its plan, and nothing in the program ever sets
+   it for them — a case greps the source to keep that true.
+   **The live run was refused before it began**, and that is the result: Patreon answers `403` when
+   Cloudflare's `__cf_bm` cookie has expired, which takes thirty minutes, so a session that worked an
+   hour earlier fails with a login valid for another year (checked in the cookie store, names and
+   expiry only). The refusal used to say *its session has gone stale*; it now names the one action
+   that fixes either cause and claims neither. Taking audio out of a video post is therefore tested
+   on written fixtures and **not yet on the live site**, which the README says in those words.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

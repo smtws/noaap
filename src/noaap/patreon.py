@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import subprocess
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -52,12 +55,22 @@ _CAMPAIGN = re.compile(
 # ref is opaque to everyone but this module (§9, slice 51) — it is `patreon:media:<id>` so that a
 # glance at a plan says which provider minted it and nothing has to be guessed from its shape.
 _REF = re.compile(r"^patreon:media:(\d+)$")
+# …and one more shape, for the audio inside a post's video (§9, slice 72). It is deliberately not a
+# media ref: a video post's `id` is the **post's** id, the media API knows nothing about it, and the
+# audio has to be copied out of a rendition rather than downloaded as a file. A ref that says which
+# of the two it is can be read back; one that guesses cannot.
+_VIDEO_REF = re.compile(r"^patreon:video:(\d+)$")
 
 NO_COOKIES = ("Patreon needs your own session: set `patreon_cookies_from_browser` "
               "(for example `firefox`) or `patreon_cookies_file`")
 NOT_IN_TIER = "this post is not in your tier"
-LAPSED = ("its session has gone stale — open patreon.com in the browser noaap reads cookies from, "
-          "then try again")
+# **it says what to do, and does not claim to know which of the two it is** (§9, slice 72). Patreon
+# answers 403 both when a login has lapsed and when Cloudflare wants its bot check again — and the
+# bot-check cookie `__cf_bm` lives **thirty minutes**, so a session that worked an hour ago fails
+# with a login that is perfectly valid. Measured: the P59 live run was refused while `session_id` was
+# good for another year and `__cf_bm` had expired 45 minutes earlier. One action fixes both.
+LAPSED = ("Patreon would not answer for this session — open patreon.com in the browser noaap reads "
+          "cookies from (that renews the login and the bot check alike), then try again")
 _STALE = re.compile(r"HTTP Error 40[13]|forbidden|unauthorized|log ?in|sign ?in", re.I)
 _RATE = re.compile(r"HTTP Error 429|rate.?limit|too many requests", re.I)
 _NO_ACCESS = re.compile(r"do not have access", re.I)
@@ -65,8 +78,16 @@ _GONE = re.compile(r"HTTP Error 404|not found|removed|deleted", re.I)
 
 # What a post may hold that this provider does not take. A video post is not a silent audio rip
 # (R-239, ruling 7), and an embed of a service noaap has no provider for is named, not guessed at.
-VIDEO_ONLY = "this post holds video, not audio"
+VIDEO_ONLY = ("this post holds video, not audio — `patreon_audio_from_video = true` copies the audio "
+              "out of it, and takes nothing else")
+PROTECTED = "this post is protected, and noaap does not go near that"
+NO_RENDITION = "this post's video carries no audio stream to copy"
+# what a copied stream can be put in **without being re-encoded**. Anything else is refused by name:
+# a container that cannot hold this codec would mean transcoding, and transcoding is not copying.
+CONTAINERS = {"aac": "m4a", "mp4a": "m4a", "alac": "m4a", "opus": "opus", "vorbis": "ogg",
+              "mp3": "mp3", "flac": "flac", "ac-3": "eac3", "ec-3": "eac3"}
 CAP = 200  # posts a campaign listing reads at most, before it says so and stops
+COPY_PATIENCE = 900  # seconds ffmpeg gets to copy one stream; a long episode is long
 
 
 def is_address(text: str) -> bool:
@@ -85,7 +106,7 @@ def one_ref(text: str) -> str | None:
     `None` here and is a collection instead.
     """
     text = (text or "").strip()
-    return text if _REF.match(text) else None
+    return text if (_REF.match(text) or _VIDEO_REF.match(text)) else None
 
 
 def media_id(ref: str) -> str | None:
@@ -95,6 +116,16 @@ def media_id(ref: str) -> str | None:
 
 def ref_for(media: str | int) -> str:
     return f"patreon:media:{media}"
+
+
+def video_ref(post: str | int) -> str:
+    """The ref for *the audio inside* this post's video (§9, slice 72)."""
+    return f"patreon:video:{post}"
+
+
+def video_post(ref: str) -> str | None:
+    m = _VIDEO_REF.match((ref or "").strip())
+    return m[1] if m else None
 
 
 def post_id(address: str) -> str | None:
@@ -112,6 +143,86 @@ def campaign_of(address: str) -> str | None:
         return None
     if m := _CAMPAIGN.match(text):
         return f"{BASE}{'m/' + m[1] if m[1] else 'c/' + m[2]}/posts"
+    return None
+
+
+def _copy_audio(video: Path, out: Path) -> None:
+    """Copy the audio stream out of `video` into `out`. **No encoder runs.**
+
+    `-c:a copy` is the whole point: what lands in the library is the creator's own stream, bit for
+    bit, in a container that can hold it. If ffmpeg cannot do that, nothing is left behind and the
+    failure says so — a re-encode would be a different recording wearing the same name.
+    """
+    try:
+        done = subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vn", "-map", "0:a:0",
+             "-c:a", "copy", str(out)],
+            capture_output=True, text=True, errors="replace", timeout=COPY_PATIENCE)
+    except FileNotFoundError:
+        raise sources.SourceError("ffmpeg is needed to copy audio out of a video and was not found") from None
+    except (OSError, subprocess.SubprocessError) as e:
+        out.unlink(missing_ok=True)
+        raise sources.SourceError(f"could not copy the audio out of the video: {e}") from None
+    if done.returncode != 0 or not out.exists() or out.stat().st_size == 0:
+        out.unlink(missing_ok=True)
+        raise sources.SourceError("could not copy the audio out of the video: "
+                                  + (ytdlp.one_sentence(done.stderr) or "ffmpeg refused"))
+
+
+def _protected(info: dict[str, Any]) -> bool:
+    """Any sign of access control on this post — and it is never argued with (R-249, item 3).
+
+    `has_drm` on the post or on any rendition, a password, or a format yt-dlp itself marked. Nothing
+    is attempted against any of them: the refusal names the reason and the post is left alone.
+    """
+    if not isinstance(info, dict):
+        return False
+    if info.get("has_drm") or info.get("_has_drm") or info.get("video_password") or info.get("password"):
+        return True
+    return any(f.get("has_drm") or f.get("_has_drm")
+               for f in (info.get("formats") or []) if isinstance(f, dict))
+
+
+def _audio_of(fmt: dict[str, Any]) -> tuple[float, float]:
+    """How good this rendition's *audio* is: its bitrate, then its sample rate."""
+    return (float(fmt.get("abr") or 0), float(fmt.get("asr") or 0))
+
+
+def _picture_cost(fmt: dict[str, Any]) -> tuple[float, float, float, str]:
+    """How much picture comes with it — the thing we are paying for and throwing away."""
+    return (float(fmt.get("vbr") or fmt.get("tbr") or 0), float(fmt.get("height") or 0),
+            float(fmt.get("filesize") or fmt.get("filesize_approx") or 0),
+            str(fmt.get("format_id") or ""))
+
+
+def rendition(info: dict[str, Any]) -> dict[str, Any] | None:
+    """The one to download: **the best audio, and the smallest picture carrying it** (R-249, item 2).
+
+    Chosen by the audio, never by the picture. Patreon's video posts are one Mux ladder — 270p to
+    1080p — whose renditions carry the *same* AAC stream, so the choice costs nothing in audio and
+    saves the whole difference in bytes: the live run took the 270p rendition for a sixth of the
+    1080p one and the same audio came out. An audio-only format, where one exists, has no picture at
+    all and therefore wins on its own terms.
+    """
+    usable = [f for f in (info.get("formats") or [])
+              if isinstance(f, dict) and (f.get("acodec") or "none") not in ("none", None)
+              and not (f.get("has_drm") or f.get("_has_drm"))]
+    if not usable:
+        # a post read as a single format rather than a ladder still carries one
+        single = info if (info.get("acodec") or "none") not in ("none", None) else None
+        return single
+    best = max(_audio_of(f) for f in usable)
+    return min([f for f in usable if _audio_of(f) == best], key=_picture_cost)
+
+
+def container_for(fmt: dict[str, Any]) -> str | None:
+    """The suffix a *copy* of this audio stream can live in, or None if copying it means changing it."""
+    codec = str(fmt.get("acodec") or "").lower()
+    if not codec or codec == "none":
+        return None
+    for name, suffix in CONTAINERS.items():
+        if codec.startswith(name):
+            return suffix
     return None
 
 
@@ -197,9 +308,7 @@ class Patreon:
             if (entry := self._entry(item, position, info)) is not None:
                 entries.append(entry)
         if not entries:
-            raise sources.NoAudio(NOT_IN_TIER if info.get("availability") == "needs_auth"
-                                  else VIDEO_ONLY if _has_video(info) else
-                                  "this post holds nothing noaap can take")
+            raise sources.NoAudio(self._why_nothing(info))
         creator = (info.get("channel") or info.get("uploader") or "").strip() or None
         return Collection(
             source_url=post_url(post), source_id=post_url(post),
@@ -211,6 +320,20 @@ class Patreon:
             # the post's own date, which is real — and is not a release year
             modified=_date(info.get("timestamp")),
         )
+
+    def _why_nothing(self, info: dict[str, Any]) -> str:
+        """Which of the four reasons this post gave us nothing — named, never a shrug."""
+        if info.get("availability") == "needs_auth":
+            return NOT_IN_TIER
+        if _protected(info):
+            return PROTECTED
+        if _has_video(info):
+            if not self.cfg.patreon_audio_from_video:
+                return VIDEO_ONLY
+            chosen = rendition(info)
+            if chosen is None or container_for(chosen) is None:
+                return NO_RENDITION
+        return "this post holds nothing noaap can take"
 
     def _entry(self, item: dict[str, Any], position: int, post: dict[str, Any]) -> Entry | None:
         """One media of a post, or `None` for what this provider does not take.
@@ -232,7 +355,26 @@ class Patreon:
             return Entry(video_id=ref, position=position, title=_title(item, post), channel=creator,
                          duration=_seconds(item.get("duration")), copies=[copy])
         if _is_video(item):
-            return None
+            # **off by default, and the refusal names the setting** (R-249, item 1). A creator who
+            # posts a narrated story as video has audio in it and nothing else; with the setting on
+            # that audio is copied out, and the picture is paid for once and thrown away.
+            if not self.cfg.patreon_audio_from_video or _protected(item) or _protected(post):
+                return None
+            chosen = rendition(item) or rendition(post)
+            if chosen is None or (suffix := container_for(chosen)) is None:
+                return None
+            ref = video_ref(_post_key(item, post))
+            if video_post(ref) is None:      # same rule as a media ref: unreadable is not a ref
+                log.info("not a Patreon post id, so not ours: %r", _post_key(item, post))
+                return None
+            copy = Candidate(ref=ref, provider=NAME, added_by="source",
+                             why="the audio copied out of this post's video", when=_today(),
+                             from_video=True, length=_seconds(item.get("duration")))
+            return Entry(
+                video_id=ref, position=position, title=_title(item, post), channel=creator,
+                duration=_seconds(item.get("duration")), thumbnail=_image(item) or _image(post),
+                ext=suffix, copies=[copy],
+            )
         if (media := item.get("id")) is None:
             return None
         # **a ref this provider could not read back is not a ref** (found by handing the providers in:
@@ -300,6 +442,8 @@ class Patreon:
         Patreon offers whatever the creator uploaded and nothing else, so `choice` has nothing to
         decide here — it stays in the signature because every provider answers the same call.
         """
+        if (post := video_post(ref)) is not None:
+            return self._audio_out_of_video(post, into)
         media = media_id(ref)
         if not media:
             raise sources.NotSupported(f"not a Patreon media ref: {ref}")
@@ -318,8 +462,53 @@ class Patreon:
             raise sources.NoAudio(f"nothing arrived for {ref}")
         return max(fresh, key=lambda p: p.stat().st_size)
 
+    def _audio_out_of_video(self, post: str, into: Path) -> Path:
+        """The audio stream of a post's video, **copied** — one rendition in, one audio file out.
+
+        Never re-encoded: ffmpeg copies the stream into a container that can hold it, and a codec no
+        container on the list can hold is refused rather than transcoded. The video is downloaded
+        only because a container forces it, lives in a scratch directory outside the library, and is
+        deleted in `finally` — whether the copy worked, failed or was interrupted (R-249, item 2).
+        """
+        info = self._read(post_url(post))
+        if _protected(info):
+            raise sources.NoAudio(PROTECTED)
+        chosen = rendition(info)
+        suffix = container_for(chosen) if chosen else None
+        if chosen is None or suffix is None:
+            raise sources.NoAudio(NO_RENDITION)
+        into.mkdir(parents=True, exist_ok=True)
+        scratch = Path(tempfile.mkdtemp(prefix="noaap-patreon-"))
+        try:
+            options = self._options(outtmpl=str(scratch / "%(id)s.%(ext)s"), skip_download=False,
+                                    format=str(chosen.get("format_id") or "best"))
+            with YoutubeDL(options) as ydl:
+                try:
+                    ydl.download([post_url(post)])
+                except DownloadCancelled:
+                    raise sources.Cancelled("stopped") from None
+                except DownloadError as e:
+                    raise self._failure(e, post_url(post)) from None
+            arrived = [f for f in scratch.iterdir() if f.is_file()]
+            if not arrived:
+                raise sources.NoAudio(f"nothing arrived for {post_url(post)}")
+            video = max(arrived, key=lambda f: f.stat().st_size)
+            out = into / f"{post}.{suffix}"
+            _copy_audio(video, out)
+            log.info("patreon %s: %d byte(s) of video carried %d byte(s) of audio, and the video is gone",
+                     post, video.stat().st_size, out.stat().st_size)
+            return out
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+
     def probe(self, ref: str) -> Entry:
         """One media on its own, for a track whose post is not being read as a whole."""
+        if (post := video_post(ref)) is not None:
+            info = self._read(post_url(post))
+            entry = self._entry(info, 1, info)
+            if entry is None:
+                raise sources.NoAudio(self._why_nothing(info))
+            return entry
         media = media_id(ref)
         if not media:
             raise sources.NotSupported(f"not a Patreon media ref: {ref}")
@@ -373,6 +562,18 @@ def _image(info: dict[str, Any]) -> str | None:
         if isinstance(one, dict) and one.get("url"):
             return str(one["url"])
     return None
+
+
+def _post_key(item: dict[str, Any], post: dict[str, Any]) -> str:
+    """This post's own id — from its address first, because that is where it is certainly the post's.
+
+    A video post's `id` **is** the post id (measured on five live posts), but a post read as a
+    playlist of attachments gives each file an id of its own, so the address is asked first.
+    """
+    for one in (item, post):
+        if isinstance(one, dict) and (found := post_id(str(one.get("webpage_url") or ""))):
+            return found
+    return str(post.get("id") or item.get("id") or "")
 
 
 def _title(item: dict[str, Any], post: dict[str, Any]) -> str:

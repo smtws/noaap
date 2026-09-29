@@ -4326,10 +4326,72 @@ every post read was within this patron's access), whether an attachment carries 
 reached**), which formats an audio post offers (**not reached**), and what `changed` costs
 (**not reached**). Four of the five are one post away, and that post has to hold audio.
 
+## BK. The audio inside a video post, and a source nobody else is offered (P59, DESIGN §9, slice 72)
+
+The creator the user pointed at posts **audiobooks as video**, so a provider that refuses every video
+post refuses everything that creator publishes. This package takes the audio out — copied, never
+encoded — and, in the same breath, stops anything from Patreon ever being offered to anyone: the
+user's words, *"not publishable is the right instinct … i guess the authors wouldnt be thrilled to
+find those on musicbrainz"*.
+
+- [x] **BK1** — off, and the refusal names the setting
+
+  `patreon_audio_from_video` defaults to false and nothing turns it on. A video post is refused with
+  a sentence that says which setting takes its audio.
+
+- [x] **BK2** — on, a video post is one track that says where it came from
+
+  The post is still the collection; the track's ref is `patreon:video:<post>` (a video post's `id`
+  **is** the post id, so a media ref could not be read back); `ext` is the container the copied
+  stream can live in; the candidate carries `from_video`, and after the download the core writes the
+  measured codec, bitrate and P52's cutoff onto it — one decode earned by an unusual provenance.
+
+- [x] **BK3** — the rendition is chosen by its audio, then by the smallest picture
+
+  Patreon's Mux ladder repeats the same AAC from 270p to 1080p. Cases: the ladder picks the 270p
+  rung; better audio wins even when it comes with a bigger picture; an audio-only format wins outright.
+
+- [x] **BK4 · R** — protection is refused by name and nothing is attempted
+
+  `has_drm` on the post or on a rendition, a password, anything yt-dlp marked. The case replaces the
+  option builder with one that **fails the test if it is called**, so "refused" means no request was
+  built, not that one was built and thrown away.
+
+- [x] **BK5** — the video is gone, after success and after failure
+
+  Both cases remember the scratch directory the download went into and assert it is gone afterwards,
+  and that the only file beside the track is the audio. A third case greps the module for `-c:a copy`
+  and for the absence of any encoder flag: *a copy that is quietly an encode is a different recording.*
+
+- [x] **BK6 · R** — nothing from a private source is offered to anyone (R-250)
+
+  A capability, `sources.PRIVATE`, not a name: the provider declares it and the core enforces it, and
+  a case greps `src/` to make sure no core file decides privacy by naming a provider.
+  - publishing a private track's words to LRCLIB is refused — and the case gives those words every
+    other quality (timed, the user's own, a finished file beside them) so the refusal can only be
+    about where the audio came from;
+  - seeding its album to MusicBrainz is refused, and **one** private track in a folder album is
+    enough, because an album is offered whole or not at all;
+  - no lookup leaves the machine for such an album: asserted on the client — the stand-in raises on
+    any call — rather than on a network that is not there. The whole-library lyrics pass says how
+    many albums it left out and why.
+  - the owner can set `"lookups": true` on one album; a grep asserts nothing in the program sets it.
+
+- [ ] **BK7 · R** — the live run: **refused before it began**
+
+  Step (a), the listing, answered `403`. Checked in the cookie store afterwards (names and expiry
+  only, no values): `session_id` valid for another year, `__cf_bm` — Cloudflare's bot cookie, **thirty
+  minutes** — expired 45 minutes earlier. So the refusal is the bot check, not the login.
+  - **what follows:** the sentence no longer asserts *its session has gone stale*; it names the one
+    action that renews either. And the fetch, the tag, the measurement and the `update` are still
+    untried against the live site — the README says so in those words rather than implying the
+    fixtures cover it.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BK cases (P59: the audio inside a video post) | 6 of 7 | the live run is the seventh and it was **refused before it began** | The creator posts audiobooks as video, so refusing every video post refused everything they publish. `patreon_audio_from_video`, off by default: the audio stream is **copied** (`-vn -map 0:a:0 -c:a copy`, never an encoder), the rendition is chosen by its audio and then by the smallest picture carrying it (the same AAC rides every rung of Patreon's ladder), and the video lives outside the library and is deleted after success and after failure alike. Protection of any kind is refused without a request being built. With it, R-250: **nothing from a private source is offered to anyone** — no publish, no seed, and no lookup either, since a lookup sends a title, a creator and a length to somebody else's server; it is a capability the provider declares and the core enforces, never a name in a list. The live run answered 403 at the listing: `session_id` good for a year, Cloudflare's 30-minute `__cf_bm` long expired — so the refusal now names the one action that renews either, and the README says plainly that fetching from Patreon is still untried. 1424 pytest + 118 node. |
 | 2026-09-29 | the BJ cases (P58: the first live run against Patreon) | 6 | **4 defects, all found in the first four minutes of using it** | One campaign the user supports, their own Chrome session, `patreon_post_cap = 5` against **584** posts, own XDG directories, a scratch library, nothing kept. Not one of the four was reachable from a fixture: `load()` never read the two Patreon settings out of the config file (the run began with a configuration that did nothing); `service.channel` grouped by YouTube's three tabs, so a listing that read fine printed *this channel has no releases or playlists*; a refusal came out as a traceback because only `NotSupported` was caught; and without `secretstorage` Chrome's cookies decrypt to nothing, so a correct setting answers like a stranger — **6 patreon cookies with it, 2 empty ones without**. Fixtures corrected by hand: a flat listing is `{url, ie_key}` and nothing else, so titles now fall back to the address slug. All five posts are Mux HLS video, refused correctly — so the **download half of this provider is still untried** and the README says exactly that. Also: the ⇄ copies panel is photographed again, one track, one album between its two copies, under the user's condition. 1406 pytest + 118 node. |
 | 2026-09-29 | the BI cases (P56: Patreon as a source) | 7 | 0 in the design; **2 defects of mine, both caught by a guard**; 1 correction of my own proposal | **Never run against Patreon** — written fixtures only, and the section says so. The one live measurement is the one that shaped the package: a metadata read of the *public* post in yt-dlp's own test list answered **403**, because the extractor needs either a `session_id` cookie or TLS impersonation and this install has neither. So no dependency was added and every call without a session refuses by naming its two settings. A post is the collection, the campaign the owner, a media the ref; no track number is invented and `is_release` is false for good. An embed belongs to its own provider, and an embed nobody claims is **not** turned into a Patreon ref — that defect appeared the moment the providers were handed in rather than built, which is the other ruling. The listing checks every post's campaign against the one asked for (yt-dlp #10013 returned *every membership the account had*) and asks for its cap with `playlistend` instead of reading everything and discarding. Tier too low is `NoAudio`, a lapsed session `Blocked`. Nothing of the session is stored, nothing is built — a case makes `Config` and `sources.get` raise — and a guard greps the whole fixture directory for sessions, tokens and real addresses. 1400 pytest + 118 node. |
 | 2026-09-29 | the BH cases (P57: two things the user found in the app) | 2 | 0 in the design; both were **defects the user hit in the installed app** | The rolling lyrics list scrolled the line being sung out of view: `offsetTop` is measured from the nearest positioned ancestor, which inside a table is the `td`. Measured on 173 timed lines — in the **editor's preview** the box sits **645 px** below that `td`, so every step aimed **28 lines** too low and **166 of 173** lines landed outside the box, worst 571 px; in the read-only panel the same mistake is 36 px against a 254 px box, so it only drifts. *The editor is where it is ruinous and the panel is where it hides.* After: **173 of 173 fully in view, 0 px overhang**, at 420 px and 1600 px wide, **171 of 173 with a line's margin**, and the page never scrolled. And a Deepgram draft could not be claimed: the editor sent `words_by` back on every save, so the refusal's own advice was impossible to follow. Now a statement — *I have corrected these words, they are mine* — clears the mark, editing alone does not, the refusal names that control in the page's own words (with a grep case), and `lyrics_timed_by` is untouched. Verified on the user's own track in a copy: saved without the statement it stayed refused; with it the badge went, *yours* stayed and the publish was offered — and never pressed. 1348 pytest + 118 node. |

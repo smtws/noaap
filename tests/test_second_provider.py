@@ -208,7 +208,7 @@ PROVINCES = [
      {"soundcloud.py", "sources_soundcloud.py"}),
     # Patreon's shapes: its host, a post address, a campaign address, and the ref only it can read.
     # `config.py` names the two *settings* and no shape, which is why it is not in here.
-    ("Patreon", r"patreon\.com|patreonusercontent|\bpatreon:media\b|current_user_can_view",
+    ("Patreon", r"patreon\.com|patreonusercontent|\bpatreon:(media|video)\b|current_user_can_view",
      {"patreon.py", "sources_patreon.py"}),
 ]
 
