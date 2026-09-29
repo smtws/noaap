@@ -210,12 +210,19 @@ UNRANKED = "default, not ranked"
 
 
 def stream_sha(path: Path) -> str | None:
-    """A digest of the audio stream alone, or None where ffmpeg cannot be asked.
+    """A digest of the file as ffmpeg re-muxes it — **not of the recording** (§9, slice 66).
 
-    Measured over 2000 files: 80 ms each, 160 s for the collection — against 41 s to hash every
-    byte, which finds **nothing**, because every copy differs in its tags. This finds the 68
-    recordings that collection holds twice. Being the same stream never means discarding one: they
-    are a track on the album and the same track on the best-of, and both are wanted.
+    Measured over 2000 files: 80 ms each, 167 s for the collection — against 41 s to hash every byte,
+    which finds **nothing**, because every copy differs in its tags. Over that untouched collection it
+    finds exactly what the decoded identity finds: 1932 distinct answers, 68 held by more than one file,
+    the same 68 groups. Being the same stream never means discarding one: they are a track on the album
+    and the same track on the best-of, and both are wanted.
+
+    **What it must not be used for is identity.** It includes a trailing ID3v1 or Lyrics3v2 block,
+    because the demuxer hands those over as audio data, so a file and a re-tagged copy of it read as two
+    recordings — 14 of 22 real pairs in one album (catalogue BD8). It stays because it is cheap and true
+    about a *file*, and because `equal here` implies `equal audio`, which makes it a pre-check in that
+    one direction. `tag.decoded_sha` is the identity.
     """
     try:
         done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",

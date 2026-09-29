@@ -133,15 +133,34 @@ def embedded_cover(path: Path) -> bytes | None:
     return None
 
 
+def decoder() -> str:
+    """Which decoder produced an identity, so that two are only ever compared on equal terms.
+
+    A lossy format has no one right answer: another build of ffmpeg may decode an mp3 or an Opus file
+    to other samples. So an identity carries its maker, and where two makers differ the older identity
+    is **measured again, never trusted** (R-227, ruling 1).
+    """
+    try:
+        done = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True,
+                              errors="replace", timeout=PATIENCE)
+    except (OSError, subprocess.SubprocessError):
+        return "decoded/unknown"
+    first = (done.stdout or "").splitlines()[0] if done.stdout else ""
+    version = first.split()[2] if len(first.split()) > 2 else "unknown"
+    return f"decoded/ffmpeg {version}"
+
+
 def decoded_sha(path: Path) -> str | None:
     """A digest of this file's **decoded** audio, or None where ffmpeg cannot be asked (§9, slice 63).
 
-    The question "is this the same recording as that one" asked so that a re-tag cannot change the
-    answer. `sources_folder.stream_sha` copies the stream instead of decoding it, which is far cheaper
-    and answers correctly for two files that were never rewritten — but it called **14 of 22** copies
-    of one real album different from the files they were copied from, because something in the copy's
-    framing changed while the audio did not (catalogue BD8). Deciding that a file may be moved to the
-    bin is not a question to answer with a digest that can say that, so this one decodes.
+    **This is what "the same recording" means here** (§9, slice 66), and the measurement that decided
+    it is worth keeping: `sources_folder.stream_sha` copies the stream instead of decoding it, which is
+    three times cheaper and agrees with this over every untouched file of the reference collection — but
+    it called **14 of 22** copies of one real album different from the files they were copied from. The
+    cause, measured to the byte: 7699 of 7700 packets identical, and the last one 52 bytes against 180,
+    the difference being exactly the **128-byte trailing ID3v1 tag** that ffmpeg's demuxer hands over as
+    audio data and that mutagen dropped when noaap tagged the copy. A digest of packets answers "the
+    same file, trailing tags and all"; only a decode answers "the same recording".
     """
     try:
         done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",

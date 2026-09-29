@@ -3793,16 +3793,23 @@ never written and every comparison below is against it.
     evidence is **P55d** (R-211, ruling 2), after P55b is accepted — and because 1.4.0 and 1.5.0 are
     public, the next version's release notes have to say what happened, to which albums, and how to
     check.
-- [ ] **BD8 · open** — the digest that disagrees with the recording (R-211, ruling 3)
+- [x] **BD8** — the digest that disagrees with the recording (R-211 ruling 3; closed in P55c)
 
   `stream_sha` is `ffmpeg -map 0:a -c copy -f md5`. Of the 22 distinct recordings in the root of
   *Kein Blick Zurück*, it called **14 different from the disc file they were copied from** — while the
-  decoded audio is identical (same PCM md5, same duration, measured on one of them).
-  - **open, and it belongs to P55c**, where a digest becomes an identity: a pass that finds a moved
-    file by its digest cannot use one that says a re-tagged copy is a different recording. The cause is
-    not established — a copy in the single-`update` repro kept its digest, so it is not the copy itself.
-  - what it already costs elsewhere: `merge`'s "this collection holds 68 recordings twice" and every
-    ranking that compares two copies reads through the same digest.
+  decoded audio is identical.
+  - **cause, measured to the byte** on `Ave Maria (Blind)`: **7699 of 7700 packets identical**, and the
+    last one 52 bytes against 180. The difference is exactly the **128-byte trailing ID3v1 tag** in the
+    owner's file, which ffmpeg's demuxer hands over as audio data and which mutagen dropped when noaap
+    tagged the copy. Not the audio, and not the copy: the *tag at the end of the file*.
+  - two remedies that do not work, both measured on the same 64 pairs: stripping ffmpeg's own metadata
+    (`-map_metadata -1 -map_chapters -1 -fflags +bitexact`) and digesting the per-packet md5s without
+    their timestamps. Both still call the 14 different, because the trailing tag is *in* the last packet.
+  - what does work: **decoding**. 24 agree, 22 agree, and the 3 collision cases differ, which is right.
+  - and what it is not: on the untouched collection the two digests agree completely — 2000 files, 1932
+    distinct answers, **68 identities held by more than one file, the same 68 groups**. So P52's figure
+    stands, and nothing in the code ever decided anything on `stream_sha`: the only consumer wrote it
+    onto a candidate. It stays, as a true statement about a *file* and a pre-check in one direction.
 
 ### What this package is really about
 

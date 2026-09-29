@@ -208,9 +208,17 @@ class Candidate:
     cutoff_khz: int | None = None        # where this file's audio stops, measured (§9, slice 54)
     full_band: bool | None = None        # …and whether that is all its sample rate allows
     bytes: int | None = None             # how big the file is, where there is a file
-    # the audio stream's own digest: the same recording in two files, told apart from two
-    # encodings of it (§9, slice 53). Tag edits do not change it; a re-encode does, correctly.
+    # a digest of the file as ffmpeg re-muxes it (§9, slice 53). **Not an identity**: it carries a
+    # trailing ID3v1 tag, so a file and a re-tagged copy of it read as two recordings. Kept because it
+    # is cheap and because equal-here implies equal-audio, which is a pre-check in one direction.
     stream_sha: str | None = None
+    # **what "the same recording" means** (§9, slice 66): a digest of the decoded audio, with the
+    # decoder that produced it. Two are compared only when the makers agree — another build may decode
+    # a lossy file to other samples — and an identity from another maker is measured again, not trusted.
+    # Filled the first time a pass needs identity, not during a collection read: that would take every
+    # `adopt` of 2000 files from 167 s to 700 s for a question those passes never ask.
+    audio_sha: str | None = None
+    audio_sha_by: str | None = None
     added_by: str = "source"             # source | user | pass
     # a copy the merge pass found and could not rank against the one in use (§9, slice 55). It is
     # listed and nothing was copied: the pass had two files' numbers and no reason to prefer either,
