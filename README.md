@@ -261,6 +261,15 @@ those plans recorded only the bare name of a file in a sub-folder, and the first
 copied it into the album's root. `repair` looks each file up where your collection says it is, and a
 finished track of an adopted album is never fetched again in any case.
 
+**A file you renamed or moved is found again: `noaap repair --find-moved`.** It asks what a file
+*holds*, not what it is called — so a track you renamed, or moved into a disc folder, is re-attached to
+its plan. Reports only until you add `--apply`, and **no file is ever moved or written by it**: what
+changes is what the plan says. It never guesses: where two files hold the same recording, or none does,
+the track is named and left as it is. A file that ended up in **another album** is named too, and not
+taken — that album's plan is not this one's to write. Renaming a whole album folder needs none of this,
+because a plan travels with its folder. And if the folder an album was **taken in from** has moved,
+`--find-moved --under <where it is now>` points the album at it, by the same question.
+
 **And if that already happened, `noaap repair --strays` takes the copies back out.** It looks in the
 root of every adopted album whose discs are sub-folders, and moves a file to the recycle bin only when
 all four of these are true: the name is one the plan points at or one noaap would have written; its
@@ -490,6 +499,7 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
 | `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
 | `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look; `noaap watch-service install` runs it as a user service. |
+| `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser`, `--lyrics` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` says what it would do and writes nothing. |
 | `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |

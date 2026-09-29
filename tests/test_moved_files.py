@@ -88,19 +88,28 @@ def test_a_file_moved_into_another_folder_of_the_album(album, tmp_path):
     assert f"extra/{src.name}" in names(tmp_path, album_dir)
 
 
-def test_a_file_moved_into_another_album_is_found_in_the_library(album, tmp_path):
-    """The wider look, which only happens when the album itself has no answer."""
+def test_a_file_moved_into_another_album_is_named_and_not_taken_back(album, tmp_path):
+    """The wider look tells somebody where their file went, and changes nothing.
+
+    `filename` is a path **relative to the album folder**; a plan naming a file in another album would
+    point outside itself, which slices 60 and 61 exist to prevent. Found live: re-attaching across albums
+    left a plan naming a file it could then not find at all.
+    """
     album_dir = adopt_it(tmp_path)
     src = album_dir / "cd1" / "A Band - An Album - 02 - Two.mp3"
     other = tmp_path / "A Band" / "Another Album"
     other.mkdir(parents=True)
     src.rename(other / src.name)
+    before = names(tmp_path, album_dir)
 
-    service(tmp_path).repair(find_moved=True, apply=True)
+    said = []
+    done = Service(Config(), tmp_path, log=said.append).find_moved(load_plan(album_dir), album_dir,
+                                                                   apply=True)
 
-    assert f"../Another Album/{src.name}" in names(tmp_path, album_dir) or \
-        any("Another Album" in n for n in names(tmp_path, album_dir)), \
-        "the plan says where the file is, wherever that is"
+    assert done["moved"] == 0 and done["left"] == 1
+    assert names(tmp_path, album_dir) == before, "the plan is unchanged"
+    assert any("its audio is now in another album" in line and "Another Album" in line
+               for line in said), said
 
 
 def test_the_adopted_name_follows_the_file(album, tmp_path):
@@ -307,3 +316,24 @@ def test_an_adopted_album_is_its_own_source_and_is_never_re_sourced(album, tmp_p
     album_dir = adopt_it(tmp_path)
 
     assert service(tmp_path).find_source(load_plan(album_dir), album_dir, tmp_path) == {}
+
+
+def test_an_intake_tree_that_holds_the_recording_twice_is_refused(taken_in):
+    """Measured live: the collection holds `Cannibal Corpses` both as its own album and as a track of
+    another, so two files under the new root held the same recording and the source was left alone."""
+    intake, library, album_dir = taken_in
+    somewhere = intake.parent.parent.parent / "twice"
+    intake.parent.parent.rename(somewhere)
+    doubled = somewhere / "A Band" / "The Same Songs Again"
+    doubled.mkdir()
+    copies = sorted((somewhere / "A Band" / "An Album").glob("*.mp3"))
+    assert copies, "the fixture's own album, or this case tests nothing"
+    for one in copies:
+        shutil.copy2(one, doubled / one.name)
+
+    said = []
+    done = Service(Config(), library, log=said.append).find_source(
+        load_plan(album_dir), album_dir, somewhere, apply=True)
+
+    assert done["sources"] == 0 and done["left"] == 1
+    assert any("2 files under twice hold" in line for line in said), said

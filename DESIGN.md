@@ -1883,6 +1883,59 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    proof, because its albums have either a cover file or an embedded picture and never both; the sixteen
    the undo had refused to give back are all of them the picture inside their own album's files.
 
+66. ✅ **A track's file, found again by what it holds** (2026-09-29, P55c). A plan names a file. When the
+   file is not there — renamed by its owner, moved into a disc folder, or the whole intake folder gone —
+   the only way back is to ask what a file *holds*.
+   **An identity is the digest of the decoded audio.** The cheaper `stream_sha` copies the packets
+   instead, is three times faster, and agrees with it over every untouched file of the collection (2000
+   files, 1932 distinct answers, 68 held by more than one file, the same 68 groups) — and it is still the
+   wrong instrument. Measured to the byte on the pair that raised BD8: **7699 of 7700 packets identical**,
+   the last one 52 bytes against 180, the difference being exactly the **128-byte trailing ID3v1 tag**
+   that ffmpeg's demuxer hands over as audio data and that mutagen dropped when noaap tagged the copy.
+   Stripping ffmpeg's own metadata does not fix it; digesting the per-packet md5s without their timestamps
+   does not fix it. Decoding answers all 64 real pairs correctly, the three collisions included.
+   So the packet digest survives as a **pre-check in one direction** — equal packets imply equal audio,
+   never the reverse — and that direction is worth a great deal: **a renamed or moved file is byte for
+   byte what it was, so the digest the plan already holds finds it with no decode at all.** Measured: a
+   rename and a move, found with 0 decodes; 1 decode each on apply, to record the identity so that the
+   next question survives a re-tag.
+   **An identity carries its maker.** Another build of ffmpeg may decode a lossy file to other samples, so
+   two are compared only when `audio_sha_by` agrees, and an identity from a decoder we do not have is
+   measured again rather than trusted — and never read as a mismatch.
+   **Cost, and where it is paid.** Not during a collection read: that would take an `adopt` of 2000 files
+   from 167 s to 700 s for a question those passes never ask. The identity is measured the first time a
+   pass needs it, written beside the candidate, and reused. `repair --find-moved` over 128 albums and 2100
+   files: **7.7 s**, because only files that pass a length shortlist are decoded at all.
+   **It never guesses, and it never touches a file.** Exactly one unclaimed match re-attaches; two, or
+   none, and the track is named and left with the reason. A file another track already answers for is not
+   a candidate — which is how the 68 duplicates are re-attached rather than left, each being claimed by
+   its own album. And a file found in **another album** is named and *not* taken: `filename` is a path
+   relative to the album folder, and a plan naming a file outside itself is what slices 60 and 61 exist to
+   prevent. Found live, by doing it wrong first: re-attaching across albums left a plan naming a file it
+   could then not find at all.
+   **A whole album folder renamed needs none of this.** Slice 60 made every ref relative, so the plan
+   travels with the folder: measured live, an album folder renamed by hand, 0 tracks lost, and
+   `plan --verify` byte-identical afterwards.
+   **The intake folder that moved** is the other half: an album taken in from one keeps its files here
+   and its refs over there, so its own files are what find it again. All of the album in one folder or
+   nothing: a provider names a collection by a folder. The provider reads that folder and mints the new
+   refs; the core only says which file is which. Live, this refused once and correctly — two files under
+   the new root held the same recording, because the collection holds that song both as its own album and
+   as a track of another.
+
+67. ✅ **A setter says what it changed, and a report writes nothing** (2026-09-29, P55c). `--library`
+   means two different things on two commands: everywhere else it overrides the library for that one run,
+   on `config` it **sets** it. I used `config --library PATH` as a read-only report and so rewrote the
+   library root of the user's real installation, once per run, for a day — until they opened the app and
+   found it empty. So any setter now names the file it wrote and prints what changed, from what, to what;
+   `config` with no setter writes nothing at all, held by a case that hashes the file; and the help says
+   which of the two `--library` is. On a fresh installation the old value shown is the **default**,
+   because that is what the program was doing until now.
+   **And the rule that followed, which is not in the code but in how it is run:** every command of a
+   working session that reads or writes configuration, cache or state runs with `XDG_CONFIG_HOME`,
+   `XDG_CACHE_HOME` and `XDG_STATE_HOME` pointed somewhere disposable. A program that keeps its settings
+   where the user's are is one mistaken flag away from changing them.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

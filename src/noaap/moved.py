@@ -98,10 +98,21 @@ def look(album_dir: Path, plan: AlbumPlan, library: Path | None = None,
             out.decoded += decoded
         if len(hits) == 1:
             where = hits[0]
-            inside = where.resolve().is_relative_to(album_dir.resolve())
-            root = album_dir if inside else (library or album_dir)
+            if not where.resolve().is_relative_to(album_dir.resolve()):
+                # **found, and still not this album's** (§9, slice 66). `filename` is a path relative to
+                # the album folder and nothing else may go in it: a plan that named a file in another
+                # album would point outside itself, which is what slices 60 and 61 exist to prevent. So
+                # the wider look *tells* somebody where their file went and changes nothing — measured on
+                # a real library, where re-attaching across albums left a plan naming a file it could not
+                # find at all.
+                out.left.append(Undecided(
+                    track.video_id, track.title, track.filename,
+                    f"its audio is now in another album: "
+                    f"{where.resolve().relative_to((library or album_dir).resolve())} — move it back, "
+                    "or let that album have it"))
+                continue
             out.found.append(Found(track.video_id, track.title, track.filename,
-                                   str(where.resolve().relative_to(root.resolve()))))
+                                   str(where.resolve().relative_to(album_dir.resolve()))))
             taken.add(where.resolve())
             here = [p for p in here if p.resolve() != where.resolve()]
             continue

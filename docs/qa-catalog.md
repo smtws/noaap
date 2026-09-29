@@ -4023,10 +4023,98 @@ copies became 18 files, each holding whichever was copied last.
   is gone; but a person's work on one is, and no measurement gives that back.
 
 
+## BG. Finding a file again by what it holds (P55c, DESIGN §9, slices 66 and 67)
+
+Run on copies under `~/Musik/` with a configuration, cache and state of its own — see BG7, which is
+there because this package started by writing the user's.
+
+- [x] **BG1 · R** — BD8's cause, to the byte
+
+  `stream_sha` called 14 of 22 copies of one real album different from the files they came from.
+  - **result:** **7699 of 7700 packets identical**, and the last one 52 bytes against 180. The difference
+    is exactly the **128-byte trailing ID3v1 tag** in the owner's file, which ffmpeg's demuxer hands over
+    as audio data and which mutagen dropped when noaap tagged the copy. Not the audio, not the copying.
+  - two cheaper remedies, both measured on the same 64 pairs and both failing: stripping ffmpeg's own
+    metadata, and digesting the per-packet md5s without their timestamps — the trailing tag is *in* the
+    last packet. **Decoding** answers all 64, the three collision cases included.
+  - and what `stream_sha` is worth: over the untouched collection it agrees with the identity completely
+    — 2000 files, 1932 distinct answers, **68 held by more than one file, the same 68 groups**. P52's
+    figure stands. Nothing ever decided anything on it.
+
+- [x] **BG2** — what each digest costs, per container, warm
+
+  | | packets | decoded |
+  |---|---|---|
+  | flac | 95 ms | 139 ms |
+  | mp3 | 80 ms | 323 ms |
+  | opus | 67 ms | 455 ms |
+  | **2000 files** | **167 s** | **557 s** |
+  - so the identity is measured the first time a pass needs it and written beside the candidate, never
+    during a collection read: that would take an `adopt` of this collection from 167 s to 700 s for a
+    question `adopt` never asks.
+
+- [x] **BG3** — a rename and a move, found for nothing
+
+  A file renamed in place, and one moved from `cd1` to `cd2`, in a 128-album library.
+  - **result:** both found, **0 files decoded**, because a moved file is byte for byte what it was and the
+    packet digest the plan already held answered. On `--apply`, **1 decode each**, to record the identity
+    so the next question survives a re-tag. The whole pass over 128 albums and 2100 files: **7.7 s** dry,
+    **7.7 s** applied.
+
+- [x] **BG4 · R** — a file moved into another album is named and not taken
+
+  The first version re-attached it, with a path relative to the library.
+  - **result:** the plan then named a file it could not find at all — `filename` is relative to the
+    **album** folder, and a plan pointing outside itself is what slices 60 and 61 exist to prevent. It is
+    now reported: *its audio is now in another album: … — move it back, or let that album have it*, and
+    nothing is written. Found by doing it wrong on a real library first.
+
+- [x] **BG5** — an album folder renamed needs none of this
+
+  The owner renames a whole album folder.
+  - **result:** **0 tracks lost**, and `plan --verify` 128 byte-identical afterwards. Slice 60 made every
+    ref relative, so the plan travelled with the folder. Nothing to find.
+
+- [x] **BG6** — the intake folder that moved
+
+  An album taken in from an intake folder, then that whole folder moved elsewhere.
+  - **result:** pointed at the new folder in both the dry run and the applied one; the provider read that
+    folder and minted the refs; the album's own 13 files were not touched. All of the album in one folder
+    or nothing.
+  - **and it refused once, correctly:** on the first run the intake album chosen was *Cannibal Corpses*,
+    and **two files under the new root held that recording** — the collection has that song both as its
+    own album and as a track of *Hey Living People*. The pass said so and left the album alone. The
+    material for the successful run was then chosen by measurement: an album of that tree whose recordings
+    appear in no other album of it.
+
+- [x] **BG7 · R** — and the configuration this package wrote by mistake
+
+  `noaap config --library PATH` used as a read-only report, in three packages' live scripts.
+  - **result:** it is a **setter**. It rewrote the user's `library_root` once per run, and they found the
+    installed app serving an empty library. The audit: **exactly one line** of their config differed, the
+    cache was last written the day before, the units and the launcher were untouched, no state file
+    existed. Fixed in the product — a setter names the file and prints old → new, a report writes nothing —
+    and in how a session is run: every command now has its own `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and
+    `XDG_STATE_HOME`. **A comparison that leaves a file type out cannot find a file of that type** was
+    BF7's lesson; this one is its twin: *a report that is a setter cannot be used as a report.*
+
+### What the live run left, measured two ways
+
+Against a snapshot taken **before** the breaks: **2081 files unchanged in name, size and mtime**, 23 new
+and 23 gone — the renamed file, the two moved files and the renamed album folder's contents, and nothing
+else. 135 plans changed, which is `repair`'s own work (lengths and the tidying it always does).
+
+Against the collection: 2068 identical, 171 extra, 85 missing — and that is *by construction*, because
+the library for this run was the collection **minus one artist** plus an album fetched in from that
+artist as an intake source. The snapshot is the instrument that can be clean here; saying the collection
+comparison should be zero would be pretending the material was something it was not.
+
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BG cases (P55c: finding a file by what it holds) | 7 | 0 in the design; **2 defects of my own found by running it**, both fixed; **1 of the user's files written by mistake** | BD8's cause, to the byte: 7699 of 7700 packets identical and the last one differing by exactly the **128-byte trailing ID3v1 tag** that ffmpeg hands over as audio data. So an identity is the **decoded** digest; the packet digest is a pre-check in one direction — and that direction is worth a lot, because **a renamed or moved file is byte for byte what it was and is found with 0 decodes**. Costs measured per container (2000 files: 167 s packets, 557 s decoded), which is why the identity is never measured during a collection read. `repair --find-moved` over 128 albums: **7.7 s**. It never guesses: one unclaimed match re-attaches, two or none are named and left, and a file found in **another album** is named and not taken — the first version re-attached it and left a plan naming a file it could not find. An album folder renamed by hand needs none of it (slice 60's relative refs; 0 lost, 128 plans byte-identical). The intake half refused once correctly, on a recording the collection holds twice. And the worst of it: `config --library` is a **setter** and I had been using it as a report, which rewrote the user's library root until they found the app empty — one line of their config, audited, and now a setter says what it changed while a report writes nothing. 1340 pytest + 102 node. |
 | 2026-09-29 | the BF cases (P55d: taking the copies back out) | 6 | 0 in the design; **1 defect in the cases themselves**, fixed; **1 ruling corrected** | The other half of BD, on damage **made with 1.5.0's own code** on a 41 GB copy: adopt + `update` = **64 files the collection does not have**. A file is removed only when all four conditions hold — adopted album with discs in sub-folders, a name the plan points at or noaap's scheme would write, **decoded** audio identical to a disc file's, and that disc file one the plan holds, which the *provider* says because a ref is opaque. The digest decodes because `stream_sha` called 14 of 22 real copies different from their originals (BD8). Dry by default, which no other part of `repair` is. Live: 64 would be binned and nothing written; with `--apply` **64 moved to the bin (507.7 MB)**, the plans back to 24/22/21 tracks all pointing into disc folders, `plan --verify` 132 byte-identical, nothing missing — then `adopt --undo --apply` **0 failed** where the damaged album had refused, and the tree is the collection again: **2000 files identical in name, size and mtime, 0 outside the bin that the collection does not have**. The corrected ruling: "its name follows noaap's scheme" is true for 61 of 64 and wrong for the three whose ID3 title is clipped at 30 characters — the mechanism is the name **the plan** held. The defect in the cases: every generated file was the same 440 Hz sine, so all of them decoded alike and the pass could match any twin. Collisions: three names exist on both discs of one album, each pair two different recordings, so 21 copies became 18 files; nothing of the owner's is lost, and what is not recoverable is work done to a copy before it was overwritten. 1290 pytest + 102 node. |
 | 2026-09-29 | the BE cases (P55b-2: the promise kept against an older reader) | 6 | 0 in the design; **3 defects the fix itself produced**, all found by running it, all fixed | The 1.0.0 promise was broken from **1.1.0**: ytalbum 0.9.1 builds a candidate with a bare constructor, so every field added to `Candidate` after slice 50 made the plan unreadable to it — **153 of 329 real albums refused**, measured with 0.9.1's own code. Slice 48's pass-through carries an unknown key on the album and on the track, and a candidate is neither. Now the ten fields 0.9.1 knows are written inside the candidate and everything since beside it on the track, keyed by the ref; memory, the page and the API are untouched. Live: after one `noaap repair`, 0.9.1 **reads all 329, refuses none, writes all 329 back**, and the 3910 fields it does not know are still there afterwards, 178 undecided copies included, with 0 plans losing or changing anything. The three defects: `plan --verify` parsed the file raw instead of loading it (116 plans reported as losing a `stream_sha`); `portable`/`resolved` rewrote values and not keys, so an undecided copy's fields were keyed by a path the load had already resolved (the page counted 0 where there were 2); and the rewrite was not idempotent, removing the record it had just written. **A fourth the reviewer found, not the suite:** I had read *our* verdict on the round trip and called it clean, while 0.9.1's own `plan --verify` said 29 candidates in 15 albums would lose their provider — it claims every candidate named by `video_id` or `source_override` for the album's provider, so its save turned a folder copy into a YouTube one. The provider is now written beside the candidate as well and outranks what is inside it, and after a real save by 0.9.1 of all 329 albums **0 of 5372 candidates changed provider**. What the two readers put *inside* the candidate stays a disagreement (BE6, open). 1281 pytest + 102 node. |
 | 2026-09-29 | the BD cases (P55b: discs in sub-folders) | 7 | **the worst defect this project has produced**, found by the P55b acceptance, fixed | `filename` is the track's path relative to the album folder, and the provider says what it is. Before: a bare name, so for a track in a disc sub-folder `album_dir / filename` was not the file — the executor read that as missing and re-fetched it, which for a folder provider is a **copy into the album root under noaap's own name**. One `update` on a library that had **never been moved** wrote **64 files** for the 67 tracks of three real albums, and 3 copies landed on each other's names, so two recordings became one file with two tracks pointing at it; a later read appended the copies as tracks, 24 → 48. The acceptance library holds **102 files the collection does not have**, against **67 of the owner's identical in name, size and mtime**. Slice 60's own check had said it on the day — *67 track(s) in 3 album(s) are not where their plan says* — and nobody read it. The cause under the cause: **the path was parsed out of the ref**, the same boundary as `Entry.ext`, whose comment already records that parsing a ref for a suffix renamed 1662 files into a lie. Now `Entry.where`, a `repair` that looks lost files up where the collection says they are, a refusal for an album whose discs are *sibling* folders, and the guard that makes the class impossible: **a finished track of an adopted album is never fetched again.** Live on 41 GB: adopt 132 albums / 2000 tracks, **nothing missing** (was 67), move for real, `update`, `repair`, re-read all 132 — afterwards **2000 files identical to the collection in name, size and mtime, 0 extra, 0 missing, 0 changed**. An undo cannot take the 102 back and must not: `added_by_us` never lists audio. 1265 pytest + 102 node; 9 of the 21 new cases fail against 7002230. |
