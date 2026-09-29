@@ -660,13 +660,39 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
     if not fetch:
         return None
     why: list[str] = []
-    for url in filter(None, (plan.cover_url, plan.cover_fallback_url)):
+    for url in filter(None, _cover_addresses(plan)):
         if found := _download_cover(url, source, why):
             return _save_cover(plan, album_dir, *found)
-    if plan.cover_url:
-        log.warning("could not fetch any cover for %s%s", plan.cover_url,
+    if plan.cover_url or _asks_its_source(plan):
+        log.warning("could not fetch any cover for %s%s", plan.cover_url or plan.source_url,
                     f" — {'; '.join(dict.fromkeys(why))}" if why else "")
     return None
+
+
+def _asks_its_source(plan: AlbumPlan) -> bool:
+    """Whether this album's cover has to be asked for rather than read off the plan (§9, slice 73).
+
+    A private album's plan holds no address — that is the rule the plan is written under — so without
+    this it could never get a cover at all: the first fetch had one in memory and every later run had
+    nothing to try. Only for private sources, because for everybody else the plan's address is the
+    address, and handing a collection's own page to `art()` would be a request nobody asked for.
+    """
+    from . import sources
+
+    return bool(plan.source_url) and sources.private(plan.provider)
+
+
+def _cover_addresses(plan: AlbumPlan) -> list[str]:
+    """What to try, in order: what the plan holds, and — for a private album — its source itself.
+
+    The provider answers a collection address by reading it and taking the image out of that read, so
+    the signed address exists for the length of one request and is never written down. It happens only
+    while a fetch or an update is running for that album anyway; there is no pass of its own.
+    """
+    found = [plan.cover_url, plan.cover_fallback_url]
+    if not any(found) and _asks_its_source(plan):
+        found.append(plan.source_url)
+    return [url for url in found if url]
 
 
 def _download_cover(url: str, source: Source, why: list[str] | None = None) -> tuple[str, bytes] | None:

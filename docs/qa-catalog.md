@@ -4428,10 +4428,38 @@ out of the video, tagged, `update` run once.
   provider may now say what its last download moved and kept; the core asks with `getattr`, says
   nothing when there is no answer or nothing was thrown away, and prints it on the track's line.
 
+- [x] **BL5 · R** — the host was searched for, not parsed
+
+  The reviewer's check of the fix: `_is_media_address` was a substring test and said **yes** to
+  `https://evil.example/x.jpg?<media host>` and to `https://<media host>.evil.example/x.jpg`, and a
+  yes there sends the browser's session and a referer to that host. Now: parsed host, https only,
+  equal to the media host or a sub-domain of it, no unusual port — with cases for those two, for
+  `https://<media host>@evil.example/`, for a port, and for plain http. The address a redirect
+  *landed* on is checked the same way, and bytes from anywhere else are refused rather than saved.
+
+- [x] **BL6 · R** — an address nobody built, handed to the client
+
+  Two paths still fell back to the address they were given: `source_state` (reachable from a plan's
+  `source_url`, a field a person can edit) and the cover path. Both now resolve to an address this
+  module built from digits it validated, or refuse. A case walks every entry point with a foreign
+  address and asserts the client was never called. *What a redirect target receives on its way is its
+  own domain's cookies out of the browser, which nothing in this program can take back — which is why
+  the set of addresses handed over is closed rather than filtered.*
+
+- [x] **BL7 · R** — a rule with no way to obey it
+
+  *No address in a private plan* left the live album unable to ever get a cover: the first fetch had
+  one in memory, every later run had nothing to try, and the commit message claimed the fetch would
+  ask again when no code did. A private album's cover is now asked of the provider, from the post
+  itself, only while a run for that album is happening anyway. Fixtures cover the fresh fetch, a
+  later run on a plan with no address, and a provider with no image — which leaves the album without
+  a cover and says why, once.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BL cases extended (P59c: the review of the fix) | 3 | 2 findings of the reviewer's, both real | A substring test for "is this our media host" said yes to `evil.example/x.jpg?<host>` and to `<host>.evil.example` — and a yes hands the browser's session to that host. Parsed host now, https only, no unusual port, sub-domains allowed, and the address a redirect **landed** on checked the same way. Two paths still handed the client an address they were given, one of them reachable from a plan field a person can edit; every entry point now builds its address or refuses, with a case that walks them all. And the rule *no address in a private plan* had left the live album unable to ever get a cover: it is asked of the provider now, from the post, only during a run that is happening anyway. 1448 pytest + 118 node. |
 | 2026-09-29 | the BL cases (P59b: the run that happened) | 4 | 3 defects, all found in what the run **wrote**, not in whether it passed | One post fetched end to end: 1 min 20 s, 16.6 MB kept, aac 96 kbps, length matching the source manifest to four decimals, cutoff 15 kHz, no video left anywhere, `update` afterwards changed nothing (identical digest), and neither LRCLIB nor MusicBrainz was asked a thing although both were switched on. Then the three defects: the plan had stored the **signed** address of a paid post's image (decision: a private album's plan holds no address at all — a de-signed one answers 403 for ever and looks live; guarded by a grep over every written value); the cover failure was **not** the expiry I had reported but an image address being read as a page, and the real reason had been sitting at debug level; and bytes downloaded could not be reported although it had been measured. 1433 pytest + 118 node. |
 | 2026-09-29 | the BK cases (P59: the audio inside a video post) | 6 of 7 | the live run is the seventh and it was **refused before it began** | The creator posts audiobooks as video, so refusing every video post refused everything they publish. `patreon_audio_from_video`, off by default: the audio stream is **copied** (`-vn -map 0:a:0 -c:a copy`, never an encoder), the rendition is chosen by its audio and then by the smallest picture carrying it (the same AAC rides every rung of Patreon's ladder), and the video lives outside the library and is deleted after success and after failure alike. Protection of any kind is refused without a request being built. With it, R-250: **nothing from a private source is offered to anyone** — no publish, no seed, and no lookup either, since a lookup sends a title, a creator and a length to somebody else's server; it is a capability the provider declares and the core enforces, never a name in a list. The live run answered 403 at the listing: `session_id` good for a year, Cloudflare's 30-minute `__cf_bm` long expired — so the refusal now names the one action that renews either, and the README says plainly that fetching from Patreon is still untried. 1424 pytest + 118 node. |
 | 2026-09-29 | the BJ cases (P58: the first live run against Patreon) | 6 | **4 defects, all found in the first four minutes of using it** | One campaign the user supports, their own Chrome session, `patreon_post_cap = 5` against **584** posts, own XDG directories, a scratch library, nothing kept. Not one of the four was reachable from a fixture: `load()` never read the two Patreon settings out of the config file (the run began with a configuration that did nothing); `service.channel` grouped by YouTube's three tabs, so a listing that read fine printed *this channel has no releases or playlists*; a refusal came out as a traceback because only `NotSupported` was caught; and without `secretstorage` Chrome's cookies decrypt to nothing, so a correct setting answers like a stranger — **6 patreon cookies with it, 2 empty ones without**. Fixtures corrected by hand: a flat listing is `{url, ie_key}` and nothing else, so titles now fall back to the address slug. All five posts are Mux HLS video, refused correctly — so the **download half of this provider is still untried** and the README says exactly that. Also: the ⇄ copies panel is photographed again, one track, one album between its two copies, under the user's condition. 1406 pytest + 118 node. |

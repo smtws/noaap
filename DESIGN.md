@@ -2109,6 +2109,22 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    downloaded beside bytes kept and the program could not answer, though both numbers had been
    measured. A provider may now say what its last download moved, the core asks with `getattr`, and a
    fetch that throws most of itself away says so on the track's own line.
+   **And two more, from the review of that fix** (R-255). *A host is parsed, never searched:* the test
+   for "is this our media host" was a substring, and it said yes to `evil.example/x.jpg?<our host>`
+   and to `<our host>.evil.example` — a yes sends the browser's session and a referer to whoever owns
+   them. It is now the parsed host, https only, equal to the media host or a sub-domain of it, and no
+   unusual port; the address a redirect *landed* on is checked the same way, because the client
+   follows redirects. *And an address nobody built is never handed to the client:* two paths still
+   fell back to the address they were given — one of them reachable from a plan field a person can
+   edit — so every entry point now resolves to an address this module built from digits it validated,
+   or refuses. What a redirect target receives on its way is its own domain's cookies out of the
+   browser, which nothing here can take back; that is exactly why the set of addresses handed over is
+   closed.
+   **A rule that leaves no way to obey it is half a rule.** *No address in a private plan* meant the
+   album that had no cover file could never get one: the first fetch held an address in memory and
+   every later run had nothing to try. A private album's cover is now asked of the provider, from the
+   post itself, while a run for that album is happening anyway — never as a pass of its own, and a
+   failure leaves the album without a cover and says why, once.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

@@ -14,6 +14,7 @@ these cases assert on the client that would have been called, never on a network
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -229,3 +230,161 @@ def test_no_written_value_of_a_private_album_carries_a_signing_parameter(tmp_pat
     text = json.dumps(written(plan, tmp_path))
 
     assert marker.lower() not in text.lower(), f"a private plan carries {marker}: {text}"
+
+
+# -- the host is parsed, and a private album can still get a cover (§9, slice 73, R-255) ------------
+
+
+@pytest.mark.parametrize("address,ours", [
+    ("https://c10.patreonusercontent.com/4/x.jpeg?token-hash=a&token-time=1", True),
+    ("https://patreonusercontent.com/x.jpg", True),
+    ("https://evil.example/x.jpg?patreonusercontent.com", False),
+    ("https://patreonusercontent.com.evil.example/x.jpg", False),
+    ("https://patreonusercontent.com@evil.example/x.jpg", False),
+    ("https://evil.example/patreonusercontent.com/x.jpg", False),
+    ("https://c10.patreonusercontent.com:8443/x.jpg", False),
+    ("http://c10.patreonusercontent.com/x.jpg", False),
+    ("", False),
+])
+def test_a_media_address_is_decided_by_its_parsed_host(address, ours):
+    """It was a substring test, and a substring test said yes to three addresses that are not the
+    media host at all — and a yes sends the browser's session and a referer to whoever owns them."""
+    from noaap.patreon import _is_media_address
+
+    assert _is_media_address(address) is ours
+
+
+def test_a_cover_that_redirects_off_the_media_host_is_refused(monkeypatch):
+    """The client follows redirects, so where the request landed decides too: bytes from anywhere
+    else are not this post's image."""
+    from noaap import patreon as mod
+    from noaap.config import Config as Settings
+
+    cfg = Settings()
+    cfg.patreon_cookies_from_browser = "chrome"
+    pt = mod.Patreon(cfg)
+
+    class FakeYDL:
+        def __init__(self, options): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def urlopen(self, request):
+            return type("R", (), {"read": staticmethod(lambda: b"\xff\xd8\xff"),
+                                  "url": "https://evil.example/x.jpg"})()
+
+    monkeypatch.setattr(mod, "YoutubeDL", FakeYDL)
+
+    with pytest.raises(sources.SourceError) as refused:
+        pt.fetch_bytes("https://c10.patreonusercontent.com/4/x.jpeg?token-hash=a")
+
+    assert "led somewhere else" in str(refused.value) and "evil.example" in str(refused.value)
+
+
+def test_an_address_nobody_built_is_never_handed_to_the_client(monkeypatch):
+    """`source_state` used to fall back to the address it was given — and a plan's `source_url` is a
+    field a person can edit. Now it is a post address, a campaign address, or no request at all."""
+    from noaap import patreon as mod
+    from noaap.config import Config as Settings
+
+    cfg = Settings()
+    cfg.patreon_cookies_from_browser = "chrome"
+    pt = mod.Patreon(cfg)
+    asked: list[str] = []
+    monkeypatch.setattr(pt, "_read", lambda url, **extra: asked.append(url) or {"id": "1"})
+
+    assert pt.source_state("https://evil.example/anything") is None
+    assert pt.source_state("file:///etc/passwd") is None
+    assert asked == [], "nothing was asked of an address we did not build"
+
+    pt.source_state("https://www.patreon.com/posts/100004")
+    assert asked == ["https://www.patreon.com/posts/100004"]
+
+
+def test_a_private_album_without_an_address_asks_its_source_for_a_cover(tmp_path):
+    """The rule says a private plan holds no address; without this, such an album could never get a
+    cover — the first fetch had one in memory and every later run had nothing to try. It is asked for
+    only while a run for that album is happening anyway."""
+    from noaap.download import _cover, _cover_addresses
+
+    plan = an_album()
+    plan.cover_url = plan.cover_fallback_url = None
+    assert _cover_addresses(plan) == [plan.source_url], "the post itself is what is asked"
+
+    asked: list[str] = []
+
+    class Provider:
+        name = "patreon"
+
+        def art(self, address):
+            asked.append(address)
+            return b"\x89PNG\r\n\x1a\n" + b"0" * 64
+
+    data = _cover(plan, tmp_path, Provider())
+
+    assert asked == [plan.source_url] and data.startswith(b"\x89PNG")
+    assert (tmp_path / "cover.png").exists()
+    assert plan.cover_fetched["url"] == plan.source_url, "what is remembered is the post, not a token"
+    assert "token" not in json.dumps(plan.cover_fetched)
+
+
+def test_and_an_album_from_anywhere_else_is_not_asked_for_one(tmp_path):
+    """For every other provider the plan's address is the address, and handing a collection's own page
+    to `art()` would be a request nobody asked for."""
+    from noaap.download import _cover_addresses
+
+    public = an_album(provider="youtube")
+    public.cover_url = public.cover_fallback_url = None
+
+    assert _cover_addresses(public) == []
+
+
+def test_a_provider_with_no_image_leaves_the_album_without_one_and_says_why(tmp_path, caplog):
+    from noaap.download import _cover
+
+    plan = an_album()
+    plan.cover_url = plan.cover_fallback_url = None
+
+    class Provider:
+        name = "patreon"
+
+        def art(self, address):
+            raise sources.SourceError("no cover for this post")
+
+    with caplog.at_level("WARNING"):
+        assert _cover(plan, tmp_path, Provider()) is None
+
+    assert not list(tmp_path.glob("cover.*")), "no file, and no empty one either"
+    said = " ".join(r.getMessage() for r in caplog.records)
+    assert "could not fetch any cover" in said and "no cover for this post" in said
+
+
+def test_every_address_this_provider_sends_to_is_one_it_built_or_checked(monkeypatch):
+    """The audit R-255 asked for, as a case. Each entry point is given an address of somebody else's
+    choosing; none of them may reach the client, and the one that may — a media address — is the one
+    that passes the host test."""
+    from noaap import patreon as mod
+    from noaap.config import Config as Settings
+
+    cfg = Settings()
+    cfg.patreon_cookies_from_browser = "chrome"
+    pt = mod.Patreon(cfg)
+    asked: list[str] = []
+    monkeypatch.setattr(pt, "_read", lambda url, **extra: asked.append(url) or {"id": "1", "entries": []})
+
+    strange = "https://evil.example/whatever?patreon.com"
+    for call in (lambda: pt.fetch(strange),
+                 lambda: pt.list_owner(strange),
+                 lambda: pt.fetch_bytes(strange),
+                 lambda: pt.download_audio("patreon:media:not-digits", Path("/tmp")),
+                 lambda: pt.probe("patreon:video:nope")):
+        with pytest.raises(sources.SourceError):
+            call()
+    assert pt.source_state(strange) is None
+    assert asked == [], f"an address nobody built reached the client: {asked}"
+
+    # and the addresses it does build are its own host's, every one of them
+    from urllib.parse import urlsplit
+
+    for built in (mod.post_url("100004"), mod.campaign_of("https://www.patreon.com/cw/acreator"),
+                  mod.BASE):
+        assert urlsplit(built).hostname == "www.patreon.com"

@@ -28,6 +28,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadCancelled, DownloadError
@@ -172,9 +173,22 @@ def _copy_audio(video: Path, out: Path) -> None:
 
 
 def _is_media_address(url: str) -> bool:
-    """An address of Patreon's media host — a file, not a page. Never a post or campaign address."""
-    text = (url or "").strip().lower()
-    return text.startswith(("http://", "https://")) and MEDIA_HOST in text
+    """An address of Patreon's media host — a file, not a page, and **the host is parsed, not searched**.
+
+    A substring test said yes to `https://evil.example/x.jpg?patreonusercontent.com` and to
+    `https://patreonusercontent.com.evil.example/x.jpg`, and a yes here sends the browser's session
+    and a referer to that host (R-255, finding 1). So: https only, the host from the parser (which
+    drops any `user@` in front of it), equal to the media host or a sub-domain of it, and no port but
+    the ordinary one — a media host on another port is not the media host we know.
+    """
+    try:
+        parts = urlsplit((url or "").strip())
+    except ValueError:      # a malformed address is not ours either
+        return False
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or parts.port not in (None, 443):
+        return False
+    return host == MEDIA_HOST or host.endswith("." + MEDIA_HOST)
 
 
 def _protected(info: dict[str, Any]) -> bool:
@@ -433,8 +447,15 @@ class Patreon:
         For a *post* address that is the media it holds; for a campaign, the posts on its first page.
         A campaign with two thousand posts is not read to answer "has anything changed".
         """
+        # **an address we did not build is never handed to the client** (R-255, point 2). This used to
+        # fall back to `address` itself, so a plan's `source_url` — a field a person can edit — decided
+        # where a request went, with the browser's cookies for whatever host it named.
+        where = campaign_of(address) or (post_url(post_id(address)) if post_id(address) else None)
+        if not where:
+            log.info("not a Patreon post or campaign address, so nothing is asked of it: %r", address)
+            return None
         try:
-            info = self._read(campaign_of(address) or address, extract_flat=True)
+            info = self._read(where, extract_flat=True)
         except sources.SourceError:
             return None
         items = info.get("entries") if info.get("_type") == "playlist" else [info]
@@ -546,22 +567,42 @@ class Patreon:
         """
         if _is_media_address(address):
             return self._image_bytes(address)
-        info = self._read(address if post_id(address) else (campaign_of(address) or address),
-                          extract_flat=True)
+        # the same rule as everywhere else in this file: an address we did not build is not asked
+        # (R-255, point 2). This had the raw address as its last fallback, which is how a field a
+        # person can edit could have decided where a request went.
+        where = (post_url(post_id(address)) if post_id(address) else None) or campaign_of(address)
+        if not where:
+            raise sources.SourceError(f"not a Patreon address, so no cover is asked of it: {address}")
+        info = self._read(where, extract_flat=True)
         url = _image(info)
         if not url:
             raise sources.SourceError(f"no cover for {address}")
+        if not _is_media_address(url):
+            # what the answer points at is checked too: the image of a post lives on the media host
+            raise sources.SourceError(f"this post's image is not on the media host: {urlsplit(url).hostname}")
         return self._image_bytes(url)
 
     def _image_bytes(self, url: str) -> bytes:
-        """One GET, with this provider's session and the referer its host expects."""
+        """One GET, with this provider's session and the referer its host expects.
+
+        **Where it landed is checked too.** The client follows redirects, so an address that starts on
+        the media host can end anywhere; bytes from anywhere else are not this post's image and are
+        refused rather than saved (R-255, finding 1). What a redirect target receives on the way is
+        its own domain's cookies from the browser, which no check here can take back — which is why
+        the only addresses handed to this method are ones we built or ones that passed the host test.
+        """
         from yt_dlp.networking import Request
 
         with YoutubeDL(self._options()) as ydl:
             try:
-                return ydl.urlopen(Request(url, headers={"Referer": BASE, "Accept": "image/*,*/*"})).read()
+                answer = ydl.urlopen(Request(url, headers={"Referer": BASE, "Accept": "image/*,*/*"}))
+                data = answer.read()
             except Exception as e:  # a missing cover must never stop an album
                 raise sources.SourceError(f"could not read the cover: {ytdlp.one_sentence(str(e))}") from None
+        landed = getattr(answer, "url", None) or url
+        if not _is_media_address(landed):
+            raise sources.SourceError(f"the cover address led somewhere else ({urlsplit(landed).hostname})")
+        return data
 
 
 # -- reading yt-dlp's answers, and nothing else -------------------------------------------
