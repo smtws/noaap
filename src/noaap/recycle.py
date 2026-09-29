@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .download import portable, resolved
 from .models import AlbumPlan, PlanTrack
 from .tag import build_tags
 from .trim import kept_originals
@@ -136,7 +137,10 @@ def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack,
         entry.rmdir()
         return None
 
-    (entry / BIN_FILE).write_text(json.dumps({
+    # A bin entry holds a whole track and a ranking, and either can carry a path into the album
+    # it came from. Written the way a plan writes one — relative to that album — so an entry
+    # still restores after the library has moved (§9, slice 60, R-207 ruling 5).
+    (entry / BIN_FILE).write_text(json.dumps(portable({
         "when": when.isoformat(timespec="seconds"),
         "reason": reason,
         "source_id": plan.source_id,
@@ -152,7 +156,7 @@ def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack,
         "tags": build_tags(plan, track),
         "ranking": ranking or {},
         "moved": moved,
-    }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    }, album_dir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return entry
 
 
@@ -169,11 +173,12 @@ def bin_album(library: Path, plan: AlbumPlan, cover: Path | None, tracks: list[s
     entry.mkdir(parents=True, exist_ok=True)
     moved = ["plan"]
     (entry / PLAN_SNAPSHOT).write_text(
-        json.dumps(plan.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        json.dumps(portable(plan.to_dict(), library / plan.folder), indent=2,
+                   ensure_ascii=False) + "\n", encoding="utf-8")
     if cover and cover.is_file():
         shutil.move(str(cover), entry / f"{COVER_STEM}{cover.suffix}")
         moved.append("cover")
-    (entry / BIN_FILE).write_text(json.dumps({
+    (entry / BIN_FILE).write_text(json.dumps(portable({
         "when": when.isoformat(timespec="seconds"),
         "reason": reason,
         "source_id": plan.source_id,
@@ -189,7 +194,7 @@ def bin_album(library: Path, plan: AlbumPlan, cover: Path | None, tracks: list[s
         "tags": {},
         "ranking": {},
         "moved": moved,
-    }, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    }, library / plan.folder), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return entry
 
 
@@ -216,6 +221,8 @@ def entries(library: Path) -> list[Entry]:
         except (OSError, ValueError):
             log.debug("unreadable bin entry %s", path.name)
             continue
+        # read back against the album it came from, wherever the library is now (§9, slice 60)
+        data = resolved(data, library / str(data.get("folder") or ""))
         out.append(Entry(id=path.name, path=path, when=str(data.get("when", "")),
                          reason=str(data.get("reason", "")), artist=str(data.get("artist", "")),
                          title=str(data.get("title", "")), album=str(data.get("album", "")),

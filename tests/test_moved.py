@@ -192,3 +192,51 @@ def test_a_library_that_is_copied_and_the_original_deleted_still_holds(tmp_path)
 
     for album_dir, plan in iter_plans(there):
         assert Path(plan.tracks[0].video_id).is_file()
+
+
+# -- and the bin ---------------------------------------------------------------------------------
+
+
+def test_a_bin_entry_keeps_its_paths_the_way_a_plan_does(tmp_path):
+    """R-207, ruling 5. An entry holds a whole track and a ranking, and either can carry a path
+    into the album it came from."""
+    from noaap.download import load_plan
+    from noaap.recycle import bin_track, entries
+
+    album_dir = an_album(tmp_path)
+    plan = load_plan(album_dir)
+    track = plan.tracks[0]
+    audio = album_dir / track.filename
+
+    bin_track(tmp_path, album_dir, plan, track, reason="tested",
+              audio=audio, ranking={"chosen": {"ref": str(audio)}})
+
+    written = json.loads(next(tmp_path.rglob("bin.json")).read_text())
+    assert written["ranking"]["chosen"]["ref"] == "./01 - One.opus"
+    assert written["track"]["video_id"] == "./01 - One.opus"
+    assert written["folder"] == "A Band/An Album", "which is how it is read back"
+
+    listed = entries(tmp_path)
+    assert listed[0].data["ranking"]["chosen"]["ref"] == str(audio), "absolute again, in memory"
+
+
+def test_a_bin_entry_survives_the_library_moving(tmp_path):
+    import shutil
+
+    from noaap.download import load_plan
+    from noaap.recycle import bin_track, entries
+
+    here = tmp_path / "here"
+    album_dir = an_album(here)
+    plan = load_plan(album_dir)
+    bin_track(here, album_dir, plan, plan.tracks[0], reason="tested",
+              audio=album_dir / plan.tracks[0].filename,
+              ranking={"chosen": {"ref": str(album_dir / plan.tracks[0].filename)}})
+
+    there = tmp_path / "there"
+    shutil.copytree(here, there)
+    shutil.rmtree(here)
+
+    ref = entries(there)[0].data["ranking"]["chosen"]["ref"]
+    assert ref.startswith(str(there)), "it names the album where the library is now"
+    assert str(tmp_path / "here") not in ref
