@@ -1773,8 +1773,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    removed the record of them. *One place decides what a save writes; one place decides what a load
    reads* — there were two of the latter, `load_plan` and `iter_plans`, and only one of them was fixed.
    **Verified live with 0.9.1's own code**, on a copy of a 329-album library it could not read: after
-   one `noaap repair` it reads all 329 and refuses none, writes all 329 back, and afterwards the 3910
-   fields it does not know are still there, 178 undecided copies included, with nothing lost or changed.
+   one `noaap repair` it reads all 329 and refuses none, writes all 329 back, and afterwards the fields
+   it does not know are still there, 178 undecided copies included, with nothing lost or changed.
+   **A candidate's provider is written beside it as well, though 0.9.1 knows that field**, because it is
+   the one field an older reader *rewrites*: on load 0.9.1 claims every candidate named by `video_id` or
+   `source_override` for the album's own provider, so its save turned a folder copy inside a YouTube
+   album into a YouTube one — 29 candidates in 15 albums of the real library — after which a re-fetch
+   would ask YouTube for a path. Only a provider that **differs from the album's** is recorded, which is
+   exactly the case claiming would destroy, and what is beside the candidate outranks what is inside it
+   on load, so whatever an older reader did is undone by the next load here. Measured: after a real save
+   by 0.9.1 of all 329 albums, **0 of 5372 candidates changed provider**, across the 33 albums that hold
+   more than one.
+   **And the two readers disagree about what belongs inside the candidate, permanently.** After a noaap
+   save, 0.9.1's own `plan --verify` says *15 would lose or change something* —
+   `candidates.N.provider 'folder' -> 'youtube'` — because that is what its save would do. Writing
+   `youtube` there instead would silence it and **lie to every noaap from 1.1.0 to 1.5.0**, which reads
+   that field verbatim and would then ask YouTube for a path itself. So the true provider is written
+   inside, the older program's verify reports its own claiming, and nothing is lost either way: this is
+   a disagreement about a value, not a field that goes missing (R-215).
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

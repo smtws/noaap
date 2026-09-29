@@ -54,6 +54,7 @@ class OldTrack:
     title: str = ""
     filename: str = ""
     provenance: dict[str, Any] = field(default_factory=dict)
+    source_override: str | None = None
     candidates: list[OldCandidate] = field(default_factory=list)
     kept: dict[str, Any] = field(default_factory=dict)
 
@@ -71,12 +72,28 @@ class OldTrack:
         return {**out, **self.kept}
 
 
+def own_the_candidates_as_0_9_1(provider: str, tracks: list[OldTrack]) -> None:
+    """0.9.1's own `AlbumPlan.own_the_candidates`, copied from `src/ytalbum/models.py` at 4732f00.
+
+    **This is the line that rewrites, and it runs on every load it does.** A candidate named by
+    `video_id` or `source_override` is claimed for the album's provider unless a person put it there —
+    so a folder copy inside a YouTube album came back as a YouTube one, and the next fetch would have
+    asked YouTube for a path (R-215).
+    """
+    for track in tracks:
+        for candidate in track.candidates:
+            if candidate.ref in (track.video_id, track.source_override) and candidate.added_by != "user":
+                candidate.provider = provider
+
+
 def read_as_0_9_1(path: Path) -> tuple[dict[str, Any], list[OldTrack]]:
-    """What 0.9.1 makes of this file. Raises exactly as it does when it cannot."""
+    """What 0.9.1 makes of this file, claiming included. Raises exactly as it does when it cannot."""
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema") != 1:
         raise ValueError(f"unsupported plan schema {data.get('schema')!r} (expected 1)")
-    return data, [OldTrack.from_dict(t) for t in data["tracks"]]
+    tracks = [OldTrack.from_dict(t) for t in data["tracks"]]
+    own_the_candidates_as_0_9_1(data.get("provider") or "youtube", tracks)
+    return data, tracks
 
 
 def write_as_0_9_1(path: Path, data: dict[str, Any], tracks: list[OldTrack]) -> None:
@@ -222,3 +239,71 @@ def test_writing_a_plan_that_is_already_right_changes_nothing(tmp_path):
     assert twice == once
     save_plan(load_plan(album_dir), album_dir)
     assert json.loads((album_dir / PLAN_FILE).read_text()) == once
+
+
+# -- the album the merge mixed (R-215) -------------------------------------------------------------
+
+
+def a_mixed_album(album_dir: Path) -> AlbumPlan:
+    """A YouTube album holding a copy taken from a folder — 15 of the real library's 329 are this."""
+    track = PlanTrack(video_id="aaaaaaaaaaa", number=1, artist="A Band", title="One",
+                      filename="01 - One.flac", provenance={}, state="done",
+                      source_override="/elsewhere/A Band/An Album/01 - One.flac")
+    track.candidates = [
+        Candidate(ref="aaaaaaaaaaa", provider="youtube", added_by="source", codec="opus"),
+        Candidate(ref="/elsewhere/A Band/An Album/01 - One.flac", provider="folder",
+                  added_by="pass", codec="flac", cutoff_khz=22, full_band=True),
+    ]
+    track.chosen = track.source_override
+    plan = AlbumPlan(source_url="https://y/1", source_id="p1", kind=Kind.OFFICIAL_ALBUM,
+                     album="An Album", albumartist="A Band", year=None, cover_url=None,
+                     folder="A Band/An Album", tracks=[track], provider="youtube")
+    save_plan(plan, album_dir)
+    return plan
+
+
+def test_the_provider_of_a_copy_is_written_beside_it(tmp_path):
+    album_dir = tmp_path / "A Band" / "An Album"
+    a_mixed_album(album_dir)
+
+    extra = json.loads((album_dir / PLAN_FILE).read_text())["tracks"][0][COPIES_EXTRA]
+
+    assert extra["/elsewhere/A Band/An Album/01 - One.flac"]["provider"] == "folder"
+    assert "aaaaaaaaaaa" not in extra or "provider" not in extra["aaaaaaaaaaa"], \
+        "the album's own provider is not worth recording: claiming it changes nothing"
+
+
+def test_what_0_9_1_does_to_it_is_undone_by_the_next_load(tmp_path):
+    """The acceptance in miniature: 0.9.1 reads, claims, saves — and noaap reads the provider it had."""
+    album_dir = tmp_path / "A Band" / "An Album"
+    a_mixed_album(album_dir)
+
+    data, tracks = read_as_0_9_1(album_dir / PLAN_FILE)
+    assert [c.provider for c in tracks[0].candidates] == ["youtube", "youtube"], \
+        "0.9.1 claims the copy for the album's provider, which is the defect this guards"
+    write_as_0_9_1(album_dir / PLAN_FILE, data, tracks)
+
+    plan = load_plan(album_dir)
+
+    taken = plan.tracks[0].candidate("/elsewhere/A Band/An Album/01 - One.flac")
+    assert taken is not None and taken.provider == "folder"
+    assert taken.cutoff_khz == 22 and taken.full_band is True
+    assert plan.tracks[0].candidate("aaaaaaaaaaa").provider == "youtube"
+
+
+def test_and_0_9_1_has_nothing_to_complain_about_either(tmp_path):
+    """Its own verdict on the round trip, which is the one that counts: it writes, we do not.
+
+    My report said noaap saw nothing lost. 0.9.1's own `plan --verify` said
+    `candidates.N.provider 'folder' -> 'youtube'` on 15 albums — **read the older program's verdict,
+    not only ours** (R-215).
+    """
+    album_dir = tmp_path / "A Band" / "An Album"
+    a_mixed_album(album_dir)
+    before = json.loads((album_dir / PLAN_FILE).read_text())
+
+    data, tracks = read_as_0_9_1(album_dir / PLAN_FILE)
+    write_as_0_9_1(album_dir / PLAN_FILE, data, tracks)
+    save_plan(load_plan(album_dir), album_dir)      # noaap's next save puts it back
+
+    assert json.loads((album_dir / PLAN_FILE).read_text()) == before

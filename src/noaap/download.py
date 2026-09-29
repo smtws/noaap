@@ -120,8 +120,17 @@ def narrow_candidates(data: dict[str, Any]) -> dict[str, Any]:
 
     Only a value that is not the default is written out, so an album from before any of these fields
     existed keeps the file it had, and `copies_extra` appears on a track only when it says something.
+
+    **The provider goes beside it too**, though 0.9.1 knows that field: it is the one field an older
+    reader is known to *rewrite*. On load 0.9.1 claims every candidate named by `video_id` or
+    `source_override` for the album's own provider, so a save by it turned a folder copy inside a
+    YouTube album into a YouTube one — 29 candidates in 15 albums of the real library — after which a
+    re-fetch would ask YouTube for a path (R-215). Only a provider that **differs from the album's** is
+    recorded, which is exactly the case that claiming would destroy: where they agree, claiming changes
+    nothing, and a candidate synthesised from `video_id` agrees by definition once it has been loaded.
     """
     default = _default_candidate()
+    album = data.get("provider") or "youtube"
     for track in data.get("tracks") or []:
         copies = track.get("candidates") or []
         here = {copy.get("ref", "") for copy in copies}
@@ -132,10 +141,17 @@ def narrow_candidates(data: dict[str, Any]) -> dict[str, Any]:
         extra = {ref: dict(kept) for ref, kept in (track.get(COPIES_EXTRA) or {}).items()
                  if ref in here}
         for copy in copies:
+            ref = copy.get("ref", "")
             mine = {k: copy.pop(k) for k in list(copy) if k not in CANDIDATE_1_0}
             mine = {k: v for k, v in mine.items() if v != default.get(k)}
-            if mine:  # memory is the newer truth where both say something
-                extra[copy.get("ref", "")] = {**extra.get(copy.get("ref", ""), {}), **mine}
+            kept = extra.get(ref, {})
+            kept.pop("provider", None)  # never a stale one: it is decided here, every save
+            if (whose := copy.get("provider")) and whose != album:
+                mine["provider"] = whose
+            if mine or kept:  # memory is the newer truth where both say something
+                extra[ref] = {**kept, **mine}
+            elif ref in extra:
+                del extra[ref]
         if extra:
             track[COPIES_EXTRA] = extra
         else:
@@ -154,8 +170,10 @@ def widen_candidates(data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(extra, dict):
             continue
         for copy in track.get("candidates") or []:
-            for key, value in (extra.get(copy.get("ref", "")) or {}).items():
-                copy.setdefault(key, value)
+            # **what is beside it wins.** It is written from memory on every save, so it is never the
+            # staler of the two — and for `provider` that is the whole point: whatever an older reader
+            # did to the field inside the candidate is undone by the next load here (R-215).
+            copy.update(extra.get(copy.get("ref", "")) or {})
     return data
 
 
