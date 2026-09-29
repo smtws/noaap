@@ -4713,10 +4713,32 @@ the stopping.
     trap this catalogue keeps recording), a server that idles out under socket activation (the page
     polls every 8 s, so it never idles while open), and the content type (Chrome sniffs).
 
+## BQ. Asking the rule again (P63b, DESIGN §9, slice 78)
+
+- [x] **BQ1** — the copy the old rule could not place is placed by the new one, and one it still
+  cannot produces no line at all.
+- [x] **BQ2** — a pair whose numbers were never fully recorded is left alone and counted, in both
+  directions (the copy here, the copy on the list).
+- [x] **BQ3 · R** — a track the user trimmed, chose a source for or timed their own words to is left
+  alone **with that reason**, and the reason is asked for *before* the numbers are: a track somebody
+  worked on is not a measurement problem. A copy they have already taken is not in the list at all.
+- [x] **BQ4** — it opens no audio file: a case fails if anything measures or examines one.
+- [x] **BQ5** — dry by default (the plan's digest is unchanged), and `--apply` takes the copy, bins
+  the displaced file and records both sides; a `keep` stops the copy being offered and deletes
+  nothing.
+- [x] **BQ6 · M** — one dry run on a copy of the user's installed library
+
+  A copy of its **329 plans** — which is everything this pass reads, since it opens no audio file.
+  **170 listed copies asked again: 115 would become `replace`, 45 unchanged, 10 left alone** (6 the
+  copy in use has no recorded measurement, 3 the user chose that track's source, 1 the listed copy
+  has none). 115 tracks across 11 albums. The whole library took **0.34 s**, and nothing was written:
+  no plan file in the copy is newer than the run that read it.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BQ cases (P63b: `merge --rejudge`) | 6 | 0 | The rule changed, so the copies already listed are asked again — **without opening one audio file**, because each carries the numbers it was measured with. Dry by default; `--apply` does what a merge does with that verdict and nothing more, bin included. A pair with a number missing is left alone and counted, and a track the user worked on is left alone with that reason, asked before the numbers are. On a copy of the user's 329 plans: **170 listed copies, 115 would become replace, 45 unchanged, 10 left alone**, 115 tracks in 11 albums, 0.34 s for the library. 1545 pytest + 129 node. |
 | 2026-09-30 | the BP cases (P63: eight the user asked for) | 8 | 1 of my own, caught before reporting; 2 caused by a fix and caught by the suite | The ranking rule the user gave: a lossless copy that gives up nothing takes a lossy one's place, and only in that direction. A switch of its own for the audio, so `lookups` means a title again. An address two parsers read differently is refused. Copies of one song in two libraries get labels that differ, and "3s apart" says what it measured. `file_length_by` was empty on **4583 of the installed library's tracks against 559** — every plan written before the field existed. And the playback report: **click-to-sound 8–117 ms over fifteen clicks, no stall reproduced**, but a jump past the trim end silently started the next song; plus three server defects (audio/ogg for every file, HEAD 501, HTTP/1.0) and two the HTTP/1.1 fix caused. Four hypotheses died on the way, one after a measurement that compared a fresh media element with a used one. 1530 pytest + 129 node. |
 | 2026-09-29 | the BO cases closed (P62: the third live run, and what it cost) | 2 | 0 | **The captions were taken from a real post**: they came as a playlist, 49 requests, 341 lines, the last stamp 4.08 s inside a 23:31 recording, 27,903 bytes of `.lrc` beside the track — strictly ordered, no duplicates, `provenance.lyrics = source`, and **not one word in the file's tag or the plan**. (48 segments is the requests less the playlist: inferred, not measured. **Whether a line sits where it is spoken is not known** — the stamps were checked for range and order, never against the speech.) No `noaap` cache directory existed at all, which is the queued MusicBrainz fix working live. The two numbers that run could not state — the segments' bytes and which timestamp convention they used — are now recorded by the provider and said on the track's line, and reach no plan. 1515 pytest + 121 node. |
 | 2026-09-29 | the BO cases extended (P61b: judge the list as a list) | 4 | 4 defects of mine, all found by the reviewer's own playlists | Thirteen of seventeen behaved; four did not, and they are one mistake in four costumes. A segment answering an **error page** read as a segment with no cues: two cues of three, no refusal, a hole in a chapter with nothing said — every segment must now be a caption file by its own first line, and the refusal names which one (an empty WebVTT segment stays legal). Addresses were checked **one at a time**, so a foreign third segment cost two requests before the refusal; the list is judged whole now and a bad one costs nothing. `#EXT-X-BYTERANGE` / `#EXT-X-MAP` were ignored, so the same file was fetched twice and read wrongly — refused, as is the same address listed twice. And the request count was raised after the answer, so a 404 vanished from the bill. 1513 pytest + 121 node. |

@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -142,7 +143,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="empty: only entries older than this many days")
 
     mr = sub.add_parser("merge", help="take the better copies out of another library (shows first)")
-    mr.add_argument("source", help="the library to take from — it is never written to")
+    mr.add_argument("source", nargs="?", help="the library to take from — it is never written to")
+    mr.add_argument("--rejudge", action="store_true",
+                    help="ask the current rule about the copies already listed in this library "
+                         "(no other library, no audio file opened)")
     mr.add_argument("--library", type=Path, help="the library to merge into (overrides the config)")
     mr.add_argument("--apply", action="store_true", help="actually do it (without this: a dry run)")
     mr.add_argument("--undecided", action="store_true", help="list only what it will not decide")
@@ -241,6 +245,12 @@ def main(argv: list[str] | None = None) -> int:
                 from . import merge as merge_pass
                 from .ranking import Verdict
                 _scope_matched(args, None, "")  # checked after the survey, which is where it is known
+                if args.rejudge:
+                    return _rejudge(args, library, merge_pass)
+                if not args.source:
+                    print("merge takes the library to take from, or --rejudge for the copies already "
+                          "listed here", file=sys.stderr)
+                    return 2
                 source_dir = Path(args.source).expanduser()
                 if not source_dir.is_dir():
                     # it answered "0 albums, nothing to do" for a path that was simply not there,
@@ -869,6 +879,31 @@ def _pick_and_fetch(service: Service, groups, args, dry: bool, missing: list[str
         print(f"\nMusicBrainz lists {len(missing)} more studio album(s) not found on YouTube: " + "; ".join(missing))
     chosen = _choose(refs, args)
     return exit_code(service.fetch_many(chosen, dry=dry)) if chosen else 0
+
+
+def _rejudge(args: argparse.Namespace, library: Path, merge_pass: Any) -> int:
+    """`merge --rejudge`: the rule asked again about copies already listed (§9, slice 78).
+
+    Dry by default, like every merge. It opens no audio file — the numbers were written down when
+    the pass measured them — so it costs a read of the plans and nothing else.
+    """
+    changes = merge_pass.rejudge(library, artist=args.only, album=args.album)
+    said = [c for c in changes if c.changed or c.left_alone]
+    for change in said:
+        print(change.line)
+    directions = Counter(c.verdict.verdict.value for c in changes if c.changed)
+    left = sum(1 for c in changes if c.left_alone)
+    same = len(changes) - len(said)
+    print(f"{len(changes)} listed cop{'y' if len(changes) == 1 else 'ies'} asked again: "
+          + (", ".join(f"{n} would become {what}" for what, n in sorted(directions.items())) or "none change")
+          + f", {same} unchanged, {left} left alone")
+    if not args.apply:
+        print("nothing was changed. `noaap merge --rejudge --apply` does it.")
+        return 0
+    done = merge_pass.carry_out_rejudged(changes, library, log=print)
+    print(f"{done['replaced']} replaced, {done['settled']} no longer offered"
+          + (f", {done['failed']} could not be taken" if done["failed"] else ""))
+    return 0
 
 
 def _prune(args: argparse.Namespace, cfg: config_mod.Config) -> int:

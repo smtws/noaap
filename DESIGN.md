@@ -2284,6 +2284,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    a client waiting. *A change that makes connections outlive one request makes every missing length
    a hang.*
 
+78. ✅ **Asking the rule again** (2026-09-30, P63b). A rule changed — the user changed it — and every
+   copy a pass had already listed was judged under the old one. `noaap merge --rejudge` asks the
+   current rule about them, and **opens no audio file**: each listed copy carries the numbers the
+   pass measured when it found it, so the question can be put again for the cost of reading the
+   plans. Dry by default, like every merge.
+   **What `--apply` does is what a merge does with that verdict and nothing more.** A `replace` goes
+   through the same `_take` as any other: the displaced file to the recycle bin, both sides keeping
+   their numbers, one plan saved per album. A `keep` means the copy is not worth offering any more,
+   so it stops being offered — nothing is deleted and the sentence that settled it stays on the copy.
+   **What it refuses to do:** a pair whose numbers were never fully recorded is left alone and
+   counted, because re-measuring is two decodes and that is `merge`'s own job; and a track the user
+   trimmed, chose a source for or timed their own words to is left alone with that reason, asked
+   **before** the numbers are looked at — a track somebody worked on is not a measurement problem.
+   A copy the user has already taken is not in the list at all, because taking one sets the track's
+   `source_override` and `undecided_copies` stops listing it.
+   **Measured on a copy of the user's installed library** (329 plans, no audio): 170 listed copies,
+   **115 would become `replace`**, 45 unchanged, 10 left alone — 6 because the copy in use has no
+   recorded measurement, 3 because the user chose that track's source, 1 because the listed copy has
+   none. 115 tracks across 11 albums, and the run took 0.34 s for the whole library, which is what
+   "opens no audio file" is worth.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

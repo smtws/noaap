@@ -491,7 +491,16 @@ copies' numbers; restoring one puts your file back and makes sure that proposal 
 when a copy you take arrives in another format, **the file it replaces goes to the bin too** — an
 album folder never holds audio no track of it names.
 
+**When the rule changes, the copies already listed can be asked again.** `noaap merge --rejudge`
+re-judges every copy waiting in your library under the current rule — it reads the numbers each copy
+was recorded with and **opens no audio file**, so it costs a read of the plans. It prints what would
+change and changes nothing; `--apply` then does exactly what a merge does with such a verdict, which
+for a replacement means the displaced file goes to the recycle bin. A copy whose numbers were never
+fully recorded is left alone, and so is a track you trimmed, chose a source for, or timed your own
+words to.
+
 ```sh
+noaap merge --rejudge                          # ask the current rule about the copies on the list
 noaap merge ~/Music/other-library              # show what it would do
 noaap merge ~/Music/other-library --undecided  # only what it will not decide for you
 noaap merge ~/Music/other-library --apply      # do it

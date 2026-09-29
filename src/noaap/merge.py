@@ -18,10 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .download import iter_plans, save_plan
-from .models import AlbumPlan, Candidate
-from .pairing import Pair, Pairing, Side, pair, sides
+from .models import AlbumPlan, Candidate, PlanTrack
+from .pairing import How, Pair, Pairing, Side, pair, sides
 from .plan import wanted_filename
-from .ranking import Facts, Judgement, Verdict, consider
+from .ranking import LOSSLESS, Facts, Judgement, Verdict, consider, judge, reference_length, untouchable
 from .recycle import bin_track
 from .service import _inside
 from .tag import measure
@@ -352,4 +352,138 @@ def take_new(found: Survey, fetch: Callable[[str], object],
         outcome = fetch(plan.source_url)
         status = getattr(outcome, "status", "")
         done["held" if status == "held" else "taken"] += 1
+    return done
+
+
+# -- judging again, on the numbers already recorded (§9, slice 78) -----------------------------------
+#
+# A rule can change — the user changed one — and every copy a pass has already listed was judged under
+# the old one. They carry their own numbers: codec, rate, where the audio stops, length, size, written
+# down when the pass measured them. So the question can be asked again **without opening a single
+# audio file**, and the answers compared with what is recorded.
+
+
+@dataclass
+class Rejudged:
+    """One listed copy, asked again."""
+
+    album_dir: Path
+    plan: AlbumPlan
+    track: PlanTrack
+    copy: Candidate
+    verdict: Judgement | None = None
+    left_alone: str | None = None       # why nothing could be said about this pair
+
+    @property
+    def changed(self) -> bool:
+        """Whether the answer is a different one. A copy on the list was judged UNDECIDED."""
+        return bool(self.verdict) and self.verdict.verdict is not Verdict.UNDECIDED
+
+    @property
+    def line(self) -> str:
+        who = f"{self.plan.albumartist} — {self.plan.album}: {self.track.title}"
+        if self.left_alone:
+            return f"  left alone  {who} — {self.left_alone}"
+        return f"  undecided → {self.verdict.verdict.value}  {who} — {self.verdict.why}"
+
+
+def facts_of(copy: Candidate | None) -> Facts | None:
+    """What a pass measured about this copy, as `Facts` — or None when it never wrote one down.
+
+    **An absent number is not a bad one** (§9, slice 54), so a pair that cannot be rebuilt in full is
+    left alone rather than judged on what happens to be there. Re-measuring would mean decoding both
+    files, which is `merge`'s own job and not this one's.
+    """
+    from .spectrum import Spectrum
+
+    if copy is None or not copy.length or copy.cutoff_khz is None:
+        return None
+    return Facts(length=copy.length, band=Spectrum(cutoff=copy.cutoff_khz, full=bool(copy.full_band),
+                                                   why="recorded"),
+                 codec=copy.codec, bitrate=copy.bitrate, bytes=copy.bytes,
+                 lossless=(copy.codec or "") in LOSSLESS)
+
+
+def rejudge(library: Path, artist: str | None = None, album: str | None = None) -> list[Rejudged]:
+    """Ask the current rule about every copy a pass has already listed. Opens no audio file."""
+    out: list[Rejudged] = []
+    for album_dir, plan in iter_plans(library):
+        if artist and plan.albumartist.casefold() != artist.casefold():
+            continue
+        if album and plan.album.casefold() != album.casefold():
+            continue
+        for track in plan.tracks:
+            waiting = track.undecided_copies()
+            if not waiting:
+                continue
+            mine = facts_of(track.candidate(track.effective_id))
+            here = Side(plan, track, album_dir)
+            for copy in waiting:
+                theirs = facts_of(copy)
+                # **the user's own work is asked about first**, as the rule itself asks it: a track
+                # somebody trimmed or chose a source for is not a measurement problem, and saying
+                # "no recorded measurement" about it would be the wrong reason for the right answer
+                if (why := untouchable(here)) is not None:
+                    out.append(Rejudged(album_dir, plan, track, copy, left_alone=why))
+                    continue
+                if theirs is None or mine is None:
+                    missing = "the copy here" if mine is None else "the copy on the list"
+                    out.append(Rejudged(album_dir, plan, track, copy,
+                                        left_alone=f"{missing} has no recorded measurement"))
+                    continue
+                said = judge(Pair(new=_stand_in(copy, plan), old=here, how=How.NAME), theirs, mine,
+                             reference_length(Pair(new=here, old=here, how=How.NAME)))
+                out.append(Rejudged(album_dir, plan, track, copy, verdict=said))
+    return out
+
+
+def _stand_in(copy: Candidate, plan: AlbumPlan) -> Side:
+    """The listed copy as a `Side`, so the rule and `_take` see the shape they always see.
+
+    Its ref is a path for a folder copy and an id for anything else; either way the file is where the
+    ref says, and `Side.file` is what `_take` copies from. Nothing is read here.
+    """
+    where = Path(copy.ref)
+    track = PlanTrack(video_id=copy.ref, number=0, artist="", title="", filename=where.name,
+                      provenance={}, state="done")
+    stand = AlbumPlan(source_url="", source_id="", kind=plan.kind, album=plan.album,
+                      albumartist=plan.albumartist, year=None, cover_url=None, folder="",
+                      tracks=[track], provider=copy.provider)
+    return Side(stand, track, where.parent)
+
+
+def carry_out_rejudged(changes: list[Rejudged], library: Path,
+                       log: Callable[[str], None] = lambda s: None) -> dict[str, int]:
+    """Do what a merge does with these verdicts, and nothing else (§9, slice 78).
+
+    `REPLACE` takes the copy in exactly as a merge would — the displaced file goes to the recycle
+    bin, both sides keep their numbers, and the plan is saved per album. `KEEP` means the copy is no
+    longer worth offering, so it stops being offered; nothing is deleted and the copy stays listed
+    with the sentence that settled it. A pair left alone is left alone.
+    """
+    done = {"replaced": 0, "settled": 0, "failed": 0}
+    touched: dict[Path, AlbumPlan] = {}
+    for change in changes:
+        if not change.changed:
+            continue
+        if change.verdict.verdict in (Verdict.REPLACE, Verdict.FILL):
+            proposal = Proposal(pair=Pair(new=_stand_in(change.copy, change.plan),
+                                          old=Side(change.plan, change.track, change.album_dir),
+                                          how=How.NAME),
+                                verdict=change.verdict)
+            try:
+                _take(proposal, library, log)
+            except OSError as e:
+                done["failed"] += 1
+                log(f"  could not take {change.track.title}: {e}")
+                continue
+            done["replaced"] += 1
+            continue
+        # KEEP: it is not a copy worth offering any more, and saying so is the whole action
+        change.copy.undecided = False
+        change.copy.why = change.verdict.why
+        done["settled"] += 1
+        touched[change.album_dir] = change.plan
+    for album_dir, plan in sorted(touched.items()):
+        save_plan(plan, album_dir)
     return done
