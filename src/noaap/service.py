@@ -1386,8 +1386,38 @@ class Service:
             done["decoded"] += measured
         return done
 
+    def find_source(self, plan: AlbumPlan, album_dir: Path, root: Path,
+                    apply: bool = False) -> dict[str, int]:
+        """The folder this album was taken in from, found again under `root` (§9, slice 66).
+
+        Only for an album whose source is not there any anymore, and only through the provider: it reads
+        the folder the files were found in and mints the refs itself. The album's own files are not
+        touched — what changes is which source the plan names.
+        """
+        from . import moved as moved_mod
+
+        where = moved_mod.source_of(plan)
+        if not where or Path(where).is_dir() or Path(where).resolve() == album_dir.resolve():
+            return {}
+        source = sources.for_plan(plan, self.cfg, self.cancel)
+        try:
+            found, why = moved_mod.look_for_source(album_dir, plan, root,
+                                                   lambda folder: source.collection(str(folder)))
+        except sources.SourceError as e:
+            self.log(f"  cannot read that folder: {e}")
+            return {}
+        if found is None:
+            self.log(f"  left “{plan.album}”: {why}")
+            return {"sources": 0, "would_source": 0, "left": 1, "decoded": 0}
+        self.log(f"  {'source' if apply else 'would point'} of “{plan.album}”: {found.was} → {found.now}")
+        done = {"sources": 0, "would_source": 1, "left": 0, "decoded": found.decoded}
+        if apply:
+            moved_mod.re_source(plan, found, found.now)
+            done["sources"], done["would_source"] = 1, 0
+        return done
+
     def repair(self, dry_run: bool = False, strays: bool = False, apply: bool = False,
-               find_moved: bool = False) -> list[Outcome]:
+               find_moved: bool = False, under: Path | None = None) -> list[Outcome]:
         """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
         Fixes albums downloaded before those rules existed — renames and retags only. With
@@ -1454,13 +1484,19 @@ class Service:
             # after `find_again`, which is cheap and asks the provider: only what is still missing is
             # worth decoding for (§9, slice 66)
             elsewhere = self.find_moved(plan, album_dir, apply=apply and not dry_run) if find_moved else {}
-            if elsewhere:
-                acted = elsewhere["moved"]
-                self.log(f"{acted or elsewhere['would_move']} track(s) "
+            if find_moved and under is not None:
+                for key, value in self.find_source(plan, album_dir, under,
+                                                   apply=apply and not dry_run).items():
+                    if key in ("sources", "would_source"):
+                        moved_total[key] = moved_total.get(key, 0) + value
+                    elsewhere[key] = elsewhere.get(key, 0) + value
+            if elsewhere.get("moved") or elsewhere.get("would_move") or elsewhere.get("left"):
+                acted = elsewhere.get("moved", 0)
+                self.log(f"{acted or elsewhere.get('would_move', 0)} track(s) "
                          f"{'found again' if acted else 'would be found again'}, "
-                         f"{elsewhere['left']} left, {elsewhere['decoded']} file(s) decoded")
-                for key in ("moved", "would_move", "left", "decoded"):
-                    moved_total[key] += elsewhere[key]
+                         f"{elsewhere.get('left', 0)} left, {elsewhere.get('decoded', 0)} file(s) decoded")
+            for key in ("moved", "would_move", "left", "decoded"):
+                moved_total[key] += elsewhere.get(key, 0)
             misplaced = album_dir != self.library / wanted_folder(plan)
             # **before the skip, not after it.** An album whose names are already right used to be
             # dropped here, and with it the only pass that would have measured its files — which is
@@ -1469,6 +1505,7 @@ class Service:
             lengths += filled
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
+                    and not elsewhere.get("sources") \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
@@ -1480,6 +1517,10 @@ class Service:
             album_dir = relocate(album_dir, plan, self.library)
             run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
+        if moved_total.get("sources") or moved_total.get("would_source"):
+            self.log(f"{moved_total.get('sources') or moved_total.get('would_source')} album(s) "
+                     f"{'were' if moved_total.get('sources') else 'would be'} pointed at the folder "
+                     "their source moved to")
         if moved_total["moved"] or moved_total["would_move"] or moved_total["left"]:
             self.log(f"{moved_total['moved'] or moved_total['would_move']} track(s) "
                      f"{'were' if moved_total['moved'] else 'would be'} found again by what their file "

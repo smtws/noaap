@@ -142,4 +142,112 @@ def re_attach(plan: AlbumPlan, album_dir: Path, found: Iterable[Found]) -> tuple
     return done, decoded
 
 
-__all__ = ["Found", "Outcome", "Undecided", "audio_under", "claimed", "look", "re_attach"]
+
+
+
+# -- and the whole folder an album was taken in from (§9, slice 66) ----------------------------------
+#
+# An album adopted from an intake folder keeps its own files in the library and its *refs* over there.
+# When that folder moves, nothing about the album is broken until somebody asks for its source again —
+# and then every ref names a path that is gone. The album's own files are still here, which is what
+# makes this answerable: their identities are measurable, and the same recordings under the new folder
+# say where it went. **The provider mints the new refs**; the core only says which file is which.
+
+
+@dataclass(frozen=True)
+class Resourced:
+    """One album whose source folder was found again somewhere else."""
+
+    was: str                     # the source the plan named
+    now: str                     # the folder it is now, as the provider addresses it
+    refs: dict[str, str]         # old ref -> new ref, one per track
+    decoded: int
+
+
+def source_of(plan: AlbumPlan) -> str:
+    return plan.source_id or plan.source_url
+
+
+def look_for_source(album_dir: Path, plan: AlbumPlan, root: Path,
+                    read: Callable[[Path], object]) -> tuple[Resourced | None, str]:
+    """Where this album's source folder went, or why that cannot be said.
+
+    Every track is matched by what its **own file in the library** holds, so this works for an album
+    whose source has been gone for months. All of them must be found, in one folder: a provider names a
+    collection by a folder, and half an album is not one.
+    """
+    from .plan import build_plan
+
+    candidates = audio_under(root)
+    if not candidates:
+        return None, f"no audio under {root.name}"
+    taken: set[Path] = set()
+    where: dict[str, Path] = {}
+    decoded = 0
+    for track in plan.tracks:
+        if not track.filename:
+            continue
+        mine = album_dir / track.filename
+        want = identity.identity_of(track, mine)
+        cheap = next((c.stream_sha for c in track.candidates
+                      if c.ref == track.effective_id and c.stream_sha), None)
+        if want is None and cheap is None:
+            return None, f"“{track.title}” has nothing measured about it to look for"
+        hits, cost = identity.matches(want, track.file_length or track.duration,
+                                      [p for p in candidates if p not in taken], cheap=cheap)
+        decoded += cost
+        if len(hits) != 1:
+            return None, (f"nothing under {root.name} holds “{track.title}”" if not hits
+                          else f"{len(hits)} files under {root.name} hold “{track.title}”")
+        where[track.video_id] = hits[0]
+        taken.add(hits[0])
+    if not where:
+        return None, "this album has no track with a file"
+    folders = {p.parent for p in where.values()}
+    if len(folders) != 1:
+        return None, f"its files are spread over {len(folders)} folders under {root.name}"
+
+    folder = folders.pop()
+    collection = read(folder)
+    fresh = build_plan(collection, source=None)
+    by_file = {}
+    for entry in collection.entries:            # type: ignore[attr-defined]
+        if entry.where:
+            by_file[(folder / entry.where).resolve()] = entry.video_id
+    refs = {}
+    for old, path in where.items():
+        if (new := by_file.get(path.resolve())) is None:
+            return None, f"the provider does not name {path.name} in that folder"
+        refs[old] = new
+    return Resourced(source_of(plan), fresh.source_id or str(folder), refs, decoded), ""
+
+
+def re_source(plan: AlbumPlan, found: Resourced, address: str) -> int:
+    """Point the album at the folder it is in now. Its own files are not touched.
+
+    The refs are the provider's, read from its own listing of that folder; `address` is what the plan
+    now calls its source, which is the same thing the provider was asked about.
+    """
+    changed = 0
+    for track in plan.tracks:
+        if (new := found.refs.get(track.video_id)) is None:
+            continue
+        old = track.video_id
+        for copy in track.candidates:
+            if copy.ref == old:
+                copy.ref = new          # the same file's measurements, under the name its owner minted
+        if track.source_override == old:
+            track.source_override = new
+        track.video_id = new
+        track.sync_candidates()
+        changed += 1
+    if plan.source_url == source_of(plan):
+        plan.source_url = address
+    if plan.cover_url == source_of(plan):
+        plan.cover_url = address
+    plan.source_id = address
+    return changed
+
+
+__all__ = ["Found", "Outcome", "Resourced", "Undecided", "audio_under", "claimed", "look",
+           "look_for_source", "re_attach", "re_source", "source_of"]

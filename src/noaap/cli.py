@@ -79,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--find-moved", action="store_true",
                     help="find a track's file again by what it holds, where it was renamed or moved "
                          "(reports only; add --apply to write it into the plan)")
+    rp.add_argument("--under", type=Path, metavar="FOLDER",
+                    help="with --find-moved: also look under FOLDER for the source folder an album was "
+                         "taken in from, when that folder has moved")
     rp.add_argument("--apply", action="store_true",
                     help="with --strays or --find-moved: actually do it")
 
@@ -316,7 +319,8 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 code = exit_code(_service(cfg, library).repair(dry_run=args.dry_run,
                                                                 strays=args.strays, apply=args.apply,
-                                                                find_moved=args.find_moved))
+                                                                find_moved=args.find_moved,
+                                                                under=args.under))
                 _say_lost(library)
                 return code
             case "lyrics":

@@ -217,3 +217,93 @@ def test_what_it_decoded_is_counted(album, tmp_path):
     assert did["decoded"] == 1, "and the one it attached is measured, so a re-tag cannot hide it later"
     assert next(c.audio_sha for t in plan.tracks for c in t.candidates
                 if t.filename == "cd1/renamed.mp3" and c.ref == t.effective_id)
+
+
+# -- the folder an album was taken in from (§9, slice 66) -------------------------------------------
+
+
+@pytest.fixture
+def taken_in(tmp_path) -> tuple[Path, Path, Path]:
+    """An album in an intake folder, fetched into a library: its files here, its refs over there."""
+    intake = tmp_path / "intake" / "A Band" / "An Album"
+    for n, title in enumerate(["One", "Two"], 1):
+        encode(intake / f"{n:02d} - {title}.mp3", hz=440 + 90 * n, title=title, artist="A Band",
+               album="An Album", album_artist="A Band", track=str(n))
+    library = tmp_path / "library"
+    library.mkdir()
+    out = service(library).fetch(str(intake))
+    assert out.status == "ok", out.message
+    return intake, library, library / out.plan.folder
+
+
+def test_an_album_keeps_its_own_files_and_points_at_the_intake(taken_in):
+    from noaap.moved import source_of
+
+    intake, library, album_dir = taken_in
+    plan = load_plan(album_dir)
+
+    assert source_of(plan) == str(intake)
+    assert all((album_dir / t.filename).is_file() for t in plan.tracks), "its own files are here"
+    assert all(str(intake) in t.video_id for t in plan.tracks), "and its refs are over there"
+
+
+def test_a_source_folder_that_moved_is_found_again(taken_in):
+    intake, library, album_dir = taken_in
+    somewhere = intake.parent.parent.parent / "somewhere else"
+    intake.parent.parent.rename(somewhere)          # the whole intake tree moved
+    assert not intake.is_dir()
+
+    service(library).repair(find_moved=True, under=somewhere, apply=True)   # the real path, which saves
+
+    plan = load_plan(album_dir)
+    assert str(somewhere) in plan.source_id
+    assert all(str(somewhere) in t.video_id for t in plan.tracks), "the provider minted the new refs"
+    assert all((album_dir / t.filename).is_file() for t in plan.tracks), "and nothing here moved"
+
+
+def test_the_measurements_of_a_track_follow_its_new_ref(taken_in):
+    """The ref changes because the file's *address* changed; what was measured about that file did not."""
+    intake, library, album_dir = taken_in
+    plan = load_plan(album_dir)
+    service(library).find_moved(plan, album_dir)     # nothing lost, but it measures nothing either
+    before = {t.title: next(c.stream_sha for c in t.candidates if c.ref == t.effective_id)
+              for t in plan.tracks}
+    somewhere = intake.parent.parent.parent / "elsewhere"
+    intake.parent.parent.rename(somewhere)
+
+    service(library).repair(find_moved=True, under=somewhere, apply=True)
+
+    after = load_plan(album_dir)
+    for track in after.tracks:
+        mine = next(c for c in track.candidates if c.ref == track.effective_id)
+        assert mine.ref == track.video_id
+        assert before[track.title] == mine.stream_sha, "the same file, under its new address"
+
+
+def test_half_an_album_is_not_a_source(taken_in):
+    """A provider names a collection by a folder, so all of it must be there or none of it is."""
+    intake, library, album_dir = taken_in
+    somewhere = intake.parent.parent.parent / "partial"
+    intake.parent.parent.rename(somewhere)
+    next((somewhere / "A Band" / "An Album").glob("*.mp3")).unlink()
+
+    said = []
+    done = Service(Config(), library, log=said.append).find_source(
+        load_plan(album_dir), album_dir, somewhere, apply=True)
+
+    assert done["sources"] == 0 and done["left"] == 1
+    assert any("holds" in line for line in said), said
+    assert str(intake) in load_plan(album_dir).source_id, "the plan is untouched"
+
+
+def test_an_album_whose_source_is_there_is_not_looked_at(taken_in):
+    intake, library, album_dir = taken_in
+
+    assert service(library).find_source(load_plan(album_dir), album_dir, intake.parent) == {}
+
+
+def test_an_adopted_album_is_its_own_source_and_is_never_re_sourced(album, tmp_path):
+    """Its source *is* the folder it sits in, so there is nothing to look for."""
+    album_dir = adopt_it(tmp_path)
+
+    assert service(tmp_path).find_source(load_plan(album_dir), album_dir, tmp_path) == {}
