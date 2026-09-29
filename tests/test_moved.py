@@ -240,3 +240,85 @@ def test_a_bin_entry_survives_the_library_moving(tmp_path):
     ref = entries(there)[0].data["ranking"]["chosen"]["ref"]
     assert ref.startswith(str(there)), "it names the album where the library is now"
     assert str(tmp_path / "here") not in ref
+
+
+# -- two different absences ---------------------------------------------------------------------------
+
+
+def test_an_album_whose_own_files_are_gone_is_named(tmp_path):
+    from noaap.download import load_plan, lost_files
+
+    album_dir = an_album(tmp_path)
+    plan = load_plan(album_dir)
+    assert lost_files(album_dir, plan) == []
+
+    (album_dir / plan.tracks[0].filename).unlink()
+
+    assert lost_files(album_dir, plan) == ["01 - One.opus"]
+
+
+def test_a_source_that_is_gone_is_not_that(tmp_path):
+    """R-207, ruling 3. An album taken in from a folder that is no longer mounted is **complete**:
+    its files are here. Saying otherwise tells a user their library is broken when only a re-fetch
+    would be."""
+    from noaap.download import load_plan, lost_files, save_plan
+
+    album_dir = an_album(tmp_path)
+    plan = load_plan(album_dir)
+    plan.source_url = plan.source_id = "/mnt/a-share-that-is-not-mounted/An Album"
+    for track in plan.tracks:
+        track.video_id = "/mnt/a-share-that-is-not-mounted/An Album/01 - One.opus"
+    save_plan(plan, album_dir)
+
+    assert lost_files(album_dir, load_plan(album_dir)) == []
+
+
+def test_the_page_says_it_and_says_where(tmp_path):
+    from noaap.config import Config
+    from noaap.download import load_plan
+    from noaap.web import App
+
+    album_dir = an_album(tmp_path)
+    (album_dir / load_plan(album_dir).tracks[0].filename).unlink()
+
+    missing = App(Config(musicbrainz=False, lyrics=False), tmp_path).settings()["missing"]
+
+    assert missing["albums"] == 1 and missing["tracks"] == 1
+    assert missing["where"] == ["A Band/An Album"]
+
+
+# -- a scope that matches nothing is a typo ------------------------------------------------------------
+
+
+def a_library(tmp_path) -> Path:
+    an_album(tmp_path, "An Album")
+    return tmp_path
+
+
+@pytest.mark.parametrize("args,says", [
+    (["adopt", "--album", "No Such Album", "--rename", "--apply"], "matched no album"),
+    (["adopt", "--only", "Nobody", "--undo"], "matched no adopted album"),
+    (["adopt", "--album", "No Such Album"], "matched no folder"),
+])
+def test_a_scope_that_matches_nothing_is_said_and_is_not_a_success(tmp_path, args, says):
+    """R-207, item f. "0 album(s): 0 file(s) renamed" and an exit of 0 is the same quiet wrong
+    answer as telling somebody their mistyped source folder held no albums."""
+    from test_watch import run_cli
+
+    library = a_library(tmp_path / "library")
+    code, said = run_cli([*args, "--library", str(library)], tmp_path / "cfg")
+
+    assert code == 2 and says in said and "Traceback" not in said
+
+
+def test_a_scope_that_matches_something_still_works(tmp_path):
+    from test_watch import run_cli
+
+    library = a_library(tmp_path / "library")
+
+    code, said = run_cli(["adopt", "--album", "An Album", "--library", str(library)],
+                         tmp_path / "cfg")
+
+    assert code == 0, said
+    assert "matched no" not in said, "the scope found its folder; what it then said about it is its own answer"
+    assert "An Album" in said

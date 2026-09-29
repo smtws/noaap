@@ -1680,6 +1680,20 @@ function renderLog(job) {
 
 // -- settings ----------------------------------------------------------------------------
 
+// Files a plan names that are not there. Almost always one thing: the library was moved and noaap
+// has not been told. Deliberately **not** the same as "the folder this album came from is gone" —
+// those tracks are complete, and saying otherwise would call a working library broken.
+function missingSection(missing) {
+  if (!missing || !missing.albums) return null;
+  return h("div", { class: "setting" },
+    h("strong", { class: "bad" }, `${missing.tracks} track(s) are not where their plan says`),
+    h("div", { class: "muted" },
+      `in ${missing.albums} album(s): `, missing.where.join(", "),
+      missing.albums > missing.where.length ? " \u2026" : "",
+      h("br"),
+      "If you moved the library, point noaap at it \u2014 the folder above, or `noaap config --library PATH`."));
+}
+
 // What `noaap watch` is looking at. **This app does not watch anything** — a separate process
 // does, so that this one can keep stopping itself when idle — and everything here is read from
 // what that process wrote down, which is the only way this page can be honest about it.
@@ -1812,6 +1826,7 @@ function openSettings() {
           : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
         h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
           placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
+      missingSection(st.missing),
       watchingSection(st.watching),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))),

@@ -214,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
                     return 2
                 from . import merge as merge_pass
                 from .ranking import Verdict
+                _scope_matched(args, None, "")  # checked after the survey, which is where it is known
                 source_dir = Path(args.source).expanduser()
                 if not source_dir.is_dir():
                     # it answered "0 albums, nothing to do" for a path that was simply not there,
@@ -221,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
                     raise config_mod.Refused(f"there is no folder at {source_dir}")
                 found = merge_pass.survey(source_dir, library, log=print,
                                           artist=args.only, album=args.album)
+                _scope_matched(args, len(found.pairing.pairs) + len(found.pairing.unpaired), "track")
                 wanted = [Verdict.UNDECIDED] if args.undecided else None
                 for line in merge_pass.report(found, verdicts=wanted, applying=args.apply):
                     print(line)
@@ -258,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
                     return _adopt_promote(adopt_pass, root, args)
                 found = adopt_pass.survey(root, library, source, artist=args.only,
                                           album=args.album, log=print)
+                _scope_matched(args, len(found.adoptions), "folder")
                 for line in adopt_pass.report(found, applying=args.apply):
                     print(line)
                 if args.apply:
@@ -323,6 +326,44 @@ def _service(cfg: config_mod.Config, library: Path | None) -> Service:
     return Service(cfg, library, log=lambda s: print(s, file=sys.stderr), on_plan=_print_plan, on_track=_print_track)
 
 
+def _scope_matched(args: argparse.Namespace, found: int | None, what: str) -> None:
+    """A `--only` or `--album` that matched nothing is a typo, not a success.
+
+    "0 album(s): 0 file(s) renamed" and an exit of 0 is the same quiet wrong answer as telling
+    somebody their mistyped source folder held no albums (R-207, item f).
+    """
+    if found is None or found:
+        return
+    named = " and ".join(filter(None, [f"--only {args.only!r}" if getattr(args, "only", None) else "",
+                                       f"--album {args.album!r}" if getattr(args, "album", None) else ""]))
+    if named:
+        raise config_mod.Refused(f"{named} matched no {what} — nothing was done")
+
+
+def _print_lost(cfg: config_mod.Config) -> None:
+    """Albums whose own files are not where their plan says.
+
+    The one line worth printing when a library has been moved and not yet told about it — and
+    deliberately not the same question as "the folder this was taken in from is gone", which is a
+    fact about a source and only matters where a re-fetch is asked for (R-207, ruling 3).
+    """
+    from .download import iter_plans, lost_files
+
+    root = cfg.library_root
+    if not root or not root.is_dir():
+        return
+    albums = [(d, lost) for d, p in iter_plans(root) if (lost := lost_files(d, p))]
+    if not albums:
+        return
+    tracks = sum(len(lost) for _, lost in albums)
+    print(f"missing:      {tracks} track(s) in {len(albums)} album(s) are not where their plan says")
+    for album_dir, lost in albums[:3]:
+        print(f"              {album_dir.relative_to(root)} ({len(lost)})")
+    if len(albums) > 3:
+        print(f"              …and {len(albums) - 3} more")
+    print("              if the library was moved, point noaap at it: noaap config --library PATH")
+
+
 def _print_watches(cfg: config_mod.Config) -> None:
     """What is watched, and why a setting cannot stand (R-200, ruling 4: it says so here)."""
     if not cfg.watches:
@@ -361,6 +402,7 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     print(f"cookies:      {cfg.cookies_file or cfg.cookies_from_browser or '(none — age-restricted videos are skipped)'}")
     print(f"musicbrainz:  {'on' if cfg.musicbrainz else 'off'}")
     _print_watches(cfg)
+    _print_lost(cfg)
     print(f"lyrics:       {'on (lrclib.net)' if cfg.lyrics else 'off'}")
     pot = cfg.resolved_pot_provider()
     if not pot or cfg.pot_mode == "off":
@@ -606,6 +648,7 @@ def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace)
                            "its plan was kept, run the undo again")
         for key, value in done.items():
             totals[key] = totals.get(key, 0) + value
+    _scope_matched(args, albums, "adopted album")
     if not args.apply:
         print(f"{albums} adopted album(s). Nothing was changed. `--undo --apply` does it.")
         return 0
@@ -640,6 +683,7 @@ def _adopt_promote(adopt_pass, root: Path, args: argparse.Namespace) -> int:
         if args.retag:
             retagged += adopt_pass.retag(album_dir, plan, log=print)
         save_plan(plan, album_dir)
+    _scope_matched(args, albums + refused, "album")
     if not args.apply:
         print(f"{albums} album(s), {refused} refused. Nothing was changed. `--apply` does it.")
         return 0

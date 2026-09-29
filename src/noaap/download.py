@@ -103,6 +103,18 @@ def _has_relative(value: Any) -> bool:
     return isinstance(value, str) and value.startswith(HERE)
 
 
+def lost_files(album_dir: Path, plan: AlbumPlan) -> list[str]:
+    """Finished tracks whose own file is not where the plan says (§9, slice 60).
+
+    **Its own file**, and nothing else. A track whose *source* has gone — an album taken in from a
+    folder that is no longer mounted — is not this: the file is here, the track is complete, and
+    saying otherwise would tell a user their library is broken when only a re-fetch would be
+    (R-207, ruling 3).
+    """
+    return [t.filename for t in plan.tracks
+            if t.state == "done" and t.filename and not (album_dir / t.filename).is_file()]
+
+
 def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
     """Every album folder in the library (<library>/<artist>/<album>/.ytalbum.json)."""
     for path in sorted(library.glob(f"*/*/{PLAN_FILE}")):

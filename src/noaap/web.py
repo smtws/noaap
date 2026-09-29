@@ -489,6 +489,19 @@ class App:
         self._thumbs[url] = (r.content, mime)
         return self._thumbs[url]
 
+    def missing(self) -> dict[str, Any]:
+        """`{albums, tracks, where}` — empty when every plan's files are where it says.
+
+        Not the same question as "the folder this album was taken in from is gone": that is a fact
+        about a source, the tracks here are complete, and it belongs where a re-fetch is asked for
+        (R-207, ruling 3).
+        """
+        from .download import lost_files
+
+        found = [(d, lost) for d, p in iter_plans(self.library) if (lost := lost_files(d, p))]
+        return {"albums": len(found), "tracks": sum(len(lost) for _, lost in found),
+                "where": [str(d.relative_to(self.library)) for d, _ in found[:5]]}
+
     def watching(self) -> list[dict[str, Any]]:
         """The configured watches, what each is for, and when it was last looked at.
 
@@ -519,6 +532,9 @@ class App:
             # what `noaap watch` is looking at, if anything (§9, slice 59). Named by the watch and
             # by its shape; the folder is shown as the user wrote it and never in a job's label.
             "watching": self.watching(),
+            # albums whose own files are not where their plan says — the one thing worth saying
+            # when a library has been moved and not yet told about it (§9, slice 60)
+            "missing": self.missing(),
             # Two slots, one per capability (§9, slice 40), and everything that depends on *which* provider
             # is answered per slot: what it can do, whether it sends the audio away, what it charges.
             "timing": {"provider": self.cfg.timing_provider,
