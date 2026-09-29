@@ -1,0 +1,24 @@
+{
+ "_type": "playlist",
+ "id": "70001",
+ "title": "A Creator",
+ "channel": "A Creator",
+ "channel_id": "70001",
+ "thumbnail": "https://c10.patreonusercontent.com/invented/campaign.jpg",
+ "entries": [
+  {
+   "id": "100002",
+   "title": "Three takes of Winter Light",
+   "channel_id": "70001",
+   "url": "https://www.patreon.com/posts/100002",
+   "timestamp": 1758000000
+  },
+  {
+   "id": "100001",
+   "title": "Winter Light (studio)",
+   "channel_id": "70001",
+   "url": "https://www.patreon.com/posts/100001",
+   "timestamp": 1757000000
+  }
+ ]
+}

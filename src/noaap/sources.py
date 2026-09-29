@@ -211,4 +211,9 @@ def _load() -> None:
     if _loaded:
         return
     _loaded = True
-    from . import sources_folder, sources_soundcloud, sources_youtube  # noqa: F401  — they register themselves
+    from . import (  # noqa: F401  — they register themselves
+        sources_folder,
+        sources_patreon,
+        sources_soundcloud,
+        sources_youtube,
+    )

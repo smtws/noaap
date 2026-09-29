@@ -1,0 +1,22 @@
+{
+ "id": "100005",
+ "title": "New single is up",
+ "webpage_url": "https://www.patreon.com/posts/100005",
+ "uploader": "A Creator",
+ "channel": "A Creator",
+ "channel_id": "70001",
+ "channel_url": "https://www.patreon.com/c/acreator",
+ "timestamp": 1758000000,
+ "thumbnail": "https://c10.patreonusercontent.com/invented/post.jpg",
+ "_type": "playlist",
+ "entries": [
+  {
+   "id": "dQw4w9WgXcQ",
+   "title": "A Creator — New Single",
+   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+   "duration": 198.0,
+   "ie_key": "Youtube",
+   "_type": "url_transparent"
+  }
+ ]
+}

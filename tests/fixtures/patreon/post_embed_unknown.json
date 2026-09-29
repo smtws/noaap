@@ -1,0 +1,22 @@
+{
+ "id": "100006",
+ "title": "Behind the scenes",
+ "webpage_url": "https://www.patreon.com/posts/100006",
+ "uploader": "A Creator",
+ "channel": "A Creator",
+ "channel_id": "70001",
+ "channel_url": "https://www.patreon.com/c/acreator",
+ "timestamp": 1758000000,
+ "thumbnail": "https://c10.patreonusercontent.com/invented/post.jpg",
+ "_type": "playlist",
+ "entries": [
+  {
+   "id": "1234567",
+   "title": "Behind the scenes",
+   "url": "https://player.vimeo.invalid/video/1234567",
+   "_type": "url_transparent",
+   "ie_key": "Vimeo",
+   "vcodec": "h264"
+  }
+ ]
+}

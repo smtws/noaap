@@ -1,0 +1,44 @@
+{
+ "id": "100002",
+ "title": "Three takes of Winter Light",
+ "webpage_url": "https://www.patreon.com/posts/100002",
+ "uploader": "A Creator",
+ "channel": "A Creator",
+ "channel_id": "70001",
+ "channel_url": "https://www.patreon.com/c/acreator",
+ "timestamp": 1758000000,
+ "thumbnail": "https://c10.patreonusercontent.com/invented/post.jpg",
+ "_type": "playlist",
+ "entries": [
+  {
+   "id": "900011",
+   "alt_title": "winter-light-take-1.mp3",
+   "ext": "mp3",
+   "url": "https://stream.patreon.invalid/900011",
+   "filesize": 5000000,
+   "duration": 212.0,
+   "acodec": "mp3",
+   "vcodec": "none"
+  },
+  {
+   "id": "900012",
+   "alt_title": "winter-light-take-2.mp3",
+   "ext": "mp3",
+   "url": "https://stream.patreon.invalid/900012",
+   "filesize": 5000000,
+   "duration": 212.0,
+   "acodec": "mp3",
+   "vcodec": "none"
+  },
+  {
+   "id": "900013",
+   "alt_title": "winter-light-instrumental.wav",
+   "ext": "wav",
+   "url": "https://stream.patreon.invalid/900013",
+   "filesize": 5000000,
+   "duration": 212.0,
+   "acodec": "wav",
+   "vcodec": "none"
+  }
+ ]
+}

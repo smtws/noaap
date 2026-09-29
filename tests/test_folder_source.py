@@ -267,7 +267,7 @@ def test_importing_one_provider_does_not_hide_the_others():
     by name filled the registry and the rest were never imported. One provider could not show it;
     the second turned it into 153 failures — every YouTube lookup answering "unknown provider" —
     the moment this file imported `sources_folder` at the top."""
-    assert sources.known() == ["folder", "soundcloud", "youtube"]
+    assert sources.known() == ["folder", "patreon", "soundcloud", "youtube"]
     assert sources.get(None, Config()).name == "youtube", "the default still resolves"
 
 

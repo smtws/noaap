@@ -142,6 +142,11 @@ class Config:
     # all, so these default to none; one site's credentials are never handed to another's.
     soundcloud_cookies_file: Path | None = None
     soundcloud_cookies_from_browser: str | None = None
+    # Patreon's own, and **only** Patreon's: a patron's session is theirs and no provider inherits
+    # another's cookies (§9, slice 70). Both default to nothing, and with nothing the provider refuses
+    # rather than trying anonymously — measured: even a public post answers 403 without a session.
+    patreon_cookies_file: Path | None = None
+    patreon_cookies_from_browser: str | None = None
     # bgutil PO-token generator, needed for some streams (DESIGN.md §3.9).
     # "server": local HTTP server started on demand, stops after pot_idle seconds idle
     # (script mode stays configured as fallback); "script": a Node process per request; "off".
@@ -231,6 +236,8 @@ def load(path: Path | None = None) -> Config:
     cfg.cookies_from_browser = data.get("cookies_from_browser") or None
     if cookies := data.get("soundcloud_cookies_file"):
         cfg.soundcloud_cookies_file = Path(cookies).expanduser()
+    if cookies := data.get("patreon_cookies_file"):
+        cfg.patreon_cookies_file = Path(cookies).expanduser()
     cfg.soundcloud_cookies_from_browser = data.get("soundcloud_cookies_from_browser") or None
     if pot := data.get("pot_provider_home"):
         cfg.pot_provider_home = Path(pot).expanduser()

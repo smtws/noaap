@@ -1,0 +1,23 @@
+{
+ "_type": "playlist",
+ "id": "70001",
+ "title": "A Creator",
+ "channel_id": "70001",
+ "entries": [
+  {
+   "id": "100000",
+   "title": "An older post",
+   "channel_id": "70001",
+   "url": "https://www.patreon.com/posts/100000",
+   "timestamp": 1756000000
+  },
+  {
+   "id": "200000",
+   "title": "Somebody else's post",
+   "channel_id": "70002",
+   "channel": "Another Creator",
+   "url": "https://www.patreon.com/posts/200000",
+   "timestamp": 1755000000
+  }
+ ]
+}

@@ -197,7 +197,8 @@ def test_an_unknown_provider_is_refused_rather_than_guessed(tmp_path):
 # cannot name a site.
 PROVINCES = [
     ("yt-dlp itself", r"\byt_dlp\b",
-     {"ytdlp.py", "youtube.py", "sources_youtube.py", "soundcloud.py", "sources_soundcloud.py"}),
+     {"ytdlp.py", "youtube.py", "sources_youtube.py", "soundcloud.py", "sources_soundcloud.py",
+      "patreon.py", "sources_patreon.py"}),
     # `titles.py` *is* YouTube's title conventions — the provider's province, wherever the file
     # happens to sit. What matters is who reaches into it, which the case after this pins.
     ("YouTube", r"youtube\.com|youtu\.be|ytimg|ggpht|googlevideo"
@@ -205,6 +206,10 @@ PROVINCES = [
      {"youtube.py", "sources_youtube.py", "titles.py"}),
     ("SoundCloud", r"soundcloud\.com|sndcdn|\bscsearch\b|api-v2\.soundcloud",
      {"soundcloud.py", "sources_soundcloud.py"}),
+    # Patreon's shapes: its host, a post address, a campaign address, and the ref only it can read.
+    # `config.py` names the two *settings* and no shape, which is why it is not in here.
+    ("Patreon", r"patreon\.com|patreonusercontent|\bpatreon:media\b|current_user_can_view",
+     {"patreon.py", "sources_patreon.py"}),
 ]
 
 
