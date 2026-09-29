@@ -644,6 +644,12 @@ def fit_reason(ours: float, theirs: float) -> str:
     return "a clip" if ours < theirs * (1 - NOMINATE_SHARE) else "another cut"
 
 
+# The page's own label for claiming a draft, repeated here so the refusal can name it. `webui/logic.mjs`
+# holds it as `CLAIM_LABEL` and a case greps that file: an instruction that names a control which reads
+# differently is not an instruction (§9, slice 69).
+CLAIM_LABEL = "I have corrected these words, they are mine"
+
+
 def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
     """Empty when these words may be given to lrclib; otherwise the reason they may not (§9, slice 42).
 
@@ -659,7 +665,11 @@ def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
     if track.provenance.get("lyrics") != Provenance.USER:
         return "these are lrclib's own words, not yours"
     if track.lyrics_words_by:
-        return f"these words are a draft by {track.lyrics_words_by} — write them yourself first"
+        # **the advice has to be followable** (§9, slice 69). It used to say "write them yourself
+        # first", and nothing in the app could do that: the editor sent the draft mark back on every
+        # save, so a rewritten draft was still a draft. Now there is a control, and this names it.
+        return (f"these words are a draft by {track.lyrics_words_by} — open the editor, correct them, "
+                f"tick “{CLAIM_LABEL}”, and save")
     if theirs is not None and text.strip() == theirs.strip():
         return "lrclib already has exactly these words"
     if (track.lyrics_published or {}).get("sha") == sent_sha(text):

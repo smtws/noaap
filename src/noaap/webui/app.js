@@ -1,8 +1,10 @@
-import { LENGTH, alignNotice, applyStamps, asTime, canSeed, draftNotice, draftText, effectiveId, fixConfirm, fmt,
+import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, canSeed, claimOffer, draftNotice, draftText,
+         effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          candidateLine, awaitingChoice, resetKind, roundMark,
-         seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice, toFileClock, trimOffset, trimTarget }
+         scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
+         toFileClock, trimOffset, trimTarget, wordsAfterClaim }
   from "./logic.mjs";
 
 // noaap web UI. No framework, no build step. All server text goes in via textContent.
@@ -967,12 +969,23 @@ function lyricsEditor(p, t, d) {
   // words — these are
   const timing = { by: d.timed_by || "", words: d.words_by || "", checked: null };
   const proposal = h("div", { class: "timing-note", hidden: !d.draft }, d.draft ? `\u26a0 ${d.draft}` : "");
+  // **the one thing that can clear a draft mark** (§9, slice 69): a statement, not an edit. Without it
+  // the editor sent `words_by` back on every save and a draft stayed a draft for ever, which made the
+  // refusal's own advice impossible to follow.
+  const claim = claimOffer(d);
+  const mine = claim.offer
+    ? h("input", { type: "checkbox", class: "claim-words", id: `claim-${t.video_id}` })
+    : null;
+  const claimRow = claim.offer
+    ? h("label", { class: "claim-row", for: `claim-${t.video_id}`, title: claim.title },
+        mine, h("span", {}, claim.label))
+    : null;
   const by = h("input", { type: "text", class: "shift-by", value: "-0.5", size: 5, "aria-label": "seconds to move every stamp by",
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); shiftStamps(area, by); } } });
   const nudge = (delta, label) => h("button", { class: "quiet small", type: "button",
     title: `Move this line's stamp by ${label} s and play it from there (Alt+${delta < 0 ? "←" : "→"}${Math.abs(delta) > 0.1 ? " with Shift" : ""})`,
     onclick: () => nudgeStamp(p, t, area, delta) }, label);
-  return h("div", { class: "editor-with-preview" }, area,
+  return h("div", { class: "editor-with-preview" }, area, claimRow,
     h("div", { class: "panel-actions stamp-tools" },
       h("button", { class: "quiet small", type: "button",
         title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.",
@@ -994,7 +1007,9 @@ function lyricsEditor(p, t, d) {
         title: "Move every timestamped line by that many seconds. Nothing is saved until you press Save.",
         onclick: () => shiftStamps(area, by) }, "shift all")),
     h("div", { class: "lyrics-actions" },
-      h("button", { class: "small", type: "button", onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by, timing.words, timing.checked) }, "Save"),
+      h("button", { class: "small", type: "button",
+        onclick: (e) => saveLyrics(e.currentTarget, p, t, area.value, timing.by,
+                                   wordsAfterClaim(timing.words, mine?.checked), timing.checked) }, "Save"),
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, false) }, "Cancel"),
       d.text ? h("button", { class: "quiet small danger", type: "button",
         title: "Remove the .lrc beside this track. Its tag goes with it, and a later “look up all again” may fetch LRCLIB's words.",
@@ -1986,9 +2001,18 @@ function markLyricLine() {
     before?.classList.remove("now");
     if (!active) continue;
     active.classList.add("now");
-    // scrollIntoView would take the page with it and pull the editor out of view
+    // scrollIntoView would take the page with it and pull the editor out of view, so the list is
+    // scrolled by hand — **measured against the list's own content** (§9, slice 68). `offsetTop` was
+    // used here and is measured from the nearest positioned ancestor, which inside a table is the `td`:
+    // in the editor's preview the box starts 645 px below it, so every step scrolled 28 lines too far
+    // and the line being sung was never in view. A rect difference cannot be fooled by that.
     const box = row.querySelector(".lines");
-    box.scrollTop = active.offsetTop - box.clientHeight / 2 + active.offsetHeight / 2;
+    const top = active.getBoundingClientRect().top - box.getBoundingClientRect().top
+                - box.clientTop + box.scrollTop;
+    const want = scrollForActive({ boxHeight: box.clientHeight, boxScroll: box.scrollTop,
+                                   contentHeight: box.scrollHeight, lineTop: top,
+                                   lineHeight: active.offsetHeight });
+    if (want !== null) box.scrollTop = want;
   }
 }
 $("#p-pos").addEventListener("change", (e) => { if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration; });

@@ -566,3 +566,64 @@ export function resetKind(provenance, derived) {
   if (provenance !== "user") return provenance ? "badge" : null;
   return derived === undefined || derived === null || derived === "" ? "badge" : "button";
 }
+
+// -- keeping the line that is being sung in view (§9, slice 68) ---------------------------
+//
+// The rolling list scrolled the active line **out** of view on every step, and the cause was one
+// arithmetic mistake: the page set `box.scrollTop = line.offsetTop - …`, and `offsetTop` is measured
+// from the nearest *positioned* ancestor — which inside a table is the `td`, whatever the box does.
+// Measured on the installed page: in the editor's preview the box starts 645 px below that `td`
+// (the textarea is above it), so every target was 645 px — **28 lines** — too far down. In the
+// read-only panel the same mistake is 36 px, so it only drifts. Both lists are this one function.
+//
+// So the caller passes the line's top **relative to the list's own content**, and this decides where
+// to scroll. It is here because it is arithmetic, and because a node test can hold it.
+
+/** Where the list should scroll so the active line is comfortably in view — or `null` for "leave it".
+ *
+ * `margin` is how many lines to keep above and below where the box is tall enough to allow it; a box
+ * that cannot hold that much simply centres. A line already comfortably in view is left alone, so the
+ * list does not fight somebody who has scrolled it themselves.
+ */
+export function scrollForActive({ boxHeight, boxScroll, contentHeight, lineTop, lineHeight, margin = 1 }) {
+  const furthest = Math.max(0, (contentHeight || 0) - (boxHeight || 0));
+  const centred = Math.min(furthest, Math.max(0, Math.round(lineTop - (boxHeight - lineHeight) / 2)));
+  if (!boxHeight || !lineHeight) return null;
+  const keep = boxHeight >= lineHeight * (2 * margin + 1) ? lineHeight * margin : 0;
+  const top = boxScroll + keep;
+  const bottom = boxScroll + boxHeight - keep;
+  if (lineTop >= top && lineTop + lineHeight <= bottom) return null;   // already where it should be
+  return centred === boxScroll ? null : centred;
+}
+
+// -- claiming a draft as your own (§9, slice 69) -------------------------------------------
+//
+// A draft is refused a publish, and rightly: `publishable` says *these words are a draft by
+// deepgram/nova-3*. But the advice could not be followed — the editor read `words_by` once when it
+// opened and sent it back on **every** save, so a draft stayed a draft however much of it somebody
+// rewrote. Nothing ever cleared the mark.
+//
+// It is not cleared by editing either. One changed character of a machine's guess is not authorship,
+// and a publish cannot be taken back. So it takes a statement, made once, deliberately.
+
+/** The label of that statement, and why it is offered — or `offer: false` where there is no draft. */
+export function claimOffer(d) {
+  if (!d || !d.words_by) return { offer: false, label: "", title: "" };
+  return {
+    offer: true,
+    label: CLAIM_LABEL,
+    title: `On record these words are a draft by ${d.words_by}. Ticking this says the words in the `
+         + "editor are yours now, which is what lets them be given back to lrclib. Editing them is not "
+         + "the same thing: one changed character of a machine's guess is not authorship.",
+  };
+}
+
+// The exact words the refusal tells somebody to look for. `publishable` in lyrics.py repeats them, and
+// a case greps this file to keep the two the same — an instruction that names a control which reads
+// differently is not an instruction.
+export const CLAIM_LABEL = "I have corrected these words, they are mine";
+
+/** What a save sends as `words_by`: nothing once the words have been claimed, else the mark as it was. */
+export function wordsAfterClaim(wordsBy, claimed) {
+  return claimed ? "" : (wordsBy || "");
+}

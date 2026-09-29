@@ -274,3 +274,79 @@ def test_the_page_is_told_whether_it_may_offer_the_button(album, tmp_path):
     App(Config(), tmp_path).lyrics(plan.source_id, track.video_id)
     again = App(Config(), tmp_path).lyrics(plan.source_id, track.video_id)["publish"]
     assert again["can"] is False and "draft by deepgram" in again["why"]
+
+
+# -- claiming a draft as your own (§9, slice 69, R-231) ---------------------------------------------
+
+
+def test_the_refusal_names_the_control_that_lifts_it(tmp_path):
+    """The user's finding: *"the advice cannot be followed"*. It said "write them yourself first", and
+    nothing in the app could — the editor sent the draft mark back on every save. So the refusal names
+    the statement that lifts it, in the words the page puts on it."""
+    from noaap.lyrics import CLAIM_LABEL
+
+    why = publishable(track_with(tmp_path, lyrics_words_by="deepgram/nova-3"), LRC)
+
+    assert "draft by deepgram/nova-3" in why
+    assert "open the editor" in why and "correct them" in why and "save" in why
+    assert CLAIM_LABEL in why, "and it quotes the control, so it can be found"
+
+
+def test_the_page_and_the_refusal_use_the_same_words(tmp_path):
+    """An instruction that names a control which reads differently is not an instruction."""
+    from pathlib import Path
+
+    from noaap.lyrics import CLAIM_LABEL
+
+    page = (Path(__file__).parent.parent / "src" / "noaap" / "webui" / "logic.mjs").read_text()
+
+    assert f'CLAIM_LABEL = "{CLAIM_LABEL}"' in page
+
+
+def test_a_draft_saved_again_unchanged_is_still_a_draft(album, tmp_path):
+    """Without the statement the mark stays, whatever the words now say: the page sends it back."""
+    album_dir, plan, yt = album
+    track = a_users_lyric(album_dir, plan)
+    track.lyrics_words_by = "deepgram/nova-3"
+    save_plan(plan, album_dir)
+    Service(Config(), tmp_path, yt=yt).save_lyrics(
+        plan.source_id, track.video_id, LRC.replace("One", "One, corrected"), words_by="deepgram/nova-3")
+
+    saved = next(t for t in load_plan(album_dir).tracks if t.video_id == track.video_id)
+    assert saved.lyrics_words_by == "deepgram/nova-3"
+    assert "draft by deepgram" in publishable(saved, LRC)
+
+
+def test_and_saved_with_the_statement_it_is_the_users_own(album, tmp_path):
+    """Which is the whole point: the words become theirs, and the other rules decide the rest."""
+    album_dir, plan, yt = album
+    track = a_users_lyric(album_dir, plan)
+    track.lyrics_words_by = "deepgram/nova-3"
+    save_plan(plan, album_dir)
+
+    # what the page sends once the statement is ticked: no `words_by` at all
+    Service(Config(), tmp_path, yt=yt).save_lyrics(plan.source_id, track.video_id, LRC, words_by="")
+
+    saved = next(t for t in load_plan(album_dir).tracks if t.video_id == track.video_id)
+    assert saved.lyrics_words_by is None
+    assert publishable(saved, LRC) == "", "no longer refused for being a draft"
+
+
+def test_claiming_the_words_leaves_whose_clock_it_is_alone(album, tmp_path):
+    """The statement is about words, not stamps. A draft's *timing* can be a provider's and stay so —
+    the two are separate facts and conflating them would quietly relabel somebody's alignment."""
+    from noaap.config import Config
+    from noaap.download import load_plan
+    from noaap.service import Service
+
+    album_dir, plan, yt = album
+    track = a_users_lyric(album_dir, plan)
+    track.lyrics_words_by, track.lyrics_timed_by = "deepgram/nova-3", "local/WAV2VEC2"
+    save_plan(plan, album_dir)
+
+    Service(Config(), tmp_path, yt=yt).save_lyrics(plan.source_id, track.video_id, LRC,
+                                                   timed_by="local/WAV2VEC2", words_by="")
+
+    saved = next(t for t in load_plan(album_dir).tracks if t.video_id == track.video_id)
+    assert saved.lyrics_words_by is None
+    assert saved.lyrics_timed_by == "local/WAV2VEC2"

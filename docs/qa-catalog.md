@@ -4121,10 +4121,55 @@ artist as an intake source. The snapshot is the instrument that can be clean her
 comparison should be zero would be pretending the material was something it was not.
 
 
+## BH. Two things the user found in the app (P57, DESIGN §9, slices 68 and 69)
+
+Both reported by the user while working in the installed app. Run against a **copy** of their library
+(`~/Musik/p57-library`, 329 albums) served from a worktree of its own on a spare port, under this
+session's own XDG directories. No publish was sent to lrclib.net.
+
+- [x] **BH1 · R** — the rolling list scrolled the line being sung out of view
+
+  The user: *"the rolling list scrolls the active line OUT of view on each turn; they suspect a wrong
+  offset"*. Measured on one track of **173 timed lines**.
+  - **cause:** `box.scrollTop = line.offsetTop - …`, and `offsetTop` is measured from the nearest
+    *positioned* ancestor — inside a table that is the `td`. Measured: in the **editor's preview** the
+    box starts **645 px** below it (the textarea is above), so every step aimed **28 lines** too low;
+    the old arithmetic would have put the line outside the box on **166 of 173** lines, worst **571 px**.
+  - **which of the two:** in the **read-only panel** the same mistake is **36 px** against a 254 px box,
+    so the line stays inside and merely sits a line and a half high — `oldOutside` 0 of 173 there. *The
+    editor is where it is ruinous and the panel is where it hides*, which is why it took a user to see it.
+  - **after:** 173 of 173 with the line **fully inside the box, 0 px overhang**, in the editor and the
+    panel, at **420 px** wide and at **1600**; **171 of 173** with a full line's margin above and below
+    (the two without are the first and last, where the box is at its end); and **the page itself never
+    scrolled** — 0 of 173 steps moved `window.scrollY`.
+  - the arithmetic is a pure function in `logic.mjs` with **10 node cases**, one of them the measured
+    645 px mistake written down as numbers.
+
+- [x] **BH2 · R** — a draft that could not be claimed
+
+  The user: the panel says *"these words are a draft by deepgram/nova-3 — write them yourself first"* and
+  offers no publish, **and the advice cannot be followed**.
+  - **cause:** the editor built `words_by` from the plan once and sent it back on **every** save
+    (`app.js:968`), so nothing ever cleared it. A rewritten draft was still a draft for ever.
+  - **fix:** a statement in the editor — *I have corrected these words, they are mine* — and only saving
+    with it clears `lyrics_words_by`. Editing alone does not: one changed character of a machine's guess
+    is not authorship, and a publish cannot be taken back. The refusal now names that control in the
+    page's own words, with a case that greps the page to keep the two the same.
+  - **live, on the user's own track** (a copy of it): corrected a line and saved **without** the
+    statement → still *words by deepgram*, still refused, no publish button. Opened it again, ticked the
+    statement, saved → **the mark gone from the plan**, the badge gone, **the *yours* badge still there**,
+    and *↑ publish to lrclib* offered. The button was **not** pressed.
+  - `publishable` is unchanged, and a claim leaves `lyrics_timed_by` alone: whose the words are and whose
+    the clock is stay two facts. Six node cases and five Python ones, including that one.
+  - **no screenshot:** the panel can only be shown on an artist this repository does not publish, and
+    nothing about the list's appearance changed — what changed is where it scrolls to.
+
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BH cases (P57: two things the user found in the app) | 2 | 0 in the design; both were **defects the user hit in the installed app** | The rolling lyrics list scrolled the line being sung out of view: `offsetTop` is measured from the nearest positioned ancestor, which inside a table is the `td`. Measured on 173 timed lines — in the **editor's preview** the box sits **645 px** below that `td`, so every step aimed **28 lines** too low and **166 of 173** lines landed outside the box, worst 571 px; in the read-only panel the same mistake is 36 px against a 254 px box, so it only drifts. *The editor is where it is ruinous and the panel is where it hides.* After: **173 of 173 fully in view, 0 px overhang**, at 420 px and 1600 px wide, **171 of 173 with a line's margin**, and the page never scrolled. And a Deepgram draft could not be claimed: the editor sent `words_by` back on every save, so the refusal's own advice was impossible to follow. Now a statement — *I have corrected these words, they are mine* — clears the mark, editing alone does not, the refusal names that control in the page's own words (with a grep case), and `lyrics_timed_by` is untouched. Verified on the user's own track in a copy: saved without the statement it stayed refused; with it the badge went, *yours* stayed and the publish was offered — and never pressed. 1348 pytest + 118 node. |
 | 2026-09-29 | the BG cases (P55c: finding a file by what it holds) | 8 | 0 in the design; **2 defects of my own found by running it**, both fixed; **1 of the user's files written by mistake** | BD8's cause, to the byte: 7699 of 7700 packets identical and the last one differing by exactly the **128-byte trailing ID3v1 tag** that ffmpeg hands over as audio data. So an identity is the **decoded** digest; the packet digest is a pre-check in one direction — and that direction is worth a lot, because **a renamed or moved file is byte for byte what it was and is found with 0 decodes**. Costs measured per container (2000 files: 167 s packets, 557 s decoded), which is why the identity is never measured during a collection read. `repair --find-moved` over 128 albums: **7.7 s**. It never guesses: one unclaimed match re-attaches, two or none are named and left, and a file found in **another album** is named and not taken — the first version re-attached it and left a plan naming a file it could not find. An album folder renamed by hand needs none of it (slice 60's relative refs; 0 lost, 128 plans byte-identical). The intake half refused once correctly, on a recording the collection holds twice. And the worst of it: `config --library` is a **setter** and I had been using it as a report, which rewrote the user's library root until they found the app empty — one line of their config, audited, and now a setter says what it changed while a report writes nothing. And one the acceptance caught: **a dry finding was not a dry pass** — only the finding held back while the rest of `repair` saved every plan it tidied, which a hash over 132 plans showed and which my own case had asserted as if it were the design. 1343 pytest + 102 node. |
 | 2026-09-29 | the BF cases (P55d: taking the copies back out) | 6 | 0 in the design; **1 defect in the cases themselves**, fixed; **1 ruling corrected** | The other half of BD, on damage **made with 1.5.0's own code** on a 41 GB copy: adopt + `update` = **64 files the collection does not have**. A file is removed only when all four conditions hold — adopted album with discs in sub-folders, a name the plan points at or noaap's scheme would write, **decoded** audio identical to a disc file's, and that disc file one the plan holds, which the *provider* says because a ref is opaque. The digest decodes because `stream_sha` called 14 of 22 real copies different from their originals (BD8). Dry by default, which no other part of `repair` is. Live: 64 would be binned and nothing written; with `--apply` **64 moved to the bin (507.7 MB)**, the plans back to 24/22/21 tracks all pointing into disc folders, `plan --verify` 132 byte-identical, nothing missing — then `adopt --undo --apply` **0 failed** where the damaged album had refused, and the tree is the collection again: **2000 files identical in name, size and mtime, 0 outside the bin that the collection does not have**. The corrected ruling: "its name follows noaap's scheme" is true for 61 of 64 and wrong for the three whose ID3 title is clipped at 30 characters — the mechanism is the name **the plan** held. The defect in the cases: every generated file was the same 440 Hz sine, so all of them decoded alike and the pass could match any twin. Collisions: three names exist on both discs of one album, each pair two different recordings, so 21 copies became 18 files; nothing of the owner's is lost, and what is not recoverable is work done to a copy before it was overwritten. 1290 pytest + 102 node. |
 | 2026-09-29 | the BE cases (P55b-2: the promise kept against an older reader) | 6 | 0 in the design; **3 defects the fix itself produced**, all found by running it, all fixed | The 1.0.0 promise was broken from **1.1.0**: ytalbum 0.9.1 builds a candidate with a bare constructor, so every field added to `Candidate` after slice 50 made the plan unreadable to it — **153 of 329 real albums refused**, measured with 0.9.1's own code. Slice 48's pass-through carries an unknown key on the album and on the track, and a candidate is neither. Now the ten fields 0.9.1 knows are written inside the candidate and everything since beside it on the track, keyed by the ref; memory, the page and the API are untouched. Live: after one `noaap repair`, 0.9.1 **reads all 329, refuses none, writes all 329 back**, and the 3910 fields it does not know are still there afterwards, 178 undecided copies included, with 0 plans losing or changing anything. The three defects: `plan --verify` parsed the file raw instead of loading it (116 plans reported as losing a `stream_sha`); `portable`/`resolved` rewrote values and not keys, so an undecided copy's fields were keyed by a path the load had already resolved (the page counted 0 where there were 2); and the rewrite was not idempotent, removing the record it had just written. **A fourth the reviewer found, not the suite:** I had read *our* verdict on the round trip and called it clean, while 0.9.1's own `plan --verify` said 29 candidates in 15 albums would lose their provider — it claims every candidate named by `video_id` or `source_override` for the album's provider, so its save turned a folder copy into a YouTube one. The provider is now written beside the candidate as well and outranks what is inside it, and after a real save by 0.9.1 of all 329 albums **0 of 5372 candidates changed provider**. What the two readers put *inside* the candidate stays a disagreement (BE6, open). 1281 pytest + 102 node. |

@@ -1940,6 +1940,42 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `XDG_CACHE_HOME` and `XDG_STATE_HOME` pointed somewhere disposable. A program that keeps its settings
    where the user's are is one mistaken flag away from changing them.
 
+68. ✅ **The line being sung stays in view** (2026-09-29, P57). The rolling lyrics list scrolled the
+   active line **out** of view on every step. One arithmetic mistake: the page set
+   `box.scrollTop = line.offsetTop - …`, and `offsetTop` is measured from the nearest *positioned*
+   ancestor — which inside a table is the `td`, whatever the scrolling box does.
+   **Measured on the installed page**, one track of 173 timed lines: in the editor's preview the box
+   starts **645 px** below that `td` (the textarea is above it), so every target was 645 px — **28
+   lines** — too far down, and the old arithmetic would have put the line outside the box on **166 of
+   173** lines, by up to 571 px. In the read-only panel the same mistake is only **36 px**, less than
+   the slack of a 254 px box, so there the line merely sits a line and a half high: **the editor is
+   where it is ruinous, and the panel is where it hides.**
+   The fix is a rect difference, which cannot be fooled by an offset parent, and a pure function that
+   decides *where* — kept in `logic.mjs` so a node test can hold it. It **centres the line, keeps a
+   line's margin above and below where the box is tall enough, and leaves a line that is already
+   comfortably in view alone**, so the list does not fight somebody who scrolled it themselves.
+   Verified live over whole tracks, in the editor and the panel, at 420 px wide and at 1600: **173 of
+   173 line changes with the line fully inside the box, 0 px of overhang, 171 of 173 with a full
+   line's margin** (the two without are the first and last, where the box is at its end), and **the
+   page itself never scrolled**.
+
+69. ✅ **Claiming a machine's draft as your own** (2026-09-29, P57). A draft is refused a publish, and
+   the refusal said *write them yourself first* — **advice the app made impossible to follow**. The
+   editor read `words_by` once when it opened and sent it back on every save, so a draft stayed a
+   draft however much of it somebody rewrote. Nothing ever cleared the mark.
+   **It is not cleared by editing, either.** One changed character of a machine's guess is not
+   authorship, and a publish cannot be taken back — so it takes a statement, made once, deliberately:
+   *I have corrected these words, they are mine*. Saved with it, `lyrics_words_by` goes; saved without
+   it, it stays, whatever the words now say.
+   **The refusal names that control, in the words the page puts on it**, and a case greps the page to
+   keep the two the same: an instruction that names a control which reads differently is not an
+   instruction. The badge *words by deepgram* goes when the mark goes and the *yours* badge stays,
+   because whose the words are and whose the stamps are remain two facts — a claim says nothing about
+   `lyrics_timed_by`, which keeps its provider.
+   `publishable` is untouched. Verified live on the track the user reported: corrected and saved
+   without the statement, still a draft and still refused; ticked and saved, the mark gone from the
+   plan, the badge gone, *yours* still there, and the publish offered — which was never pressed.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

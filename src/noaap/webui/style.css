@@ -372,3 +372,7 @@ button.src-pick.waiting { border-color: var(--warn); color: var(--warn); }
 .stamp-clock { font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
 /* more specific than the `.panel-actions input[type=text]` above, or it takes the whole line */
 .panel-actions input[type=text].shift-by { flex: 0 0 5rem; text-align: right; }
+/* the statement that turns a machine's draft into somebody's own words (§9, slice 69). It sits under
+   the preview, where the words it is about are, and reads as a sentence rather than a form field. */
+tr.lyrics .claim-row { display: flex; gap: .45rem; align-items: baseline; font-size: .85em; }
+tr.lyrics .claim-row input { margin: 0; accent-color: var(--accent); }
