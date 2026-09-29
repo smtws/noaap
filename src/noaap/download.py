@@ -19,9 +19,10 @@ from typing import Any
 
 from mutagen import MutagenError
 
+from . import captions
 from .cover import square_if_padded
-from .lyrics import LyricsAPI, reconcile, rename_sidecar, update_track
-from .models import AlbumPlan, Failure, PlanTrack
+from .lyrics import LyricsAPI, reconcile, rename_sidecar, status_of, update_track, write_sidecar
+from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import refresh_derived, wanted_filename, wanted_folder
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import audio_quality, image_mime, measure, signature, tag_file
@@ -438,6 +439,35 @@ def transfer_line(provider: Any) -> str | None:
             f"({away} was thrown away, {100 - kept * 100 // got}% of it)")
 
 
+def _words_from_source(provider: Any, plan: AlbumPlan, track: PlanTrack,
+                       album_dir: Path) -> str | None:
+    """Write the captions a provider found beside this track, or say why there are none.
+
+    **A sidecar and nothing else** (§9, slice 74): the words are the creator's text, they are marked
+    as theirs, and `tag.py` refuses to put words marked that way into the audio file — so no pass,
+    retag or repair can carry them into the file later. Returns the one line to say, once.
+    """
+    found = getattr(provider, "last_captions", None)
+    if not isinstance(found, dict):
+        return None
+    if refused := found.get("refused"):
+        return f"no words beside this track: {refused}"
+    cues = captions.read(found.get("bytes") or b"")
+    if not cues:
+        return "no words beside this track: its caption file holds no lines"
+    whose = str(found.get("by") or "the source")
+    text = captions.as_lrc(cues)
+    # the marks go on before the sidecar is written, because `write_sidecar` records what the words
+    # were written against and the panel reads the marks to decide what it may offer
+    track.provenance["lyrics"] = Provenance.SOURCE
+    track.lyrics_words_by = whose
+    track.lyrics_timed_by = whose
+    track.lyrics = status_of(text)
+    track.lyrics_id = None       # they are nobody's entry anywhere, and never become one
+    write_sidecar(album_dir, track, text)
+    return f"{len(cues)} line(s) of {whose}'s own captions, kept beside the track and nowhere else"
+
+
 def run(
     plan: AlbumPlan,
     album_dir: Path,
@@ -553,6 +583,7 @@ def run(
                 tmp = provider.audio(track.effective_id, parts, track.audio_choice)
                 if line := transfer_line(provider):
                     say(f"  {track.number:02d} {line}")
+                captions_said = _words_from_source(provider, plan, track, album_dir)
                 # **the file decides what it is.** `ext` was only ever set from a YouTube audio
                 # choice — opus, or m4a for a combined stream — so a provider that hands over an
                 # mp3 or a flac would have had it filed under `.opus`, tagged as Opus (which
@@ -565,7 +596,11 @@ def run(
                     track.filename = str(Path(track.filename).with_suffix(f".{got}")) \
                         if plan.keep_names else wanted_filename(plan, track)
                     final = album_dir / track.filename
-                text = update_track(lyrics, plan, track, album_dir, tmp) if lyrics else None
+                if captions_said:
+                    say(f"  {track.number:02d} {captions_said}")
+                # **words that came with the recording are never looked up over** (§9, slice 74)
+                text = update_track(lyrics, plan, track, album_dir, tmp) \
+                    if lyrics and track.provenance.get("lyrics") != Provenance.SOURCE else None
                 track.file_length, track.file_length_by = measure(tmp)
                 _measure_candidate(track, tmp)
                 try:

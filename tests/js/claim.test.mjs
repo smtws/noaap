@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { CLAIM_LABEL, claimOffer, wordsAfterClaim } from "../../src/noaap/webui/logic.mjs";
+import { CLAIM_LABEL, claimOffer, lyricsPanelState, wordsAfterClaim } from "../../src/noaap/webui/logic.mjs";
 
 test("the statement is offered where the words are a draft", () => {
   const offer = claimOffer({ words_by: "deepgram/nova-3" });
@@ -43,4 +43,31 @@ test("the refusal in lyrics.py names this exact label", () => {
   const py = readFileSync(new URL("../../src/noaap/lyrics.py", import.meta.url), "utf8");
   assert.ok(py.includes(`CLAIM_LABEL = "${CLAIM_LABEL}"`),
             "lyrics.py must carry the same words as logic.mjs");
+});
+
+// -- words that came with the recording (§9, slice 74) ---------------------------------------------
+
+test("the claim is not offered for a post's own captions", () => {
+  const draft = { words_by: "deepgram", owner: "mb" };
+  assert.equal(claimOffer(draft).offer, true, "a machine's draft can still be claimed");
+
+  const captions = { words_by: "patreon", owner: "source" };
+  const offer = claimOffer(captions);
+
+  assert.equal(offer.offer, false);
+  assert.equal(offer.label, "");
+});
+
+test("and the panel says whose they are, and offers no lookup over them", () => {
+  const state = lyricsPanelState({ owner: "source", words_by: "patreon", text: "[00:01.00] a line",
+                                   status: "synced" });
+
+  assert.equal(state.ownership, "patreon’s own captions");
+  assert.deepEqual(state.actions, ["Edit"]);
+});
+
+test("a save of such words sends the mark back unchanged", () => {
+  // there is no control to tick, so `claimed` is always false for them: editing a line is not
+  // authorship of somebody else's writing
+  assert.equal(wordsAfterClaim("patreon", false), "patreon");
 });

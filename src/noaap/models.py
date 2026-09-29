@@ -50,6 +50,11 @@ class Provenance(StrEnum):
     SOURCE_TAGS = "yt_music"    # metadata the source itself carried, beside the audio
     SOURCE_TITLE = "yt_title"   # read out of the item's title, by that source's conventions
     COLLECTION = "playlist"     # derived from the collection's own title or its owner
+    # words that came **with** the recording, written by whoever made it: a post's captions, not a
+    # lookup, not a machine's guess at the audio and not the user's (§9, slice 74). They are never
+    # offered to anybody and the claim control is not shown for them, because correcting somebody
+    # else's writing is not authorship of it.
+    SOURCE = "source"
     USER = "user"
 
     # a folder's three origins (§9, slice 53). `FILE_TAGS` is the same *kind* of evidence as

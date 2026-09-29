@@ -68,6 +68,11 @@ class PatreonSource:
         return self.pt.download_audio(ref, into, choice)
 
     @property
+    def last_captions(self) -> dict[str, Any] | None:
+        """The words that came with the last download, or why they did not (§9, slice 74)."""
+        return self.pt.last_captions
+
+    @property
     def last_transfer(self) -> dict[str, Any] | None:
         """What the last download moved and what it kept, when they differ (§9, slice 73).
 

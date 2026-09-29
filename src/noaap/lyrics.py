@@ -668,6 +668,12 @@ def publishable(track: PlanTrack, text: str, theirs: str | None = None) -> str:
         return "this track is marked instrumental"
     if status_of(text) != "synced":
         return "only timed lyrics are worth giving back — these have no timestamps"
+    if track.provenance.get("lyrics") == Provenance.SOURCE:
+        # a second refusal, standing on its own: these words are the creator's text, and correcting
+        # a line of somebody else's writing is not authorship of it (§9, slice 74). It holds even for
+        # a source nobody calls private, which is why it is not folded into the rule above.
+        return (f"these words came with the recording — they are {track.lyrics_words_by or 'the source'}'s "
+                "own captions, not yours to give away")
     if track.provenance.get("lyrics") != Provenance.USER:
         return "these are lrclib's own words, not yours"
     if track.lyrics_words_by:

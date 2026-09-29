@@ -155,6 +155,10 @@ class Config:
     # — never re-encoded, never the picture, and never for a post with any protection on it. Off, such
     # a post is refused in a sentence that names this setting.
     patreon_audio_from_video: bool = False
+    # …and the words that came with such a post, if it has captions (§9, slice 74). Off by default and
+    # only ever a sidecar: they are the creator's text, never written into the audio file's tag and
+    # never offered to anybody.
+    patreon_captions: bool = False
     # bgutil PO-token generator, needed for some streams (DESIGN.md §3.9).
     # "server": local HTTP server started on demand, stops after pot_idle seconds idle
     # (script mode stays configured as fallback); "script": a Node process per request; "off".
@@ -251,6 +255,7 @@ def load(path: Path | None = None) -> Config:
     if cap := data.get("patreon_post_cap"):
         cfg.patreon_post_cap = int(cap)
     cfg.patreon_audio_from_video = bool(data.get("patreon_audio_from_video", False))
+    cfg.patreon_captions = bool(data.get("patreon_captions", False))
     if pot := data.get("pot_provider_home"):
         cfg.pot_provider_home = Path(pot).expanduser()
     cfg.pot_mode = str(data.get("pot_mode", "server"))

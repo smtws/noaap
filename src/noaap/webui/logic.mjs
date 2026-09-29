@@ -408,14 +408,19 @@ export function draftNotice(timed) {
 // replace, and there is nothing to reject when no entry was matched.
 export function lyricsPanelState(d) {
   const mine = d.owner === "user";
+  // words that came with the recording: nobody looks them up, nobody publishes them, and the panel
+  // says whose they are rather than offering to replace them with a stranger's (§9, slice 74)
+  const fromSource = d.owner === "source";
   const words = Boolean(d.text);
   return {
     where: words ? (d.status === "synced" ? "with timestamps" : "plain text") : "no words yet",
-    ownership: mine ? "yours" : words && d.lrclib_id ? `lrclib #${d.lrclib_id}` : null,
+    ownership: mine ? "yours"
+      : fromSource ? `${d.words_by || "the source"}’s own captions`
+      : words && d.lrclib_id ? `lrclib #${d.lrclib_id}` : null,
     actions: [
       words ? "Edit" : "Write lyrics",
-      ...(mine ? [] : ["Look up again"]),
-      ...(!mine && d.lrclib_id ? ["Not these words"] : []),
+      ...(mine || fromSource ? [] : ["Look up again"]),
+      ...(!mine && !fromSource && d.lrclib_id ? ["Not these words"] : []),
     ],
   };
 }
@@ -609,6 +614,11 @@ export function scrollForActive({ boxHeight, boxScroll, contentHeight, lineTop, 
 /** The label of that statement, and why it is offered — or `offer: false` where there is no draft. */
 export function claimOffer(d) {
   if (!d || !d.words_by) return { offer: false, label: "", title: "" };
+  // **not for words that came with the recording** (§9, slice 74). The claim exists so somebody can
+  // take ownership of a machine's draft *of this recording*; a post's captions are the creator's own
+  // writing, and correcting a line of somebody else's text is not authorship of it. Editing them
+  // changes nothing about whose they are, which is why there is no control that would suggest it.
+  if (d.owner === "source") return { offer: false, label: "", title: "" };
   return {
     offer: true,
     label: CLAIM_LABEL,

@@ -812,7 +812,10 @@ async function lyricsRow(p, t, editing = false, draft = null) {
 function lyricsPanel(p, t, d, editing) {
   const { where, actions } = lyricsPanelState(d);
   const head = h("div", { class: "muted" }, `${t.artist} — ${t.title} · ${where}`,
-    d.words_by ? h("span", { class: "badge warn", title: `These words were drafted by ${d.words_by} and are a machine's guess.` },
+    d.words_by ? h("span", { class: d.owner === "source" ? "badge" : "badge warn",
+      title: d.owner === "source"
+        ? `These words came with the recording: ${d.words_by}\u2019s own captions. They are not yours, they are never offered to anybody, and editing a line does not change that.`
+        : `These words were drafted by ${d.words_by} and are a machine's guess.` },
       `words by ${d.words_by.split("/")[0]}`) : null,
     d.timed_by ? h("span", { class: "badge", title: `The words are yours; these timestamps were placed by ${d.timed_by}.` },
       `timed by ${d.timed_by.split("/")[0]}`) : null,

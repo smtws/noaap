@@ -254,6 +254,18 @@ setting. A post with DRM, a password or any other protection is refused by name,
 attempted against it. The track's copy records that its audio came out of a video, what the file
 measures as, and where its audio stops.
 
+**The words that came with a post, if it has any.** Some creators caption what they post, and for a
+narration those captions are the text of what is being read. `patreon_captions = true` keeps them
+**beside** the track as an `.lrc`, with one stamp per line taken from each caption's start — and
+nowhere else: they are never written into the audio file's tag, never published to LRCLIB, and never
+offered to anybody, because they are the creator's writing and not yours. The panel says whose they
+are, and the *"I have corrected these words, they are mine"* control is not offered for them:
+correcting a line of somebody else's text is not authorship of it. They are refused, with the reason
+said once, when the platform generated them rather than the creator, when the file is not WebVTT,
+when they are served from a host this provider does not read, or when the post's audio does not start
+at exactly zero — a caption file is timed to the whole asset, and a constant offset on every line
+looks right and is not. Off by default.
+
 **A private album's plan holds no address of its own.** The addresses Patreon hands out for a paid
 post's image are *signed* — they carry a token in the query — and a signed address is a piece of your
 session, so nothing of the sort is written into a plan. The cover is fetched while the post is being
@@ -277,7 +289,8 @@ day — **one real fetch**: the shortest of the five posts, a 23½-minute narrat
 of the video (16.6 MB kept, aac 96 kbps, 44.1 kHz, length matching the source manifest to four
 decimals, measured cutoff 15 kHz), tagged, and `update` run once over it, which changed nothing.
 What is still **untried against the live site**: a post that holds audio as a file, a post with
-attachments, a post outside the tier, more than one post in a run, and the cover (the one cover this
+attachments, a post outside the tier, more than one post in a run, captions (no caption file has ever
+been fetched — that needs your word first), and the cover (the one cover this
 provider has been asked for could not be fetched, which is what led to the fix in the paragraph
 above). Treat those as new.
 
@@ -923,6 +936,7 @@ confirm — and the change, if there is one to make, is yours.
 | `patreon_cookies_from_browser`, `patreon_cookies_file` | – | **Patreon's own**, and required: without one of them every Patreon call refuses. Read from your browser by yt-dlp, never stored or copied. |
 | `patreon_post_cap` | `200` | How many of a campaign's posts a listing reads before it stops and says so. |
 | `patreon_audio_from_video` | `false` | Take the audio stream out of a video post — copied, never re-encoded; the video is deleted and never enters the library. Off, such a post is refused. |
+| `patreon_captions` | `false` | Keep a post's own captions as an `.lrc` beside the track: the creator's words, marked as theirs, never in the file's tag and never offered to anyone. |
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
 | `lyrics` | `true` | Fetch lyrics from lrclib.net (`.lrc` beside the file + `LYRICS` tag). |
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |

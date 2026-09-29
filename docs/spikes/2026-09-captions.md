@@ -1,5 +1,22 @@
 # A post's captions as words beside the track — a proposal (P59, 2026-09-29)
 
+> **BUILT on 2026-09-29** (P60, DESIGN §9 slice 74), as §5 recommends. What changed on the way:
+>
+> - **No tag at all, rather than a tag under a few hundred lines.** §4 proposed a size limit; the
+>   ruling made it sidecar-only, which removed the question — and made the rule enforceable in one
+>   place (`build_tags` drops words whose provenance is `SOURCE`, so retag and repair obey it too).
+> - **The captions come from the video platform, not from the content host** the images use, so the
+>   parsed-host check of slice 73 grew a second host family rather than reusing the first.
+> - **An unmeasurable audio stream is refused as well** as an offset one: §2 only foresaw a non-zero
+>   `start_time`, and "ffprobe would not say" is the same risk with less information.
+> - `automatic_captions` are refused outright, which §4 left as a decision to take before building.
+> - Everything else was built as written, including `Provenance.SOURCE`, the withheld claim control
+>   and the doubled publish refusal.
+>
+> **Still true after building: no caption file has ever been fetched from the live site.** Every case
+> is a written fixture. The open question in §2 — whether a real file's first cue begins at the first
+> spoken word — is still open and is one fetch away, and that fetch needs the owner's word.
+
 **Nothing here ships.** R-249 asked for a proposal and R-250 kept it a proposal after the user said
 they like the idea. It is written to be built from: what the format holds, whether its stamps land on
 the audio as this program takes it, how such words would be marked, and what it would cost.

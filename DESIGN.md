@@ -2126,6 +2126,41 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    post itself, while a run for that album is happening anyway — never as a pass of its own, and a
    failure leaves the album without a cover and says why, once.
 
+74. ✅ **The words that came with the recording** (2026-09-29, P60). A creator who posts an audiobook
+   captions it, and those captions are the book. `patreon_captions` — **off by default** — keeps them
+   beside the track and nowhere else.
+   **They are a fourth kind of words.** Not the user's, not LRCLIB's, not a machine's draft of this
+   audio: somebody else's writing, which arrived with the recording. `Provenance.SOURCE` says so,
+   `lyrics_words_by` and `lyrics_timed_by` carry the provider's name, and the claim control from
+   slice 69 is **not offered** — correcting a line of another person's text is not authorship of it,
+   and a control that suggests otherwise is a lie in the shape of a checkbox. Editing them changes
+   nothing about whose they are.
+   **Sidecar only, decided in one place.** `build_tags` drops the words when the provenance is
+   `SOURCE`, so no fetch, retag or `repair` can carry them into the audio file by another route — and
+   because `signature()` reads the same function, such a track does not read as permanently out of
+   date for words it will never hold. The spike had proposed a size limit on the tag instead; the
+   ruling removed the question.
+   **Two refusals that each stand alone.** Publishing is refused because the words are not the user's
+   *and* because the audio came from a private source; a case proves each without the other, so
+   neither is quietly doing the other's work.
+   **What a cue is, and what is dropped.** WebVTT has two stamps per cue and `.lrc` has one, so the
+   start is kept and the end is not invented. A cue's own line breaks are reading-width, not
+   sentences, so a cue becomes one line. Speaker tags, styling, positioning, cue identifiers, `NOTE`
+   and `STYLE` blocks are presentation and go. Overlapping cues stay, in start order: two people
+   talking at once is two cues and dropping either would lose words. The reader knows no site — a
+   format is not a source — and lives in the core with the provider handing over checked bytes.
+   **Four refusals, each said once on the track's line.** Platform-generated captions (a machine's
+   draft of the audio, not the creator's text), a file that is not WebVTT, a host this provider does
+   not read, and — the one the spike insisted on before anything was built — **audio that does not
+   start at zero**: the captions are timed to the whole asset, the copied audio is timed to itself,
+   and a constant offset on every line looks right and is not. It is measured with `ffprobe`, not
+   assumed, and an audio stream that cannot be measured is refused too.
+   **A second media host.** The captions are served by the video platform (`*.mux.com`), not by the
+   content host the images come from, so the parsed-host check of slice 73 now holds a pair — both
+   checked the same way, and a caption address, which is signed, never reaches a plan.
+   **Untried live, and said so.** Everything here is written fixtures: no caption file has been
+   fetched from the real site, because that needs the owner's word.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

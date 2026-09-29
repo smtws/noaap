@@ -29,7 +29,7 @@ from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 
-from .models import AlbumPlan, PlanTrack
+from .models import AlbumPlan, PlanTrack, Provenance
 from .sources import DEFAULT as DEFAULT_PROVIDER
 
 PICTURE_KEY = "metadata_block_picture"
@@ -253,6 +253,13 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
         tags["musicbrainz_albumid"] = plan.mbid
     if track.mbid:
         tags["musicbrainz_trackid"] = track.mbid
+    # **words that came with the recording never go into the file** (§9, slice 74). A post's captions
+    # are the creator's text, kept beside the track as a sidecar and nowhere else; this is the one
+    # place that decides what a tag holds, so no pass — a fetch, a retag, `repair` — can carry them
+    # in later by a different route. It is also why the signature is unaffected: `signature()` reads
+    # this same function, so such a track does not read as permanently out of date.
+    if track.provenance.get("lyrics") == Provenance.SOURCE:
+        lyrics = None
     if lyrics:
         # one key, the one every tag-reading player understands; timestamps and all,
         # because that is what the .lrc beside the file holds (lyrics.py)

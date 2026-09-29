@@ -4455,10 +4455,61 @@ out of the video, tagged, `update` run once.
   later run on a plan with no address, and a provider with no image — which leaves the album without
   a cover and says why, once.
 
+## BM. The words that came with the recording (P60, DESIGN §9, slice 74)
+
+Built from `docs/spikes/2026-09-captions.md`, as its section 5 recommends. **Fixtures only: no
+caption file has been fetched from the live site**, which needs the owner's word and was not part of
+this package.
+
+- [x] **BM1** — a cue becomes one line, and presentation is dropped
+
+  Two stamps become one (the start; an end would be invented); a cue's reading-width breaks become
+  one line of words; speaker tags, italics, cue settings, identifiers, `NOTE` and `STYLE` blocks all
+  go. Overlapping cues are kept in start order — two voices at once is two cues. Both stamp shapes
+  the format allows are read; a file that is not WebVTT yields nothing.
+
+- [x] **BM2** — four refusals, each said once
+
+  Platform-generated captions (a draft of the audio, not the creator's text), a non-WebVTT file, a
+  host this provider does not read, and audio whose first stamp is not zero — measured with `ffprobe`
+  on the rendition, with the offset in the sentence, and refused outright when it cannot be measured.
+  *A constant offset on every line looks right and is not, which is worse than no words.*
+
+- [x] **BM3** — marked as the creator's, and not claimable
+
+  `Provenance.SOURCE`, `lyrics_words_by` and `lyrics_timed_by` = the provider. The editor does not
+  offer *"I have corrected these words, they are mine"* for them, the panel says whose they are, and
+  a save sends the mark back unchanged — editing is not authorship of somebody else's writing.
+  The panel also offers no lookup over them: nobody is asked about a private album anyway.
+
+- [x] **BM4** — sidecar only, in one place
+
+  `build_tags` drops words whose provenance is `SOURCE`, so a fetch, a retag and `repair` all obey it
+  without knowing about captions. And the signature is taken of the same function, so the track does
+  not read as out of date for words it will never hold.
+
+- [x] **BM5 · R** — the two publish refusals, each without the other
+
+  Captions on a track from a source nobody calls private: still refused, for whose words they are.
+  The user's own words on a private track: refused, for where the audio came from. Neither refusal is
+  doing the other's work.
+
+- [x] **BM6** — nothing is asked of anybody
+
+  Writing captions opens no lookup: the clients are replaced by stand-ins that raise on any call.
+
+### What is untried live
+
+A caption file has never been fetched. The address is signed and served by the video platform
+(`*.mux.com`), the check for it is the parsed-host one from slice 73, and whether a real file parses,
+whether its first cue begins at the first spoken word, and whether the audio of a real post starts at
+exactly zero are all one fetch away — and that fetch needs the owner's word.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BM cases (P60: a post's captions as words) | 6 | 0 | Built from the spike, as its recommendation reads. A fourth kind of words — not the user's, not LRCLIB's, not a machine's draft, but **the creator's own writing, arrived with the recording**: `Provenance.SOURCE`, the claim control withheld, the publish refused on two grounds that each stand alone, and **never written into the audio file** — decided in `build_tags`, so every pass obeys it and the signature does not churn. WebVTT is read in the core (a format is not a source): start stamps only, presentation dropped, overlaps kept in start order. Four refusals, each said once, including the one the spike insisted on: audio that does not start at zero, measured with ffprobe rather than assumed. The captions come from a second media host (`*.mux.com`), so the parsed-host check now holds a pair. Fixtures only — **no caption file has ever been fetched**. 1468 pytest + 121 node. |
 | 2026-09-29 | the BL cases extended (P59c: the review of the fix) | 3 | 2 findings of the reviewer's, both real | A substring test for "is this our media host" said yes to `evil.example/x.jpg?<host>` and to `<host>.evil.example` — and a yes hands the browser's session to that host. Parsed host now, https only, no unusual port, sub-domains allowed, and the address a redirect **landed** on checked the same way. Two paths still handed the client an address they were given, one of them reachable from a plan field a person can edit; every entry point now builds its address or refuses, with a case that walks them all. And the rule *no address in a private plan* had left the live album unable to ever get a cover: it is asked of the provider now, from the post, only during a run that is happening anyway. 1448 pytest + 118 node. |
 | 2026-09-29 | the BL cases (P59b: the run that happened) | 4 | 3 defects, all found in what the run **wrote**, not in whether it passed | One post fetched end to end: 1 min 20 s, 16.6 MB kept, aac 96 kbps, length matching the source manifest to four decimals, cutoff 15 kHz, no video left anywhere, `update` afterwards changed nothing (identical digest), and neither LRCLIB nor MusicBrainz was asked a thing although both were switched on. Then the three defects: the plan had stored the **signed** address of a paid post's image (decision: a private album's plan holds no address at all — a de-signed one answers 403 for ever and looks live; guarded by a grep over every written value); the cover failure was **not** the expiry I had reported but an image address being read as a page, and the real reason had been sitting at debug level; and bytes downloaded could not be reported although it had been measured. 1433 pytest + 118 node. |
 | 2026-09-29 | the BK cases (P59: the audio inside a video post) | 6 of 7 | the live run is the seventh and it was **refused before it began** | The creator posts audiobooks as video, so refusing every video post refused everything they publish. `patreon_audio_from_video`, off by default: the audio stream is **copied** (`-vn -map 0:a:0 -c:a copy`, never an encoder), the rendition is chosen by its audio and then by the smallest picture carrying it (the same AAC rides every rung of Patreon's ladder), and the video lives outside the library and is deleted after success and after failure alike. Protection of any kind is refused without a request being built. With it, R-250: **nothing from a private source is offered to anyone** — no publish, no seed, and no lookup either, since a lookup sends a title, a creator and a length to somebody else's server; it is a capability the provider declares and the core enforces, never a name in a list. The live run answered 403 at the listing: `session_id` good for a year, Cloudflare's 30-minute `__cf_bm` long expired — so the refusal now names the one action that renews either, and the README says plainly that fetching from Patreon is still untried. 1424 pytest + 118 node. |
