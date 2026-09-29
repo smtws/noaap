@@ -266,6 +266,15 @@ when they are served from a host this provider does not read, or when the post's
 at exactly zero — a caption file is timed to the whole asset, and a constant offset on every line
 looks right and is not. Off by default.
 
+What a post actually serves is usually not a file but a **playlist** of WebVTT segments, and that is
+read too: the playlist, then each segment in order, then the cues joined into one list with a cue
+that spans two segments appearing once. Every address is checked before it is asked — the playlist
+and each segment, after resolving it against the playlist — and one segment from somewhere else
+refuses the whole track rather than writing half of it. A playlist of playlists, an encrypted one
+(no key is ever fetched) and one that is still being written are each refused by name, as is more
+than **600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line
+says what it did cost.
+
 **And its audio does not go to a timing provider that is not this machine.** Aligning words or
 drafting them sends the *recording* — so for an album from a private source that only happens with a
 provider running here: `local`, or `http` pointed at this machine. A vendor is refused in one

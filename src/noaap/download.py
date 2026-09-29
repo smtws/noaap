@@ -450,11 +450,14 @@ def _words_from_source(provider: Any, plan: AlbumPlan, track: PlanTrack,
     found = getattr(provider, "last_captions", None)
     if not isinstance(found, dict):
         return None
+    asked = found.get("requests")
+    cost = f" ({asked} request{'s' if asked != 1 else ''})" if asked else ""
     if refused := found.get("refused"):
-        return f"no words beside this track: {refused}"
-    cues = captions.read(found.get("bytes") or b"")
+        return f"no words beside this track: {refused}{cost}"
+    # a provider may hand over a file to read or the lines it already joined out of several
+    cues = found.get("cues") or captions.read(found.get("bytes") or b"")
     if not cues:
-        return "no words beside this track: its caption file holds no lines"
+        return f"no words beside this track: its caption file holds no lines{cost}"
     whose = str(found.get("by") or "the source")
     text = captions.as_lrc(cues)
     # the marks go on before the sidecar is written, because `write_sidecar` records what the words
@@ -465,7 +468,8 @@ def _words_from_source(provider: Any, plan: AlbumPlan, track: PlanTrack,
     track.lyrics = status_of(text)
     track.lyrics_id = None       # they are nobody's entry anywhere, and never become one
     write_sidecar(album_dir, track, text)
-    return f"{len(cues)} line(s) of {whose}'s own captions, kept beside the track and nowhere else"
+    return (f"{len(cues)} line(s) of {whose}'s own captions{cost}, kept beside the track "
+            "and nowhere else")
 
 
 def run(

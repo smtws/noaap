@@ -67,6 +67,10 @@ class PatreonSource:
     def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
         return self.pt.download_audio(ref, into, choice)
 
+    def captions_note(self) -> str | None:
+        """What captions would cost for the collection just read — for a dry run to print."""
+        return self.pt.last_captions_note
+
     @property
     def last_captions(self) -> dict[str, Any] | None:
         """The words that came with the last download, or why they did not (§9, slice 74)."""

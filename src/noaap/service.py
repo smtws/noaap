@@ -226,6 +226,9 @@ class Service:
             dump.write_text(json.dumps(collection.to_dict(), indent=2, ensure_ascii=False) + "\n")
         # what a folder held that is not a track, and how many copies of one recording it had.
         # Both are the kind of thing a person wants to hear once, while looking at the folder.
+        if note := (getattr(source, "captions_note", None) or (lambda: None))():
+            # said on a dry run too, because that is where somebody decides whether to pay for it
+            self.log(f"  {note}")
         if reader := getattr(source, "ignored", None):
             if left := reader(url):
                 self.log("  left alone: " + ", ".join(f"{n} {kind}" for kind, n in sorted(left.items())))
@@ -259,7 +262,10 @@ class Service:
         if not self.may_look_up(plan):
             self.log("  nothing about this album is looked up anywhere: its audio came from a source "
                      "one person paid for (set \"lookups\": true in its plan to change that)")
-        if (mb := self.mb) and self.may_look_up(plan):
+        # **asked in this order on purpose**: reading `self.mb` builds the client, and building it
+        # creates a cache file — for an album nothing may be asked about, even that is more than
+        # nothing (R-259, queued; found in the live run's own cache directory)
+        if self.may_look_up(plan) and (mb := self.mb):
             stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")),
                            source=self.source_for(plan))
             self.log("MusicBrainz: " + ("release matched" if stats["release"] else f"{stats['tracks']}/{stats['looked_up']} tracks matched"))

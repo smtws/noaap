@@ -13,9 +13,16 @@
 > - Everything else was built as written, including `Provenance.SOURCE`, the withheld claim control
 >   and the doubled publish refusal.
 >
-> **Still true after building: no caption file has ever been fetched from the live site.** Every case
-> is a written fixture. The open question in §2 — whether a real file's first cue begins at the first
-> spoken word — is still open and is one fetch away, and that fetch needs the owner's word.
+> **Run against the live site on 2026-09-29, and refused.** The post does not serve a caption *file*:
+> it serves `subtitles.m3u8`, a playlist of WebVTT segments (`ext: vtt`, `protocol: m3u8_native`).
+> §1 of this document assumed a file, which is what yt-dlp's `ext` appears to promise; the segments
+> are the WebVTT and the address is the list of them. Reading a playlist was built in P61 (slice 76),
+> together with the arithmetic §2 could only guess at: `X-TIMESTAMP-MAP` is used **relative to the
+> first segment**, never as an absolute origin, because the audio is copied out of an mp4 that
+> carries no such clock. The measurement §2 asked for did happen: a real rendition's audio starts at
+> `0.000`.
+> **Still untried live: the words themselves.** No caption segment has been fetched, so whether a
+> real file parses, how many lines a chapter holds and where its first cue begins are still open.
 
 **Nothing here ships.** R-249 asked for a proposal and R-250 kept it a proposal after the user said
 they like the idea. It is written to be built from: what the format holds, whether its stamps land on

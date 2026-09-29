@@ -154,7 +154,7 @@ def test_captions_served_from_somewhere_else_are_refused(monkeypatch):
 
 
 def test_a_file_that_is_not_webvtt_is_refused(monkeypatch):
-    assert "not a WebVTT file" in decides(monkeypatch, a_post(), body=b"1\n00:00:01,0 --> 00:00:02,0\nsrt\n")["refused"]
+    assert "neither a WebVTT file nor a playlist" in decides(monkeypatch, a_post(), body=b"1\n00:00:01,0 --> 00:00:02,0\nsrt\n")["refused"]
 
 
 def test_audio_that_does_not_start_at_zero_is_refused(monkeypatch):
@@ -504,3 +504,268 @@ def test_the_stamp_never_names_a_minute_that_does_not_exist():
     assert stamp(3599.9951) == "[60:00.00]"
     assert stamp(59.994) == "[00:59.99]" and stamp(0) == "[00:00.00]" and stamp(7.12) == "[00:07.12]"
     assert ":60." not in captions.as_lrc([(59.996, "a"), (119.999, "b"), (3599.9951, "c")])
+
+
+# -- captions served as a playlist (§9, slice 76, R-262) ---------------------------------------------
+#
+# Synthetic throughout: the words below are invented for these cases and no line of any real caption
+# file is in this repository.
+
+PLAYLIST = """#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXTINF:10.00000,
+seg-0.vtt
+#EXTINF:10.00000,
+seg-1.vtt
+#EXT-X-ENDLIST
+"""
+
+# the shape this platform really writes: the same map in every segment, and cue stamps that are
+# already the asset's own, so a cue spanning a border is written twice with the *same* time
+SEG0 = """WEBVTT
+X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:900000
+
+00:00:01.000 --> 00:00:04.000
+the first invented line
+
+00:00:09.500 --> 00:00:11.500
+a line that spans the border
+"""
+
+SEG1 = """WEBVTT
+X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:900000
+
+00:00:09.500 --> 00:00:11.500
+a line that spans the border
+
+00:00:13.000 --> 00:00:15.000
+the second invented line
+"""
+
+# the other convention, which the format also allows: each segment's stamps start again at zero and
+# its map says where that zero is
+RESTARTING = ("WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:{ts}\n\n"
+              "00:00:01.000 --> 00:00:02.000\n{said}\n")
+
+
+def serving(monkeypatch, answers: dict[str, bytes], *, starts_at: float = 0.0) -> dict[str, Any]:
+    """The provider with its one connection replaced by a table of addresses to bytes."""
+    from noaap import patreon as mod
+
+    pt = PatreonSource(taking()).pt
+    asked: list[str] = []
+
+    def media(url: str, accept: str = "") -> bytes:
+        asked.append(url)
+        try:
+            return answers[url]
+        except KeyError:
+            raise sources.SourceError(f"nothing recorded for {url}") from None
+
+    monkeypatch.setattr(mod, "_audio_starts_at", lambda path: starts_at)
+    monkeypatch.setattr(pt, "_media_bytes", media)
+    found = pt._captions(a_post(), Path("/dev/null"))
+    found["asked"] = asked
+    return found
+
+
+def test_a_playlist_is_read_and_its_segments_joined(monkeypatch):
+    """What the live post really serves: `ext: vtt`, `protocol: m3u8_native`, an address ending
+    `subtitles.m3u8`. The segments are the WebVTT; the address is the list of them."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": PLAYLIST.encode(),
+        "https://manifest.edgemv.mux.com/seg-0.vtt": SEG0.encode(),
+        "https://manifest.edgemv.mux.com/seg-1.vtt": SEG1.encode()})
+
+    assert "refused" not in found, found.get("refused")
+    assert found["requests"] == 3 and len(found["asked"]) == 3
+    assert found["asked"][1].endswith("/seg-0.vtt"), "relative segments resolve against the playlist"
+    starts = [start for start, _ in found["cues"]]
+    assert starts == sorted(starts), "in start order"
+    assert found["cues"] == [(1.0, "the first invented line"),
+                             (9.5, "a line that spans the border"),
+                             (13.0, "the second invented line")]
+
+
+def test_segments_whose_stamps_restart_are_shifted_by_their_own_map(monkeypatch):
+    """The format's other convention: each segment counts from zero and its `X-TIMESTAMP-MAP` says
+    where that zero is. The first segment's base is the asset's zero — which is where the audio
+    starts, measured — and every later one is shifted by its own base relative to it."""
+    playlist = "#EXTM3U\n#EXTINF:10,\nseg-0.vtt\n#EXTINF:10,\nseg-1.vtt\n#EXT-X-ENDLIST\n"
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": playlist.encode(),
+        "https://manifest.edgemv.mux.com/seg-0.vtt": RESTARTING.format(ts=900000, said="first").encode(),
+        "https://manifest.edgemv.mux.com/seg-1.vtt": RESTARTING.format(ts=1800000, said="second").encode()})
+
+    assert found["cues"] == [(1.0, "first"), (11.0, "second")], "the second segment is 10 s later"
+
+
+def test_a_cue_written_in_two_segments_appears_once(monkeypatch):
+    """A cue that spans a segment border is written at the end of one and the start of the next."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": PLAYLIST.encode(),
+        "https://manifest.edgemv.mux.com/seg-0.vtt": SEG0.encode(),
+        "https://manifest.edgemv.mux.com/seg-1.vtt": SEG0.encode()})  # the same segment twice
+
+    assert [said for _, said in found["cues"]].count("a line that spans the border") == 1
+
+
+def test_one_foreign_segment_refuses_the_whole_track(monkeypatch):
+    """A caption file assembled from two places is not this post's captions. And the foreign address
+    is never asked: the check comes before the request."""
+    foreign = PLAYLIST.replace("seg-1.vtt", "https://evil.example/seg-1.vtt")
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": foreign.encode(),
+        "https://manifest.edgemv.mux.com/seg-0.vtt": SEG0.encode()})
+
+    assert found["refused"] == mod_elsewhere()
+    assert "cues" not in found, "nothing partial"
+    assert not any("evil.example" in one for one in found["asked"]), "it was never asked"
+
+
+def mod_elsewhere() -> str:
+    from noaap.patreon import CAPTIONS_ELSEWHERE
+
+    return CAPTIONS_ELSEWHERE
+
+
+@pytest.mark.parametrize("broken,says", [
+    ("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nlow.m3u8\n#EXT-X-ENDLIST\n", "playlist of playlists"),
+    ("#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"k.key\"\n#EXTINF:1,\na.vtt\n#EXT-X-ENDLIST\n", "encrypted"),
+    ("#EXTM3U\n#EXTINF:1,\na.vtt\n", "still being written"),
+    ("#EXTM3U\n#EXT-X-ENDLIST\n", "lists no segments"),
+])
+def test_the_playlists_this_program_will_not_read(monkeypatch, broken, says):
+    """A master playlist is not the list we asked for; an encrypted one would need a key this program
+    never fetches; one with no end marker is still being written. Each refused by name, and for the
+    encrypted one **no key is requested** — the refusal comes before any segment."""
+    found = serving(monkeypatch, {"https://manifest.edgemv.mux.com/x.vtt": broken.encode()})
+
+    assert says in found["refused"] and "cues" not in found
+    assert found["asked"] == ["https://manifest.edgemv.mux.com/x.vtt"], "only the playlist was asked"
+    assert not any(one.endswith(".key") for one in found["asked"])
+
+
+def test_the_caps_refuse_rather_than_read_half(monkeypatch):
+    """Both caps are request budgets as much as size budgets: one request per segment, no retry."""
+    from noaap.patreon import CAPTION_BYTES, CAPTION_SEGMENTS
+
+    assert (CAPTION_SEGMENTS, CAPTION_BYTES) == (600, 8_000_000)
+
+    many = "#EXTM3U\n" + "".join(f"#EXTINF:10,\nseg-{n}.vtt\n" for n in range(CAPTION_SEGMENTS + 1)) \
+        + "#EXT-X-ENDLIST\n"
+    found = serving(monkeypatch, {"https://manifest.edgemv.mux.com/x.vtt": many.encode()})
+    assert f"more than the {CAPTION_SEGMENTS}" in found["refused"]
+    assert found["asked"] == ["https://manifest.edgemv.mux.com/x.vtt"], "and not one segment was asked"
+
+    big = SEG0.encode() + b"\n" * 5_000_000
+    answers = {"https://manifest.edgemv.mux.com/x.vtt": PLAYLIST.encode(),
+               "https://manifest.edgemv.mux.com/seg-0.vtt": big,
+               "https://manifest.edgemv.mux.com/seg-1.vtt": big}
+    found = serving(monkeypatch, answers)
+    assert "MB this program will read" in found["refused"] and "cues" not in found
+
+
+@pytest.mark.parametrize("segments,says", [
+    ([SEG0, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nno map here\n"], "some of its caption segments"),
+    ([SEG0, "WEBVTT\nX-TIMESTAMP-MAP=NONSENSE\n\n00:00:01.000 --> 00:00:02.000\nx\n"], "cannot read"),
+    # a later segment whose base is *earlier* than the first one's: its cues would land before zero
+    (["WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:1800000\n\n00:00:01.000 --> 00:00:02.000\nx\n",
+      "WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:0\n\n00:00:01.000 --> 00:00:02.000\ny\n"],
+     "land before the start"),
+])
+def test_a_timestamp_map_that_cannot_be_resolved_refuses(monkeypatch, segments, says):
+    """The stamps have to land on audio that starts at zero. A constant offset on every line looks
+    right and is not, so anything that cannot be resolved with certainty is refused."""
+    playlist = "#EXTM3U\n" + "".join(f"#EXTINF:10,\nseg-{n}.vtt\n" for n in range(len(segments))) \
+        + "#EXT-X-ENDLIST\n"
+    answers = {"https://manifest.edgemv.mux.com/x.vtt": playlist.encode()}
+    for n, text in enumerate(segments):
+        answers[f"https://manifest.edgemv.mux.com/seg-{n}.vtt"] = text.encode()
+
+    found = serving(monkeypatch, answers)
+
+    assert says in found["refused"] and "cues" not in found
+
+
+def test_segments_without_any_map_are_taken_as_they_are(monkeypatch):
+    """The other real shape: no `X-TIMESTAMP-MAP` at all, so the cue stamps are already the media's
+    and the first segment's zero is the asset's zero."""
+    answers = {"https://manifest.edgemv.mux.com/x.vtt": PLAYLIST.encode(),
+               "https://manifest.edgemv.mux.com/seg-0.vtt":
+                   b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nfirst\n",
+               "https://manifest.edgemv.mux.com/seg-1.vtt":
+                   b"WEBVTT\n\n00:00:12.000 --> 00:00:13.000\nsecond\n"}
+
+    found = serving(monkeypatch, answers)
+
+    assert found["cues"] == [(1.0, "first"), (12.0, "second")]
+
+
+def test_a_plain_caption_file_still_works(monkeypatch):
+    found = serving(monkeypatch, {"https://manifest.edgemv.mux.com/x.vtt": VTT.encode()})
+
+    assert found["requests"] == 1 and "bytes" in found and "cues" not in found
+
+
+def test_the_track_line_says_what_the_captions_cost(tmp_path):
+    from noaap.download import _words_from_source
+
+    plan = an_album()
+    said = _words_from_source(Gave({"by": "patreon", "cues": [(1.0, "a line"), (2.0, "another")],
+                                    "requests": 3}), plan, plan.tracks[0], tmp_path)
+    assert "2 line(s)" in said and "(3 requests)" in said
+
+    refused = _words_from_source(Gave({"by": "patreon", "refused": "its captions are encrypted",
+                                       "requests": 1}), an_album(), a_track(), tmp_path)
+    assert refused.endswith("(1 request)")
+
+
+def test_a_dry_run_says_what_they_would_cost_before_asking(monkeypatch):
+    """A dry run makes no request for captions, so it says the shape and the budget, not a count."""
+    source = PatreonSource(taking())
+    assert source.captions_note() is None, "nothing read yet, nothing to say"
+
+    monkeypatch.setattr(source.pt, "_read", lambda url, **extra: a_post())
+    source.collection("https://www.patreon.com/posts/100004")
+    assert "one file" in source.captions_note()
+
+    playlist_post = a_post(subtitles={"en": [{"ext": "vtt", "protocol": "m3u8_native",
+                                              "url": "https://manifest.edgemv.mux.com/subtitles.m3u8"}]})
+    monkeypatch.setattr(source.pt, "_read", lambda url, **extra: playlist_post)
+    source.collection("https://www.patreon.com/posts/100004")
+    note = source.captions_note()
+    assert "a playlist" in note and "at most 600" in note
+
+    off = PatreonSource(taking(patreon_captions=False))
+    monkeypatch.setattr(off.pt, "_read", lambda url, **extra: a_post())
+    off.collection("https://www.patreon.com/posts/100004")
+    assert off.captions_note() is None, "off means nothing is said about them either"
+
+
+def test_the_musicbrainz_client_is_not_built_for_an_album_nobody_may_ask_about(tmp_path, monkeypatch):
+    """Queued from the live run: its cache file existed in a run that made no lookup, because the
+    client is constructed while the gate is being evaluated. One file is more than nothing."""
+    from noaap import service as service_mod
+
+    built: list[str] = []
+
+    class Counted:
+        def __init__(self, *a, **k):
+            built.append("mb")
+
+    monkeypatch.setattr(service_mod, "MusicBrainz", Counted)
+    service = a_service(tmp_path)
+    plan = an_album()
+
+    assert service.may_look_up(plan) is False
+    assert service.mb is not None and built == ["mb"], "asking for it directly still builds it"
+
+    # …but the fetch path asks whether it may look up *first*, so nothing is built for such an album
+    built.clear()
+    fresh = a_service(tmp_path)
+    if fresh.may_look_up(plan) and fresh.mb:
+        pass
+    assert built == [], "the gate is evaluated before the client"

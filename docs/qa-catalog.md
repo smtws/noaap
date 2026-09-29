@@ -4557,10 +4557,56 @@ none of which the suite could see.
 Separation runs in this process; a separated voice reaches a network only through the timing door,
 which is the one this package closed.
 
+## BO. The second live run, and captions served as a playlist (P60 live + P61, DESIGN §9, slice 76)
+
+### BO1 · the live run of 2026-09-29, evening
+
+One post of the user's creator, fetched with captions switched on, and lyrics and MusicBrainz left
+**on** in the configuration so the private rule had to do the stopping.
+
+- **audio:** 33,258,493 bytes fetched, **17,388,238 kept** (48% thrown away, said on the track's
+  line), 1411.5437 s, aac 44.1 kHz stereo, the rendition's `start_time` measured within 0.001 s of
+  zero and the kept file reading `0.000000`. Fetch 44.2 s; `update` afterwards 4.1 s, *0 new*, and
+  the audio's sha256 identical before and after. No scratch directory, no video anywhere.
+- **cover: fetched, for the first time ever** — `cover.jpg`, 202,784 bytes, embedded in the file as
+  well, and not one *could not fetch any cover* in any of the three logs. What that tested is the
+  P59c request-shape fix: the address came from the post read held in memory. **The P59b fallback —
+  asking the provider when the plan holds no address — was not reached and is still fixture-only.**
+- **captions: refused**, and the refusal was right: *its captions are not a WebVTT file*. The address
+  serves `subtitles.m3u8`. That is what P61 above is for, and it was established from metadata
+  already in hand, with **no extra request**.
+- **nothing left the machine:** no lrclib cache file was ever created, the MusicBrainz cache held
+  **0 rows** (its file existed only because the client was built while the gate was evaluated — now
+  fixed), and the plan carries no mbid, no lyrics id, no signed address, no media-host address.
+- **the tag holds no words**, and no sidecar was written, because nothing was taken.
+
+### BO2 · reading a caption playlist (fixtures, synthetic)
+
+- [x] the playlist is read, its segments fetched in order and the cues joined; a relative segment
+  resolves against the playlist's own address; three requests for a two-segment track, counted and
+  said.
+- [x] both conventions the format allows: identical maps with absolute stamps (a cue spanning a
+  border appears **once**), and per-segment maps whose stamps restart (each later segment shifted by
+  its base relative to the first).
+- [x] **one foreign segment refuses the whole track**, and is never asked: the host check comes
+  before the request, and nothing partial is written.
+- [x] a master playlist, an encrypted one, one still being written and one with no segments: each
+  refused by name, with only the playlist itself asked — **no key is ever fetched**.
+- [x] the caps refuse rather than read half: over 600 segments not one segment is asked; over 8 MB
+  the track is dropped whole.
+- [x] a timestamp map that cannot be resolved with certainty refuses in one sentence — present on
+  some segments only, unreadable, or producing a cue before zero.
+- [x] a plain WebVTT file still works, one request.
+- [x] a dry run says the shape and the budget before anything is asked; the track's line says the
+  exact count afterwards.
+- [x] and the queued one-liner: the MusicBrainz client is no longer built for an album nobody may
+  ask about.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BO cases (P60 live run + P61: captions as a playlist) | 9 | 0 — the live run's caption refusal was correct behaviour, and the reason for this package | Second live run: one post, **33.3 MB fetched, 17.4 MB kept**, 1411.54 s, rendition start 0.000, `update` changed nothing, and the **cover was fetched for the first time** (202,784 bytes, embedded, no warning) — which tested the P59c request shape, not the P59b fallback, still fixture-only. Nothing left the machine: no lrclib cache, a MusicBrainz cache with 0 rows, no signed or media address in the plan, no words in the tag. The captions were refused because what a post serves is a **playlist** of WebVTT segments, not a file — so P61 reads it: playlist then segments in order, cues joined and de-duplicated across borders, every address checked before it is asked and one foreign segment refusing the whole track, master/encrypted/unfinished playlists refused by name with no key ever fetched, caps of **600 segments and 8 MB**, and the cost said on the dry run and counted on the track's line. `X-TIMESTAMP-MAP` is used **relative to the first segment**, never as an absolute origin. 1504 pytest + 121 node. |
 | 2026-09-29 | the BN cases (P60b: whose words, and where the audio may go) | 3 | 3 defects of mine, all found by the reviewer **using** the previous package | A courtesy is not a rule: the editor withheld the claim control and the server set `USER` anyway, so one save turned a creator's captions into the user's words — and into the file's tag. The server decides now, and a clear gives the mark up with the words. Worse and older: `align_lyrics` and `draft_lyrics` handed a private album's **audio** to whatever timing provider was configured, vendors included, and that had shipped; it now goes only to a provider that runs on this machine (`local`, or `http` on a loopback endpoint by parsed host) or to an album whose owner opted in — refused in the service, at the web door, and not offered by the page. And `[00:60.00]` was a stamp the clock has no name for. Plus the audit of every route that can carry a track off this machine. 1487 pytest + 121 node. |
 | 2026-09-29 | the BM cases (P60: a post's captions as words) | 6 | 0 | Built from the spike, as its recommendation reads. A fourth kind of words — not the user's, not LRCLIB's, not a machine's draft, but **the creator's own writing, arrived with the recording**: `Provenance.SOURCE`, the claim control withheld, the publish refused on two grounds that each stand alone, and **never written into the audio file** — decided in `build_tags`, so every pass obeys it and the signature does not churn. WebVTT is read in the core (a format is not a source): start stamps only, presentation dropped, overlaps kept in start order. Four refusals, each said once, including the one the spike insisted on: audio that does not start at zero, measured with ffprobe rather than assumed. The captions come from a second media host (`*.mux.com`), so the parsed-host check now holds a pair. Fixtures only — **no caption file has ever been fetched**. 1468 pytest + 121 node. |
 | 2026-09-29 | the BL cases extended (P59c: the review of the fix) | 3 | 2 findings of the reviewer's, both real | A substring test for "is this our media host" said yes to `evil.example/x.jpg?<host>` and to `<host>.evil.example` — and a yes hands the browser's session to that host. Parsed host now, https only, no unusual port, sub-domains allowed, and the address a redirect **landed** on checked the same way. Two paths still handed the client an address they were given, one of them reachable from a plan field a person can edit; every entry point now builds its address or refuses, with a case that walks them all. And the rule *no address in a private plan* had left the live album unable to ever get a cover: it is asked of the provider now, from the post, only during a run that is happening anyway. 1448 pytest + 118 node. |

@@ -2191,6 +2191,33 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    browser, on a loopback bind unless they ask otherwise). Separation runs in this process; a
    separated voice reaches a network only through the same timing door, which is now gated.
 
+76. ✅ **Captions served as a playlist** (2026-09-29, P61). The live run of slice 74 refused the real
+   post's captions, correctly and uselessly: `ext: vtt`, `protocol: m3u8_native`, an address ending
+   `subtitles.m3u8`. The *segments* are WebVTT; the address is the list of them. yt-dlp's `ext`
+   describes what the segments are, not what is at that address — which no fixture could have said,
+   and one live run said immediately.
+   **The playlist is read in the core and fetched by the provider.** A playlist is a format, like
+   WebVTT; which hosts are ours is the provider's business. So `captions.py` turns text into segment
+   addresses and joined cues, and `patreon.py` resolves each address against the playlist, checks its
+   parsed host against the known pair, asks for it once, and stops at the first that is not ours —
+   **a caption file assembled from two places is not this post's captions**, so one foreign segment
+   refuses the whole track and nothing partial is written.
+   **What `X-TIMESTAMP-MAP` is used for, and what it is not.** It says *this segment's `LOCAL` stamp
+   is that MPEG-TS instant*, so a segment's own zero is `MPEGTS/90000 − LOCAL`. The first segment's
+   zero is taken as the asset's zero and every later segment is shifted by its base relative to it.
+   The absolute MPEG-TS origin is deliberately **not** trusted: it is the packager's clock, and the
+   audio was copied out of an mp4 that carries no such stamps, so using it as an offset would be a
+   guess dressed as arithmetic. Both conventions the format allows then work — identical maps with
+   absolute stamps, and per-segment maps with stamps that restart — and everything that cannot be
+   resolved with certainty is refused in one sentence: a map on some segments and not others, a map
+   that cannot be read, and any cue that would land before zero.
+   **Caps are request budgets.** 600 segments and 8 MB, constants of the provider rather than
+   settings, one request per segment and no retry; over either, the track is refused whole. 600 ten
+   second segments is an hour and a half of narration, and a program that would fetch two thousand
+   files for one track's words has stopped asking whether it should.
+   **And the cost is said before it is paid.** A dry run names the shape and the budget — it makes no
+   request for captions — and the track's own line says the exact number of requests afterwards.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
