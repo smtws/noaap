@@ -145,6 +145,26 @@ def lost_files(album_dir: Path, plan: AlbumPlan) -> list[str]:
             if t.state == "done" and t.filename and not (album_dir / t.filename).is_file()]
 
 
+def lost_albums(library: Path) -> list[tuple[Path, list[str]]]:
+    """Every album holding a finished track whose own file is not where the plan says (§9, slice 60).
+
+    **One place counts it** (R-212): `noaap config` says it, and `adopt --apply`, `update` and `repair`
+    each end with it. Slice 60 built this check and slice 61 proved what it is worth on its own — the
+    answer was right and printed nowhere a person was looking, so 67 tracks of somebody's collection
+    were copied instead. A check nobody is made to look at has found nothing.
+    """
+    return [(album_dir, lost) for album_dir, plan in iter_plans(library)
+            if (lost := lost_files(album_dir, plan))]
+
+
+def lost_sentence(found: list[tuple[Path, list[str]]]) -> str | None:
+    """The one line, or `None` when there is nothing to say — which is the ordinary case."""
+    if not found:
+        return None
+    tracks = sum(len(lost) for _, lost in found)
+    return f"{tracks} track(s) in {len(found)} album(s) are not where their plan says"
+
+
 def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
     """Every album folder in the library (<library>/<artist>/<album>/.ytalbum.json)."""
     for path in sorted(library.glob(f"*/*/{PLAN_FILE}")):

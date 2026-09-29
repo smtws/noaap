@@ -195,7 +195,11 @@ def main(argv: list[str] | None = None) -> int:
                 return exit_code(_service(cfg, _library(args, cfg, required=False)).download_existing(args.album_dir))
             case "update":
                 library = _library(args, cfg, required=True)
-                return 2 if library is None else exit_code(_service(cfg, library).update_all(report_only=args.dry_run, deep=args.deep))
+                if library is None:
+                    return 2
+                code = exit_code(_service(cfg, library).update_all(report_only=args.dry_run, deep=args.deep))
+                _say_lost(library)
+                return code
             case "serve":
                 return _serve(args, cfg)
             case "timing-serve":
@@ -266,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.apply:
                     done = adopt_pass.carry_out(found, log=print)
                     print(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
+                    _say_lost(library)
                 return 0
             case "watch":
                 return _watch(args, cfg)
@@ -291,7 +296,11 @@ def main(argv: list[str] | None = None) -> int:
                 return _delete(args, cfg)
             case "repair":
                 library = _library(args, cfg, required=True)
-                return 2 if library is None else exit_code(_service(cfg, library).repair(dry_run=args.dry_run))
+                if library is None:
+                    return 2
+                code = exit_code(_service(cfg, library).repair(dry_run=args.dry_run))
+                _say_lost(library)
+                return code
             case "lyrics":
                 library = _library(args, cfg, required=True)
                 if library is None:
@@ -340,6 +349,18 @@ def _scope_matched(args: argparse.Namespace, found: int | None, what: str) -> No
         raise config_mod.Refused(f"{named} matched no {what} — nothing was done")
 
 
+def _say_lost(library: Path | None) -> None:
+    """What a pass over the library ends with, when the library has something to say (R-212).
+
+    Nothing at all when nothing is lost, which is every healthy library: a line printed every time is
+    a line nobody reads, and this one has already gone unread once.
+    """
+    from .download import lost_albums, lost_sentence
+
+    if library and library.is_dir() and (line := lost_sentence(lost_albums(library))):
+        print(line)
+
+
 def _print_lost(cfg: config_mod.Config) -> None:
     """Albums whose own files are not where their plan says.
 
@@ -347,16 +368,15 @@ def _print_lost(cfg: config_mod.Config) -> None:
     deliberately not the same question as "the folder this was taken in from is gone", which is a
     fact about a source and only matters where a re-fetch is asked for (R-207, ruling 3).
     """
-    from .download import iter_plans, lost_files
+    from .download import lost_albums, lost_sentence
 
     root = cfg.library_root
     if not root or not root.is_dir():
         return
-    albums = [(d, lost) for d, p in iter_plans(root) if (lost := lost_files(d, p))]
-    if not albums:
+    albums = lost_albums(root)
+    if not (line := lost_sentence(albums)):
         return
-    tracks = sum(len(lost) for _, lost in albums)
-    print(f"missing:      {tracks} track(s) in {len(albums)} album(s) are not where their plan says")
+    print(f"missing:      {line}")
     for album_dir, lost in albums[:3]:
         print(f"              {album_dir.relative_to(root)} ({len(lost)})")
     if len(albums) > 3:

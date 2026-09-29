@@ -1705,7 +1705,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    them alone and `plan --verify` correctly calls it byte-identical. Finding those files where they
    now are is its own question, and its own slice.
 
-61. ✅ **A plan says where a track's file is, not only what it is called** (2026-09-29, P55c).
+61. ✅ **A plan says where a track's file is, not only what it is called** (2026-09-29, P55b).
    `filename` is the track's path **relative to the album folder**. For everything noaap downloads
    that is a bare name and always was; for an adopted album it is whatever the owner's layout says,
    `cd1/…` included.
@@ -1742,8 +1742,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    basename, which is exactly the name the copy took in the album root, so in one album **24 of the
    35 root files answer to an `adopted_name`**. What is provable is that nothing was lost — every one
    of the owner's files is still in its disc folder, byte for byte — and that each stray decodes to
-   the same audio as the disc file it was copied from. A pass that bins them on that evidence is its
-   own slice and not this one.
+   the same audio as the disc file it was copied from. A pass that bins them on that evidence is
+   **P55d** and not this slice. **1.4.0 and 1.5.0 are public**, so the next version's release notes say
+   what happened, to which albums, and how to check: a defect that wrote into somebody's collection is
+   not closed by a fix alone.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
