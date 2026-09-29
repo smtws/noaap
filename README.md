@@ -254,8 +254,17 @@ check and `merge` all work off the plan. The album is marked as **yours, not noa
 ordinary pass afterwards leaves its names and its tags alone, which is the thing that had to be
 built for this to be safe at all.
 
+**Discs in sub-folders stay in them.** A plan records each track's file as a path relative to the
+album — `cd1/…` when that is where it is — and no pass moves it, copies it or renames it out of its
+folder. If you adopted a collection with **1.5.0**, run `noaap repair` once before anything else:
+those plans recorded only the bare name of a file in a sub-folder, and the first `update` after them
+copied it into the album's root. `repair` looks each file up where your collection says it is, and a
+finished track of an adopted album is never fetched again in any case. One album shape is refused
+rather than adopted: one whose discs are *sibling* folders (`An Album CD1`, `An Album CD2`), because
+its files are not inside the album folder at all — adopt the folder that holds them.
+
 Two things you can ask for afterwards, each on its own: **`--rename`** gives the files noaap's
-names and still leaves the folder where you put it, and **`--retag`** writes the plan's fields in
+names **where they stand**, and still leaves the folder where you put it, and **`--retag`** writes the plan's fields in
 while keeping every field this program does not model — replaygain, ISRC, composer, BPM, your own
 comment. Neither runs on an album whose record of what it was is missing, because:
 

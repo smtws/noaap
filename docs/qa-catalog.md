@@ -3695,10 +3695,112 @@ BC1 is that library: `repair` correctly leaves refs alone that are not inside th
 `repair --find-moved`, its own package.
 
 
+## BD. An album whose discs are sub-folders (P55c, DESIGN §9, slice 61)
+
+The package the P55b acceptance produced. Run on copies under `~/Musik/` only; `~/Music/legacy` was
+never written and every comparison below is against it.
+
+- [x] **BD1 · R** — the defect, reproduced without the move the acceptance blamed
+
+  Copy the three real albums whose discs are sub-folders out of the collection (`cd1`/`cd2`,
+  `CD 1`/`CD 2`, `1`/`2` — 24, 22 and 21 tracks, **no audio in the album root**), adopt them, and run
+  one `noaap update`. The library is never moved.
+  - **result:** 67 audio files became **131**. `update` wrote **64** copies of the owner's own files
+    into the album roots under noaap's naming scheme, and **3 of the 67 copies landed on a name
+    another copy had already taken**, so in *Sturm aufs Paradies* two different recordings became one
+    file with two tracks pointing at it. The move was never needed: this is `update` on an adopted
+    album, full stop.
+  - the acceptance library, which took more passes, holds **102 files the collection does not have**
+    — against **67 of the owner's still identical in name, size and mtime, 0 missing, 0 changed**.
+
+- [x] **BD2** — the instrument that had already said so
+
+  Read what `noaap config` reported straight after `adopt --apply`, before anything else ran.
+  - **result:** *67 track(s) in 3 album(s) are not where their plan says* — slice 60's own check,
+    correct on the day, in the output of the acceptance run, unread. **An instrument that reports a
+    fault nobody looks at has not found it.**
+
+- [x] **BD3** — the cause
+
+  `filename` was a bare name, so `album_dir / filename` was not the file for a track in a sub-folder;
+  the executor read that as a missing file and re-fetched it, which for a folder provider is a copy.
+  The bare name came from **reading the path out of the ref** — the same boundary as `Entry.ext`,
+  whose comment already records that parsing a ref for a suffix renamed 1662 real files into a lie.
+  - **result:** `filename` is now the track's path relative to the album folder, and the provider
+    says what it is (`Entry.where`). Nothing in the core parses a ref. An album whose discs are
+    *sibling* folders is refused instead, because its files are not inside the album at all; the
+    collection has none, and the code supports them.
+
+- [x] **BD4** — the rule, as a test
+
+  After `repair`, `repair --dry-run`, `reread`, the executor itself, `update`, `update --dry-run` and
+  `update --deep`: the set of audio files in an adopted library is the set it had, name for name, and
+  no `filename` or `adopted_name` changed.
+  - **result:** 21 cases in `tests/test_discs.py`, of which **9 fail against 7002230**. 1265 pytest +
+    102 node. The suite had 1245 passing cases over the broken behaviour and **not one album with a
+    sub-folder in it**.
+
+- [x] **BD5** — the libraries 1.5.0 already adopted
+
+  Fixing the writer does not fix the plans already written: a 1.5.0 plan still names a bare file, so
+  the first `update` after the upgrade would still copy.
+  - **result:** `repair` looks each lost file up **where the collection says it is** — only for an
+    album that is its own source, only through the provider — and a track the collection cannot offer
+    is left alone and still reported as lost, because slice 60's two absences stay two. Under it, a
+    guard that makes the class impossible rather than fixed once: **a finished track of an adopted
+    album is never fetched again.** Both measured on a plan rewritten to look like 1.5.0's.
+  - **what it does not do, measured:** a library that has *already* been updated is not healed by it.
+    The copy exists, so the plan names a file that is there and nothing reads as lost — see BD7. This
+    pass protects the libraries that have not been touched yet; the guard protects the rest.
+
+- [x] **BD6** — the live run, end to end, on 41 GB
+
+  A fresh copy of the collection: compare to legacy, `adopt --apply`, **move the library for real**,
+  `plan --verify`, `update`, `repair`, re-read every album, compare to legacy again.
+  - **result:** the copy is the collection (2000 files identical in name, size and mtime). Adopted:
+    **132 albums, 2000 tracks**, 132 plans at schema 2, **8396 refs all relative and all resolving
+    inside the library**, and `config` reports **nothing missing** — the number that was 67 before.
+    Moved: 132 plans byte-identical. `update`: **2000 track(s) got the length of their file** and
+    nothing else. `repair`: 18 albums logged (the pre-existing unified-artist case), 0 plans changed.
+    Re-read: **132 of 132 ok, 0 tracks added.** Against legacy afterwards: **2000 identical in name,
+    size and mtime; 0 not in legacy, 0 only in legacy, 0 differ in size, 0 differ in mtime.**
+
+- [x] **BD7** — what an undo can and cannot take back
+
+  `adopt --undo` on a copy of the damaged acceptance library, then compare the whole tree to legacy.
+  - **result (what noaap wrote beside the audio):** `repair` first, which changed no plan — once the
+    copy exists the plan names a file that is there, so nothing is lost and there is nothing to find.
+    Then `adopt --undo --apply`: **129 of the 132 albums given back completely.** Plans 132 → 3,
+    sidecars **1666 → 88**, cover files **76 → 60** — the 16 noaap wrote gone, the owner's 60 kept.
+    The three damaged albums are **not** given back and say so: 24, 22 and 18 tracks *have no record
+    of the name they had*, which are exactly the tracks `update` appended, so each plan is kept and
+    the pass says to run it again. Against the collection afterwards: **2000 identical in name, size
+    and mtime, 0 only in legacy, 0 changed** — and the 102 strays still there.
+  - **result (the 102 files):** an undo **cannot** remove them, and must not: `added_by_us` lists the
+    plan, the sidecars and the cover and never audio, because *the only thing that ever displaces a
+    file is the bin*. Nor can the record prove which file was the owner's — the old code wrote
+    `adopted_name` as the bare basename, which is exactly the name the copy took in the album root,
+    so in *Am goldenen Rhein-Live* **24 of the 35 root files answer to an `adopted_name`**.
+  - what **is** provable: nothing was lost — every one of the owner's 67 files is still in its disc
+    folder, identical to the collection — and each stray **decodes to the same audio** as the disc
+    file it was copied from (identical PCM md5 and duration, measured). A pass that bins them on that
+    evidence is its own package, proposed and not smuggled in here.
+  - a measurement worth keeping out of this: `stream_sha` (`ffmpeg -c copy -f md5`) called 14 of those
+    copies different from their originals, though the decoded audio is identical. **The digest that
+    answers "is this the same recording" can disagree with the recording.**
+
+### What this package is really about
+
+Every defect in this series came from using the software on real data; this one came from **not**
+using it on the one shape of album the tests never had. The collection holds 3 of 133 albums with a
+disc sub-folder, and they are the albums a collection is least likely to have a second copy of.
+
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BD cases (P55c: discs in sub-folders) | 7 | **the worst defect this project has produced**, found by the P55b acceptance, fixed | `filename` is the track's path relative to the album folder, and the provider says what it is. Before: a bare name, so for a track in a disc sub-folder `album_dir / filename` was not the file — the executor read that as missing and re-fetched it, which for a folder provider is a **copy into the album root under noaap's own name**. One `update` on a library that had **never been moved** wrote **64 files** for the 67 tracks of three real albums, and 3 copies landed on each other's names, so two recordings became one file with two tracks pointing at it; a later read appended the copies as tracks, 24 → 48. The acceptance library holds **102 files the collection does not have**, against **67 of the owner's identical in name, size and mtime**. Slice 60's own check had said it on the day — *67 track(s) in 3 album(s) are not where their plan says* — and nobody read it. The cause under the cause: **the path was parsed out of the ref**, the same boundary as `Entry.ext`, whose comment already records that parsing a ref for a suffix renamed 1662 files into a lie. Now `Entry.where`, a `repair` that looks lost files up where the collection says they are, a refusal for an album whose discs are *sibling* folders, and the guard that makes the class impossible: **a finished track of an adopted album is never fetched again.** Live on 41 GB: adopt 132 albums / 2000 tracks, **nothing missing** (was 67), move for real, `update`, `repair`, re-read all 132 — afterwards **2000 files identical to the collection in name, size and mtime, 0 extra, 0 missing, 0 changed**. An undo cannot take the 102 back and must not: `added_by_us` never lists audio. 1265 pytest + 102 node; 9 of the 21 new cases fail against 7002230. |
 | 2026-09-29 | the BC cases (P55b: a library that survives being moved) | 6 | 0 in the design; **1 defect the round-trip check found in the package itself**, fixed | A path inside an album's own folder is written `./…` and read back as the file it names; one marker, one rule, and everything else stays the absolute path it was. **The fact it exists for is not that a moved library breaks — it is that a moved library works, by using the original's files.** Measured: a 1.5.0-style copy held **52 refs, 0 inside itself, all 52 pointing into the original**, every one of them on disk over there, and neither `repair` nor `plan --verify` can fix that where it stands. Converted first: 52 relative, 52 inside, and with the original gone 4 of 4 albums re-read, 0 tracks added. On the 41 GB collection: **8396 refs converted in one `repair`**, then at a second path **8396 of 8396 resolving inside the copy, 132 of 132 albums re-read ok, 0 tracks added, 132 plans byte-identical** — the same with the original moved away. Only a plan that really holds a relative path says `schema: 2`: **noaap 1.5.0 reads all 329 albums of the YouTube library and writes them back byte for byte**, and refuses the 132 adopted ones in one sentence. The defect: `plan --verify` and `repair` each had their own copy of the rule, and asking the round-trip question from one place showed that **every `adopt --apply` left a folder album's candidates claiming YouTube in the file** — a track cannot know its album's provider, and only the load corrected it. 1245 pytest + 102 node. |
 | 2026-09-29 | the BB cases (P55: a folder that is watched) | 7 | 0 in the design; **3 defects found by running it**, all fixed | `noaap watch` notices and hands over; it never does the work. It polls, because a full walk of 2153 files costs 0.01 s and inotify cannot see another client's writes on a share — measured before choosing. The settle window belongs to the folder, not the file. Two shapes that are opposite in one place: an intake reports an album the library already has, a library watching itself takes a new file as a new track. Live as a service: an album dropped and a file added were both noticed 21 s later and both handled correctly. The three defects were all in the library shape and all wrote, or would have written, over somebody's file — none of them was reachable without a real album. **Section BB was written after the fact**, from the runs recorded in the session: every number in it is from one of those runs except the 21 s notice, which is quoted from this row. 1208 pytest + 102 node. |
 | 2026-09-28 | the BA cases (P54: a collection in place) | 9 | 0 in the design; 1 defect found before building, fixed first | `noaap adopt` writes one plan per album and nothing else. The design was decided by a measurement: adopting naively and running one ordinary pass renamed an mp3 to `.opus` and then could not read it — **1662 of 2000 files**. Fixed at the cause, then `keep_names`/`keep_tags` so no pass touches an adopted album. Live on a 41 GB copy: dry wrote nothing, apply added **132 files, all plans, 0 changed**; retag+rename on three albums across three containers; `--undo` of all 132 in **1.3 s**, after which the copy and the untouched original agree on **every name, every audio stream and every tag field** (2000 files, 0 differences of each), with 24 files differing only in tag-block size — the documented boundary of the promise. Two corrections of my own: the proposal's 1699 renames was 438 — the 1699 was the defect being measured — and the undo's record of what a file said was a hand-written list of seven fields against a writer that writes fifteen, which my own comparison could not see **because it compared the same list**. Both the record and the comparison are taken from the writers now. Final: 0 name, 0 stream and 0 complete-tag-set differences over 2000 files. 1158 pytest + 102 node. |
