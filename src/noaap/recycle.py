@@ -102,7 +102,8 @@ def _entry_id(source_id: str, video_id: str, when: datetime) -> str:
 
 def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack, reason: str,
               *, audio: Path | None, sidecar: Path | None = None,
-              ranking: dict[str, Any] | None = None) -> Path | None:
+              ranking: dict[str, Any] | None = None,
+              evidence: dict[str, Any] | None = None) -> Path | None:
     """Move one track's files into the bin and record how to put them back.
 
     `audio` and `sidecar` are passed in already resolved, and **never derived from
@@ -155,6 +156,9 @@ def bin_track(library: Path, album_dir: Path, plan: AlbumPlan, track: PlanTrack,
         # what was written into the file, by the same function that wrote it
         "tags": build_tags(plan, track),
         "ranking": ranking or {},
+        # why a pass was sure enough to move this file, in its own terms. A bin entry is what somebody
+        # reads when they want to know what happened to a file of theirs (§9, slice 63).
+        "evidence": evidence or {},
         "moved": moved,
     }, album_dir), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return entry

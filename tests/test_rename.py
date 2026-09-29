@@ -207,6 +207,7 @@ def test_what_still_answers_to_the_old_name_is_written_down() -> None:
         "desktop.py":  "LEGACY_APP_ID: its launcher and profile are reported, never removed",
         "web.py":      "LEGACY_WRITE_HEADER: an installed PWA still sends the old one",
         "download.py": "PLAN_FILE — the format's name, and it is not moving",
+        "strays.py":   "prose: why a collection ytalbum named already looks like noaap's own scheme",
         "cli.py":      "the migrate subcommand, the notice, and the plan file in one message",
         "app.js":      "the two localStorage keys, read once under the old name",
         "sw.js":       "a comment only — why the cache name had to change; the literals below are the promise",

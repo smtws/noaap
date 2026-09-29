@@ -1795,6 +1795,48 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    README: an older version can read, play and save one, and loses nothing — but asked to *fetch* such a
    track again, it asks the wrong source.
 
+63. ✅ **Taking back what noaap wrote into somebody's collection** (2026-09-29, P55d). Slice 61 stopped
+   1.4.0 and 1.5.0 copying a disc-folder track into its album's root. The copies are still there, in a
+   music folder that is not ours, and this removes them — **only where it can prove each one is a copy,
+   and never by deleting it.**
+   **Four conditions, all of them, or the file stays and says why.** The album is adopted and keeps its
+   discs in sub-folders; the name is one the plan points at or one noaap's own scheme would write; the
+   **decoded** audio is identical to a file in one of those disc folders; and that disc file is one the
+   plan holds, which **the provider says**, because a ref is opaque and the core may not read a path out
+   of one. A guard runs before the expensive test: a copy has its original's duration, so only files
+   that agree to a tenth of a second are ever decoded.
+   **The digest decodes, and that is the point.** `stream_sha` copies the stream instead, which is far
+   cheaper and right for files nobody rewrote — but it called 14 of 22 real copies *different* from the
+   files they came from (catalogue BD8). Deciding that a file may leave somebody's album is not a
+   question to answer with a digest that can say that.
+   **The name is evidence, and the ruling had it slightly wrong.** R-220 put the second condition as
+   "its name follows noaap's scheme". The mechanism is that 1.5.0 copied to `album_dir / filename` and
+   its `filename` was **the owner's own bare name**; on this collection the two nearly always agree,
+   because ytalbum named most of it. Three real files prove the difference: their ID3 title is clipped
+   at 30 characters, so the owner's name carries a bracket the scheme would never derive, and all three
+   would have been left behind. A name the plan itself points at counts, and it is the stronger evidence.
+   **Where the audio does not say which file a copy came from, nothing is done.** An album can hold the
+   same recording twice; then the name decides, and where neither does, the file stays and the reason is
+   printed.
+   **A stray goes to the bin, with the file it was a copy of and the evidence** — the decoded digest,
+   the length, and which of the two said its name could be ours. Nothing is deleted, by anything, ever.
+   The tracks that existed only because of a copy go with it, and the owner's own track is pointed back
+   at its file by the pass slice 61 already added, in the same run.
+   **Dry by default** (R-220), which no other part of `repair` is: this one removes a file from a music
+   folder, so `--strays` reports and `--strays --apply` acts.
+   **Measured on the damage made with 1.5.0's own code**, on a 41 GB copy of the collection: adopt,
+   `update`, and **64 files appeared that the collection does not have**. Then `repair --strays`: 64
+   would be binned, nothing written; with `--apply`, 64 moved to the bin (507.7 MB), the three plans back
+   to 24, 22 and 21 tracks all pointing into their disc folders, `plan --verify` 132 byte-identical and
+   nothing missing. Then `adopt --undo --apply`: **0 failed**, where the damaged album had refused —
+   and the tree is the collection again, **2000 files identical in name, size and mtime, nothing outside
+   the bin that the collection does not have**.
+   **What the collisions cost, exactly.** In one album three names exist on *both* discs, and each pair
+   is two different recordings — so of 21 copies, 18 files remained, each holding whichever was copied
+   last. Nothing of the owner's was lost: both recordings are in their disc folders, byte for byte. What
+   was destroyed is a copy by a copy, and with it anything a user had done to the first one — a sidecar,
+   a retag — before this pass ever ran. That is the part no measurement can give back.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

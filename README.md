@@ -259,7 +259,16 @@ album — `cd1/…` when that is where it is — and no pass moves it, copies it
 folder. If you adopted a collection with **1.5.0**, run `noaap repair` once before anything else:
 those plans recorded only the bare name of a file in a sub-folder, and the first `update` after them
 copied it into the album's root. `repair` looks each file up where your collection says it is, and a
-finished track of an adopted album is never fetched again in any case. One album shape is refused
+finished track of an adopted album is never fetched again in any case.
+
+**And if that already happened, `noaap repair --strays` takes the copies back out.** It looks in the
+root of every adopted album whose discs are sub-folders, and moves a file to the recycle bin only when
+all four of these are true: the name is one the plan points at or one noaap would have written; its
+**decoded audio** is identical to a file in one of the disc folders; and that file is one the plan
+holds. Anything short of all four is printed with the reason and left where it is. **It reports and
+does nothing until you add `--apply`**, nothing is ever deleted, and each bin entry names the file it
+was a copy of and the evidence. Afterwards the album's plan points at your own files again and
+`--undo` can give the album back, which it refuses to do while a copy is still in there. One album shape is refused
 rather than adopted: one whose discs are *sibling* folders (`An Album CD1`, `An Album CD2`), because
 its files are not inside the album folder at all — adopt the folder that holds them.
 

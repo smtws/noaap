@@ -1305,7 +1305,54 @@ class Service:
                      f"collection says they are")
         return found
 
-    def repair(self, dry_run: bool = False) -> list[Outcome]:
+    def take_out_strays(self, plan: AlbumPlan, album_dir: Path, apply: bool = False) -> dict[str, int]:
+        """What 1.4.0 and 1.5.0 copied into an adopted album's root, moved to the bin (§9, slice 63).
+
+        **Dry unless asked** (R-220): without `apply` it says what it would do and writes nothing, and
+        that is the default for the whole pass, because this one removes a file from somebody's music
+        folder. Nothing is deleted even then — the bin holds it, with the evidence for taking it.
+        """
+        from . import strays as strays_mod
+
+        if not plan.keep_names or Path(plan.source_id).resolve() != album_dir.resolve():
+            return {}
+        source = sources.for_plan(plan, self.cfg, self.cancel)
+        read = lambda folder: source.collection(str(folder))  # noqa: E731 — the provider, as a reader
+        try:
+            found, left = strays_mod.look(album_dir, plan, read)
+        except sources.SourceError as e:
+            self.log(f"cannot read the folder to look for strays: {e}")
+            return {}
+        held = strays_mod.held_by(plan, strays_mod.refs_of_discs(album_dir, read))
+        for one in left:
+            self.log(f"  not provably ours: {one.where} — {one.why}")
+        if not found:
+            return {"left": len(left)}
+
+        library = self.library or album_dir
+        done = {"strays": len(found), "left": len(left), "binned": 0, "tracks": 0}
+        for one in found:
+            self.log(f"  {'stray' if apply else 'would bin'}: {one.where} — a copy of {one.copy_of}")
+            gone = strays_mod.only_a_copy(plan, one, held)
+            if not apply:
+                done["tracks"] += len(gone)
+                continue
+            audio = _inside(album_dir, one.where)
+            speaks_for = gone[0] if gone else held.get(one.copy_of)
+            if audio and speaks_for is not None and bin_track(
+                    library, album_dir, plan, speaks_for,
+                    reason=f"a copy noaap wrote into this album's root; the album's own file is "
+                           f"“{one.copy_of}”",
+                    audio=audio, sidecar=sidecar_path(album_dir, one.where),
+                    evidence=one.evidence()):
+                done["binned"] += 1
+            # **the tracks that existed only because of the copy go with it.** The owner's own track
+            # stays and is pointed back at its file by `find_again`, in this same pass.
+            plan.tracks = [t for t in plan.tracks if t not in gone]
+            done["tracks"] += len(gone)
+        return done
+
+    def repair(self, dry_run: bool = False, strays: bool = False, apply: bool = False) -> list[Outcome]:
         """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
         Fixes albums downloaded before those rules existed — renames and retags only. With
@@ -1316,6 +1363,16 @@ class Service:
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
             before = (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks))
+            # **first, before anything here tidies a name** (§9, slice 63): a file in the album's root
+            # was written under the name the plan held *then*, and a pass that recognises one has to
+            # ask the plan as it is on disk. Taking the copies out first is also what makes the owner's
+            # own files the only answer `find_again` can give below.
+            swept = self.take_out_strays(plan, album_dir, apply=apply and not dry_run) if strays else {}
+            if swept.get("strays"):
+                acted = apply and not dry_run
+                self.log(f"{swept['strays']} stray file(s) {'moved to the bin' if acted else 'would be moved to the bin'}"
+                         f", {swept['tracks']} track(s) that held only a copy "
+                         f"{'removed' if acted else 'would be removed'}")
             seen: set[str] = set()  # the same video listed twice in a playlist is one track
             unique = [t for t in plan.tracks if not (t.video_id in seen or seen.add(t.video_id))]
             if len(unique) != len(plan.tracks):
@@ -1365,6 +1422,7 @@ class Service:
             filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
             lengths += filled
             if not misplaced and not borrowed and not filled and not stale and not refound \
+                    and not swept.get("binned") \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"

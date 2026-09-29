@@ -326,10 +326,19 @@ def wanted_folder(plan: AlbumPlan) -> str:
     return f"{safe_name(plan.albumartist)}/{safe_name(plan.album)}"
 
 
-def wanted_filename(plan: AlbumPlan, t: PlanTrack) -> str:
-    show_artist = plan.kind == Kind.COMPILATION or _key(t.artist) != _key(plan.albumartist)
-    disc = t.disc if max(x.disc for x in plan.tracks) > 1 else None
-    return track_filename(plan.albumartist, plan.album, t.number, t.artist if show_artist else None, t.title, disc, t.ext)
+def shows_artist(plan: AlbumPlan, t: PlanTrack) -> bool:
+    """Whether this track's own artist belongs in its file name. Asked here and nowhere else, so that
+    a pass recognising a name noaap wrote asks the same question the writer did (§9, slice 63)."""
+    return plan.kind == Kind.COMPILATION or _key(t.artist) != _key(plan.albumartist)
+
+
+def wanted_filename(plan: AlbumPlan, t: PlanTrack, disc: int | bool | None = False) -> str:
+    """The name noaap's scheme gives this track. `disc` overrides which form: the number is in the
+    name when the album has more than one disc, and a plan damaged by 1.5.0 can hold either form."""
+    if disc is False:
+        disc = t.disc if max(x.disc for x in plan.tracks) > 1 else None
+    return track_filename(plan.albumartist, plan.album, t.number,
+                          t.artist if shows_artist(plan, t) else None, t.title, disc, t.ext)
 
 
 def refresh_derived(plan: AlbumPlan) -> AlbumPlan:

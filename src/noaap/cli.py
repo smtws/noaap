@@ -73,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     rp = sub.add_parser("repair", help="tidy artist names and measure files in the library, offline")
     rp.add_argument("--dry-run", action="store_true", help="say what it would do, write nothing")
     rp.add_argument("--library", type=Path)
+    rp.add_argument("--strays", action="store_true",
+                    help="also look for files noaap 1.4.0/1.5.0 copied into an adopted album's root "
+                         "(reports only; add --apply to move them to the bin)")
+    rp.add_argument("--apply", action="store_true", help="with --strays: actually move them to the bin")
 
     ly = sub.add_parser("lyrics", help="fetch lyrics for tracks that have none yet (.lrc beside the file + tag)")
     ly.add_argument("--library", type=Path)
@@ -306,7 +310,8 @@ def main(argv: list[str] | None = None) -> int:
                 library = _library(args, cfg, required=True)
                 if library is None:
                     return 2
-                code = exit_code(_service(cfg, library).repair(dry_run=args.dry_run))
+                code = exit_code(_service(cfg, library).repair(dry_run=args.dry_run,
+                                                                strays=args.strays, apply=args.apply))
                 _say_lost(library)
                 return code
             case "lyrics":

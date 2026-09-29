@@ -105,6 +105,25 @@ def decoded_length(path: Path) -> float | None:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+def decoded_sha(path: Path) -> str | None:
+    """A digest of this file's **decoded** audio, or None where ffmpeg cannot be asked (§9, slice 63).
+
+    The question "is this the same recording as that one" asked so that a re-tag cannot change the
+    answer. `sources_folder.stream_sha` copies the stream instead of decoding it, which is far cheaper
+    and answers correctly for two files that were never rewritten — but it called **14 of 22** copies
+    of one real album different from the files they were copied from, because something in the copy's
+    framing changed while the audio did not (catalogue BD8). Deciding that a file may be moved to the
+    bin is not a question to answer with a digest that can say that, so this one decodes.
+    """
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
+                               "-f", "s16le", "-"],
+                              capture_output=True, timeout=PATIENCE)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return hashlib.sha256(done.stdout).hexdigest() if done.returncode == 0 and done.stdout else None
+
+
 def measure(path: Path) -> tuple[float | None, str | None]:
     """Seconds, and **how they were arrived at** — `"header"` or `"decoded"` (§9, slice 56).
 

@@ -24,13 +24,17 @@ from noaap.sources_folder import FolderSource, cover_in, read_tags
 SECONDS = 31
 
 
-def encode(path: Path, **tags: str) -> Path:
+def encode(path: Path, hz: int = 440, **tags: str) -> Path:
+    """One file of generated audio. **`hz` makes it a different recording**, which matters wherever a
+    case turns on whether two files hold the same audio: every file was a 440 Hz sine of the same
+    length, so they all decoded alike and a pass looking for a copy could match any of them."""
     if not shutil.which("ffmpeg"):
         pytest.skip("ffmpeg not installed")
     meta = [arg for key, value in tags.items() for arg in ("-metadata", f"{key}={value}")]
     codec = {".flac": "flac", ".mp3": "libmp3lame", ".opus": "libopus", ".m4a": "aac"}[path.suffix]
     path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=duration={SECONDS}",
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi",
+                    "-i", f"sine=frequency={hz}:duration={SECONDS}",
                     "-c:a", codec, *meta, str(path)], check=True)
     return path
 
