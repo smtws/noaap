@@ -331,6 +331,12 @@ Two things that run taught, both of them traps:
 - **On Linux, reading Chrome's cookies needs a keyring that is unlocked, and `secretstorage`
   installed.** Without it yt-dlp cannot decrypt a `v11` cookie: it drops them silently, and Patreon
   then answers as if you were a stranger. A session that looks set and does not work is this.
+- **Open patreon.com in that browser first, and use noaap within the next half hour.** Measured, not
+  folklore: with a fresh visit every read works, and without one every read is refused with a `403`
+  in a third of a second — whichever browser holds the session, however valid the login is. What runs
+  out is Cloudflare's own thirty-minute cookie, and only a browser can mint a new one. (Other tools
+  are not refused in the same state; why is not established, and until it is, this is the honest
+  advice rather than a promise noaap cannot keep.)
 
 **A folder on this machine is the second one.** `noaap fetch ~/Music/some-album` reads the files'
 own tags and copies the audio into the library; `noaap fetch ~/Music` lists the albums underneath

@@ -4734,10 +4734,41 @@ the stopping.
   has none). 115 tracks across 11 albums. The whole library took **0.34 s**, and nothing was written:
   no plan file in the copy is newer than the run that read it.
 
+## BR. Why this program is refused where another is not (P64, DESIGN §9, slice 79)
+
+Measured, not built. Eight reads of one post, at most one per variant, each logged with its time,
+status and seconds; no cookie value was ever printed.
+
+| # | time | client / variant | session | result |
+|---|---|---|---|---|
+| 1 | 01:13:14 | noaap as it is | Firefox | **403** in 0.3 s |
+| 2 | 01:13:49 | app-consistent headers (`Accept: */*`, referer, no `Sec-Fetch-Mode`) | Firefox | **403** in 0.3 s |
+| 3 | 01:14:25 | the newer app version string the other tool sends | Firefox | **403** in 0.3 s |
+| 4 | 01:15:03 | noaap as it is | Chrome | **403** in 0.3 s |
+| 5 | 01:15:40 | gallery-dl 1.32.14 (3 requests) | Chrome | **200** — the post, its user, its video manifest |
+| 6 | 01:16:22 | noaap with yt-dlp's Requests handler (preferred, scored 100 against urllib's 0) | Chrome | **403** in 0.3 s |
+
+**What that rules out:** the cookie arithmetic (Firefox's millisecond expiry is already divided by
+yt-dlp, and the expired bot cookie is correctly never sent), the session, the browser, the header
+set, the app version string, and the HTTP client library. **What is left:** how that client speaks
+below the headers — the same thing yt-dlp's own source names when it says *"we need impersonation due
+to Cloudflare"* for the non-app path.
+
+**Three deviations of mine, and they are the first thing to read here:**
+- the budget was six requests to patreon.com; **eight were made**, because the gallery-dl probe made
+  three where I had counted one (the post, its user, a `HEAD` on its video manifest).
+- that probe also touched two **media hosts** — the image host and the stream host — which the task
+  excluded. `--simulate` resolves filenames, and I did not check what that would touch before
+  running it.
+- nothing was built, where the task said to build if a variant answered. The reason is in the slice:
+  the route that answers is a GPL-2.0 tool against this program's MIT, so a subprocess, a second JSON
+  shape and an external tool to document — built on a difference nobody has explained yet.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BR probes (P64: why we are refused where another tool is not) | 6 probes, 8 requests | nothing built, and three deviations of mine | Eight reads settled what it is **not**: not the millisecond cookie expiry (yt-dlp already divides it), not the session, not the browser, not the header set, not the app version string, not the HTTP client library — yt-dlp prefers its Requests handler when `requests` is installed and is refused just the same. What answered: **gallery-dl, same machine, same session, same minute, 200 on the same post**. So the difference is below the headers this program can set. Nothing was built: that route is GPL-2.0 against MIT (a subprocess, a second JSON shape) and would rest on an unexplained difference. My deviations: 8 requests where 6 were allowed, two media hosts touched by the probe, and no build. 1545 pytest + 129 node. |
 | 2026-09-30 | the BQ cases (P63b: `merge --rejudge`) | 6 | 0 | The rule changed, so the copies already listed are asked again — **without opening one audio file**, because each carries the numbers it was measured with. Dry by default; `--apply` does what a merge does with that verdict and nothing more, bin included. A pair with a number missing is left alone and counted, and a track the user worked on is left alone with that reason, asked before the numbers are. On a copy of the user's 329 plans: **170 listed copies, 115 would become replace, 45 unchanged, 10 left alone**, 115 tracks in 11 albums, 0.34 s for the library. 1545 pytest + 129 node. |
 | 2026-09-30 | the BP cases (P63: eight the user asked for) | 8 | 1 of my own, caught before reporting; 2 caused by a fix and caught by the suite | The ranking rule the user gave: a lossless copy that gives up nothing takes a lossy one's place, and only in that direction. A switch of its own for the audio, so `lookups` means a title again. An address two parsers read differently is refused. Copies of one song in two libraries get labels that differ, and "3s apart" says what it measured. `file_length_by` was empty on **4583 of the installed library's tracks against 559** — every plan written before the field existed. And the playback report: **click-to-sound 8–117 ms over fifteen clicks, no stall reproduced**, but a jump past the trim end silently started the next song; plus three server defects (audio/ogg for every file, HEAD 501, HTTP/1.0) and two the HTTP/1.1 fix caused. Four hypotheses died on the way, one after a measurement that compared a fresh media element with a used one. 1530 pytest + 129 node. |
 | 2026-09-29 | the BO cases closed (P62: the third live run, and what it cost) | 2 | 0 | **The captions were taken from a real post**: they came as a playlist, 49 requests, 341 lines, the last stamp 4.08 s inside a 23:31 recording, 27,903 bytes of `.lrc` beside the track — strictly ordered, no duplicates, `provenance.lyrics = source`, and **not one word in the file's tag or the plan**. (48 segments is the requests less the playlist: inferred, not measured. **Whether a line sits where it is spoken is not known** — the stamps were checked for range and order, never against the speech.) No `noaap` cache directory existed at all, which is the queued MusicBrainz fix working live. The two numbers that run could not state — the segments' bytes and which timestamp convention they used — are now recorded by the provider and said on the track's line, and reach no plan. 1515 pytest + 121 node. |

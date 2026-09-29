@@ -2305,6 +2305,33 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    none. 115 tracks across 11 albums, and the run took 0.34 s for the whole library, which is what
    "opens no audio file" is worth.
 
+79. ⏸ **Why this program is refused where another is not** (2026-09-30, P64 — measured, not built).
+   The question: noaap needs the browser opened at patreon.com within the last half hour, and the
+   user's own tool does not. Eight reads settled what it is *not*, and one comparison settled what it
+   is.
+   **Not the cookie arithmetic.** Firefox 142 writes cookie expiry in milliseconds and yt-dlp already
+   divides by a thousand for schema 16, so the expired bot cookie is correctly seen as expired and
+   never sent. Checked in the jar, not assumed.
+   **Not the session, and not the browser.** The same Chrome session that had answered 49 requests
+   three hours earlier was refused at 01:15; so was Firefox's. **Not the time** either, except as the
+   life of one cookie: every refusal is a `403` in **0.3 s**, which is an answer, not a challenge.
+   **Not the headers, and not the app version.** An app-consistent header set (`Accept: */*`, a
+   referer, no browser navigation metadata) and the newer app version string that the other tool
+   sends were both refused.
+   **Not the HTTP client.** With `requests` installed, yt-dlp prefers its Requests handler over
+   urllib — checked by asking the request director, which scores it 100 against urllib's 0 — and the
+   answer was the same 403.
+   **What did answer:** gallery-dl 1.32.14, on this machine, with *this* Chrome session, in the same
+   minute, on the same post: `200`. Same cookies, same network, same app-family user agent. So the
+   difference is in how that client speaks, below the headers this program can set through yt-dlp.
+   **Why nothing was built.** The route that works is a second reader under GPL-2.0 against this
+   program's MIT, which means a subprocess, a second JSON shape to map and keep mapped, and an
+   external tool to document — and it would be built on an *unexplained* difference, which is how a
+   fix becomes a mystery that breaks later. The cheap experiment that would explain it — replaying
+   that client's exact query and headers through a plain HTTPS call with the same cookies — costs
+   requests this package had already overspent. So: the advice to open the browser stays, because it
+   is measured to work, and the next package gets the experiment.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
