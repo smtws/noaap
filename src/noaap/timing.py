@@ -649,6 +649,47 @@ def provider(cfg: Any, what: str = "") -> Timing:
     return NoTiming()
 
 
+# providers whose work happens on this computer. `local` runs in this process; `http` may or may not,
+# and is judged by its endpoint. Everything else is a vendor: the audio is uploaded, which is the
+# whole point of it and exactly what a private recording may not do.
+LOCAL_KINDS = ("local",)
+
+
+def stays_here(cfg: Any, what: str = "") -> bool:
+    """Whether asking this provider keeps the audio on this machine (§9, slice 75).
+
+    `local` does. `http` does **only for a loopback endpoint** — `timing-serve` on this same box is
+    the same computer; the one on the desktop upstairs is not, however trusted that desktop is, and
+    a rule about audio leaving the machine has to mean the machine. A vendor never does. `none`
+    never gets asked anything, so there is nothing to send.
+    """
+    kind = kind_for(cfg, what)
+    if kind in LOCAL_KINDS:
+        return True
+    if kind == "http":
+        return _is_loopback((getattr(cfg, "timing_endpoint", "") or "").strip())
+    return False
+
+
+def _is_loopback(endpoint: str) -> bool:
+    """Whether this address is this machine, by its parsed host — never by how it is spelled."""
+    import ipaddress
+    from urllib.parse import urlsplit
+
+    try:
+        host = (urlsplit(endpoint).hostname or "").strip().lower()
+    except ValueError:
+        return False
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def can(cfg: Any, what: str) -> bool:
     """Whether the provider in *that* slot can do *that* job — the question the page really asks."""
     try:

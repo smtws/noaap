@@ -41,7 +41,7 @@ from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
 from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
-from .service import Outcome, Service, _inside, collection_address
+from .service import Outcome, Service, _inside, collection_address, may_send_audio
 from .sources import Cancelled
 from .tag import image_mime
 from .text import natural_key
@@ -265,6 +265,9 @@ class Details:
 # -- the app ---------------------------------------------------------------------------------
 
 
+# said by every door that would have sent a private album's audio somewhere (§9, slice 75)
+PRIVATE_AUDIO = ("this album's audio came from a source one person paid its creator for: it is not sent to a timing provider that runs anywhere but this machine")
+
 class App:
     def __init__(self, cfg: Config, library: Path, host: str = "127.0.0.1", port: int = 8765, service_factory=None) -> None:
         self.cfg, self.library, self.host, self.port = cfg, library.expanduser(), host, port
@@ -428,7 +431,12 @@ class App:
                 # an entry that is nearly this recording, and what was made of it (§9, slice 46)
                 "fit": track.lyrics_fit,
                 "can_check": bool(track.state == "done" and track.file_length
-                                  and (track.lyrics or "none") == "none" and ALIGN in capabilities_of(self.cfg))}
+                                  and (track.lyrics or "none") == "none" and ALIGN in capabilities_of(self.cfg)
+                                  and may_send_audio(self.cfg, plan, ALIGN)),
+                # **what the server will refuse, the page does not offer** (§9, slice 75): a private
+                # album's audio goes to a timing provider only if that provider runs on this machine
+                "may_send_audio": {"align": may_send_audio(self.cfg, plan, ALIGN),
+                                   "draft": may_send_audio(self.cfg, plan, TRANSCRIBE)}}
 
     def recycle(self) -> list[dict[str, Any]]:
         """The bin, for the page. Deliberately without any path: an entry is its id."""
@@ -773,6 +781,8 @@ class App:
                     raise ValueError("no such track in this album")
                 if TRANSCRIBE not in capabilities_of(self.cfg):
                     raise ValueError("no timing provider can derive words — see `timing_provider` in the config")
+                if not may_send_audio(self.cfg, found[1], TRANSCRIBE):
+                    raise ValueError(PRIVATE_AUDIO)
                 return self.jobs.submit("draft", f"Draft the words of {track.title}",
                                         lambda s: s.draft_lyrics(source_id, video_id), target=source_id)
             case "check_lyrics":
@@ -786,6 +796,8 @@ class App:
                 if ALIGN not in capabilities_of(self.cfg):
                     raise ValueError("checking a near miss needs a timing provider that can align — "
                                      "see `timing_align_provider` in the config")
+                if not may_send_audio(self.cfg, found[1], ALIGN):
+                    raise ValueError(PRIVATE_AUDIO)
                 return self.jobs.submit("lyrics", f"Check lrclib's near miss for {track.title}",
                                         lambda s: s.check_near_lyrics(source_id, video_id), target=source_id)
             case "take_plain_lyrics":
@@ -835,6 +847,8 @@ class App:
                     raise ValueError("no such track in this album")
                 if ALIGN not in capabilities_of(self.cfg):
                     raise ValueError("no timing provider can align words — see `timing_provider` in the config")
+                if not may_send_audio(self.cfg, found[1], ALIGN):
+                    raise ValueError(PRIVATE_AUDIO)
                 text = str(body.get("text", ""))
                 # the read lane: this writes nothing, so it may run beside a download, and it can
                 # take minutes on a machine without a GPU (§9, slice 36)

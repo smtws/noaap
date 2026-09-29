@@ -2161,6 +2161,36 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **Untried live, and said so.** Everything here is written fixtures: no caption file has been
    fetched from the real site, because that needs the owner's word.
 
+75. ✅ **Whose words, and where the audio may go** (2026-09-29, P60b). Three defects the reviewer
+   found by *using* the captions of slice 74 on a real album rather than by reading them.
+   **A courtesy is not a rule.** The editor withholds the claim control for a creator's captions, and
+   one save from that editor turned them into `Provenance.USER` anyway — the server set it without
+   looking — after which they were the user's words and went straight into the audio file's tag. Now
+   the server decides: words marked `SOURCE` stay `SOURCE` through any save, and `words_by` and
+   `timed_by` stay the provider's whatever the request sends. **Clearing them gives the mark up with
+   the words**, because what is gone is gone; whatever somebody writes from nothing afterwards is
+   their own, `USER`, and still unpublishable while the audio is a private source's — which is the
+   other rule doing its own work.
+   **The audio, not just the title.** `align_lyrics` and `draft_lyrics` handed the file to whatever
+   timing provider was configured, so an album somebody paid a creator for could be uploaded to a
+   vendor for a transcript. It had been true since the timing providers existed and it shipped. The
+   rule now: a private album's audio goes to a timing provider **only if that provider runs on this
+   machine** — `local`, or `http` on a loopback endpoint, judged by the parsed host, because the
+   timing server on the desktop upstairs is another computer however trusted it is — or if the
+   album's owner turned lookups on for that album. Refused in the service, refused again at the web
+   door before a job is queued, and **not offered by the page**, which asks the album and not only
+   the installation.
+   **And a stamp for a minute that does not exist.** `59.996` came out as `[00:60.00]`: the seconds
+   were divided off and *then* rounded. Rounding to the unit that is actually written, before
+   dividing, cannot do it.
+   **The audit that came with it** (R-258, point 4): every route that can carry something of a track
+   off this machine, and what each does for a private album — lrclib lookup and publish, MusicBrainz
+   enrichment and seed, the Cover Art Archive (never reached, because it hangs off an mbid that
+   enrichment would have had to set), the timing providers, the near-miss check, the local PO-token
+   helper and the watch signal (both 127.0.0.1), and the page's own audio endpoint (the user's
+   browser, on a loopback bind unless they ask otherwise). Separation runs in this process; a
+   separated voice reaches a network only through the same timing door, which is now gated.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

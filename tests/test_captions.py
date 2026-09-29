@@ -288,3 +288,219 @@ def test_captions_open_no_lookup(tmp_path, monkeypatch):
     _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], tmp_path)
 
     assert (tmp_path / "01 Chapter One.lrc").exists()
+
+
+# -- what a save may not do (§9, slice 75, R-258 defect 1) ------------------------------------------
+
+
+def a_library(tmp_path: Path) -> tuple[Path, AlbumPlan]:
+    """A real album on disk: an m4a with tags, its plan, and the creator's captions beside it."""
+    import shutil
+    import subprocess
+
+    album_dir = tmp_path / "A Creator" / "Chapter One"
+    album_dir.mkdir(parents=True)
+    audio = album_dir / "01 Chapter One.m4a"
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg is needed to make a real file to read tags back from")
+    subprocess.run(["ffmpeg", "-v", "quiet", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                    "-t", "2", "-c:a", "aac", str(audio)], check=True)
+    plan = an_album()
+    plan.folder = "A Creator/Chapter One"
+    from noaap.download import save_plan
+
+    save_plan(plan, album_dir)
+    return album_dir, plan
+
+
+def a_service(tmp_path: Path, **settings: Any):
+    from noaap.service import Service
+
+    cfg = Config()
+    for key, value in settings.items():
+        setattr(cfg, key, value)
+    return Service(cfg, tmp_path, log=lambda line: None)
+
+
+def tag_of(path: Path) -> str | None:
+    from noaap.tag import tagged_lyrics
+
+    return tagged_lyrics(path)
+
+
+@pytest.mark.parametrize("words_by,timed_by", [("patreon", "patreon"), ("", ""), ("me", "me")])
+def test_an_edit_does_not_turn_the_creators_words_into_the_users(tmp_path, words_by, timed_by):
+    """One save from the editor turned captions into `Provenance.USER` — and, being the user's, they
+    went into the audio file's tag. **The page withholding the control is a courtesy; this is the
+    rule.** Whatever the request says about `words_by` is ignored for such words."""
+    from noaap.download import _words_from_source, load_plan
+
+    album_dir, plan = a_library(tmp_path)
+    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    from noaap.download import save_plan
+
+    save_plan(plan, album_dir)
+    service = a_service(tmp_path)
+
+    outcome = service.save_lyrics(plan.source_id, plan.tracks[0].video_id,
+                                  "[00:07.12] he had been awake for NINETEEN hours\n",
+                                  timed_by=timed_by, words_by=words_by)
+
+    assert outcome.status == "ok"
+    after = load_plan(album_dir).tracks[0]
+    assert after.provenance["lyrics"] == Provenance.SOURCE, "they are still the creator's"
+    assert after.lyrics_words_by == "patreon" and after.lyrics_timed_by == "patreon"
+    # the retag pass renames to the album's own scheme, so the files are asked of the plan
+    assert "NINETEEN" in (album_dir / after.filename).with_suffix(".lrc").read_text(encoding="utf-8")
+    assert tag_of(album_dir / after.filename) is None, "and the file still holds no words"
+
+
+def test_clearing_them_gives_the_mark_up_and_what_is_written_next_is_the_users(tmp_path):
+    """What is gone is gone: after a clear there are no words and no mark, so whatever somebody
+    writes from nothing is their own — and still unpublishable while the audio is a private
+    source's, which is the other rule and not this one."""
+    from noaap.download import _words_from_source, load_plan, save_plan
+    from noaap.lyrics import publishable
+
+    album_dir, plan = a_library(tmp_path)
+    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    save_plan(plan, album_dir)
+    service = a_service(tmp_path)
+
+    service.save_lyrics(plan.source_id, plan.tracks[0].video_id, "   ")
+    cleared = load_plan(album_dir).tracks[0]
+    assert cleared.lyrics == "none" and "lyrics" not in cleared.provenance
+    assert cleared.lyrics_words_by is None and cleared.lyrics_timed_by is None
+    assert not list(album_dir.glob("*.lrc"))
+
+    service.save_lyrics(plan.source_id, plan.tracks[0].video_id, "[00:01.00] words I wrote myself\n")
+    mine = load_plan(album_dir).tracks[0]
+    assert mine.provenance["lyrics"] == Provenance.USER, "written from nothing, so they are theirs"
+    assert tag_of(album_dir / mine.filename) is not None, "and the user's words are tagged"
+    assert "paid its creator" in publishable(mine, "[00:01.00] words I wrote myself\n"), \
+        "…and still not publishable, because of where the audio came from"
+
+
+def test_no_route_writes_the_creators_words_into_the_file(tmp_path):
+    """Through the three doors that write tags: a save, a retag pass, and `repair`."""
+    from noaap.download import _words_from_source, load_plan, run, save_plan
+
+    album_dir, plan = a_library(tmp_path)
+    _words_from_source(Gave({"by": "patreon", "bytes": VTT.encode()}), plan, plan.tracks[0], album_dir)
+    save_plan(plan, album_dir)
+    service = a_service(tmp_path)
+
+    service.save_lyrics(plan.source_id, plan.tracks[0].video_id, "[00:07.12] corrected\n")
+    audio = album_dir / load_plan(album_dir).tracks[0].filename
+    assert tag_of(audio) is None, "after a save"
+
+    class Nothing:
+        name = "patreon"
+
+        def audio(self, *a, **k): raise AssertionError("nothing is downloaded by a retag")
+        def art(self, *a, **k): raise AssertionError("nothing is fetched by a retag")
+
+    run(load_plan(album_dir), album_dir, Nothing(), download=False)
+    assert tag_of(audio) is None, "after a retag pass"
+
+    service.repair(dry_run=False)
+    assert tag_of(audio) is None, "after repair"
+    assert "corrected" in audio.with_suffix(".lrc").read_text(encoding="utf-8")
+
+
+# -- and the audio itself (§9, slice 75, R-258 defect 2) ---------------------------------------------
+
+
+@pytest.mark.parametrize("provider,endpoint,stays", [
+    ("local", "", True),
+    ("http", "http://127.0.0.1:8471", True),
+    ("http", "http://localhost:8471", True),
+    ("http", "http://[::1]:8471", True),
+    ("http", "http://192.168.1.20:8471", False),
+    ("http", "https://timing.example", False),
+    ("http", "http://127.0.0.1.evil.example", False),
+    ("deepgram", "", False),
+    ("elevenlabs", "", False),
+    ("none", "", False),
+])
+def test_which_providers_count_as_this_machine(provider, endpoint, stays):
+    """`local` runs in this process. `http` is this machine **only on a loopback endpoint** — the
+    timing server on the desktop upstairs is another computer, however trusted. A vendor never is."""
+    from noaap.timing import stays_here
+
+    cfg = Config()
+    cfg.timing_provider, cfg.timing_endpoint = provider, endpoint
+
+    assert stays_here(cfg, "align") is stays
+
+
+def test_a_private_albums_audio_is_not_sent_to_a_vendor(tmp_path):
+    """`align_lyrics` and `draft_lyrics` handed the file to whatever provider was configured, so an
+    album somebody paid a creator for was uploaded to a third party for a transcript. This predates
+    the captions and was in a release."""
+    from noaap.service import may_send_audio
+    from noaap.timing import TimingUnavailable
+
+    album_dir, plan = a_library(tmp_path)
+    service = a_service(tmp_path, timing_provider="deepgram", timing_deepgram_key="x")
+    assert may_send_audio(service.cfg, plan, "align") is False
+
+    def engine_would_be_built(*a, **k):
+        raise AssertionError("a private album's audio reached the timing provider")
+
+    service._timing = engine_would_be_built
+    for call in (lambda: service.align_lyrics(plan.source_id, plan.tracks[0].video_id, "a line\n"),
+                 lambda: service.draft_lyrics(plan.source_id, plan.tracks[0].video_id)):
+        with pytest.raises(TimingUnavailable) as refused:
+            call()
+        assert "paid its creator" in str(refused.value) and "`deepgram`" in str(refused.value)
+
+
+def test_it_is_sent_to_a_provider_that_runs_here(tmp_path):
+    """The rule is about the audio leaving the machine, so a provider that does not take it off the
+    machine is not refused — and neither is an album whose owner turned lookups on for it."""
+    from noaap.service import may_send_audio
+
+    _, plan = a_library(tmp_path)
+    for cfg_args in ({"timing_provider": "local"},
+                     {"timing_provider": "http", "timing_endpoint": "http://127.0.0.1:8471"}):
+        assert may_send_audio(a_service(tmp_path, **cfg_args).cfg, plan, "align") is True
+
+    owner_said_yes = a_service(tmp_path, timing_provider="deepgram")
+    plan.lookups = True
+    assert may_send_audio(owner_said_yes.cfg, plan, "align") is True
+    plan.lookups = None
+
+    # and an album from anywhere else is untouched by any of this
+    public = an_album()
+    public.provider = "youtube"
+    public.tracks[0].candidates[0].provider = "youtube"
+    assert may_send_audio(a_service(tmp_path, timing_provider="deepgram").cfg, public, "align") is True
+
+
+def test_the_page_is_not_offered_what_the_server_would_refuse(tmp_path):
+    """"No button" is a worse answer than "no, because…" — but a button that fails is worse than
+    both. The album's own answer is in the payload the panel reads."""
+    from noaap.web import App
+
+    album_dir, plan = a_library(tmp_path)
+    cfg = Config()
+    cfg.timing_provider, cfg.timing_deepgram_key = "deepgram", "x"
+    app = App(cfg, tmp_path)
+
+    payload = app.lyrics(plan.source_id, plan.tracks[0].video_id)
+
+    assert payload["may_send_audio"] == {"align": False, "draft": False}
+    assert payload["can_check"] is False
+
+
+def test_the_stamp_never_names_a_minute_that_does_not_exist():
+    """`59.996` came out as `[00:60.00]`: the seconds were split off and *then* rounded. Rounding to
+    the unit that is written, before dividing, cannot do that (R-258, defect 3)."""
+    from noaap.captions import stamp
+
+    assert stamp(59.996) == "[01:00.00]"
+    assert stamp(119.999) == "[02:00.00]"
+    assert stamp(3599.9951) == "[60:00.00]"
+    assert stamp(59.994) == "[00:59.99]" and stamp(0) == "[00:00.00]" and stamp(7.12) == "[00:07.12]"
+    assert ":60." not in captions.as_lrc([(59.996, "a"), (119.999, "b"), (3599.9951, "c")])

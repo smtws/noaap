@@ -82,8 +82,10 @@ from .timing import (
     plain_lines,
     release_gpu_memory,
     stamped,
+    stays_here,
     with_gaps,
 )
+from .timing import kind_for as timing_kind
 from .timing import provider as timing_provider
 from .trim import ORIGINALS, kept_originals, originals_of
 from .trim import key as trim_key
@@ -131,6 +133,29 @@ TAB_LABELS = {
 }
 
 
+def may_look_up(cfg: Config, plan: AlbumPlan) -> bool:
+    """Whether anything about this album may be asked of lrclib or MusicBrainz (§9, slice 72).
+
+    A private source means no, and it means no for the *question* as much as for the answer: a lookup
+    sends a title, a creator and a duration to somebody else's server, and for an album a patron paid
+    a creator for, nobody asked for that to happen. The album's owner can say otherwise for that one
+    album by setting `"lookups": true` in its plan; nothing sets it for them, and no pass changes it.
+    """
+    if plan.lookups is not None:
+        return bool(plan.lookups)
+    return not sources.private_album(plan, cfg)
+
+
+def may_send_audio(cfg: Config, plan: AlbumPlan, capability: str = "") -> bool:
+    """…and whether this album's **audio** may be handed to a timing provider (§9, slice 75).
+
+    Module-level so the page can ask exactly what the server will answer: a button that offers what
+    the server refuses is a worse answer than no button (§9, slice 42), and this is the one question
+    where the refusal is about the recording itself.
+    """
+    return may_look_up(cfg, plan) or stays_here(cfg, capability)
+
+
 class Service:
     def __init__(
         self,
@@ -156,17 +181,8 @@ class Service:
         self._lrclib = lrclib
 
     def may_look_up(self, plan: AlbumPlan) -> bool:
-        """Whether anything about this album may be asked of lrclib or MusicBrainz (§9, slice 72).
-
-        A private source means no, and it means no for the *question* as much as for the answer: a
-        lookup sends a title, a creator and a duration to somebody else's server, and for an album a
-        patron paid a creator for, nobody asked for that to happen. The album's owner can say
-        otherwise for that one album by setting `"lookups": true` in its plan; nothing sets it for
-        them, and no pass ever changes it.
-        """
-        if plan.lookups is not None:
-            return plan.lookups
-        return not sources.private_album(plan, self.cfg)
+        """Whether anything about this album may be asked of lrclib or MusicBrainz (§9, slice 72)."""
+        return may_look_up(self.cfg, plan)
 
     def check(self) -> None:
         """Stop here if the job was cancelled (only called where stopping is safe)."""
@@ -763,21 +779,35 @@ class Service:
         if track.state != "done":
             return Outcome("failed", message=f"{track.title}: there is no file yet to put lyrics beside")
         if body := text.strip():
+            # **words that came with the recording stay theirs, whatever the request says** (§9,
+            # slice 74, R-258 defect 1). This set `USER` without looking, so one save from the editor
+            # turned a creator's captions into the user's own words — and, being the user's, they
+            # went straight into the audio file's tag. The page withholds the claim control; that is
+            # a courtesy, and this is the rule. Correcting a line of somebody else's writing is not
+            # authorship of it, and no request may say otherwise.
+            theirs = track.provenance.get("lyrics") == Provenance.SOURCE
             write_sidecar(album_dir, track, body)  # records lyrics_sha as the bytes it wrote
             track.lyrics = status_of(body)
-            track.provenance["lyrics"] = Provenance.USER
-            # the words stay the user's; the *clock* may be a machine's, and says so (§9, slice 36), and
-            # so does a draft nobody has rewritten yet (§9, slice 37)
-            track.lyrics_timed_by = timed_by or None
-            track.lyrics_words_by = words_by or None
+            if not theirs:
+                track.provenance["lyrics"] = Provenance.USER
+                # the words stay the user's; the *clock* may be a machine's, and says so (§9, slice 36),
+                # and so does a draft nobody has rewritten yet (§9, slice 37)
+                track.lyrics_timed_by = timed_by or None
+                track.lyrics_words_by = words_by or None
             # kept beside the clock, not instead of it: this is the evidence, the clock is the claim
             track.lyrics_checked = dict(checked) if checked else None
-            self.log(f"wrote your lyrics for {track.title} ({track.lyrics})"
-                     + (f", drafted by {words_by}" if words_by else "")
-                     + (f", timed by {timed_by}" if timed_by else ""))
+            if theirs:
+                self.log(f"saved your corrections to {track.lyrics_words_by}'s captions for "
+                         f"{track.title} — they are still theirs, and stay beside the file")
+            else:
+                self.log(f"wrote your lyrics for {track.title} ({track.lyrics})"
+                         + (f", drafted by {words_by}" if words_by else "")
+                         + (f", timed by {timed_by}" if timed_by else ""))
         else:
             # empty is a clear, not an empty file — and it gives the mark up with the words, so
             # `--refetch` may bring lrclib's back, exactly as deleting the file by hand does
+            # a clear gives the mark up with the words — including a source's, because what is gone
+            # is gone: whatever somebody writes next is their own, from nothing (§9, slice 74)
             remove_sidecar(album_dir, track.filename)
             track.lyrics, track.lyrics_sha = "none", None
             track.lyrics_timed_by = track.lyrics_words_by = None
@@ -867,6 +897,7 @@ class Service:
         if not lines:
             raise ValueError("there are no words to place")
 
+        self._audio_may_be_sent(plan, ALIGN, "align words")
         engine = self._timing(ALIGN, "align words")
         audio = album_dir / track.filename
         self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
@@ -898,6 +929,7 @@ class Service:
             # overwrite somebody's work, and LRCLIB's entry is better than a guess
             raise ValueError(f"{track.title} already has words — a draft is only for a track that has none")
 
+        self._audio_may_be_sent(plan, TRANSCRIBE, "derive words")
         engine = self._timing(TRANSCRIBE, "derive words")
         audio = album_dir / track.filename
         # A transcriber hears far more of a song with the band taken off it — measured, and by a
@@ -989,6 +1021,23 @@ class Service:
             return sources.get(wanted, self.cfg, self._cancel)
 
         return whose
+
+    def _audio_may_be_sent(self, plan: AlbumPlan, capability: str, what: str) -> None:
+        """Refuse to hand a private album's audio to a provider that is not this machine.
+
+        **The audio, not a title** (§9, slice 75, R-258 defect 2). A lookup sends a name and a length;
+        a timing provider is sent *the recording*, and for an album somebody paid a creator for that
+        is the one thing that must not happen by accident. Allowed when the provider runs here —
+        `local`, or `http` on a loopback endpoint — or when the album's owner turned lookups on for
+        that album, which is the same switch that lets it be looked up at all.
+        """
+        if may_send_audio(self.cfg, plan, capability):
+            return
+        whose = timing_kind(self.cfg, capability)
+        raise TimingUnavailable(
+            f"this album's audio came from a source one person paid its creator for, and `{whose}` "
+            f"would have to send the recording off this machine to {what} — use a provider that runs "
+            "here (`local`, or `http` on this machine), or set \"lookups\": true in this album's plan")
 
     def _timing(self, capability: str, what: str):
         """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40)."""

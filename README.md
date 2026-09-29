@@ -266,6 +266,12 @@ when they are served from a host this provider does not read, or when the post's
 at exactly zero — a caption file is timed to the whole asset, and a constant offset on every line
 looks right and is not. Off by default.
 
+**And its audio does not go to a timing provider that is not this machine.** Aligning words or
+drafting them sends the *recording* — so for an album from a private source that only happens with a
+provider running here: `local`, or `http` pointed at this machine. A vendor is refused in one
+sentence, and the page does not offer the button. If you want it anyway for one album, that is the
+same `"lookups": true` switch in its plan.
+
 **A private album's plan holds no address of its own.** The addresses Patreon hands out for a paid
 post's image are *signed* — they carry a token in the query — and a signed address is a piece of your
 session, so nothing of the sort is written into a plan. The cover is fetched while the post is being

@@ -4505,10 +4505,63 @@ A caption file has never been fetched. The address is signed and served by the v
 whether its first cue begins at the first spoken word, and whether the audio of a real post starts at
 exactly zero are all one fetch away — and that fetch needs the owner's word.
 
+## BN. Whose words, and where the audio may go (P60b, DESIGN §9, slice 75)
+
+The reviewer took the captions of BM and **used them**: wrote them onto a fixture album, saved an
+edit through the editor's own door, and asked the two timing calls what they would do. Three defects,
+none of which the suite could see.
+
+- [x] **BN1 · R** — an edit turned the creator's words into the user's, and put the book in the file
+
+  `save_lyrics` set `Provenance.USER` without looking, so one save made captions the user's words —
+  and the user's words are tagged. The page withholding the claim control is a courtesy; the server
+  is the rule. Now `SOURCE` stays `SOURCE` through any save, with `words_by` and `timed_by` kept
+  whatever the request sends (three request shapes tested, including the empty one).
+  - **clearing is different**: the words and the marks go together, and what is written from nothing
+    afterwards is the user's own — and still unpublishable while the audio is a private source's.
+  - and a case walks the three doors that write tags — a save, a retag pass, `repair` — on a real
+    `.m4a`, reading the tag back each time.
+
+- [x] **BN2 · R** — a private album's audio was handed to whatever provider was configured
+
+  `align_lyrics` and `draft_lyrics` sent the file to the timing provider without asking. With a
+  vendor configured that is paid audio uploaded to a third party, and it had shipped.
+  - **the rule:** only a provider that runs on this machine — `local`, or `http` on a **loopback**
+    endpoint by parsed host — or an album whose owner turned lookups on. Ten provider/endpoint
+    combinations tested, including `192.168.x` (another computer), a vendor, and
+    `http://127.0.0.1.evil.example` (not loopback, however it is spelled).
+  - refused in the service, refused again at the web door before a job is queued, and the page does
+    not offer what the server would refuse: the album's own answer rides in the lyrics payload.
+
+- [x] **BN3 · R** — a stamp for a minute that does not exist
+
+  `59.996` → `[00:60.00]`, `119.999` → `[01:60.00]`, `3599.9951` → `[59:60.00]`. Rounded to the
+  written unit first, then divided. All three values are cases.
+
+### The audit (R-258, point 4)
+
+| route | what would leave | for a private album |
+|---|---|---|
+| lrclib lookup (fetch, pass, near miss) | artist, title, album, duration | refused per album; the pass says how many it skipped |
+| lrclib publish | the words themselves | refused twice, on grounds that each stand alone |
+| MusicBrainz enrichment | artist, title, album, lengths | refused per album |
+| MusicBrainz seed | the whole tracklist | refused |
+| Cover Art Archive | a release-group id | never reached: it hangs off an mbid that only enrichment sets, and enrichment does not run |
+| timing: align, draft | **the audio file**, or its separated voice | refused unless the provider runs here, or the owner opted in |
+| near-miss check | title and duration, then the audio | refused at the album level before either |
+| the source provider itself | the post id, with the owner's own session | that is what it is for |
+| PO-token helper, watch signal | nothing of the album | 127.0.0.1 |
+| the page's audio endpoint | the audio, to the user's own browser | loopback bind unless the user asks otherwise |
+| telemetry | — | there is none |
+
+Separation runs in this process; a separated voice reaches a network only through the timing door,
+which is the one this package closed.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BN cases (P60b: whose words, and where the audio may go) | 3 | 3 defects of mine, all found by the reviewer **using** the previous package | A courtesy is not a rule: the editor withheld the claim control and the server set `USER` anyway, so one save turned a creator's captions into the user's words — and into the file's tag. The server decides now, and a clear gives the mark up with the words. Worse and older: `align_lyrics` and `draft_lyrics` handed a private album's **audio** to whatever timing provider was configured, vendors included, and that had shipped; it now goes only to a provider that runs on this machine (`local`, or `http` on a loopback endpoint by parsed host) or to an album whose owner opted in — refused in the service, at the web door, and not offered by the page. And `[00:60.00]` was a stamp the clock has no name for. Plus the audit of every route that can carry a track off this machine. 1487 pytest + 121 node. |
 | 2026-09-29 | the BM cases (P60: a post's captions as words) | 6 | 0 | Built from the spike, as its recommendation reads. A fourth kind of words — not the user's, not LRCLIB's, not a machine's draft, but **the creator's own writing, arrived with the recording**: `Provenance.SOURCE`, the claim control withheld, the publish refused on two grounds that each stand alone, and **never written into the audio file** — decided in `build_tags`, so every pass obeys it and the signature does not churn. WebVTT is read in the core (a format is not a source): start stamps only, presentation dropped, overlaps kept in start order. Four refusals, each said once, including the one the spike insisted on: audio that does not start at zero, measured with ffprobe rather than assumed. The captions come from a second media host (`*.mux.com`), so the parsed-host check now holds a pair. Fixtures only — **no caption file has ever been fetched**. 1468 pytest + 121 node. |
 | 2026-09-29 | the BL cases extended (P59c: the review of the fix) | 3 | 2 findings of the reviewer's, both real | A substring test for "is this our media host" said yes to `evil.example/x.jpg?<host>` and to `<host>.evil.example` — and a yes hands the browser's session to that host. Parsed host now, https only, no unusual port, sub-domains allowed, and the address a redirect **landed** on checked the same way. Two paths still handed the client an address they were given, one of them reachable from a plan field a person can edit; every entry point now builds its address or refuses, with a case that walks them all. And the rule *no address in a private plan* had left the live album unable to ever get a cover: it is asked of the provider now, from the post, only during a run that is happening anyway. 1448 pytest + 118 node. |
 | 2026-09-29 | the BL cases (P59b: the run that happened) | 4 | 3 defects, all found in what the run **wrote**, not in whether it passed | One post fetched end to end: 1 min 20 s, 16.6 MB kept, aac 96 kbps, length matching the source manifest to four decimals, cutoff 15 kHz, no video left anywhere, `update` afterwards changed nothing (identical digest), and neither LRCLIB nor MusicBrainz was asked a thing although both were switched on. Then the three defects: the plan had stored the **signed** address of a paid post's image (decision: a private album's plan holds no address at all — a de-signed one answers 403 for ever and looks live; guarded by a grep over every written value); the cover failure was **not** the expiry I had reported but an image address being read as a page, and the real reason had been sitting at debug level; and bytes downloaded could not be reported although it had been measured. 1433 pytest + 118 node. |

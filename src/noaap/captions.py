@@ -80,10 +80,18 @@ def read(data: bytes | str) -> list[tuple[float, str]]:
     return sorted(cues, key=lambda c: c[0])
 
 
+def stamp(seconds_in: float) -> str:
+    """`[mm:ss.xx]` — **rounded to hundredths first, and then split**.
+
+    Splitting first and rounding after invents a stamp the clock has no name for: 59.996 s came out
+    as `[00:60.00]` and 3599.9951 as `[59:60.00]` (R-258, defect 3). Rounding to the unit that is
+    actually written, before dividing, cannot do that.
+    """
+    hundredths = round(max(seconds_in, 0.0) * 100)
+    minutes, rest = divmod(hundredths, 6000)
+    return f"[{minutes:02d}:{rest / 100:05.2f}]"
+
+
 def as_lrc(cues: list[tuple[float, str]]) -> str:
     """The lines as an `.lrc`: `[mm:ss.xx] words`, which is what everything else in noaap reads."""
-    out = []
-    for start, said in cues:
-        minutes, rest = divmod(max(start, 0.0), 60)
-        out.append(f"[{int(minutes):02d}:{rest:05.2f}] {said}")
-    return "\n".join(out)
+    return "\n".join(f"{stamp(start)} {said}" for start, said in cues)

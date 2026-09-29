@@ -839,7 +839,7 @@ function lyricsPanel(p, t, d, editing) {
       h("button", { class: "quiet small", type: "button", onclick: (e) => editLyrics(e.currentTarget, p, t, true) },
         actions[0]),
       // only where there is nothing to lose: a draft would otherwise overwrite words somebody has
-      canDraft(t) ? h("button", { class: "quiet small", type: "button",
+      canDraft(t) && maySendAudio(d, "draft") ? h("button", { class: "quiet small", type: "button",
         title: `Ask ${providerFor("transcribe")} what it hears and put that in the editor as a draft.\n`
           + "It is a machine's guess — half a song for some tracks — and nothing is saved until you save it."
           + (sendsAudio("transcribe") ? `\nThe audio of this track is sent to ${providerFor("transcribe")}.` : ""),
@@ -996,7 +996,7 @@ function lyricsEditor(p, t, d) {
       h("button", { class: "quiet small", type: "button", title: "Play from this line's stamp (Alt+Enter)",
         onclick: () => playLine(p, t, area) }, "▶"),
       nudge(-0.5, "−0.5"), nudge(-0.1, "−0.1"), nudge(0.1, "+0.1"), nudge(0.5, "+0.5"),
-      canAlign() ? h("button", { class: "quiet small", type: "button",
+      canAlign() && maySendAudio(d, "align") ? h("button", { class: "quiet small", type: "button",
         title: "Ask the configured timing provider to place these words on this file's clock.\n"
           + "It writes nothing: the stamps appear here and you decide whether to save them.\n"
           + "Without a GPU this takes a couple of minutes for a four-minute track.",
@@ -1085,6 +1085,11 @@ const providerFor = (what) =>
   state.settings?.timing?.[what === "align" ? "align_provider" : "draft_provider"]
   || state.settings?.timing?.provider || "the provider";
 const sendsAudio = (what) => Boolean(state.settings?.timing?.sends_audio?.[what]);
+// **what the server will refuse is not offered** (§9, slice 75). An album whose audio one person paid
+// a creator for goes to a timing provider only when that provider runs on this machine, and the
+// server answers per album — so the page asks the album and not only the installation. An older
+// server that does not send the field is taken at its word, exactly as before.
+const maySendAudio = (d, what) => (d && d.may_send_audio) ? d.may_send_audio[what] !== false : true;
 
 // Asked once per provider per session, before the first request that leaves the machine. Not a
 // setting to be forgotten: the user is told what is about to happen, in the moment it happens.
