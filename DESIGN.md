@@ -1747,6 +1747,35 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    what happened, to which albums, and how to check: a defect that wrote into somebody's collection is
    not closed by a fix alone.
 
+62. ✅ **The 1.0.0 promise, kept against a reader that does not know this version** (2026-09-29, P55b-2).
+   The plan format is additive: a key is never removed, a value never rewritten by a newer version, and
+   a key a newer version wrote is carried through untouched by an older one. **It was broken from
+   1.1.0.** ytalbum 0.9.1 builds a candidate with `Candidate(**c)` — a bare constructor — so every
+   field added to `Candidate` after slice 50 made the plan unreadable to it. Measured with 0.9.1's own
+   code on the real library: **153 of 329 albums refused**, with
+   `Candidate.__init__() got an unexpected keyword argument 'length_by'`. Slice 48's pass-through keeps
+   an unknown key on the album and on the track, and **a candidate is neither** — so the newest part of
+   the format sat in the one place nothing could carry.
+   **The fix is where a candidate is written, not what it is.** The ten fields 0.9.1 knows stay inside
+   the candidate; everything added since is written beside it, at track level, keyed by the candidate's
+   ref, where `keeping()` carries it through whole. In memory nothing changes, the page and the API are
+   untouched, and a value that still has its default is not written at all. The ten are a constant
+   because they describe **another program's** class, which no longer changes; what moves out is derived
+   from them, so a field added tomorrow goes to the compatible place on its own. Older plans are read as
+   they are and written the new way on their next save; `noaap repair` does a whole library, by the
+   mechanism slice 60 already had — *would a save write this file differently?*
+   **Three things this cost, each of them the same lesson twice.** `plan --verify` compared the file
+   against a plan it had parsed **raw** instead of loading, and so reported 116 real plans about to lose
+   a `stream_sha` that a save puts back where it found it. `portable`/`resolved` rewrote values and not
+   **keys**, and a map keyed by a ref is a map keyed by a path, so an undecided copy's own fields were
+   dropped on the next read — the library page counted 0 waiting where there were 2. And the rewrite was
+   **not idempotent**: handed a file already written this way it found nothing inside the candidates and
+   removed the record of them. *One place decides what a save writes; one place decides what a load
+   reads* — there were two of the latter, `load_plan` and `iter_plans`, and only one of them was fixed.
+   **Verified live with 0.9.1's own code**, on a copy of a 329-album library it could not read: after
+   one `noaap repair` it reads all 329 and refuses none, writes all 329 back, and afterwards the 3910
+   fields it does not know are still there, 178 undecided copies included, with nothing lost or changed.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

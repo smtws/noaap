@@ -49,9 +49,14 @@ HERE = "./"
 
 
 def portable(value: Any, album_dir: Path) -> Any:
-    """What is written: a path inside this album becomes `./…`, everything else is untouched."""
+    """What is written: a path inside this album becomes `./…`, everything else is untouched.
+
+    **Keys as well as values**, because a plan holds maps keyed by a ref — `copies_extra` is one — and
+    a ref can be a path. Missing that left an undecided copy's own fields keyed by a path the load had
+    already turned back into an absolute one, so they were dropped on the next read (§9, slice 62).
+    """
     if isinstance(value, dict):
-        return {k: portable(v, album_dir) for k, v in value.items()}
+        return {portable(k, album_dir): portable(v, album_dir) for k, v in value.items()}
     if isinstance(value, list):
         return [portable(v, album_dir) for v in value]
     if not isinstance(value, str) or not value.startswith("/"):
@@ -63,9 +68,9 @@ def portable(value: Any, album_dir: Path) -> Any:
 
 
 def resolved(value: Any, album_dir: Path) -> Any:
-    """What is read: `./…` becomes the file it names in this folder."""
+    """What is read: `./…` becomes the file it names in this folder — keys too, as above."""
     if isinstance(value, dict):
-        return {k: resolved(v, album_dir) for k, v in value.items()}
+        return {resolved(k, album_dir): resolved(v, album_dir) for k, v in value.items()}
     if isinstance(value, list):
         return [resolved(v, album_dir) for v in value]
     if not isinstance(value, str) or not value.startswith(HERE):
@@ -74,11 +79,84 @@ def resolved(value: Any, album_dir: Path) -> Any:
     return str(album_dir / rest) if rest else str(album_dir)
 
 
+def read_plan(path: Path, album_dir: Path) -> AlbumPlan:
+    """**The one place that decides what a load reads** (§9, slice 62).
+
+    There were two — this and `iter_plans` — and the day a save started writing a candidate's newer
+    fields beside it, the page that counts undecided copies read 0 where there were 2, because only one
+    of the two put them back. The same lesson as `written`, learned the same way: a second copy of the
+    rule is a second thing to get wrong.
+    """
+    return AlbumPlan.from_dict(widen_candidates(resolved(json.loads(path.read_text()), album_dir)))
+
+
 def load_plan(album_dir: Path) -> AlbumPlan | None:
     path = album_dir / PLAN_FILE
     if not path.exists():
         return None
-    return AlbumPlan.from_dict(resolved(json.loads(path.read_text()), album_dir))
+    return read_plan(path, album_dir)
+
+
+# The ten fields **ytalbum 0.9.1** knows a candidate by. They stay inside the candidate; everything
+# noaap has added since is written beside it, at track level, keyed by the candidate's ref — where an
+# older reader carries it through untouched instead of refusing the plan (§9, slice 62).
+#
+# This list is 0.9.1's `Candidate` dataclass, field for field. It is a constant and not a computation
+# because it describes **another program's** class, which no longer changes; the fields to move out are
+# derived from it, so a field added to `Candidate` tomorrow goes to the compatible place on its own.
+CANDIDATE_1_0 = ("ref", "provider", "length", "codec", "bitrate", "sample_rate", "channels",
+                 "added_by", "why", "when")
+COPIES_EXTRA = "copies_extra"
+
+
+def _default_candidate() -> dict[str, Any]:
+    from .models import Candidate
+
+    return Candidate(ref="").to_dict()
+
+
+def narrow_candidates(data: dict[str, Any]) -> dict[str, Any]:
+    """What a save writes: each candidate in the shape 0.9.1 knows, the rest beside it (§9, slice 62).
+
+    Only a value that is not the default is written out, so an album from before any of these fields
+    existed keeps the file it had, and `copies_extra` appears on a track only when it says something.
+    """
+    default = _default_candidate()
+    for track in data.get("tracks") or []:
+        copies = track.get("candidates") or []
+        here = {copy.get("ref", "") for copy in copies}
+        # **what is already beside the track is kept** — for the copies that are still there. Starting
+        # from nothing made this destructive when it was handed a file that had already been written
+        # this way: the second pass found no fields inside the candidates and removed the record of
+        # them. A rewrite of what is already right must be a no-op (§9, slice 62).
+        extra = {ref: dict(kept) for ref, kept in (track.get(COPIES_EXTRA) or {}).items()
+                 if ref in here}
+        for copy in copies:
+            mine = {k: copy.pop(k) for k in list(copy) if k not in CANDIDATE_1_0}
+            mine = {k: v for k, v in mine.items() if v != default.get(k)}
+            if mine:  # memory is the newer truth where both say something
+                extra[copy.get("ref", "")] = {**extra.get(copy.get("ref", ""), {}), **mine}
+        if extra:
+            track[COPIES_EXTRA] = extra
+        else:
+            track.pop(COPIES_EXTRA, None)
+    return data
+
+
+def widen_candidates(data: dict[str, Any]) -> dict[str, Any]:
+    """What a load reads: the fields beside a candidate put back on it, so **memory never changes**.
+
+    A ref `copies_extra` no longer names is dropped — 0.9.1 carries the key through whole, including
+    an entry for a copy it removed, and the next save writes only what is still there.
+    """
+    for track in data.get("tracks") or []:
+        extra = track.pop(COPIES_EXTRA, None)
+        if not isinstance(extra, dict):
+            continue
+        for copy in track.get("candidates") or []:
+            for key, value in (extra.get(copy.get("ref", "")) or {}).items():
+                copy.setdefault(key, value)
+    return data
 
 
 def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
@@ -88,7 +166,7 @@ def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
     whether a save would change it; both ask here rather than rebuilding the rule, because a second
     copy of it is a second thing to get wrong.
     """
-    out = portable(plan.to_dict(), album_dir)
+    out = narrow_candidates(portable(plan.to_dict(), album_dir))
     # **only a plan that really holds one says so.** Every YouTube and SoundCloud album keeps
     # schema 1 and stays byte-for-byte what it was, readable by ytalbum 0.9.1 and by every noaap
     # up to 1.5.0 (R-207, ruling 1).
@@ -169,7 +247,7 @@ def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
     """Every album folder in the library (<library>/<artist>/<album>/.ytalbum.json)."""
     for path in sorted(library.glob(f"*/*/{PLAN_FILE}")):
         try:
-            yield path.parent, AlbumPlan.from_dict(resolved(json.loads(path.read_text()), path.parent))
+            yield path.parent, read_plan(path, path.parent)
         except (ValueError, KeyError, TypeError) as e:
             log.warning("ignoring unreadable plan %s: %s", path, e)
 

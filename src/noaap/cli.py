@@ -8,12 +8,20 @@ import json
 import logging
 import os
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from . import config as config_mod
 from .config import Config
-from .download import PLAN_FILE, as_saved, written
+from .download import (
+    CANDIDATE_1_0,
+    PLAN_FILE,
+    as_saved,
+    read_plan,
+    widen_candidates,
+    written,
+)
 from .models import AlbumPlan, PlanTrack, SourceRef, kept
 from .service import Service, collection_address, exit_code
 from .sources import NotSupported
@@ -506,7 +514,7 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         print("set the library first: noaap config --library PATH", file=sys.stderr)
         return 2
     paths = sorted(root.glob(f"*/*/{PLAN_FILE}"))
-    identical = filled = converted = 0
+    identical = filled = converted = reshapes = 0
     faults: list[str] = []
     moved: list[str] = []
     unknown: dict[str, int] = {}
@@ -515,14 +523,28 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         try:
             raw = path.read_text(encoding="utf-8")
             before = json.loads(raw)
-            plan = AlbumPlan.from_dict(before)
+            # **built the way a load builds it**, through the one place that decides that (§9, slice 62).
+            # Parsing the raw file instead left a candidate's newer fields in the track's carried-through
+            # keys rather than on the candidate, so this said 116 real plans would lose a `stream_sha`
+            # that a save puts back exactly where it found it.
+            plan = read_plan(path, path.parent)
         except (OSError, ValueError, TypeError) as e:
             faults.append(f"{where}: cannot be read — {e}")
             continue
         # what a *save* would write, which is not `to_dict()`: a path inside the album is written
         # relative to it, and that rewrite is exactly what this has to be able to report (§9, slice 60)
         after = written(plan, path.parent)
-        gone, changed = _plan_differences(before, after)
+        # **compared as memory holds them**, because that is what the promise is about (§9, slice 62).
+        # A field written beside its candidate instead of inside it has not been lost, and one left out
+        # because it still has its default says nothing that was not already said. Both sides go
+        # through a load, so what is compared is what the two files *mean*: a value that really
+        # disappears still shows, as that value turning into its default.
+        gone, changed = _plan_differences(_as_memory(before), _as_memory(after))
+        # the direct question, and not "would narrowing change it": a candidate holding a field 0.9.1
+        # does not know is what makes a plan unreadable to it (§9, slice 62)
+        reshaped = any(set(copy) - set(CANDIDATE_1_0)
+                       for track in (before.get("tracks") or [])
+                       for copy in (track.get("candidates") or []))
         for key in _plan_unknown(plan):
             unknown[key] = unknown.get(key, 0) + 1
         refs = [c for c in changed if _is_conversion(c[1], c[2], path.parent, root)]
@@ -531,12 +553,13 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         bump = [c for c in changed if c[0] == "schema"] if refs else []
         changed = [c for c in changed if c not in refs and c not in bump]
         converted += len(refs)
+        reshapes += bool(reshaped)
         if refs and not (gone or changed):
             moved.append(f"{where}: {len(refs)} ref(s) would become relative to the library")
         if gone or changed:
             faults.append(f"{where}: would lose {gone}" if gone
                           else f"{where}: would change {[f'{k}: {b!r} -> {a!r}' for k, b, a in changed[:3]]}")
-        elif not refs:
+        elif not refs and not reshaped:
             # **the three counts are exclusive.** A converted plan is neither byte-identical nor a
             # plan gaining defaults, and counting it twice would make the totals lie (§9, slice 60).
             if as_saved(after) == raw:
@@ -545,6 +568,8 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
                 filled += 1
     print(f"{len(paths)} plan(s): {identical} byte-identical, {filled} would gain default fields, "
           + (f"{converted} ref(s) in {len(moved)} plan(s) would become relative, " if converted else "")
+          + (f"{reshapes} plan(s) would have their copies written in the shape ytalbum 0.9.1 reads, "
+             if reshapes else "")
           + f"{len(faults)} would lose or change something")
     for key, n in sorted(unknown.items()):
         print(f"  unknown field {key!r} on {n} plan(s) — written by a newer noaap, carried through")
@@ -578,6 +603,11 @@ def _plan_differences(before: Any, after: Any, path: str = "") -> tuple[list[str
     elif before != after:
         changed.append((path.rstrip("."), before, after))
     return gone, changed
+
+
+def _as_memory(data: dict[str, Any]) -> dict[str, Any]:
+    """What this file means once it is read: defaults filled in, candidates whole (§9, slice 62)."""
+    return AlbumPlan.from_dict(widen_candidates(deepcopy(data))).to_dict()
 
 
 def _is_conversion(before: Any, after: Any, album_dir: Path, library: Path) -> bool:

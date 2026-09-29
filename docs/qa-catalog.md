@@ -3811,10 +3811,66 @@ using it on the one shape of album the tests never had. The collection holds 3 o
 disc sub-folder, and they are the albums a collection is least likely to have a second copy of.
 
 
+## BE. The promise, kept against an older reader (P55b-2, DESIGN §9, slice 62)
+
+Found beside the P55b acceptance, not caused by it. Measured with **ytalbum 0.9.1's own code**, from
+the checkout it was released from, against copies under `~/Musik/` only.
+
+- [x] **BE1 · R** — the promise was broken from 1.1.0
+
+  Point 0.9.1's `load_plan` at the 329-album library noaap has been writing into.
+  - **result:** it reads 176 and **refuses 153**:
+    `Candidate.__init__() got an unexpected keyword argument 'length_by'`. Its `Candidate(**c)` is a
+    bare constructor, and slice 48's pass-through carries an unknown key on the album and on the track
+    — **a candidate is neither.** So the newest part of the format sat in the one place nothing could
+    carry through. The real library is untouched and reads fine (246 plans), which is why nobody saw it.
+
+- [x] **BE2** — where a candidate is written, not what it is
+
+  The ten fields 0.9.1 knows stay inside the candidate; everything since goes beside it on the track,
+  keyed by the ref, and a value still at its default is not written at all.
+  - **result:** after one `noaap repair` on a copy: **1421 tracks carry `copies_extra`, 3910 fields in
+    it, 178 undecided copies, 0 candidates still holding a field 0.9.1 does not know.** noaap's own
+    `plan --verify`: 329 plans, **329 byte-identical, 0 would lose or change something.**
+
+- [x] **BE3** — and 0.9.1 writes it back without losing it
+
+  0.9.1 reads every album of the repaired copy and saves it again, with its own `save_plan`.
+  - **result:** **read 329, wrote 329, refused 0.** Afterwards the 3910 fields it does not know are
+    still there, the 178 undecided copies included, and noaap reports **0 would lose or change
+    something** (329 "would gain default fields", which is 0.9.1 writing its own smaller field set —
+    exactly what the additive promise allows).
+
+- [x] **BE4** — a reader this version cannot drift away from
+
+  0.9.1's ten candidate fields, its `keeping`/`kept` pass-through and its bare constructor are copied
+  into the suite, from the commit they were released at.
+  - **result:** 9 cases. One holds `CANDIDATE_1_0` against that list, one asserts there *are* fields
+    added since (so the guard cannot become vacuous), one reproduces the 1.5.0 shape and requires the
+    old reader to refuse it, one takes a plan through 0.9.1 and back, one drops a copy in 0.9.1 and
+    checks it does not come back, and one holds `repair` to converting a whole library.
+
+### Three defects the fix produced, each the same lesson twice
+
+- **`plan --verify` parsed the file raw instead of loading it**, so a candidate's newer fields sat in
+  the track's carried-through keys rather than on the candidate: it reported **116 real plans** about to
+  lose a `stream_sha` that a save puts back exactly where it found it.
+- **`portable`/`resolved` rewrote values and not keys.** A map keyed by a ref is a map keyed by a path
+  for a folder album, so an undecided copy's fields were written under `./…` and looked for under the
+  absolute path: the library page counted **0 waiting where there were 2**.
+- **The rewrite was not idempotent.** Handed a file already written this way, it found nothing inside
+  the candidates and **removed the record of them**.
+
+*One place decides what a save writes; one place decides what a load reads.* There were two of the
+second — `load_plan` and `iter_plans` — and only one of them widened. That is the third time in three
+packages that a second copy of a rule has been the defect.
+
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-29 | the BE cases (P55b-2: the promise kept against an older reader) | 4 | 0 in the design; **3 defects the fix itself produced**, all found by running it, all fixed | The 1.0.0 promise was broken from **1.1.0**: ytalbum 0.9.1 builds a candidate with a bare constructor, so every field added to `Candidate` after slice 50 made the plan unreadable to it — **153 of 329 real albums refused**, measured with 0.9.1's own code. Slice 48's pass-through carries an unknown key on the album and on the track, and a candidate is neither. Now the ten fields 0.9.1 knows are written inside the candidate and everything since beside it on the track, keyed by the ref; memory, the page and the API are untouched. Live: after one `noaap repair`, 0.9.1 **reads all 329, refuses none, writes all 329 back**, and the 3910 fields it does not know are still there afterwards, 178 undecided copies included, with 0 plans losing or changing anything. The three defects: `plan --verify` parsed the file raw instead of loading it (116 plans reported as losing a `stream_sha`); `portable`/`resolved` rewrote values and not keys, so an undecided copy's fields were keyed by a path the load had already resolved (the page counted 0 where there were 2); and the rewrite was not idempotent, removing the record it had just written. 1278 pytest + 102 node. |
 | 2026-09-29 | the BD cases (P55b: discs in sub-folders) | 7 | **the worst defect this project has produced**, found by the P55b acceptance, fixed | `filename` is the track's path relative to the album folder, and the provider says what it is. Before: a bare name, so for a track in a disc sub-folder `album_dir / filename` was not the file — the executor read that as missing and re-fetched it, which for a folder provider is a **copy into the album root under noaap's own name**. One `update` on a library that had **never been moved** wrote **64 files** for the 67 tracks of three real albums, and 3 copies landed on each other's names, so two recordings became one file with two tracks pointing at it; a later read appended the copies as tracks, 24 → 48. The acceptance library holds **102 files the collection does not have**, against **67 of the owner's identical in name, size and mtime**. Slice 60's own check had said it on the day — *67 track(s) in 3 album(s) are not where their plan says* — and nobody read it. The cause under the cause: **the path was parsed out of the ref**, the same boundary as `Entry.ext`, whose comment already records that parsing a ref for a suffix renamed 1662 files into a lie. Now `Entry.where`, a `repair` that looks lost files up where the collection says they are, a refusal for an album whose discs are *sibling* folders, and the guard that makes the class impossible: **a finished track of an adopted album is never fetched again.** Live on 41 GB: adopt 132 albums / 2000 tracks, **nothing missing** (was 67), move for real, `update`, `repair`, re-read all 132 — afterwards **2000 files identical to the collection in name, size and mtime, 0 extra, 0 missing, 0 changed**. An undo cannot take the 102 back and must not: `added_by_us` never lists audio. 1265 pytest + 102 node; 9 of the 21 new cases fail against 7002230. |
 | 2026-09-29 | the BC cases (P55b: a library that survives being moved) | 6 | 0 in the design; **1 defect the round-trip check found in the package itself**, fixed | A path inside an album's own folder is written `./…` and read back as the file it names; one marker, one rule, and everything else stays the absolute path it was. **The fact it exists for is not that a moved library breaks — it is that a moved library works, by using the original's files.** Measured: a 1.5.0-style copy held **52 refs, 0 inside itself, all 52 pointing into the original**, every one of them on disk over there, and neither `repair` nor `plan --verify` can fix that where it stands. Converted first: 52 relative, 52 inside, and with the original gone 4 of 4 albums re-read, 0 tracks added. On the 41 GB collection: **8396 refs converted in one `repair`**, then at a second path **8396 of 8396 resolving inside the copy, 132 of 132 albums re-read ok, 0 tracks added, 132 plans byte-identical** — the same with the original moved away. Only a plan that really holds a relative path says `schema: 2`: **noaap 1.5.0 reads all 329 albums of the YouTube library and writes them back byte for byte**, and refuses the 132 adopted ones in one sentence. The defect: `plan --verify` and `repair` each had their own copy of the rule, and asking the round-trip question from one place showed that **every `adopt --apply` left a folder album's candidates claiming YouTube in the file** — a track cannot know its album's provider, and only the load corrected it. 1245 pytest + 102 node. |
 | 2026-09-29 | the BB cases (P55: a folder that is watched) | 7 | 0 in the design; **3 defects found by running it**, all fixed | `noaap watch` notices and hands over; it never does the work. It polls, because a full walk of 2153 files costs 0.01 s and inotify cannot see another client's writes on a share — measured before choosing. The settle window belongs to the folder, not the file. Two shapes that are opposite in one place: an intake reports an album the library already has, a library watching itself takes a new file as a new track. Live as a service: an album dropped and a file added were both noticed 21 s later and both handled correctly. The three defects were all in the library shape and all wrote, or would have written, over somebody's file — none of them was reachable without a real album. **Section BB was written after the fact**, from the runs recorded in the session: every number in it is from one of those runs except the 21 s notice, which is quoted from this row. 1208 pytest + 102 node. |

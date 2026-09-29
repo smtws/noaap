@@ -880,11 +880,16 @@ Nothing outside this repository implements it yet; when something does, it gets 
   one pass. Do that **before** you move, copy or back it up. A library that was already moved while
   its plans still held absolute paths cannot be repaired where it stands: nothing in the new place
   is inside those albums, so finding the files again is a separate job and not yet written.
-- **A converted album cannot be read by an older version.** Only an album whose plan really holds a
-  relative path says `schema: 2`, and only a collection taken in with `noaap adopt` does — every
-  YouTube and SoundCloud album keeps `schema: 1` and stays byte-for-byte the file it was, readable
-  by ytalbum 0.9.1 and by every noaap up to 1.5.0. An older version refuses a schema it does not
-  know rather than guessing, so it will say so plainly about the adopted ones.
+- **One kind of album cannot be read by an older version: an adopted one.** Only a plan that really
+  holds a relative path says `schema: 2`, and only a collection taken in with `noaap adopt` does —
+  every YouTube and SoundCloud album keeps `schema: 1`. An older version refuses a schema it does not
+  know rather than guessing, so it says so plainly about the adopted ones and reads all the rest.
+- **1.1.0 to 1.5.0 broke that, and 1.6.0 fixes it.** Those versions wrote a copy's newer measurements
+  *inside* the copy, where ytalbum 0.9.1 builds one with a bare constructor and refuses the whole
+  plan — `Candidate.__init__() got an unexpected keyword argument 'length_by'`, on 153 of one real
+  library's 329 albums. A copy is now written in the shape 0.9.1 knows, with everything added since
+  beside it on the track, where an older reader carries it through untouched. Nothing changes in
+  memory or on the page. Run `noaap repair` once to write a library that way.
 - **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
   uploader provided. No setting can make that better, and FLAC it will never be.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also
