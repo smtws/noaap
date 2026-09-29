@@ -668,16 +668,21 @@ class Patreon:
         if len(segments) > CAPTION_SEGMENTS:
             return [], (f"its caption playlist lists {len(segments)} segments, more than the "
                         f"{CAPTION_SEGMENTS} this program will fetch"), asked
+        # **every address is resolved and checked before any of them is asked** (R-263, defect 2). It
+        # was one at a time, so a foreign third segment was found only after two requests had already
+        # gone out. The list is judged as a list, and then it is fetched.
+        addresses = [urljoin(where, part) for part in segments]
+        if not all(_is_media_address(one) for one in addresses):
+            return [], CAPTIONS_ELSEWHERE, asked
+        if len(set(addresses)) != len(addresses):
+            return [], "its caption playlist lists the same segment twice", asked
         texts, total = [], 0
-        for part in segments:
-            address = urljoin(where, part)
-            if not _is_media_address(address):
-                return [], CAPTIONS_ELSEWHERE, asked
+        for position, address in enumerate(addresses, 1):
+            asked += 1      # counted before the attempt: a request that failed was still made
             try:
                 body = self._media_bytes(address, accept="text/vtt,*/*")
             except sources.SourceError as e:
-                return [], f"its captions could not be read: {e}", asked
-            asked += 1
+                return [], f"its caption segment {position} could not be read: {e}", asked
             total += len(body)
             if total > CAPTION_BYTES:
                 return [], (f"its caption segments are larger than the "

@@ -270,9 +270,13 @@ What a post actually serves is usually not a file but a **playlist** of WebVTT s
 read too: the playlist, then each segment in order, then the cues joined into one list with a cue
 that spans two segments appearing once. Every address is checked before it is asked — the playlist
 and each segment, after resolving it against the playlist — and one segment from somewhere else
-refuses the whole track rather than writing half of it. A playlist of playlists, an encrypted one
-(no key is ever fetched) and one that is still being written are each refused by name, as is more
-than **600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line
+refuses the whole track rather than writing half of it — and every address is checked before *any*
+of them is fetched, so a bad one costs no requests at all. Each segment has to be a caption file by
+its own first line, so an error page in the middle of a chapter refuses the track instead of leaving
+a hole in it (an empty segment is fine: that is a silence). A playlist of playlists, an encrypted one
+(no key is ever fetched), one that is still being written, one whose segments are byte ranges of
+another file and one that lists the same segment twice are each refused by name, as is more than
+**600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line
 says what it did cost.
 
 **And its audio does not go to a timing provider that is not this machine.** Aligning words or

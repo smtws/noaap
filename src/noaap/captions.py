@@ -108,6 +108,11 @@ _SEGMENT_CAP_REASON = "its caption playlist lists more segments than this progra
 MASTER = "#EXT-X-STREAM-INF"     # a playlist of playlists: not the one we were promised
 KEY = "#EXT-X-KEY"               # encrypted segments. No key is ever fetched, so this is refused
 ENDLIST = "#EXT-X-ENDLIST"       # without it the list is still being written: a live stream
+# **segments that are parts of a file, not files** (§9, slice 76, R-263). `#EXT-X-BYTERANGE` makes an
+# entry a slice of the address above it and `#EXT-X-MAP` an initialisation section every segment
+# needs; a reader that ignores either fetches whole files twice and reads them wrongly. Refused
+# rather than half-implemented: this program has never seen captions packaged that way.
+RANGES = ("#EXT-X-BYTERANGE", "#EXT-X-MAP")
 _MAP = re.compile(r"X-TIMESTAMP-MAP\s*=\s*(?P<body>\S+)", re.I)
 _LOCAL = re.compile(r"LOCAL\s*:\s*((?:\d{1,3}:)?\d{1,2}:\d{2}[.,]\d{1,3})", re.I)
 _MPEGTS = re.compile(r"MPEGTS\s*:\s*(\d+)", re.I)
@@ -138,6 +143,8 @@ def playlist(data: bytes | str) -> tuple[list[str], str | None]:
         return [], "its caption segments are encrypted, and this program fetches no keys"
     if not any(one.startswith(ENDLIST) for one in lines):
         return [], "its caption playlist is still being written (no end marker), so it is not read"
+    if any(one.startswith(RANGES) for one in lines):
+        return [], "its caption segments are byte ranges of another file, which this program does not read"
     return [one for one in lines if one and not one.startswith("#")], None
 
 
@@ -173,6 +180,12 @@ def read_segments(texts: list[str]) -> tuple[list[tuple[float, str]], str | None
     """
     bases: list[float | None] = []
     seen: list[tuple[float, str]] = []
+    for n, text in enumerate(texts, 1):
+        # **a segment that is not a caption file is not an empty one** (R-263, defect 1). An error
+        # page or a truncated answer read as "no cues" and left a hole in the middle of a chapter
+        # with nothing said. An *empty* WebVTT segment — header, no cues — stays perfectly legal.
+        if not is_webvtt(text):
+            return [], f"its caption segment {n} of {len(texts)} is not a WebVTT file"
     for text in texts:
         base, present = timestamp_base(text)
         if present and base is None:

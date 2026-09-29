@@ -2217,6 +2217,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    files for one track's words has stopped asking whether it should.
    **And the cost is said before it is paid.** A dry run names the shape and the budget — it makes no
    request for captions — and the track's own line says the exact number of requests afterwards.
+   **Four corrections from the review of it** (R-263), all of the same family — *a list is judged as
+   a list*: every segment must be a caption file **by its own first line**, so an error page or a
+   truncated answer refuses the track and names which segment it was, instead of reading as a
+   segment with no cues and leaving a hole in the middle of a chapter with nothing said (an *empty*
+   WebVTT segment stays legal — it is a silence). Every address is resolved and checked **before any
+   of them is asked**, so a foreign third segment costs no requests at all rather than two. A
+   playlist using `#EXT-X-BYTERANGE` or `#EXT-X-MAP` is refused rather than half-read, because an
+   entry that is a slice of another file is not a file, and so is the same address listed twice,
+   which without byte ranges can mean nothing this program should guess at. And the request count is
+   raised **before** the request, because a 404 is a request somebody's server answered.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

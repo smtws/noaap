@@ -769,3 +769,94 @@ def test_the_musicbrainz_client_is_not_built_for_an_album_nobody_may_ask_about(t
     if fresh.may_look_up(plan) and fresh.mb:
         pass
     assert built == [], "the gate is evaluated before the client"
+
+
+# -- nothing half-read, nothing half-asked, nothing miscounted (§9, slice 76, R-263) ----------------
+
+
+def a_playlist(*names: str) -> bytes:
+    body = "#EXTM3U\n" + "".join(f"#EXTINF:10,\n{name}\n" for name in names) + "#EXT-X-ENDLIST\n"
+    return body.encode()
+
+
+ONE_CUE = "WEBVTT\n\n00:00:0{n}.000 --> 00:00:0{n}.500\ninvented line {n}\n"
+
+
+@pytest.mark.parametrize("instead,says", [
+    (b"<html>Access denied</html>", "segment 2 of 3 is not a WebVTT file"),
+    (b"", "segment 2 of 3 is not a WebVTT file"),
+    (b"1\n00:00:01,0 --> 00:00:02,0\nan srt segment\n", "segment 2 of 3 is not a WebVTT file"),
+])
+def test_a_segment_that_is_not_a_caption_file_refuses_the_track(monkeypatch, instead, says):
+    """Two cues out of three and not a word about the third: a chapter with a hole in it. A segment
+    that is not a caption file is not an empty one, and the refusal names which segment it was."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt", "c.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": instead,
+        "https://manifest.edgemv.mux.com/c.vtt": ONE_CUE.format(n=3).encode()})
+
+    assert says in found["refused"] and "cues" not in found
+    assert found["requests"] == 4, "the playlist and all three segments were asked"
+
+
+def test_an_empty_caption_segment_is_still_a_caption_segment(monkeypatch):
+    """A segment with a header and no cues is legal — a silence in the middle of a narration."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt", "c.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": b"WEBVTT\n\n",
+        "https://manifest.edgemv.mux.com/c.vtt": ONE_CUE.format(n=3).encode()})
+
+    assert "refused" not in found and [said for _, said in found["cues"]] == \
+        ["invented line 1", "invented line 3"]
+
+
+def test_no_segment_is_asked_when_one_address_fails_the_check(monkeypatch):
+    """It was one at a time, so a foreign third segment cost two requests before the refusal."""
+    playlist = ("#EXTM3U\n#EXTINF:10,\na.vtt\n#EXTINF:10,\nb.vtt\n"
+                "#EXTINF:10,\nhttps://evil.example/c.vtt\n#EXT-X-ENDLIST\n")
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": playlist.encode(),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": ONE_CUE.format(n=2).encode()})
+
+    assert found["refused"] == mod_elsewhere()
+    assert found["asked"] == ["https://manifest.edgemv.mux.com/x.vtt"], "only the playlist"
+    assert found["requests"] == 1
+
+
+@pytest.mark.parametrize("line,says", [
+    ("#EXT-X-BYTERANGE:1000@0", "byte ranges"),
+    ('#EXT-X-MAP:URI="init.mp4"', "byte ranges"),
+])
+def test_segments_that_are_parts_of_a_file_are_refused(monkeypatch, line, says):
+    """Both make an entry something other than a whole file, and a reader that ignores them fetches
+    the same file twice and reads it wrongly. Refused rather than half-implemented."""
+    playlist = f"#EXTM3U\n{line}\n#EXTINF:10,\na.vtt\n{line}\n#EXTINF:10,\na.vtt\n#EXT-X-ENDLIST\n"
+    found = serving(monkeypatch, {"https://manifest.edgemv.mux.com/x.vtt": playlist.encode()})
+
+    assert says in found["refused"] and found["requests"] == 1
+
+
+def test_the_same_segment_listed_twice_is_refused(monkeypatch):
+    """Without byte ranges there is nothing it could mean, and reading it twice is not it."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt", "a.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode(),
+        "https://manifest.edgemv.mux.com/b.vtt": ONE_CUE.format(n=2).encode()})
+
+    assert "the same segment twice" in found["refused"]
+    assert found["asked"] == ["https://manifest.edgemv.mux.com/x.vtt"], "and nothing was fetched"
+
+
+def test_a_failed_request_is_still_a_request_that_was_made(monkeypatch):
+    """It said 2 where 3 had gone out: the count was raised after the answer instead of before the
+    question, so a 404 vanished from the bill."""
+    found = serving(monkeypatch, {
+        "https://manifest.edgemv.mux.com/x.vtt": a_playlist("a.vtt", "b.vtt", "c.vtt"),
+        "https://manifest.edgemv.mux.com/a.vtt": ONE_CUE.format(n=1).encode()})
+        # b.vtt is not in the table: the stand-in raises, as a 404 would
+
+    assert "segment 2 could not be read" in found["refused"]
+    assert found["requests"] == 3 == len(found["asked"]), "the playlist, the one that worked, the one that did not"
