@@ -2221,9 +2221,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    only infer that from the shape of its own result and could not say the bytes at all, though they
    had been counted for the cap; a number that exists and is dropped is the same defect as a number
    that is only in a log. None of it reaches a plan: it describes the transfer, not the words.
-   **Measured live on 2026-09-29:** a playlist of 48 segments, 49 requests, 341 lines, the same map
-   on every segment, the last stamp 4.08 s inside a 23:31 recording, 27,903 bytes of `.lrc` beside
-   the track — and not one word of it in the file, the plan, or anything this repository holds.
+   **Measured live on 2026-09-29:** captions that came as a playlist, 49 requests, 341 lines whose
+   stamps are ordered and free of duplicates, the last of them 4.08 s inside a 23:31 recording,
+   27,903 bytes of `.lrc` beside the track — and not one word of it in the file, the plan, or
+   anything this repository holds. **Inferred from that:** 48 segments, being the requests less the
+   playlist. **Not recorded by that run:** which convention those segments used and how many bytes
+   they were — which is exactly why both are recorded now, and why an earlier version of this
+   sentence claiming "the same map on every segment" was wrong: it was read off the shape of the
+   result. **And not known at all:** whether a line sits where it is spoken. Nobody listened.
    **Four corrections from the review of it** (R-263), all of the same family — *a list is judged as
    a list*: every segment must be a caption file **by its own first line**, so an error page or a
    truncated answer refuses the track and names which segment it was, instead of reading as a

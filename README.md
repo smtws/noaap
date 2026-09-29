@@ -279,12 +279,15 @@ another file and one that lists the same segment twice are each refused by name,
 **600 segments or 8 MB**. A dry run says what taking them would cost, and the track's own line says what it did cost — the
 requests, the segments, the bytes, and which of the two timestamp conventions the segments used.
 
-**Run against a real post on 2026-09-29:** one post whose captions are a playlist of **48 segments**,
-taken in **49 requests**, joined into **341 lines** whose last stamp sits 4.08 s inside the audio's
-23:31, written as one `.lrc` of 27,903 bytes beside the track — with nothing in the file's tag and
-no address of any kind in the plan. What that run did *not* exercise: a post serving a plain caption
-file, captions the platform generated, any of the refusals against the live site, and more than one
-post.
+**Run against a real post on 2026-09-29:** one post whose captions came as a playlist, taken in
+**49 requests**, joined into **341 lines** — ordered, without duplicates, the last stamp 4.08 s
+inside the audio's 23:31 — written as one `.lrc` of 27,903 bytes beside the track, with nothing in
+the file's tag and no address of any kind in the plan.
+What that run did *not* exercise: a post serving a plain caption file, captions the platform
+generated, any of the refusals against the live site, and more than one post. And what is **not
+known** from it: whether a line sits where it is actually spoken — the stamps were checked for range
+and order, never against the speech — and which timestamp convention those segments used or how many
+bytes they were, neither of which that run recorded (both are recorded now).
 
 **And its audio does not go to a timing provider that is not this machine.** Aligning words or
 drafting them sends the *recording* — so for an album from a private source that only happens with a

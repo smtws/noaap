@@ -19,14 +19,25 @@
 > are the WebVTT and the address is the list of them. Reading a playlist was built in P61 (slice 76),
 > together with the arithmetic §2 could only guess at: `X-TIMESTAMP-MAP` is used **relative to the
 > first segment**, never as an absolute origin, because the audio is copied out of an mp4 that
-> carries no such clock. The measurement §2 asked for did happen: a real rendition's audio starts at
-> `0.000`.
-> **Done, on 2026-09-29 at 20:57.** A real post's captions are a playlist of 48 segments; taking
-> them cost 49 requests and produced 341 lines, first stamp 0.13 s, last 4.08 s inside the audio.
-> §2's open question is answered: the first cue begins at the first spoken word, near enough, and the
-> stamps land on the audio without any correction — the segments carried the same map throughout.
-> §1's estimate of "300–500 cues for a 30-minute narration" was right (341 for 23½ minutes), and so
-> was its ~35 KB (27,903 bytes). Nothing of the text is in this repository.
+> carries no such clock. The measurement §2 asked for did happen, on the file that is kept: a real
+> post's copied audio reads `start_time=0.000000`. That the *rendition* it came out of also starts at
+> zero is inferred — the program measures it and refuses when it does not pass, and the refusal that
+> came on 19:23 was the later one.
+> **Run on 2026-09-29 at 20:57**, and here is the line between what was measured and what was not.
+> **Measured:** the captions came as a playlist, taking them cost 49 requests, and what was written
+> is 341 lines in a 27,903-byte `.lrc`; the stamps are strictly ordered, hold no duplicates, start at
+> 0.13 s and end at 1407.46 s, which is 4.08 s inside the audio's 1411.54 s.
+> **Inferred, not measured:** that the playlist held 48 segments (49 requests minus the playlist
+> itself).
+> **Not recorded by that run:** which timestamp convention the segments used, and how many bytes they
+> were. The program did not keep either; both are recorded since P62, so the *next* run can state
+> them. An earlier version of this note said the segments "carried the same map throughout" — that
+> was read off the ordered result, not measured, and it is withdrawn.
+> **§2's question stays open.** The stamps are in range and ordered; **their fit to the speech was
+> not checked** — nobody listened to the recording against them, and no measurement compared the two.
+> Whether a line sits where it is spoken is still unknown.
+> §1's estimate of "300–500 cues for a 30-minute narration" is borne out by the counts (341 for 23½
+> minutes), and so is its ~35 KB (27,903 bytes). Nothing of the text is in this repository.
 
 **Nothing here ships.** R-249 asked for a proposal and R-250 kept it a proposal after the user said
 they like the idea. It is written to be built from: what the format holds, whether its stamps land on
