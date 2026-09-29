@@ -19,8 +19,9 @@ from typing import Any
 
 from . import sources
 from .config import Config
-from .models import Collection, Entry
+from .models import Collection, Entry, SourceRef
 from .patreon import NAME, Patreon, campaign_of, is_address, one_ref
+from .titles_patreon import clean_title, creator_is_artist
 
 
 class PatreonSource:
@@ -51,6 +52,20 @@ class PatreonSource:
 
     def art(self, address: str) -> bytes:
         return self.pt.fetch_bytes(address)
+
+    # -- capabilities ------------------------------------------------------------------
+
+    def changed(self, address: str) -> dict[str, Any] | None:
+        return self.pt.source_state(address)
+
+    def listing(self, address: str) -> list[SourceRef]:
+        return self.pt.list_owner(address)
+
+    def clean_entry(self, entry: Entry) -> tuple[str | None, str]:
+        return clean_title(entry.title, entry.channel)
+
+    def owner_artist(self, owner: str | None) -> str | None:
+        return creator_is_artist(owner)
 
     # -- what a person typed -----------------------------------------------------------
 

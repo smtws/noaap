@@ -267,3 +267,139 @@ def test_no_fixture_carries_a_session():
         assert "patreonusercontent.com/invented/" in text or "patreon.invalid" in text or \
             "youtube.com" in text or "vimeo.invalid" in text or "campaign" in path.name, \
             f"{path.name} has no invented marker"
+
+
+# -- what a campaign publishes (R-239, ruling 5) ----------------------------------------------------
+
+
+@pytest.fixture
+def campaigns(monkeypatch) -> Patreon:
+    """A client whose campaign reads are the two recorded listings."""
+    pt = Patreon(with_session())
+    feeds = {
+        "https://www.patreon.com/c/acreator/posts": recorded("campaign_own_posts"),
+        "https://www.patreon.com/m/70001/posts": recorded("campaign_with_a_foreign_post"),
+    }
+
+    def read(url: str, **extra: Any) -> dict[str, Any]:
+        read.asked.append((url, extra))
+        try:
+            return feeds[url]
+        except KeyError:
+            raise sources.SourceError(f"nothing recorded for {url}") from None
+
+    read.asked = []
+    monkeypatch.setattr(pt, "_read", read)
+    return pt
+
+
+def test_a_campaigns_posts_are_listed_as_posts(campaigns):
+    refs = campaigns.list_owner("https://www.patreon.com/acreator")
+
+    assert [(r.source_id, r.title, r.tab) for r in refs] == [
+        ("https://www.patreon.com/posts/100002", "Three takes of Winter Light", "posts"),
+        ("https://www.patreon.com/posts/100001", "Winter Light (studio)", "posts")]
+    assert all(r.artist == "A Creator" for r in refs)
+
+
+def test_a_post_of_another_campaign_is_dropped(campaigns):
+    """yt-dlp [#10013](https://github.com/yt-dlp/yt-dlp/issues/10013): asking for one campaign's posts
+    returned **every membership the account had**. The extractor filters now and looks right; this
+    checks anyway, because the cost of checking is one comparison and the cost of trusting it is
+    somebody's whole membership on their disk."""
+    refs = campaigns.list_owner("https://www.patreon.com/m/70001/posts")
+
+    assert [r.source_id for r in refs] == ["https://www.patreon.com/posts/100000"]
+    assert all("200000" not in r.source_id for r in refs), "the other campaign's post is not ours"
+
+
+def test_the_cap_is_asked_for_and_not_applied_afterwards(campaigns):
+    """Reading two thousand posts and throwing away 1800 is not restraint. `playlistend` stops yt-dlp."""
+    campaigns.cfg.patreon_post_cap = 25
+
+    campaigns.list_owner("https://www.patreon.com/acreator")
+
+    url, extra = campaigns._read.asked[-1]
+    assert extra["playlistend"] == 25 and extra["extract_flat"] is True
+
+
+def test_the_cap_stops_the_taking_too():
+    """And the accounting stops at it as well, so a listing cannot grow past what was asked for."""
+    from noaap.patreon import _Listing
+
+    page = {"id": "70001", "entries": [
+        {"id": str(100 + n), "channel_id": "70001", "url": f"https://www.patreon.com/posts/{100 + n}",
+         "title": f"post {n}"} for n in range(10)]}
+    taking = _Listing("70001", cap=3)
+
+    assert taking.take(page) is False
+    assert len(taking.refs) == 3 and taking.capped is True
+
+
+def test_a_campaign_that_is_not_one_is_refused(campaigns):
+    with pytest.raises(sources.SourceError):
+        campaigns.list_owner("https://www.patreon.com/posts/100001")
+
+
+# -- and whether anything changed -------------------------------------------------------------------
+
+
+def test_what_update_compares_for_a_campaign(campaigns):
+    got = campaigns.source_state("https://www.patreon.com/acreator")
+
+    assert got == {"ids": ["100002", "100001"], "modified": "20250916"}
+
+
+def test_what_update_compares_for_a_post(client):
+    got = client.source_state("https://www.patreon.com/posts/100002")
+
+    assert got["ids"] == ["900011", "900012", "900013"]
+    assert got["modified"] == "20250916"
+
+
+def test_a_campaign_that_cannot_be_read_says_nothing_rather_than_guessing(campaigns):
+    assert campaigns.source_state("https://www.patreon.com/nobody") is None
+
+
+# -- its titles, and the artist it will not invent (R-238 e) ----------------------------------------
+
+
+@pytest.mark.parametrize("title,creator,expected", [
+    # yt-dlp's own first Patreon test case: the number is the *post's*, not a track's
+    ("Episode 166: David Smalley of Dogma Debate", "Cognitive Dissonance Podcast",
+     (None, "David Smalley of Dogma Debate")),
+    ("[Patron-only] Spring Demo", "A Creator", (None, "Spring Demo")),
+    ("Winter Light (early access)", "A Creator", (None, "Winter Light")),
+    ("winter-light-take-1.mp3", "A Creator", (None, "winter-light-take-1")),
+    # a deliberate dash is a separator; a hyphen in a sentence is not
+    ("Another Band — Winter Light", "A Creator", ("Another Band", "Winter Light")),
+    ("Winter Light - studio", "A Creator", (None, "Winter Light - studio")),
+    # and the creator's own name on the left is not an artist credit, it is how they write
+    ("A Creator — Winter Light", "A Creator", (None, "A Creator — Winter Light")),
+])
+def test_what_a_post_title_is_read_as(title, creator, expected):
+    from noaap.titles_patreon import clean_title
+
+    assert clean_title(title, creator) == expected
+
+
+@pytest.mark.parametrize("creator,artist", [
+    ("A Creator", "A Creator"),
+    ("Wind Rose", "Wind Rose"),
+    ("Cognitive Dissonance Podcast", None),
+    ("A Creator's Music Corner", None),
+    ("Some Records", None),
+    ("", None),
+])
+def test_when_a_creators_name_stands_for_an_artist(creator, artist):
+    """Narrow on purpose: a campaign is a person's page, not a release's credit."""
+    from noaap.titles_patreon import creator_is_artist
+
+    assert creator_is_artist(creator) == artist
+
+
+def test_the_provider_asks_its_own_title_rules(client):
+    got = PatreonSource(with_session()).clean_entry(
+        client.fetch("https://www.patreon.com/posts/100001").entries[0])
+
+    assert got == (None, "winter-light")

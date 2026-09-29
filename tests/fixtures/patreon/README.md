@@ -17,4 +17,8 @@ What each file is:
 | `post_video.json` | a video post, which this provider does not take |
 | `post_embed_youtube.json` | a post that is a YouTube link with a note: the audio is YouTube's |
 | `post_embed_unknown.json` | a post embedding a service noaap has no provider for |
-| `campaign_page1.json`, `campaign_page2.json` | a campaign's posts, cursor-paged — and page 2 holds **a post of another campaign**, which is the hazard of yt-dlp #10013 and must be dropped |
+| `campaign_own_posts.json` | a campaign's own posts, newest first, as a flat listing |
+| `campaign_with_a_foreign_post.json` | the same listing with **a post of another campaign** in it, which is the hazard of yt-dlp [#10013](https://github.com/yt-dlp/yt-dlp/issues/10013) and must be dropped |
+
+yt-dlp pages the feed itself, so these are one flat listing each rather than two pages: the cap is
+asked for with `playlistend`, not applied after reading everything.

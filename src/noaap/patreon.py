@@ -30,7 +30,7 @@ from yt_dlp.utils import DownloadCancelled, DownloadError
 
 from . import sources, ytdlp
 from .config import Config
-from .models import Candidate, Collection, Entry
+from .models import Candidate, Collection, Entry, SourceRef
 
 log = logging.getLogger(__name__)
 
@@ -238,6 +238,46 @@ class Patreon:
             ext=(item.get("ext") or None), copies=[copy],
         )
 
+    # -- what a campaign publishes, and whether it changed -----------------------------
+
+    def list_owner(self, address: str) -> list[SourceRef]:
+        """The campaign's posts, newest first — filtered to that campaign, and capped.
+
+        Every ref is a post, because a post is what this provider reads as a collection.
+        """
+        feed = campaign_of(address)
+        if not feed:
+            raise sources.SourceError(f"not a Patreon campaign: {address}")
+        cap = self.cfg.patreon_post_cap or CAP
+        # **the cap is asked for, not applied afterwards.** yt-dlp pages the feed itself, so
+        # `playlistend` is what stops it — reading two thousand posts and then throwing away 1800 is
+        # not restraint, it is rudeness with a filter on top.
+        page = self._read(feed, extract_flat=True, playlistend=cap)
+        taking = _Listing(_campaign_id(page), cap)
+        taking.take(page)
+        if taking.foreign:
+            # said out loud, never silently: it means Patreon handed us somebody else's posts
+            log.info("%s: %d post(s) of another campaign were left out", feed, taking.foreign)
+        if taking.capped:
+            log.info("%s: stopped at %d posts", feed, taking.cap)
+        return taking.refs
+
+    def source_state(self, address: str) -> dict[str, Any] | None:
+        """What `update` compares, in one request: the post ids now, and the newest date.
+
+        For a *post* address that is the media it holds; for a campaign, the posts on its first page.
+        A campaign with two thousand posts is not read to answer "has anything changed".
+        """
+        try:
+            info = self._read(campaign_of(address) or address, extract_flat=True)
+        except sources.SourceError:
+            return None
+        items = info.get("entries") if info.get("_type") == "playlist" else [info]
+        ids = [str(one.get("id") or "") for one in (items or []) if isinstance(one, dict)]
+        return {"ids": [i for i in ids if i], "modified": _date(info.get("timestamp"))
+                or max((_date(one.get("timestamp")) or "" for one in (items or [])
+                        if isinstance(one, dict)), default="") or None}
+
     # -- the audio, the art, and one media on its own -----------------------------------
 
     def download_audio(self, ref: str, into: Path, choice: str = "best") -> Path:
@@ -389,3 +429,65 @@ def _now() -> str:
     from datetime import UTC, datetime
 
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+# -- what a campaign publishes, and whether it has changed (§9, slice 70) --------------------------
+#
+# Patreon's own listing is a cursor-paged feed of posts, newest first. Two things are non-negotiable
+# here, and both are about restraint rather than correctness:
+#
+# **Every post is checked against the campaign that was asked for.** yt-dlp #10013 reported asking for
+# one campaign's posts and getting *every membership the account had*. The current extractor filters
+# on `filter[campaign_id]` and looks right — and this checks anyway, because the cost of checking is
+# one comparison and the cost of trusting it is somebody's whole membership on their disk.
+#
+# **And it stops.** `CAP` posts, then it says so. A creator with two thousand posts is not a library
+# and nobody asked for a backup of them.
+
+
+def _campaign_id(info: dict[str, Any]) -> str | None:
+    for key in ("channel_id", "id", "uploader_id"):
+        if (value := info.get(key)) not in (None, ""):
+            return str(value)
+    return None
+
+
+class _Listing:
+    """The part of `listing` that is arithmetic: which posts belong, and when to stop."""
+
+    def __init__(self, wanted: str | None, cap: int = CAP) -> None:
+        self.wanted = wanted
+        self.cap = cap
+        self.refs: list[SourceRef] = []
+        self.foreign = 0
+        self.capped = False
+        self._seen: set[str] = set()
+
+    def take(self, page: dict[str, Any]) -> bool:
+        """Add this page's posts; answer whether another page is still wanted."""
+        owner = _campaign_id(page)
+        for item in page.get("entries") or []:
+            if not isinstance(item, dict):
+                continue
+            mine = _campaign_id(item) or owner
+            if self.wanted and mine and mine != self.wanted:
+                # **not this campaign's** — the hazard of yt-dlp #10013, dropped and counted
+                self.foreign += 1
+                continue
+            url = str(item.get("url") or "")
+            post = post_id(url) or str(item.get("id") or "")
+            if not post or post in self._seen:
+                continue
+            self._seen.add(post)
+            self.refs.append(SourceRef(
+                url=post_url(post), source_id=post_url(post),
+                title=(item.get("title") or post_url(post)),
+                # a post is not a release and never a playlist somebody arranged: it is a post
+                tab="posts",
+                artist=(item.get("channel") or page.get("channel") or page.get("uploader") or None),
+                channel_url=(page.get("channel_url") or None),
+                count=None, thumbnail=_image(item) or None))
+            if len(self.refs) >= self.cap:
+                self.capped = True
+                return False
+        return True

@@ -147,6 +147,9 @@ class Config:
     # rather than trying anonymously — measured: even a public post answers 403 without a session.
     patreon_cookies_file: Path | None = None
     patreon_cookies_from_browser: str | None = None
+    # how many of a campaign's posts a listing reads before it stops and says so. A creator with two
+    # thousand posts is not a library and nobody asked for a backup of them (§9, slice 70).
+    patreon_post_cap: int = 200
     # bgutil PO-token generator, needed for some streams (DESIGN.md §3.9).
     # "server": local HTTP server started on demand, stops after pot_idle seconds idle
     # (script mode stays configured as fallback); "script": a Node process per request; "off".
