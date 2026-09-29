@@ -177,7 +177,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="also remove ytalbum's systemd units and desktop launcher (never its browser profile)")
 
     c = sub.add_parser("config", help="show or set configuration")
-    c.add_argument("--library", type=Path, help="set the library root")
+    c.add_argument("--library", type=Path,
+                   help="SET the library root (on every other command --library only overrides that "
+                        "run); with no setter, `config` reports and writes nothing")
     c.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use a browser's YouTube login: gets past the bot check and unlocks age-restricted videos; 'none' to unset")
     c.add_argument("--cookies-file", type=Path, metavar="FILE", help="use an exported cookies.txt instead; 'none' to unset")
     c.add_argument("--lyrics", choices=("on", "off"), help="look lyrics up at lrclib.net when downloading")
@@ -424,6 +426,14 @@ def _print_watches(cfg: config_mod.Config) -> None:
 
 
 def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
+    """Show the configuration, or change it — and **say so when it changes** (§9, slice 67, R-229).
+
+    `--library` means two different things on two commands: everywhere else it overrides the library for
+    that one run and writes nothing, here it *sets* it. Somebody can fall into that — somebody did, using
+    `config --library PATH` as a report and rewriting the library root of a real installation each time.
+    So a setter now names the file it wrote and prints what changed, from what, to what; and a `config`
+    with no setter writes nothing at all, which a case proves by hashing the file.
+    """
     changes = {}
     if args.library:
         changes["library_root"] = str(args.library.expanduser().resolve())
@@ -433,9 +443,16 @@ def _config(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         changes["cookies_file"] = None if str(args.cookies_file) == "none" else str(args.cookies_file.expanduser().resolve())
     if args.lyrics:
         changes["lyrics"] = args.lyrics == "on"
-    for name, value in changes.items():
-        config_mod.save_setting(name, value)
     if changes:
+        was = {name: getattr(cfg, name, None) for name in changes}
+        written = None
+        for name, value in changes.items():
+            written = config_mod.save_setting(name, value)
+        print(f"wrote {written}")
+        for name, value in changes.items():
+            before = was[name]
+            print(f"  {name}: {before if before is not None else '(not set)'} → "
+                  f"{value if value is not None else '(not set)'}")
         cfg = config_mod.load()
     runtime = cfg.resolved_js_runtime()
     # the one it read, which is not always the one it writes (§9, slice 52)
