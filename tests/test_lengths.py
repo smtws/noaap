@@ -146,3 +146,29 @@ def test_a_dry_update_writes_nothing(tmp_path, monkeypatch):
     seen.update_all(report_only=True)
 
     assert (album_dir / ".ytalbum.json").read_bytes() == before
+
+
+def test_a_length_whose_origin_nobody_recorded_gets_one(tmp_path):
+    """`file_length_by` was added after most plans were written, and `run` measures a track only
+    when it has no length at all — so the field stayed empty on every track that already had one:
+    **4583 of one real library's tracks against 559 with it** (§9, slice 77). This fills it in,
+    from the header alone, and never changes the number it describes."""
+    library, album_dir, plan = album(tmp_path)
+    service(library).measure_lengths(plan, album_dir)
+    known = plan.tracks[0].file_length
+    plan.tracks[0].file_length_by = None
+
+    assert service(library).measure_lengths(plan, album_dir) == 1
+    assert plan.tracks[0].file_length_by == "header"
+    assert plan.tracks[0].file_length == known, "the number it describes is untouched"
+
+
+def test_but_not_when_the_header_says_something_else(tmp_path):
+    """Then the plan's number is not the header's, whatever else it may be, and an empty origin is
+    the honest answer. A length may have come from a trim or from somebody's own edit."""
+    library, album_dir, plan = album(tmp_path)
+    plan.tracks[0].file_length, plan.tracks[0].file_length_by = 99.0, None
+
+    service(library).measure_lengths(plan, album_dir)
+
+    assert plan.tracks[0].file_length == 99.0 and plan.tracks[0].file_length_by is None

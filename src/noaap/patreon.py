@@ -202,9 +202,19 @@ def _is_media_address(url: str) -> bool:
     drops any `user@` in front of it), equal to the media host or a sub-domain of it, and no port but
     the ordinary one — a media host on another port is not the media host we know.
     """
+    text = (url or "").strip()
+    # **two parsers, two answers, so neither shape is allowed** (§9, slice 77). `\` is a path
+    # separator to a browser and an ordinary character to this parser, so
+    # `https://evil.example\@host/…` is *evil.example* to one and *host* to the other; and userinfo
+    # before the host is the older version of the same trick. An address that needs a ruling on
+    # whose parser is right is not one we ask anything of.
+    if "\\" in text:
+        return False
     try:
-        parts = urlsplit((url or "").strip())
+        parts = urlsplit(text)
     except ValueError:      # a malformed address is not ours either
+        return False
+    if parts.username is not None or parts.password is not None or "@" in (parts.netloc or ""):
         return False
     host = (parts.hostname or "").lower()
     if parts.scheme != "https" or parts.port not in (None, 443):

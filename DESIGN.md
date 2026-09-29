@@ -2240,6 +2240,50 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    which without byte ranges can mean nothing this program should guess at. And the request count is
    raised **before** the request, because a 404 is a request somebody's server answered.
 
+77. ✅ **Eight things the user asked for, and what measuring them cost** (2026-09-30, P63).
+   **A lossless copy that gives up nothing takes the place of a lossy one.** The user's rule, and only
+   in that direction: candidate lossless, incumbent lossy, same recording, and the candidate's
+   measured band not narrower — then it wins, because it can be re-encoded later without losing a
+   second time and the file it replaces cannot. Raw kilohertz, without the 2 kHz margin, because the
+   margin exists so that one encoder's spread cannot decide a *replacement* and here the band is only
+   asked not to be an argument against. R-164 stands everywhere else: a lossy candidate never
+   displaces a lossless file on the container, and a *narrower* lossless copy wins nothing.
+   **A title and a recording are different permissions.** `lookups` lets a name and a length be asked
+   of a stranger; for one package it also meant *upload the audio*, so an owner who had allowed a
+   lookup would have had their paid recording sent to a vendor. `send_audio` is its own switch now,
+   and an existing `lookups: true` plan sends no audio.
+   **Two parsers, two answers, so neither shape is asked anything.** `https://evil.example\@host/…`
+   is *evil.example* to a browser and *host* to this program's parser, and userinfo before the host is
+   the older version of the same trick. Both are refused before the question of whose parser is right
+   can arise.
+   **A provider that would send nothing is not named as the one that would.** With nothing configured
+   the refusal said "`none` would have to send the recording off this machine".
+   **Two copies of one song get labels that differ.** Two libraries of the same layout give the same
+   last two path parts, so the panel printed one line twice and only the numbers told them apart. The
+   labels are made for the set, growing one part at a time only for the copies that collide.
+   **And the number beside them says which number it is.** With a third opinion the distance measured
+   is each file's distance from *that*, so two files of equal length could read "3s apart" — right
+   number, wrong word. It says "3s from the length we know" now.
+   **A length whose origin nobody recorded.** `file_length_by` was added after most plans existed and
+   `run` measures only a track that has no length at all, so the field stayed empty on 4583 of one
+   library's tracks against 559 with it. The tidy-up fills it from the header, never changes the
+   number it describes, and leaves it empty where the header disagrees — because then the number is
+   not the header's.
+   **And the playback report, where the measuring was the work.** Every hypothesis before the
+   measurement was wrong — a granule offset, an embedded picture, an idle-exiting server, a mistyped
+   content type — and two of them *looked* confirmed until the experiment was repeated properly: the
+   "strip the picture and it seeks" result came from comparing a fresh media element against a used
+   one, which is the oldest trap in this document wearing new clothes. What the measurements
+   actually found: clicking a timed line puts sound out in **8–117 ms** across fifteen clicks, and no
+   multi-second stall could be reproduced in the reported shape; but **a jump past the trim end
+   silently started the next track**, which from outside is the sound stopping and other music
+   arriving. Playing *into* the end still moves on; jumping past it now stops where the audio ends.
+   Three server defects came out of the same session: every file was served as `audio/ogg`, `HEAD`
+   answered 501, and the responses were HTTP/1.0 — and switching to 1.1 immediately produced two of
+   its own, a POST body left unread becoming the next request line and a 416 with no length leaving
+   a client waiting. *A change that makes connections outlive one request makes every missing length
+   a hang.*
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

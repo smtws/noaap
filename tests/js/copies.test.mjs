@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { awaitingChoice, candidateLine, refLabel, sourceChange } from "../../src/noaap/webui/logic.mjs";
+import { awaitingChoice, candidateLine, copyLabels, refLabel, sourceChange } from "../../src/noaap/webui/logic.mjs";
 
 const track = (over = {}) => ({
   video_id: "aaaaaaaaaaa", artist: "Kupfergold", title: "Und 'n Tripper",
@@ -72,4 +72,44 @@ test("taking a listed copy says it is another copy, not another recording", () =
   // typing a video in means what it always meant
   assert.ok(sourceChange(t, "bbbbbbbbbbb").lines
     .includes("The track is downloaded again — it is a different recording."));
+});
+
+// -- telling two copies of the same shape apart (§9, slice 77, R-271) -------------------------------
+//
+// The finding, from a real library: a track whose two copies live in two libraries of the same
+// layout had the **same** label — the last two parts of both paths are the album folder and the file
+// name — so the panel showed one line twice and only the numbers beside them differed.
+
+const ONE = "/home/somebody/Music/first/Various Artists/An Album/09 - A Song.mp3";
+const TWO = "/home/somebody/Music/second/Various Artists/An Album/09 - A Song.mp3";
+
+test("two copies with the same last two parts get labels that differ", () => {
+  const labels = copyLabels([ONE, TWO]);
+
+  assert.notEqual(labels.get(ONE), labels.get(TWO));
+  assert.ok(labels.get(ONE).endsWith("An Album/09 - A Song.mp3"));
+  assert.ok(labels.get(ONE).startsWith("first/"), labels.get(ONE));
+  assert.ok(labels.get(TWO).startsWith("second/"), labels.get(TWO));
+});
+
+test("and a label grows no further than it has to", () => {
+  const other = "/elsewhere/Another Album/09 - A Song.mp3";
+  const labels = copyLabels([ONE, other]);
+
+  assert.equal(labels.get(ONE), refLabel(ONE), "these two differ already");
+  assert.equal(labels.get(other), "Another Album/09 - A Song.mp3");
+});
+
+test("a ref that is not a path is left alone", () => {
+  const labels = copyLabels(["patreon:video:100004", "dQw4w9WgXcQ", ONE]);
+
+  assert.equal(labels.get("patreon:video:100004"), "patreon:video:100004");
+  assert.equal(labels.get("dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+});
+
+test("two refs that are genuinely the same string stay one label", () => {
+  const labels = copyLabels([ONE, ONE]);
+
+  assert.equal(labels.size, 1);
+  assert.equal(labels.get(ONE), refLabel(ONE), "nothing to tell apart, so nothing grows");
 });

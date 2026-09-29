@@ -388,3 +388,91 @@ def test_every_address_this_provider_sends_to_is_one_it_built_or_checked(monkeyp
     for built in (mod.post_url("100004"), mod.campaign_of("https://www.patreon.com/cw/acreator"),
                   mod.BASE):
         assert urlsplit(built).hostname == "www.patreon.com"
+
+
+# -- a switch of its own, and two parsers that disagree (§9, slice 77, R-271) -----------------------
+
+
+def test_lookups_no_longer_lets_the_recording_leave():
+    """A title and a recording are different things. `lookups` says a name and a length may be asked
+    of a stranger; for one package it was read as *upload the audio too*, and an owner who had
+    allowed a lookup would have had their paid recording sent to a vendor."""
+    from noaap.service import may_look_up, may_send_audio
+
+    cfg = Config()
+    cfg.timing_provider = "deepgram"
+    plan = an_album()
+
+    plan.lookups = True
+    assert may_look_up(cfg, plan) is True, "the title may still be asked about"
+    assert may_send_audio(cfg, plan, "align") is False, "and the recording still may not go"
+
+    plan.send_audio = True
+    assert may_send_audio(cfg, plan, "align") is True, "only its own switch says yes"
+
+    # …and an explicit no is a no even for a provider that keeps it here
+    plan.lookups, plan.send_audio = None, False
+    cfg.timing_provider = "local"
+    assert may_send_audio(cfg, plan, "align") is False
+
+    # nothing in the program sets it, which is what this greps for
+    root = Path(__file__).parent.parent / "src" / "noaap"
+    writes = [f"{p.name}:{n}" for p in root.rglob("*.py")
+              for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+              if ".send_audio =" in line or "send_audio=True" in line]
+    assert not writes, f"something sets `send_audio` for the user: {writes}"
+
+
+@pytest.mark.parametrize("address", [
+    "https://evil.example\\@c10.patreonusercontent.com/x.jpg",
+    "https://patreonusercontent.com@evil.example/x.jpg",
+    "https://user:pw@c10.patreonusercontent.com/x.jpg",
+    "https://c10.patreonusercontent.com\\@evil.example/x.jpg",
+])
+def test_an_address_two_parsers_read_differently_is_refused(address):
+    """A browser treats `\\` as a path separator and this parser does not, so one reads
+    `evil.example` as the host and the other reads ours. Userinfo before the host is the older
+    version of the same trick. An address that needs a ruling on whose parser is right is not one
+    this program asks anything of."""
+    from noaap.patreon import _is_media_address
+
+    assert _is_media_address(address) is False
+
+
+def test_a_provider_that_would_send_nothing_is_not_named_as_the_one_that_would(tmp_path):
+    """With nothing configured there is nobody to send a recording to, and the refusal said
+    "`none` would have to send the recording off this machine"."""
+    from noaap.timing import TimingUnavailable
+
+    album_dir, plan = a_library_for_audio(tmp_path)
+    service = a_service_for_audio(tmp_path, timing_provider="none")
+
+    with pytest.raises(TimingUnavailable) as refused:
+        service.align_lyrics(plan.source_id, plan.tracks[0].video_id, "a line\n")
+
+    said = str(refused.value)
+    assert "`none`" not in said and "paid its creator" not in said
+    assert "timing provider" in said.lower(), said
+
+
+def a_library_for_audio(tmp_path: Path):
+    from noaap.download import save_plan
+
+    album_dir = tmp_path / "A Creator" / "Chapter One"
+    album_dir.mkdir(parents=True)
+    (album_dir / "01 Chapter One.m4a").write_bytes(b"\x00" * 64)
+    plan = an_album()
+    plan.folder = "A Creator/Chapter One"
+    plan.tracks[0].filename = "01 Chapter One.m4a"
+    plan.tracks[0].state = "done"
+    save_plan(plan, album_dir)
+    return album_dir, plan
+
+
+def a_service_for_audio(tmp_path: Path, **settings):
+    from noaap.service import Service
+
+    cfg = Config()
+    for key, value in settings.items():
+        setattr(cfg, key, value)
+    return Service(cfg, tmp_path, log=lambda line: None)

@@ -469,10 +469,14 @@ def test_it_is_sent_to_a_provider_that_runs_here(tmp_path):
                      {"timing_provider": "http", "timing_endpoint": "http://127.0.0.1:8471"}):
         assert may_send_audio(a_service(tmp_path, **cfg_args).cfg, plan, "align") is True
 
+    # **`lookups` is not this switch any more** (§9, slice 77): it lets a title be asked about, and
+    # the recording is a different thing. Only the album's own `send_audio` says yes here.
     owner_said_yes = a_service(tmp_path, timing_provider="deepgram")
     plan.lookups = True
+    assert may_send_audio(owner_said_yes.cfg, plan, "align") is False
+    plan.send_audio = True
     assert may_send_audio(owner_said_yes.cfg, plan, "align") is True
-    plan.lookups = None
+    plan.lookups, plan.send_audio = None, None
 
     # and an album from anywhere else is untouched by any of this
     public = an_album()

@@ -119,14 +119,20 @@ def same_recording(new: Facts, old: Facts, reference: float | None = None) -> tu
     if new.length is None or old.length is None:
         return None, "one of them has no length"
     apart = abs(new.length - old.length)
+    # **and the sentence says which number it is** (§9, slice 77). With a third opinion the distance
+    # measured is each file's distance from *that*, not from each other — so two files of exactly the
+    # same length could be shown as "3s apart", which reads as a contradiction of the two lengths
+    # printed beside it. The number was right and the word was wrong.
+    how = "apart"
     if reference is not None:
         # a third opinion beats comparing two files with each other: both may be padded
         apart = max(abs(new.length - reference), abs(old.length - reference))
+        how = "from the length we know"
     if apart <= SAME:
-        return True, f"{apart:.0f}s apart"
+        return True, f"{apart:.0f}s {how}"
     if apart > DIFFERENT:
-        return False, f"{apart:.0f}s apart — a different recording"
-    return None, f"{apart:.0f}s apart"
+        return False, f"{apart:.0f}s {how} — a different recording"
+    return None, f"{apart:.0f}s {how}"
 
 
 def judge(pair: Pair, new: Facts, old: Facts | None, reference: float | None = None) -> Judgement:
@@ -160,11 +166,23 @@ def judge(pair: Pair, new: Facts, old: Facts | None, reference: float | None = N
     if not new.band.known or not old.band.known:
         return Judgement(Verdict.UNDECIDED, "there is nothing up there to judge by in one of them", new, old)
 
+    if new.lossless and not old.lossless and _not_narrower(new, old):
+        # **the user's rule, and only in this direction** (§9, slice 77). A lossless copy that gives
+        # up nothing in band is the one worth keeping: it can be re-encoded later without losing a
+        # second time, and the lossy file it replaces cannot. The evidence is still measured — a
+        # *narrower* lossless copy wins nothing, which is what keeps this from being "trust the
+        # container" (R-164, whose refusal stands for every other direction).
+        return Judgement(Verdict.REPLACE,
+                         f"lossless, and gives up nothing: it holds as much audio as the one here "
+                         f"({_band(new)} against {_band(old)})", new, old)
     if new.lossless != old.lossless:
-        # R-164: a lossless container is not evidence. Only a wider band is, and there is none.
+        # R-164 still: a lossless container is not evidence *for the incumbent*, and a lossless
+        # candidate that is narrower than what is here is not evidence either.
         keeper, other = ("the incoming file", "the one here") if new.lossless else ("the one here", "the incoming file")
+        narrower = " and narrower" if new.lossless else ""
         return Judgement(Verdict.UNDECIDED,
-                         f"{keeper} is lossless and {other} is not, but they hold the same audio",
+                         f"{keeper} is lossless{narrower} and {other} is not, "
+                         f"{'but neither holds more audio' if not narrower else 'and holds less audio'}",
                          new, old)
 
     if new.codec != old.codec:
@@ -177,6 +195,17 @@ def judge(pair: Pair, new: Facts, old: Facts | None, reference: float | None = N
                          f"same band, clearly higher rate ({round(new.bitrate/1000)} against {round(old.bitrate/1000)} kbps)",
                          new, old)
     return Judgement(Verdict.KEEP, "nothing to choose between them", new, old)
+
+
+def _not_narrower(new: Facts, old: Facts) -> bool:
+    """Whether the incoming file's measured band is at least the incumbent's (§9, slice 77).
+
+    Raw kilohertz, deliberately without the 2 kHz margin that `better_band` applies: the margin is
+    there so that one encoder's spread cannot decide a replacement on its own, and here the decision
+    is not being made by the band at all — the band only has to not be an argument *against*.
+    """
+    return (new.band.cutoff is not None and old.band.cutoff is not None
+            and new.band.cutoff >= old.band.cutoff)
 
 
 def _band(f: Facts) -> str:

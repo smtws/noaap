@@ -145,6 +145,31 @@ export function refLabel(ref) {
   return ref.split("/").filter(Boolean).slice(-2).join("/");
 }
 
+/** Labels for a set of refs at once: the shortest tail that tells each of them apart (§9, slice 77).
+ *
+ * Two copies of one song in two libraries with the same layout have the same album folder and the
+ * same file name, so the two-part label printed them identically and only the numbers beside them
+ * differed. This walks one part further up for as long as two labels would collide, and gives up at
+ * the whole ref rather than inventing a distinction. Paths of the user's are not shown in full
+ * anywhere else, so a label only grows for the copies that need it. */
+export function copyLabels(refs) {
+  const out = new Map();
+  const parts = (ref) => String(ref || "").split("/").filter(Boolean);
+  for (const ref of refs || []) out.set(ref, refLabel(ref));
+  for (let depth = 3; depth <= 12; depth++) {
+    const seen = new Map();
+    for (const [ref, label] of out) seen.set(label, (seen.get(label) || 0) + 1);
+    const clashing = [...out].filter(([, label]) => seen.get(label) > 1);
+    if (!clashing.length) break;
+    for (const [ref] of clashing) {
+      const bits = parts(ref);
+      if (bits.length < depth) continue;          // nothing further up to take: leave it as it is
+      out.set(ref, bits.slice(-depth).join("/"));
+    }
+  }
+  return out;
+}
+
 // One line about one candidate: what it is, how good it is, and what it costs. Numbers only —
 // the words around them belong to the page, and the link belongs to the provider (§9, slice 54).
 export function candidateLine(c, inUse, refused) {
@@ -626,6 +651,31 @@ export function claimOffer(d) {
          + "editor are yours now, which is what lets them be given back to lrclib. Editing them is not "
          + "the same thing: one changed character of a machine's guess is not authorship.",
   };
+}
+
+/** What the player should do about the trim window, given where the playhead is (§9, slice 77).
+ *
+ * Previewing a trim means skipping the head and stopping at the end. The part that was wrong: a
+ * **jump** past the end was treated as having played into it, so dragging the bar — or clicking a
+ * line whose stamp lies beyond the cut — silently started the *next track*. To a person that is the
+ * sound stopping and, a moment later, other music. Playing into the end still moves on; landing
+ * beyond it by a jump stops there, where the audio ends.
+ *
+ * `previous` is the position at the last tick; a gap larger than `JUMP` means somebody moved it.
+ */
+export const JUMP = 1.5;
+
+export function trimGuard({ current, start, end, previous = null, jumped = null,
+                            dragging = false, unsaved = false }) {
+  // the player knows when it has just seeked; everyone else can tell from the gap since the last tick
+  const moved = jumped !== null ? jumped
+    : previous !== null && Math.abs(current - previous) > JUMP;
+  if (start && current < start - 0.4 && !dragging) return { seekTo: start };
+  if (end && current > end) {
+    if (moved || unsaved || dragging) return { seekTo: Math.max(end - 0.05, start || 0), pause: true };
+    return { next: true };
+  }
+  return {};
 }
 
 // The exact words the refusal tells somebody to look for. `publishable` in lyrics.py repeats them, and

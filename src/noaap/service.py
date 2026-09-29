@@ -70,7 +70,7 @@ from .plan import (
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
-from .tag import measure, measured_length, raw_tags
+from .tag import audio_length, measure, measured_length, raw_tags
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
@@ -152,8 +152,15 @@ def may_send_audio(cfg: Config, plan: AlbumPlan, capability: str = "") -> bool:
     Module-level so the page can ask exactly what the server will answer: a button that offers what
     the server refuses is a worse answer than no button (§9, slice 42), and this is the one question
     where the refusal is about the recording itself.
+
+    **`lookups` does not answer this one** (§9, slice 77). It says a title and a length may be asked
+    of a stranger, which is not the same permission as uploading the recording — for one package it
+    was read as both, and an album whose owner had allowed a lookup would have had its audio sent to
+    a vendor. The album's own `send_audio` is the only thing that says yes here.
     """
-    return may_look_up(cfg, plan) or stays_here(cfg, capability)
+    if plan.send_audio is not None:
+        return bool(plan.send_audio)
+    return not sources.private_album(plan, cfg) or stays_here(cfg, capability)
 
 
 class Service:
@@ -607,17 +614,39 @@ class Service:
         tracks had a file, a length nobody had ever asked for, and therefore no length chip and no
         near-miss check** — not because the file would not answer, but because nothing asked.
 
+        **And a length whose origin nobody recorded is half a length** (§9, slice 77). `run` measures
+        a track that has none and then never again, so `file_length_by` — added after most of these
+        plans were written — stayed empty on every track that already had a number: 4583 of one
+        library's tracks against 559 with it. Those are filled here too, but **only from the header**:
+        a header that answers costs nothing and says "header"; one that does not would need a decode
+        per track, and a pass that quietly decodes thousands of files is not a tidy-up. Their length
+        is left exactly as it was — this fills in where it came from, it does not second-guess it.
+
         Returns how many tracks were given one; with `dry_run`, how many would be asked.
         """
         filled = 0
         for track in plan.tracks:
-            if track.file_length or track.state != "done" or not track.filename:
+            if track.state != "done" or not track.filename:
+                continue
+            wanted = not track.file_length or not track.file_length_by
+            if not wanted:
                 continue
             audio = _inside(album_dir, track.filename)
             if audio is None or not audio.is_file():
                 continue  # a plan that names a file that is not there is `repair`'s other business
             if dry_run:
                 filled += 1
+                continue
+            if track.file_length:
+                # The number is already there and **is not touched**: an old rule of this pass, and
+                # a good one — a length may have been set by a trim or by whoever edited the plan.
+                # Only its origin is filled, and only when the header both answers and agrees with
+                # what the plan holds. A header that says something else does not make the plan's
+                # number the header's, so the origin stays empty and says so by being empty.
+                said = audio_length(audio)
+                if said is not None and abs(said - track.file_length) <= 0.05:
+                    track.file_length_by = "header"
+                    filled += 1
                 continue
             seconds, how = measure(audio)
             if seconds is None:
@@ -1040,6 +1069,11 @@ class Service:
         if may_send_audio(self.cfg, plan, capability):
             return
         whose = timing_kind(self.cfg, capability)
+        if whose == "none":
+            # **asked in the right order** (§9, slice 77): with nothing configured there is nobody to
+            # send a recording to, and saying "`none` would have to send it off this machine" names a
+            # provider that does not exist. `_timing` refuses next, with the sentence that fits.
+            return
         raise TimingUnavailable(
             f"this album's audio came from a source one person paid its creator for, and `{whose}` "
             f"would have to send the recording off this machine to {what} — use a provider that runs "

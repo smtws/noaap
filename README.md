@@ -292,8 +292,9 @@ bytes they were, neither of which that run recorded (both are recorded now).
 **And its audio does not go to a timing provider that is not this machine.** Aligning words or
 drafting them sends the *recording* — so for an album from a private source that only happens with a
 provider running here: `local`, or `http` pointed at this machine. A vendor is refused in one
-sentence, and the page does not offer the button. If you want it anyway for one album, that is the
-same `"lookups": true` switch in its plan.
+sentence, and the page does not offer the button. If you want it anyway for one album, set
+`"send_audio": true` in that album's plan — a switch of its own, because letting a title be looked up
+(`"lookups": true`) is not the same as letting the recording be uploaded.
 
 **A private album's plan holds no address of its own.** The addresses Patreon hands out for a paid
 post's image are *signed* — they carry a token in the query — and a signed address is a piece of your
@@ -475,8 +476,11 @@ The order of the rule, and it is short:
    that instead of against each other, because both can be padded.
 3. **Then quality, on measured things only.** A wider band decides — by 2 kHz, because one
    kilohertz is inside what a single encoder varies by. A file that reaches its own ceiling beats one
-   that does not, by any margin. A lossless *container* decides nothing. A bitrate decides only
-   against the same codec. A tie goes to the copy you already have.
+   that does not, by any margin. **A lossless copy that gives up nothing takes the place of a lossy
+   one**: same recording, and its measured band not narrower than what you have. It is the copy worth
+   keeping, because it can be re-encoded later without losing a second time. The reverse is not true —
+   a lossy file never displaces a lossless one on its container, and a *narrower* lossless copy wins
+   nothing. A bitrate decides only against the same codec. A tie goes to the copy you already have.
 
 **Anything it cannot settle is kept where you can settle it.** `--apply` writes the other copy onto
 the track — listed, not chosen, nothing copied — with the sentence that failed to choose and both

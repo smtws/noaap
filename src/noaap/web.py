@@ -198,6 +198,19 @@ class Jobs:
                     release_gpu_memory()
 
 
+# what to call each container when a player asks for it. The suffix is the file's own claim and the
+# only one this program has; an unknown one is `application/octet-stream`, which says "bytes" rather
+# than a wrong name (§9, slice 77).
+AUDIO_TYPES = {".opus": "audio/ogg", ".ogg": "audio/ogg", ".oga": "audio/ogg",
+               ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".mp4": "audio/mp4", ".aac": "audio/aac",
+               ".flac": "audio/flac", ".wav": "audio/wav", ".webm": "audio/webm",
+               ".mka": "audio/x-matroska", ".alac": "audio/mp4"}
+
+
+def audio_type(path: Path | None) -> str:
+    return AUDIO_TYPES.get(path.suffix.lower(), "application/octet-stream") if path else "application/octet-stream"
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Outcome):
         return {"status": value.status, "message": value.message, "album_dir": str(value.album_dir or ""), "plan": value.plan.to_dict() if value.plan else None}
@@ -986,6 +999,10 @@ def _search_result(result) -> dict[str, Any]:
 
 
 class _Handler(BaseHTTPRequestHandler):
+    # **HTTP/1.1, because a player seeks by asking again** (§9, slice 77). The default is 1.0, which
+    # closes the connection after every response, so each range request a seek makes pays for a new
+    # one. Every response here carries a `Content-Length`, which is what 1.1 requires of us.
+    protocol_version = "HTTP/1.1"
     app: App
     server_version = "noaap"
 
@@ -1042,14 +1059,42 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(found) if found else self._error(HTTPStatus.NOT_FOUND, "no such track")
             case "/api/audio":
                 path = self.app.audio_path(q.get("id", ""), q.get("v", ""), original=q.get("o") == "1")
-                return self._file(path, "audio/ogg") if path else self._error(HTTPStatus.NOT_FOUND, "no such track")
+                # what the file is, not what most of them happen to be: every track was served as
+                # `audio/ogg`, FLAC, mp3 and m4a included (§9, slice 77)
+                return self._file(path, audio_type(path)) if path else self._error(HTTPStatus.NOT_FOUND, "no such track")
             case "/api/job":
                 job = self.app.jobs.get(int(q.get("id", "0") or 0)) if q.get("id", "").isdigit() else None
                 return self._json(job.summary(full=True)) if job else self._error(HTTPStatus.NOT_FOUND, "no such job")
         return self._error(HTTPStatus.NOT_FOUND, "not found")
 
+    def do_HEAD(self) -> None:
+        """The same answer as a GET, without the body — a 501 is not an answer (§9, slice 77)."""
+        self._head_only = True
+        try:
+            self.do_GET()
+        finally:
+            self._head_only = False
+
+    def _read_body(self) -> bytes:
+        """Everything the client sent with this request, at most `MAX_BODY` + 1 bytes of it.
+
+        Read in one place and read *early*: on a reused connection an unread body becomes the next
+        request line. One byte over the limit is enough to answer "too large" without holding a
+        larger one in memory.
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return b""
+        return self.rfile.read(min(max(length, 0), MAX_BODY + 1)) if length > 0 else b""
+
     def do_POST(self) -> None:
         self.app.touch()
+        # **the body is read before anything else can refuse it** (§9, slice 77). On HTTP/1.1 the
+        # connection is reused, so a body left unread is still on the socket when the next request
+        # line is parsed — the server then reports `Unsupported method ('{}POST')`. Under HTTP/1.0
+        # the close hid it. Every path that answers a POST has consumed it by the time it answers.
+        self._body = self._read_body()
         if not self.app.allowed_host(self.headers.get("Host")):
             return self._error(HTTPStatus.FORBIDDEN, "host not allowed")
         # either spelling: an installed PWA serves ytalbum's app.js from its own cache until the
@@ -1060,11 +1105,10 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         if not url.path.startswith("/api/"):
             return self._error(HTTPStatus.NOT_FOUND, "not found")
-        length = int(self.headers.get("Content-Length") or 0)
-        if length > MAX_BODY:
+        if len(self._body or b"") > MAX_BODY:
             return self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too large")
         try:
-            body = json.loads(self.rfile.read(length) or b"{}")
+            body = json.loads(self._body or b"{}")
             body = body if isinstance(body, dict) else {}
             if url.path == "/api/details":
                 refs = body.get("refs") or []
@@ -1107,6 +1151,9 @@ class _Handler(BaseHTTPRequestHandler):
             if partial and (start > end or start >= size):
                 self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
                 self.send_header("Content-Range", f"bytes */{size}")
+                # **every answer says how long it is** (§9, slice 77): on a reused connection a
+                # client waits for a body it was never told the length of, and this one has none
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
         self.send_response(HTTPStatus.PARTIAL_CONTENT if partial else HTTPStatus.OK)
@@ -1116,7 +1163,11 @@ class _Handler(BaseHTTPRequestHandler):
         if partial:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "no-cache")
+        # what a player needs to revalidate instead of fetching the whole thing again
+        self.send_header("Last-Modified", self.date_time_string(int(path.stat().st_mtime)))
         self.end_headers()
+        if getattr(self, "_head_only", False):
+            return
         with open(path, "rb") as f:
             f.seek(start)
             remaining = end - start + 1
@@ -1134,6 +1185,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"error": message}, status)
 
     def _send(self, status: HTTPStatus, body: bytes, ctype: str, cache: bool = False) -> None:
+        # a HEAD gets the headers a GET would send — **the length included** — and no body at all
+        head_only = getattr(self, "_head_only", False)
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -1141,7 +1194,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self'; script-src 'self'")
         self.end_headers()
-        self.wfile.write(body)
+        if not head_only:
+            self.wfile.write(body)
 
 
 def systemd_socket() -> socket.socket | None:

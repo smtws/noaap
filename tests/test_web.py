@@ -1305,3 +1305,52 @@ def test_a_candidate_from_a_provider_this_build_lacks_gets_no_link(server, libra
     sent = client.get(f"/api/album?id={plan.source_id}").json()
 
     assert {c["ref"]: c["url"] for c in sent["tracks"][0]["candidates"]}["whatever"] is None
+
+
+def test_a_reused_connection_is_not_broken_by_the_request_before_it(server):
+    """Switching to HTTP/1.1 so a seeking player does not pay for a new connection each range
+    brought two of its own (§9, slice 77): a POST body left unread by a refusal became the next
+    request line — the server answered `Unsupported method ('{}POST')` — and a 416 with no
+    `Content-Length` left the client waiting for a body that never came."""
+    _, c = server
+
+    refused = c.post("/api/update", content=b'{"a": 1}', headers={"X-Noaap": "1", "Content-Type": "text/plain"})
+    assert refused.status_code == 403
+
+    after = c.get("/api/state")            # same connection, and it must still be understood
+    assert after.status_code == 200 and "albums" in after.json()
+
+    plan = c.get(f"/api/album?id={after.json()['albums'][0]['id']}").json()
+    url = f"/api/audio?id={plan['source_id']}&v={plan['tracks'][0]['video_id']}"
+    size = len(c.get(url).content)
+    out_of_range = c.get(url, headers={"Range": f"bytes={size + 10}-"})
+    assert out_of_range.status_code == 416 and out_of_range.headers["content-length"] == "0"
+    assert c.get("/api/state").status_code == 200, "and the connection is still usable"
+
+
+def test_a_player_is_told_what_kind_of_file_it_is_getting(server, tmp_path):
+    """Every track was served as `audio/ogg`, FLAC, mp3 and m4a included. Chrome sniffs and copes —
+    measured — but a file's type is not a thing to guess at, and other players do not sniff."""
+    from noaap.web import audio_type
+
+    assert audio_type(Path("a.opus")) == "audio/ogg"
+    assert audio_type(Path("a.flac")) == "audio/flac"
+    assert audio_type(Path("a.mp3")) == "audio/mpeg"
+    assert audio_type(Path("a.m4a")) == "audio/mp4"
+    assert audio_type(Path("a.wav")) == "audio/wav"
+    assert audio_type(Path("a.something")) == "application/octet-stream", "bytes, not a wrong name"
+    assert audio_type(None) == "application/octet-stream"
+
+
+def test_head_is_answered_with_the_headers_of_the_get(server):
+    """A 501 is not an answer: some players ask HEAD before they ask for bytes."""
+    _, c = server
+    plan = c.get(f"/api/album?id={c.get('/api/state').json()['albums'][0]['id']}").json()
+    url = f"/api/audio?id={plan['source_id']}&v={plan['tracks'][0]['video_id']}"
+
+    got, head = c.get(url), c.head(url)
+
+    assert head.status_code == 200 and head.content == b""
+    assert head.headers["content-length"] == got.headers["content-length"] == str(len(got.content))
+    assert head.headers["content-type"] == got.headers["content-type"]
+    assert c.head("/api/state").status_code == 200

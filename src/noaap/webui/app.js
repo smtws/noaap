@@ -2,7 +2,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, canSeed, claimOf
          effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         candidateLine, awaitingChoice, resetKind, roundMark,
+         candidateLine, copyLabels, trimGuard, awaitingChoice, resetKind, roundMark,
          scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
          toFileClock, trimOffset, trimTarget, wordsAfterClaim }
   from "./logic.mjs";
@@ -671,9 +671,11 @@ function candidateList(p, t) {
   const id = effectiveId(t);
   return h("div", { class: "candidates" },
     h("div", { class: "muted" }, "known sources for this track:"),
-    ...all.map((c) => h("div", { class: "candidate" + (c.ref === id ? " on" : "") },
-      c.url ? h("a", { href: c.url, target: "_blank", rel: "noopener" }, refLabel(c.ref))
-            : h("span", { title: c.ref }, refLabel(c.ref)),
+    // **labelled as a set, not one at a time** (§9, slice 77): two copies of one song in two
+    // libraries of the same shape had the same two-part label, and only the numbers told them apart
+    ...((labels) => all.map((c) => h("div", { class: "candidate" + (c.ref === id ? " on" : "") },
+      c.url ? h("a", { href: c.url, target: "_blank", rel: "noopener" }, labels.get(c.ref) || refLabel(c.ref))
+            : h("span", { title: c.ref }, labels.get(c.ref) || refLabel(c.ref)),
       h("span", { class: "muted" }, candidateLine(c, c.ref === id, refused.has(c.ref))),
       c.ref === id || refused.has(c.ref) ? null
         : h("button", { class: "small", type: "button",
@@ -682,7 +684,8 @@ function candidateList(p, t) {
       c.ref === id || refused.has(c.ref) ? null
         : h("button", { class: "quiet small", type: "button",
             title: "Never offer this one for this track again",
-            onclick: (e) => refuseCandidate(e.currentTarget, p, t, c.ref) }, "not this one"))));
+            onclick: (e) => refuseCandidate(e.currentTarget, p, t, c.ref) }, "not this one"))))(
+      copyLabels(all.map((c) => c.ref))));
 }
 
 async function takeCandidate(button, p, t, ref) {
@@ -1976,18 +1979,24 @@ audio.addEventListener("durationchange", renderTrim);
 audio.addEventListener("play", () => { $("#p-play").textContent = "⏸"; });
 audio.addEventListener("pause", () => { $("#p-play").textContent = "▶"; });
 audio.addEventListener("ended", () => (qi + 1 < queue.length ? playIndex(qi + 1) : null));
+let lastTick = null;
+let justSought = false;
+// a seek is a jump even when it lands next to where we were: the element says so itself
+audio.addEventListener("seeking", () => { justSought = true; });
 audio.addEventListener("timeupdate", () => {
   const t = queue[qi];
   if (t) {  // preview the trim while listening: skip the head, stop at the end
-    if (t.start && audio.currentTime < t.start - 0.4 && !dragging) audio.currentTime = t.start;
-    if (t.end && audio.currentTime > t.end) {
-      // while the end is still being placed, stop on it. Running into the next track would
-      // take the unsaved trim with it: the buttons then edit and save the wrong song.
-      if (t.end !== t.savedEnd || t.start !== t.savedStart) audio.pause();
-      else if (qi + 1 < queue.length) playIndex(qi + 1);
-      else audio.pause();
-    }
+    const unsaved = t.end !== t.savedEnd || t.start !== t.savedStart;
+    const said = trimGuard({ current: audio.currentTime, start: t.start, end: t.end,
+                             previous: lastTick, jumped: justSought || null, dragging, unsaved });
+    justSought = false;
+    if (said.seekTo !== undefined) audio.currentTime = said.seekTo;
+    if (said.pause) audio.pause();
+    // while the end is still being placed, stop on it. Running into the next track would
+    // take the unsaved trim with it: the buttons then edit and save the wrong song.
+    if (said.next) { if (qi + 1 < queue.length) playIndex(qi + 1); else audio.pause(); }
   }
+  lastTick = audio.currentTime;
   $("#p-time").textContent = fmt(audio.currentTime);
   $("#p-dur").textContent = fmt(audio.duration);
   if (document.activeElement !== $("#p-pos") && audio.duration) $("#p-pos").value = Math.round((audio.currentTime / audio.duration) * 1000);

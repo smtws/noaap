@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lineAt, lineStart, nudged, shifted, stampOf, stampText, tapped, tenth, toFileClock, toPlayerClock, trimOffset, withStamp }
+import { lineAt, lineStart, nudged, shifted, stampOf, stampText, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
   from "../../src/noaap/webui/logic.mjs";
 
 test("an untrimmed track has one clock", () => {
@@ -112,4 +112,37 @@ test("shifting moves every stamped line and no other", () => {
 test("shifting cannot push a line before the start of the file", () => {
   const got = shifted("[00:01.0] one\n[00:30.0] two", -5);
   assert.equal(got.text, "[00:00.0] one\n[00:25.0] two");
+});
+
+// -- the trim window, and the difference between playing into it and jumping (§9, slice 77) --------
+//
+// The user: clicking a timed line stops the sound for some seconds, then it recovers. Measured on
+// their own track (trim 5.0–247.4, the player holding the untrimmed original): a position past the
+// end was treated as having *played* into the end, so the player started the **next track** — which
+// from the outside is the sound stopping and other music arriving.
+
+test("playing into the trim end moves on, as it always did", () => {
+  assert.deepEqual(trimGuard({ current: 248, start: 5, end: 247.4, previous: 247.2 }), { next: true });
+});
+
+test("but jumping past it stops there, where the audio ends", () => {
+  const said = trimGuard({ current: 250, start: 5, end: 247.4, previous: 40 });
+
+  assert.equal(said.next, undefined, "no song change from a jump");
+  assert.equal(said.pause, true);
+  assert.ok(Math.abs(said.seekTo - 247.4) < 0.1, `landed at ${said.seekTo}`);
+});
+
+test("the head is still skipped, and the middle is left alone", () => {
+  assert.deepEqual(trimGuard({ current: 2, start: 5, end: 247.4, previous: 1.9 }), { seekTo: 5 });
+  assert.deepEqual(trimGuard({ current: 100, start: 5, end: 247.4, previous: 99.8 }), {});
+  assert.deepEqual(trimGuard({ current: 2, start: 5, end: 247.4, previous: 1.9, dragging: true }), {},
+    "while somebody is dragging the mark, nothing fights them");
+});
+
+test("an unsaved trim always stops rather than carrying itself into the next song", () => {
+  const said = trimGuard({ current: 248, start: 5, end: 247.4, previous: 247.2, unsaved: true });
+
+  assert.equal(said.pause, true);
+  assert.equal(said.next, undefined);
 });

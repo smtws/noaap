@@ -421,6 +421,12 @@ class AlbumPlan:
     # private source means no, and only the owner of the album can say otherwise, by setting this to
     # `true` for that one album. Nothing sets it automatically.
     lookups: bool | None = None
+    # **and a second switch, because a title and a recording are different things** (§9, slice 77).
+    # `lookups` says a name and a length may be asked of a stranger; it never meant *upload the
+    # recording*, and for one package it did. This one, and only this one, lets a private album's
+    # audio go to a timing provider that is not this machine. `None` means no for a private album
+    # and yes for everything else; nothing in the program ever sets it.
+    send_audio: bool | None = None
     # what it looked like when noaap adopted it, so it can be given back (§9, slice 58):
     # {"folder": <path at adoption>, "at": <ISO date>}. Per track, `adopted_name`/`adopted_tags`.
     adopted: dict[str, Any] = field(default_factory=dict)

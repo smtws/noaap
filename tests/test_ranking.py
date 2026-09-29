@@ -127,13 +127,41 @@ def test_a_narrower_band_keeps_what_is_here():
     assert found.verdict is Verdict.KEEP and "holds more audio" in found.why
 
 
-def test_a_lossless_container_is_not_evidence():
-    """R-164, ruling 1: the FLAC this intake meets most often is a decode of the very Opus it
-    would replace — same audio, eight times the size. Without a wider band there is no case."""
-    found = judge(pair_of(), facts(cutoff=20, **FLAC), facts(cutoff=20))
+@pytest.mark.parametrize("theirs,mine,verdict", [
+    (21, 20, Verdict.REPLACE),    # wider, and inside the 2 kHz margin that decides nothing by itself
+    (20, 20, Verdict.REPLACE),    # exactly as wide: it gives up nothing
+    (22, 20, Verdict.REPLACE),
+    (19, 20, Verdict.UNDECIDED),  # narrower: the container is not an argument
+])
+def test_a_lossless_copy_that_gives_up_nothing_takes_the_place_of_a_lossy_one(theirs, mine, verdict):
+    """**The user's rule** (§9, slice 77): a lossless copy that is not narrower than the lossy file
+    here is the one worth keeping — it can be re-encoded later without losing a second time, and the
+    file it replaces cannot. The measurement still decides *against* it: a narrower lossless copy
+    wins nothing, which is what keeps this from being "trust the container" (R-164)."""
+    found = judge(pair_of(), facts(cutoff=theirs, **FLAC), facts(cutoff=mine))
+
+    assert found.verdict is verdict
+    if verdict is Verdict.UNDECIDED:
+        assert "lossless" in found.why and "holds less audio" in found.why
+    elif theirs - mine < 2:
+        # inside the margin the band decides nothing, so this is the new rule speaking
+        assert "lossless" in found.why and "gives up nothing" in found.why
+    else:
+        # beyond it the band was always enough, and says so in its own words
+        assert "holds more audio" in found.why
+
+
+def test_and_in_the_other_direction_a_lossless_container_is_still_not_evidence():
+    """R-164, ruling 1, which stands: the FLAC this intake meets most often is a decode of the very
+    Opus it would replace. A *lossy* candidate never displaces a lossless file on the container."""
+    found = judge(pair_of(), facts(cutoff=20), facts(cutoff=20, **FLAC))
 
     assert found.verdict is Verdict.UNDECIDED
-    assert "lossless" in found.why and "same audio" in found.why
+    assert "lossless" in found.why and "neither holds more audio" in found.why
+
+    # …and a lossy candidate with a wider band is decided by the band, as before
+    wider = judge(pair_of(), facts(cutoff=22), facts(cutoff=20, **FLAC))
+    assert wider.verdict is Verdict.REPLACE and "holds more audio" in wider.why
 
 
 def test_a_clearly_higher_bitrate_replaces_when_the_band_and_the_codec_agree():

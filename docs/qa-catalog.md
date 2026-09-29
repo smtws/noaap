@@ -4644,10 +4644,80 @@ the stopping.
 - [x] and the queued one-liner: the MusicBrainz client is no longer built for an album nobody may
   ask about.
 
+## BP. Eight the user asked for, and one that had to be measured (P63, DESIGN §9, slice 77)
+
+- [x] **BP1 · R** — a lossless copy that gives up nothing replaces a lossy one
+
+  The user's rule, in one direction only. Cases from their own library: FLAC 21 kHz against Opus 20
+  and FLAC 20 against Opus 20 both go to the FLAC; **FLAC 19 against Opus 20 stays undecided**; and a
+  *lossy* candidate still never displaces a lossless file on its container. Raw kilohertz, without
+  the 2 kHz margin — the margin is there so an encoder's own spread cannot order a replacement, and
+  here the band is only asked not to argue against.
+
+- [x] **BP2 · R** — a switch of its own for the audio
+
+  `send_audio` on the album. An existing plan with `lookups: true` **sends no audio** — a case holds
+  exactly that — and a grep says nothing in the program ever sets the new field.
+
+- [x] **BP3 · R** — an address two parsers read differently
+
+  `https://evil.example\@c10.…/x.jpg` is *evil.example* to a browser and ours to `urlsplit`; userinfo
+  before the host is the same trick, older. Both refused, with four cases.
+
+- [x] **BP4** — the refusal does not name a provider that would send nothing
+
+  With `timing_provider = none` the private-audio sentence named `none`; the capability refusal comes
+  first now and says what is true.
+
+- [x] **BP5** — two copies of one song, told apart
+
+  Labels are made for the **set**: they grow one path part at a time, and only for the copies that
+  would otherwise read identically. Four cases, including a ref that is not a path at all.
+
+- [x] **BP6** — "3s apart" beside two equal lengths
+
+  **Where the number came from:** with a third opinion (MusicBrainz's or LRCLIB's length) the pass
+  measures each file's distance from *that*, not from the other file — `max(|new − ref|, |old − ref|)`
+  — so two files of the same length can be three seconds from the reference and read as "3s apart".
+  The number was right and the word was wrong: it says "3s from the length we know".
+
+- [x] **BP7** — a length whose origin nobody recorded
+
+  **Measured in the user's own installed library: 4583 tracks with a length and no `file_length_by`,
+  against 559 with it** — and not a folder or codec pattern at all, but every plan written before the
+  field existed, because `run` measures a track only when it has no length. The tidy-up fills it from
+  the header, never touches the number, and leaves it empty when the header disagrees.
+
+- [x] **BP8 · M** — the playback report, where the measuring was the whole job
+
+  Reproduced on a **copy** of the reported album, with this session's own server and browser.
+  - **click-to-sound: 8–117 ms** across fifteen clicks of several shapes (cold first click, rapid
+    succession, while paused, the last line), each landing exactly at `stamp + trim start`. **No
+    multi-second stall could be reproduced** in the reported shape.
+  - **what was found instead:** a jump past the trim end silently started the **next track** — from
+    outside, the sound stopping and other music arriving. Playing *into* the end still moves on;
+    jumping past it stops where the audio ends. Measured before (track changed, playhead at 2.4 s of
+    another song) and after (same track, paused at 247.4).
+  - **three server defects**, each real and none of them the stall: every file was served as
+    `audio/ogg` (FLAC, mp3 and m4a included — Chrome sniffs and copes, *measured*, and other players
+    do not), `HEAD` answered **501**, and responses were HTTP/1.0 so every range request paid for a
+    new connection. Fixed: type by suffix, HEAD with the GET's headers and no body, HTTP/1.1 with
+    `Last-Modified`.
+  - **and two the fix itself caused**, caught by the suite: a POST body left unread by a refusal
+    became the next request line (`Unsupported method ('{}POST')`), and a 416 with no
+    `Content-Length` left the client waiting. *Making connections outlive one request makes every
+    missing length a hang.*
+  - **four hypotheses died on the way**, two of them after looking confirmed: a granule offset in the
+    cut file (the file starts at 0.000), an embedded cover picture (the "strip it and it seeks"
+    result came from comparing a **fresh** media element with a used one — the same self-matching
+    trap this catalogue keeps recording), a server that idles out under socket activation (the page
+    polls every 8 s, so it never idles while open), and the content type (Chrome sniffs).
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BP cases (P63: eight the user asked for) | 8 | 1 of my own, caught before reporting; 2 caused by a fix and caught by the suite | The ranking rule the user gave: a lossless copy that gives up nothing takes a lossy one's place, and only in that direction. A switch of its own for the audio, so `lookups` means a title again. An address two parsers read differently is refused. Copies of one song in two libraries get labels that differ, and "3s apart" says what it measured. `file_length_by` was empty on **4583 of the installed library's tracks against 559** — every plan written before the field existed. And the playback report: **click-to-sound 8–117 ms over fifteen clicks, no stall reproduced**, but a jump past the trim end silently started the next song; plus three server defects (audio/ogg for every file, HEAD 501, HTTP/1.0) and two the HTTP/1.1 fix caused. Four hypotheses died on the way, one after a measurement that compared a fresh media element with a used one. 1530 pytest + 129 node. |
 | 2026-09-29 | the BO cases closed (P62: the third live run, and what it cost) | 2 | 0 | **The captions were taken from a real post**: they came as a playlist, 49 requests, 341 lines, the last stamp 4.08 s inside a 23:31 recording, 27,903 bytes of `.lrc` beside the track — strictly ordered, no duplicates, `provenance.lyrics = source`, and **not one word in the file's tag or the plan**. (48 segments is the requests less the playlist: inferred, not measured. **Whether a line sits where it is spoken is not known** — the stamps were checked for range and order, never against the speech.) No `noaap` cache directory existed at all, which is the queued MusicBrainz fix working live. The two numbers that run could not state — the segments' bytes and which timestamp convention they used — are now recorded by the provider and said on the track's line, and reach no plan. 1515 pytest + 121 node. |
 | 2026-09-29 | the BO cases extended (P61b: judge the list as a list) | 4 | 4 defects of mine, all found by the reviewer's own playlists | Thirteen of seventeen behaved; four did not, and they are one mistake in four costumes. A segment answering an **error page** read as a segment with no cues: two cues of three, no refusal, a hole in a chapter with nothing said — every segment must now be a caption file by its own first line, and the refusal names which one (an empty WebVTT segment stays legal). Addresses were checked **one at a time**, so a foreign third segment cost two requests before the refusal; the list is judged whole now and a bad one costs nothing. `#EXT-X-BYTERANGE` / `#EXT-X-MAP` were ignored, so the same file was fetched twice and read wrongly — refused, as is the same address listed twice. And the request count was raised after the answer, so a 404 vanished from the bill. 1513 pytest + 121 node. |
 | 2026-09-29 | the BO cases (P60 live run + P61: captions as a playlist) | 9 | 0 — the live run's caption refusal was correct behaviour, and the reason for this package | Second live run: one post, **33.3 MB fetched, 17.4 MB kept**, 1411.54 s, the kept file starting at 0.000 (the rendition's own start is inferred from which refusal came), `update` changed nothing, and the **cover was fetched for the first time** (202,784 bytes, embedded, no warning) — which tested the P59c request shape, not the P59b fallback, still fixture-only. Nothing left the machine: no lrclib cache, a MusicBrainz cache with 0 rows, no signed or media address in the plan, no words in the tag. The captions were refused because what a post serves is a **playlist** of WebVTT segments, not a file — so P61 reads it: playlist then segments in order, cues joined and de-duplicated across borders, every address checked before it is asked and one foreign segment refusing the whole track, master/encrypted/unfinished playlists refused by name with no key ever fetched, caps of **600 segments and 8 MB**, and the cost said on the dry run and counted on the track's line. `X-TIMESTAMP-MAP` is used **relative to the first segment**, never as an absolute origin. 1504 pytest + 121 node. |
