@@ -68,8 +68,11 @@ def one_second_of_mp3(tmp_path_factory) -> Path:
     if not shutil.which("ffmpeg"):
         pytest.skip("ffmpeg not installed")
     path = tmp_path_factory.mktemp("tone") / "tone.mp3"
-    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
-                    "-c:a", "libmp3lame", str(path)], check=True)
+    try:    # an ffmpeg without libmp3lame is a skip, not an error: CI's may be built without it
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
+                        "-c:a", "libmp3lame", str(path)], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        pytest.skip(f"this ffmpeg cannot write mp3: {e.stderr.decode(errors='replace')[:120]}")
     if not path.is_file():
-        pytest.skip("this ffmpeg cannot write mp3")
+        pytest.skip("this ffmpeg wrote no mp3")
     return path
