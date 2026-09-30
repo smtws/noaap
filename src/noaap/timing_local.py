@@ -367,7 +367,8 @@ class LocalTiming:
         self._whisper_where = device or self.device_now(TRANSCRIBE)
         self.log(f"listening to {audio.name} with {WHISPER} …")
         result = self._whisper_run(
-            lambda model: model.transcribe(str(audio), language=language, temperature=0, verbose=None))
+            lambda model: model.transcribe(str(audio), language=language, temperature=0,
+                                           verbose=None))
         if check:
             check()
         lines = [TimedLine(text=segment.text.strip(), start=round(segment.start, 2),
@@ -429,7 +430,11 @@ class LocalTiming:
         with warnings.catch_warnings(record=True) as said:
             warnings.simplefilter("always")
             result = self._whisper_run(
-                lambda model: model.align(str(audio), "\n".join(lines), language=lang, original_split=True))
+                # **`verbose=None`, not `False`** — stable-ts reads False as "draw the bar, print no
+                # text" and None as "say nothing at all", so the default painted a progress bar
+                # across the user's server log on every checked alignment (R-288)
+                lambda model: model.align(str(audio), "\n".join(lines), language=lang,
+                                          original_split=True, verbose=None))
         failed = 0
         for one in said:
             if m := re.search(r"(\d+)/(\d+) segments? failed to align", str(one.message)):
@@ -452,6 +457,25 @@ class LocalTiming:
     _whisper_device = "cpu"
     _whisper_cpu_only = False
 
+    def _quiet_bars(self) -> None:
+        """Keep stable-ts's progress bars out of the log, and tqdm's lock out of the process.
+
+        tqdm builds a **multiprocessing** lock the first time any bar is made and keeps it for the
+        life of the process, so a server that has run one timing job reports *"There appear to be 1
+        leaked semaphore objects to clean up at shutdown"* when it exits (R-288). Measured to the
+        frame: `stable_whisper.align` → `tqdm.__new__` → `get_lock` → `create_mp_lock`. It is not
+        ours and it is not a leak that grows — one per process — but nothing in noaap uses
+        multiprocessing at all, and tqdm's own `set_lock` is how a program says which lock to use.
+        """
+        try:
+            import threading
+
+            from tqdm import tqdm
+
+            tqdm.set_lock(threading.RLock())
+        except Exception:  # a progress bar may never be the reason a job fails
+            log.debug("could not give tqdm a plain lock", exc_info=True)
+
     def _whisper_run(self, call: Callable[[object], object]):
         """Run one inference, and survive the CUDA trap wherever it decides to fire.
 
@@ -461,6 +485,7 @@ class LocalTiming:
         Catching it only at load time therefore caught nothing. One retry on the processor is the
         whole recovery: it is slower, it is local, and it costs nothing but time.
         """
+        self._quiet_bars()
         try:
             return call(self._whisper_model())
         except (RuntimeError, OSError) as e:

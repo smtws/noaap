@@ -2482,6 +2482,40 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    in a server log over the same three jobs that produced 2 before, and an opt-in test that loads all
    three models with `socket.socket` replaced by a raising stub.
 
+85. ✅ **A dry run names everything the real run would do** (2026-09-30, P68). `repair --dry-run` said
+   *"3946 track(s) would get the length of their file"* and *"246 album(s) would be tidied up"*, and the
+   run that followed **rewrote 376 audio files** — on that dry run's word, the user had been told no
+   audio file would be touched. The renames and the retags happen inside `run(download=False)`, which
+   the dry branch returned before ever reaching: everything the pass does to *files* was outside what
+   the dry run could see.
+   **So the report is built from the same predicates the pass uses.** `would_do()` asks the three
+   questions `run` asks — the wanted filename, the trim signature, the tag signature — and says one
+   line per track: *would be renamed*, *would be cut to its trim points*, *would be retagged* with the
+   values that change, old → new. A test compares the set of actions the dry run prints with the set
+   the real run performs on a fixture album, so a future action cannot be added to one and not the
+   other. Its own total is said as well, because "246 albums would be tidied up" is not an answer to
+   *will this write into my audio files?*
+   **Where two values differ, not where they start.** The first version of the report showed sixty
+   characters of each side, which for a lyric printed the same text twice. It now names the character
+   the two stop agreeing at — and that is what found the second defect.
+   **The 376 files, to the byte.** LRCLIB ends a synced lyric whose singing stops before the track does
+   with a bare stamp: `[03:52.92] `, trailing space and all. `update_track` wrote that text into the
+   file's lyrics tag and into the signature beside it, while `read_sidecar` **strips** the text it hands
+   to every later pass — so the signature never matched again and every tidying pass rewrote the file
+   for one character. Measured: 52 of 52 stale opus files in the test library differed in exactly that
+   character, 864 tracks in that library were stale for it in some container, and rewriting 18 of them
+   on a copy made each file **exactly one byte smaller**. The text is stripped once now, where it
+   enters, so the writer and the reader agree; files written before this get one catch-up rewrite,
+   which the dry run announces.
+   **Also in this slice, from the queue:** `http` can listen — `timing-serve` serves `heard`, the words
+   come back over the network and the matching to the user's lines happens on the asking machine, which
+   is the one holding the lyric. And two bits of noise measured to their owner: tqdm builds a
+   *multiprocessing* lock the first time stable-ts draws a progress bar and keeps it for the life of the
+   process, which is the *"1 leaked semaphore"* a server reported at shutdown (not ours, but
+   `tqdm.set_lock` with a plain lock settles it), and those progress bars were painting themselves
+   across the server log because stable-ts reads `verbose=False` as *"draw the bar, print no text"* and
+   only `None` as *"say nothing"*.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2676,6 +2710,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (a dry run that says everything, §9, slice 85)
+
+- **A dry run is a promise.** Whatever the real run does must be in it, and the way to keep that true
+  is to build the report from the pass's own predicates and to compare the two sets in a test.
+- **Say the thing the person is afraid of.** Album and track counts are not an answer to "will you
+  write into my files"; the number of files that would be rewritten is.
+- **A diff of two long values shows where they differ**, not their first sixty characters.
+- **One text, one shape.** A value that is written to disk and compared on the next pass must be
+  normalised where it enters, or the comparison is false for ever.
+- **Measure the owner of a warning before fixing it.** The semaphore was tqdm's, the hub greeting was
+  demucs's; neither was where it looked.
 
 ### Decisions of 2026-09-30 (what a job holds and what it asks for, §9, slice 84)
 

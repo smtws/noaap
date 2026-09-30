@@ -729,3 +729,43 @@ def test_a_track_that_says_it_has_no_words_is_not_recorded_as_a_blank(tmp_path, 
     run(plan, album_dir, yt, download=False, lyrics=Refuses())
     assert (quiet.lyrics, quiet.lyrics_length) == ("instrumental", 236.0)
     assert sung.lyrics == "none"  # an ordinary track keeps the plain verdict
+
+
+# -- the writer and the reader agree about a trailing space (§9, slice 85) ---------------------------
+
+
+def test_a_final_bare_stamp_is_not_written_with_its_trailing_space(tmp_path):
+    """R-288's 376 rewritten files, to the character.
+
+    LRCLIB ends a synced lyric whose singing stops before the track does with a bare stamp —
+    `[03:52.92] `, trailing space and all. Written through as it came, that space went into the file's
+    lyrics tag and into the signature beside it, while `read_sidecar` strips the text it hands to every
+    later pass: the track then read as out of date for ever, and `repair` rewrote the audio file for
+    one character.
+    """
+    from test_incremental import vol1
+
+    from noaap.plan import build_plan, refresh_derived
+
+    class OneEntry:
+        def get(self, artist, title, album=None, length=None, skip=()):
+            return Lyrics(synced="[00:12.00] a line\n[03:52.92] ", lrclib_id=1, length=200.0)
+
+        def by_id(self, lrclib_id):
+            return None
+
+    plan = build_plan(vol1())
+    refresh_derived(plan)
+    album_dir = tmp_path / plan.folder
+    album_dir.mkdir(parents=True)
+    track = plan.tracks[0]
+    track.state = "done"
+    audio = album_dir / track.filename
+    audio.write_bytes(b"not audio, and nothing here reads it")
+    save_plan(plan, album_dir)
+
+    text = update_track(OneEntry(), plan, track, album_dir, audio)
+
+    assert text is not None and not text.endswith(" "), repr(text[-14:])
+    assert text == read_sidecar(album_dir, track), "the text for the tag is the text the reader returns"
+    assert text.endswith("[03:52.92]"), "the stamp itself is kept: it is where the singing stops"

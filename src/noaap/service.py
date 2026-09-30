@@ -33,6 +33,7 @@ from .download import (
     rewritten,
     run,
     save_plan,
+    would_do,
 )
 from .enrich import enrich
 from .lyrics import (
@@ -1151,6 +1152,16 @@ class Service:
                          "nothing through a band")
             yield voice or audio
 
+    def _cover_of(self, plan: AlbumPlan, album_dir: Path) -> bytes | None:
+        """The cover bytes a tidying pass would embed: whatever is on disk, never fetched."""
+        from .download import _cover
+
+        try:
+            return _cover(plan, album_dir, self.source_for(plan), fetch=False)
+        except Exception:  # a report may not fail over a cover
+            log.debug("could not read the cover of %s", album_dir, exc_info=True)
+            return None
+
     def _where_it_runs(self, engine: Any, capability: str) -> dict[str, str]:
         """Ask a provider that runs here where it will run, before the job says anything else.
 
@@ -1639,7 +1650,7 @@ class Service:
         if (strays or find_moved) and not apply:
             dry_run = True
         outcomes = []
-        lengths = 0
+        lengths = retags = renames = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
@@ -1726,6 +1737,14 @@ class Service:
             self.log(f"=== {plan.albumartist} — {plan.album}"
                      + (f" ({filled} track(s) measured)" if filled else ""))
             if dry_run:
+                # **the dry run names what the real run would do to the files** (§9, slice 85). It used
+                # to stop here, so renames and retags — which happen inside `run` below — were never
+                # mentioned: the user was told no audio file would be touched and 376 were rewritten.
+                would = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library)
+                for line in would:
+                    self.log(f"  {line}")
+                retags += sum(1 for line in would if "retagged" in line or "rewritten" in line)
+                renames += sum(1 for line in would if "renamed" in line)
                 outcomes.append(Outcome("ok", plan, album_dir))
                 continue
             save_plan(plan, album_dir)
@@ -1743,6 +1762,11 @@ class Service:
                      f"{moved_total['decoded']} file(s) decoded")
         if lengths:
             self.log(f"{lengths} track(s) {'would get' if dry_run else 'got'} the length of their file")
+        if dry_run and (retags or renames):
+            # said as its own total, because "246 albums would be tidied up" is not an answer to
+            # "will this write into my audio files?" (§9, slice 85)
+            self.log(f"{renames} file(s) would be renamed and {retags} audio file(s) would be "
+                     "rewritten (their tags)")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
         return outcomes
 

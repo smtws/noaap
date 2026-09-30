@@ -579,3 +579,90 @@ def test_the_real_models_open_no_connection(monkeypatch):
     made = engine._off_the_disk("htdemucs", "81 MB",
                                 lambda _offline: Separator(model="htdemucs", device="cpu", progress=False))
     assert made is not None
+
+
+# -- listening over the network (§9, slice 83, the http provider) -------------------------------------
+
+
+class Ears2(Ears):
+    """A far end that hears words, for the timing server to sit in front of."""
+
+    name = "local"
+
+    def capabilities(self):
+        return frozenset({"align", "transcribe", LISTEN})
+
+    def resolved_device(self):
+        return "cpu"
+
+    def align(self, audio, lines, *, language=None, check=None):
+        from noaap.timing import Timed, TimedLine
+
+        return Timed(lines=[TimedLine(text=lines[0], start=1.0)], provider=self.name, model="ruler")
+
+    def heard(self, audio, *, language=None, check=None):
+        self.language = language
+        mine = heard(("Hoch", 10.0), ("in", 10.5), ("den", 11.0), ("Bergen", 11.5))
+        mine.provider, mine.model, mine.version = "local", "big-model", "1.2.3"
+        mine.parameters = {"language": language or "detected"}
+        return mine
+
+
+@pytest.fixture
+def far_end():
+    """`noaap timing-serve`'s handler with a fake model behind it."""
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from noaap.timing_serve import handler_for
+
+    ears = Ears2()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(ears))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_port}", ears
+    server.shutdown()
+    server.server_close()
+
+
+def test_the_far_end_hears_the_words_and_the_lyric_stays_here(far_end, tmp_path):
+    """The recording goes over the network; the words come back and the matching happens here."""
+    from noaap.timing import HttpTiming
+
+    endpoint, ears = far_end
+    audio = tmp_path / "t.opus"
+    audio.write_bytes(b"pretend this is audio")
+    client = HttpTiming(endpoint)
+
+    assert LISTEN in client.capabilities()
+    mine = client.heard(audio, language="de")
+
+    assert [w.text for w in mine.words] == ["Hoch", "in", "den", "Bergen"]
+    assert mine.words[0].start == 10.0
+    assert mine.provider == "http:local" and mine.model == "big-model" and mine.version == "1.2.3"
+    assert ears.language == "de", "the language the words are in went with the request"
+    timed = place_by_listening(["Hoch in den Bergen", "not in this song"], mine)
+    assert timed.unplaced == [1]
+
+
+def test_a_far_end_that_cannot_listen_says_so(tmp_path):
+    from noaap.timing import HttpTiming
+
+    client = HttpTiming("http://127.0.0.1:9")
+    client._capabilities = frozenset({"align"})
+
+    with pytest.raises(Exception, match="cannot listen for words"):
+        client.heard(tmp_path / "t.opus")
+
+
+def test_the_server_refuses_a_listen_it_cannot_do(far_end, tmp_path):
+    """The far end without the extra: the refusal is the provider's own sentence, not a traceback."""
+    import httpx
+
+    endpoint, ears = far_end
+    ears.heard = lambda *a, **k: (_ for _ in ()).throw(
+        __import__("noaap.timing", fromlist=["TimingUnavailable"]).TimingUnavailable("no big model here"))
+
+    r = httpx.post(f"{endpoint}/heard", files={"audio": ("t.opus", b"bytes", "application/octet-stream")})
+
+    assert r.status_code == 400 and "no big model here" in r.json()["error"]

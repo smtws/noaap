@@ -44,7 +44,7 @@ VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the au
 # two local ones depend on what is installed or on the machine at the other end, and `capabilities()`
 # answers that at runtime. This is for the settings panel, so that the slot for drafting words does
 # not offer a provider that only aligns, and the slot for aligning does not offer Deepgram (§9, slice 40).
-OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE, LISTEN), "http": (ALIGN, TRANSCRIBE),
+OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE, LISTEN), "http": (ALIGN, TRANSCRIBE, LISTEN),
           "elevenlabs": (ALIGN, TRANSCRIBE, LISTEN), "deepgram": (TRANSCRIBE, LISTEN)}
 
 PRICES = {
@@ -753,6 +753,10 @@ class HttpTiming:
 
     def _send(self, what: str, audio: Path, lines: list[str], language: str | None,
               check: Callable[[], None] | None) -> Timed:
+        return Timed.from_dict(self._ask(what, audio, lines, language, check))
+
+    def _ask(self, what: str, audio: Path, lines: list[str], language: str | None,
+             check: Callable[[], None] | None) -> dict[str, Any]:
         import httpx
 
         if check:
@@ -771,13 +775,30 @@ class HttpTiming:
             raise TimingUnavailable(f"{self.endpoint} could not be reached: {e}") from e
         if check:
             check()
-        return Timed.from_dict(r.json())
+        return dict(r.json())
 
     def transcribe(self, audio: Path, *, language: str | None = None,
                    check: Callable[[], None] | None = None) -> Timed:
         if TRANSCRIBE not in self.capabilities():
             raise TimingUnavailable(f"{self.endpoint} only aligns words it is given")
         return self._send("transcribe", audio, [], language, check)
+
+    def heard(self, audio: Path, *, language: str | None = None,
+              check: Callable[[], None] | None = None) -> Heard:
+        """What the far end heard, word by word (§9, slice 83).
+
+        The recording goes over the network and the **words come back**; the matching to the user's
+        own lines happens here, in the core, because this side is the one holding the lyric. The
+        machine at the other end never sees it.
+        """
+        if LISTEN not in self.capabilities():
+            raise TimingUnavailable(f"{self.endpoint} cannot listen for words — it needs the "
+                                    "`timing-check` extra installed on that machine")
+        body = self._ask("heard", audio, [], language, check)
+        return Heard(words=[HeardWord(**word) for word in body.get("words", [])],
+                     provider=f"{self.name}:{body.get('provider', 'local')}",
+                     model=str(body.get("model", "")), version=str(body.get("version", "")),
+                     parameters={str(k): str(v) for k, v in (body.get("parameters") or {}).items()})
 
 
 # -- choosing one ------------------------------------------------------------------------------

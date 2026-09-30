@@ -488,3 +488,135 @@ def test_a_fetched_single_is_named_after_its_enriched_track(tmp_path, opus_templ
     assert saved.kind == "single"
     assert saved.album == saved.tracks[0].title  # one song, one name, whatever enrichment left
     assert "@" not in saved.album and "@" not in outcome.album_dir.name
+
+
+# -- the dry run names everything the real run would do (§9, slice 85) -------------------------------
+
+
+def actions_of(lines):
+    """The (track number, what) pairs a dry run reported."""
+    out = set()
+    for line in lines:
+        text = line.strip()
+        if not text[:2].isdigit():
+            continue
+        number = int(text[:2])
+        for what, action in (("renamed", "renamed"), ("retagged", "retagged"),
+                             ("rewritten", "retagged"), ("cut to its trim points", "trimmed"),
+                             ("put back untrimmed", "trimmed")):
+            if what in text:
+                out.add((number, action))
+    return out
+
+
+def test_the_dry_run_says_what_the_real_run_does(tmp_path, opus_template):
+    """R-288: `repair --dry-run` reported lengths and albums and said nothing about tags, and the
+    run that followed rewrote 376 of the user's audio files."""
+    def make_work(plan):
+        plan.kind = "artist_playlist"
+        plan.albumartist = plan.auto["albumartist"] = "FEUERSCHWANZ"
+        plan.provenance["albumartist"] = Provenance.YT_TITLE
+        for t in plan.tracks:
+            t.artist = t.auto["artist"] = "Feuerschwanz, Ben Metzner"
+            t.provenance["artist"] = Provenance.YT_MUSIC
+
+    tmp_path, plan = library_with(tmp_path, opus_template, make_work)
+    said = []
+    dry = service(tmp_path, opus_template)
+    dry.log = said.append
+    dry.repair(dry_run=True)
+    promised = actions_of(said)
+
+    done = set()
+    real = service(tmp_path, opus_template)
+    real.on_track = lambda track, what: done.add((track.number, what))
+    real.repair()
+
+    assert promised, "the dry run promised nothing at all"
+    assert {what for _, what in promised} == {"renamed", "retagged"}, promised
+    assert promised == done, f"dry run said {promised}, the real run did {done}"
+
+
+def test_a_pending_trim_is_named_too(tmp_path, opus_template):
+    """A trim is the one thing in a tidying pass that rewrites the audio itself, not only its tags.
+
+    On an album that needs tidying for another reason, because that is what makes `repair` call the
+    pass at all: an album whose plan is already right is skipped entirely, by the real run as much as
+    by the dry one.
+    """
+    def make_work(plan):
+        plan.kind = "artist_playlist"
+        for t in plan.tracks:
+            t.artist = t.auto["artist"] = "Feuerschwanz, Ben Metzner"
+            t.provenance["artist"] = Provenance.YT_MUSIC
+
+    tmp_path, plan = library_with(tmp_path, opus_template, make_work)
+    album_dir = tmp_path / plan.folder
+    saved = load_plan(album_dir)
+    saved.tracks[0].trim_start = 0.2
+    save_plan(saved, album_dir)
+
+    said = []
+    dry = service(tmp_path, opus_template)
+    dry.log = said.append
+    dry.repair(dry_run=True)
+    promised = actions_of(said)
+
+    done = set()
+    real = service(tmp_path, opus_template)
+    real.on_track = lambda track, what: done.add((track.number, what))
+    real.repair()
+
+    assert (1, "trimmed") in promised, said
+    assert promised == done, f"dry run said {promised}, the real run did {done}"
+
+
+def test_the_dry_run_names_the_tag_values_that_would_change(tmp_path, opus_template):
+    def rename_the_artist(plan):
+        plan.kind = "artist_playlist"
+        for t in plan.tracks:
+            t.artist = t.auto["artist"] = "Feuerschwanz, Ben Metzner"
+            t.provenance["artist"] = Provenance.YT_MUSIC
+
+    tmp_path, plan = library_with(tmp_path, opus_template, rename_the_artist)
+    said = []
+    dry = service(tmp_path, opus_template)
+    dry.log = said.append
+    dry.repair(dry_run=True)
+
+    retags = [line for line in said if "would be retagged" in line]
+    assert retags, said
+    assert any("artist “Feuerschwanz, Ben Metzner” → “Feuerschwanz”" in line for line in retags), retags
+
+
+def test_a_dry_run_that_would_change_nothing_in_the_files_says_nothing(tmp_path, opus_template):
+    tmp_path, plan = library_with(tmp_path, opus_template, lambda plan: None)
+    said = []
+    dry = service(tmp_path, opus_template)
+    dry.log = said.append
+    dry.repair(dry_run=True)
+
+    assert not [line for line in said if "would be retagged" in line or "would be renamed" in line], said
+    assert not [line for line in said if "audio file(s) would be rewritten" in line], said
+
+
+def test_the_dry_run_writes_nothing_at_all(tmp_path, opus_template):
+    """The hash of every file in the library is the same afterwards — plans and audio alike."""
+    import hashlib
+
+    def make_work(plan):
+        plan.kind = "artist_playlist"
+        for t in plan.tracks:
+            t.artist = t.auto["artist"] = "Feuerschwanz, Ben Metzner"
+            t.provenance["artist"] = Provenance.YT_MUSIC
+
+    tmp_path, plan = library_with(tmp_path, opus_template, make_work)
+
+    def fingerprint():
+        return {str(p.relative_to(tmp_path)): hashlib.sha1(p.read_bytes()).hexdigest()
+                for p in sorted(tmp_path.rglob("*")) if p.is_file()}
+
+    before = fingerprint()
+    service(tmp_path, opus_template).repair(dry_run=True)
+
+    assert fingerprint() == before

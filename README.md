@@ -379,6 +379,22 @@ those plans recorded only the bare name of a file in a sub-folder, and the first
 copied it into the album's root. `repair` looks each file up where your collection says it is, and a
 finished track of an adopted album is never fetched again in any case.
 
+**Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
+prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*
+with the values that change, *would be cut to its trim points* — and ends with its own total:
+*"0 file(s) would be renamed and 18 audio file(s) would be rewritten (their tags)"*. Anything the real
+run does is in that list; a test compares the two sets on a fixture album so it stays that way.
+Version 1.17.0 and earlier reported only lengths and albums, and the run that followed rewrote 376 of
+one library's audio files.
+
+**Why a tidy album still gets its tags rewritten once.** LRCLIB ends a synced lyric whose singing stops
+before the track does with a bare timestamp — `[03:52.92] `, trailing space and all. Until 1.18.0 that
+space was written into the file's lyrics tag while the reader strips it, so every such track read as
+out of date on the next pass and `repair` rewrote the file for **one character** (measured: −1 byte on
+18 of 31 files of two albums). New sidecars no longer carry it; files written before this still get one
+catch-up rewrite, and now the dry run says so, down to the character: *"lyrics differs from character
+2031 of 2032 → 2031"*.
+
 **A file you renamed or moved is found again: `noaap repair --find-moved`.** It asks what a file
 *holds*, not what it is called — so a track you renamed, or moved into a disc folder, is re-attached to
 its plan. Reports only until you add `--apply`, and **no file is ever moved or written by it**: what
@@ -631,7 +647,7 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look; `noaap watch-service install` runs it as a user service. |
 | `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser`, `--lyrics` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
-| `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` says what it would do and writes nothing. |
+| `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. |
 | `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
 | `noaap timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
 | `noaap recycle list\|restore\|empty` | What noaap moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
@@ -854,7 +870,9 @@ that transcript, in order. A line whose words are not in it keeps no stamp and t
 this exists: the user's own case was an LRCLIB entry whose four opening lines their cut does not sing.
 
 It is offered by whoever **transcribes with word times** — the `timing_draft_provider` slot, not the
-aligning one, because listening *is* transcription and a paid provider bills it by the minute. A line
+aligning one, because listening *is* transcription and a paid provider bills it by the minute. That
+includes `http`: `noaap timing-serve` serves the words it heard, and the matching to your lines happens
+on this machine, so the lyric never leaves it. A line
 is placed when **at least half of its own words** are found in one stretch of the transcript
 (`docs/qa-catalog.md`, BV, has the sweep behind that number).
 

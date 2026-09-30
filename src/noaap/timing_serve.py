@@ -62,7 +62,7 @@ def handler_for(engine: LocalTiming, idle_minutes: float = 0.0) -> type[BaseHTTP
 
         def _align_or_transcribe(self) -> None:
             path = self.path.rstrip("/")
-            if path not in ("/align", "/transcribe"):
+            if path not in ("/align", "/transcribe", "/heard"):
                 return self._json(404, {"error": "not found"})
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_AUDIO:
@@ -78,6 +78,10 @@ def handler_for(engine: LocalTiming, idle_minutes: float = 0.0) -> type[BaseHTTP
                 tmp.write(audio)
                 tmp.flush()
                 try:
+                    if path == "/heard":
+                        # the words it heard, for the other side to match given lines to (§9, slice 83).
+                        # The matching stays in the core there: this machine has the model, not the lyric.
+                        return self._json(200, engine.heard(Path(tmp.name), language=language).to_dict())
                     timed = (engine.align(Path(tmp.name), lines, language=language) if path == "/align"
                              else engine.transcribe(Path(tmp.name), language=language))
                 except TimingUnavailable as e:

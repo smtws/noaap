@@ -267,6 +267,59 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
     return tags
 
 
+def tags_in(path: Path) -> dict[str, str]:
+    """What the file already holds, keyed the way `build_tags` keys it (§9, slice 85).
+
+    The inverse of the three writers, so that a dry run can say *which* values a retag would change
+    rather than only that one would happen. Values are strings, whatever the container stores; a key
+    the file does not have is simply absent. Never raises for an unknown frame — a file may hold
+    anything, and this is only asked to make a report.
+    """
+    container = kind(path)
+    tags = _open(path).tags or {}
+    out: dict[str, str] = {}
+
+    def one(value: Any) -> str:
+        if isinstance(value, list | tuple):
+            value = value[0] if value else ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", "replace")
+        return str(value)
+
+    if container in ("opus", "flac"):
+        for key, value in tags.items():
+            if key.lower() != PICTURE_KEY:
+                out[key.lower()] = one(value)
+    elif container == "mp3":
+        for key, frame in ID3_KEYS.items():
+            if frame in tags:
+                out[key] = one(tags[frame].text if hasattr(tags[frame], "text") else tags[frame])
+        for frame in tags.values():
+            if isinstance(frame, USLT):
+                out["lyrics"] = one(frame.text)
+        if "TRCK" in tags:
+            numbers = one(tags["TRCK"].text).split("/")
+            out["tracknumber"] = numbers[0]
+            if len(numbers) > 1:
+                out["tracktotal"] = out["totaltracks"] = numbers[1]
+        if "TCMP" in tags:
+            out["compilation"] = one(tags["TCMP"].text)
+    else:
+        for key, atom in MP4_KEYS.items():
+            if atom in tags:
+                out[key] = one(tags[atom])
+        if tags.get("trkn"):
+            number, total = [*list(tags["trkn"][0]), 0, 0][:2]
+            out["tracknumber"] = str(number)
+            if total:
+                out["tracktotal"] = out["totaltracks"] = str(total)
+        if tags.get("disk"):
+            out["discnumber"] = str(tags["disk"][0][0])
+        if tags.get("cpil"):
+            out["compilation"] = "1"
+    return out
+
+
 def signature(plan: AlbumPlan, track: PlanTrack, cover: bytes | None, lyrics: str | None = None) -> str:
     """Changes whenever the tags or cover that tag_file would write change."""
     payload = json.dumps(build_tags(plan, track, lyrics), sort_keys=True).encode()

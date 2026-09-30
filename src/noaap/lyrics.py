@@ -748,7 +748,15 @@ def update_track(api: LyricsAPI, plan: AlbumPlan, track: PlanTrack, album_dir: P
     # no shifting: the match was gated on *this* file's length, so the timestamps of the
     # recording that matched are the timestamps of the file in front of us. A trim changes
     # that length, which is why a trim change makes the track be looked up again (download.py)
-    text = found.text
+    #
+    # **stripped, because that is what the reader gives back** (§9, slice 85). LRCLIB ends a synced
+    # lyric whose singing stops before the track does with a bare stamp — `[03:52.92] `, trailing
+    # space and all. Written through as it came, that space went into the file's own lyrics tag and
+    # into the signature beside it, while `read_sidecar` strips the text it hands to every later
+    # pass: one character, and the track read as out of date for ever after. Measured on the user's
+    # test library: 52 of 52 stale opus files differed in exactly that character, and the real
+    # library rewrote 376 files for it, each one or two bytes smaller.
+    text = found.text.strip()
     write_sidecar(album_dir, track, text, length)
     return text
 

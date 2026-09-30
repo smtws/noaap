@@ -21,12 +21,30 @@ from mutagen import MutagenError
 
 from . import captions
 from .cover import square_if_padded
-from .lyrics import LyricsAPI, reconcile, rename_sidecar, status_of, update_track, write_sidecar
+from .lyrics import (
+    LyricsAPI,
+    read_sidecar,
+    reconcile,
+    rename_sidecar,
+    status_of,
+    update_track,
+    write_sidecar,
+)
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import refresh_derived, wanted_filename, wanted_folder
 from .sources import Blocked, NoAudio, Source, SourceError
-from .tag import audio_quality, image_mime, measure, signature, tag_file
+from .tag import (
+    KEEP_IF_PRESENT,
+    audio_quality,
+    build_tags,
+    image_mime,
+    measure,
+    signature,
+    tag_file,
+    tags_in,
+)
 from .trim import apply as apply_trim
+from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
 
@@ -491,6 +509,101 @@ def _captions_cost(found: dict[str, Any]) -> str:
     if convention:
         parts.append(str(convention))
     return f" ({', '.join(parts)})" if parts else ""
+
+
+#: how much of a tag value a report shows before it cuts it off
+SHOWN = 60
+
+
+def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
+             library: Path | None = None) -> list[str]:
+    """Everything `run(..., download=False)` would change about this album, one line each.
+
+    **The dry run's source of truth** (§9, slice 85). It asks the same three questions the pass itself
+    asks — the wanted name, the trim signature, the tag signature — so that a dry run cannot leave out
+    something the real run then does. That is not hypothetical: `repair --dry-run` reported lengths and
+    albums and said nothing about tags, and the run that followed rewrote 376 audio files, after the
+    user had been told on the dry run's word that no audio file would be touched (R-288).
+
+    Reads files; writes nothing, and asks nobody anything.
+    """
+    said: list[str] = []
+    if library is not None and not plan.keep_names:
+        target = library / wanted_folder(plan)
+        if album_dir.exists() and album_dir.resolve() != target.resolve():
+            said.append(f"the album folder would move to {wanted_folder(plan)}"
+                        + (" — but something is already there, so it would stay" if target.exists() else ""))
+    for track in plan.tracks:
+        if track.state != "done":
+            continue
+        wanted = track.filename if plan.keep_names else wanted_filename(plan, track)
+        here = album_dir / track.filename
+        if track.filename != wanted:
+            said.append(f"{track.number:02d} would be renamed: {track.filename} → {wanted}")
+        final = album_dir / wanted
+        if not final.exists() and not here.exists():
+            continue
+        if trim_signature(track) != (track.trimmed or ""):
+            said.append(f"{track.number:02d} would be cut to its trim points"
+                        if trim_signature(track) else f"{track.number:02d} would be put back untrimmed")
+        if plan.keep_tags:
+            continue   # nothing is ever written into this file (§9, slice 58)
+        text = read_sidecar(album_dir, track)
+        if track.tagged == signature(plan, track, cover, text):
+            continue
+        path = final if final.exists() else here
+        try:
+            have = tags_in(path)
+        except (MutagenError, OSError) as e:
+            said.append(f"{track.number:02d} would be retagged — the file cannot be read: {e}")
+            continue
+        wanted_tags = build_tags(plan, track, text)
+        changed = [_change(key, have.get(key), value)
+                   for key, value in wanted_tags.items() if str(have.get(key) or "") != str(value or "")]
+        gone = [key for key in have if key not in wanted_tags and key not in KEEP_IF_PRESENT]
+        if changed or gone:
+            said.append(f"{track.number:02d} would be retagged: "
+                        + "; ".join(changed + [f"{key} would be dropped" for key in gone]))
+        else:
+            # every value in the file is already right and only the record of them is out of date —
+            # the file is still rewritten, so the dry run says so rather than staying silent
+            said.append(f"{track.number:02d} would be rewritten with the same tag values "
+                        f"(the plan's record of them is out of date)")
+    return said
+
+
+def _change(key: str, old: object, new: object) -> str:
+    """One tag value that would change, old → new, in a line somebody can read.
+
+    **Where they differ, not where they start.** A lyric is two thousand characters and the change may
+    be its last one — the first version of this report showed the first sixty of each and printed the
+    same text twice (measured on the user's own albums), which is worse than saying nothing.
+    """
+    before, after = ("" if old is None else str(old)), ("" if new is None else str(new))
+    if len(before) <= SHOWN and len(after) <= SHOWN:
+        return f"{key} {_short(before, empty='nothing')} → {_short(after, empty='nothing')}"
+    same = len(_prefix(before, after))
+    if same >= SHOWN:   # they agree for longer than a line: say where they stop agreeing
+        return (f"{key} differs from character {same} of {len(before)} → {len(after)}: "
+                f"{_short(before[same:], empty='the end of it')} → {_short(after[same:], empty='the end of it')}")
+    return f"{key} {_short(before, empty='nothing')} → {_short(after, empty='nothing')}"
+
+
+def _prefix(one: str, other: str) -> str:
+    """How much of two values is the same, from the start."""
+    for i, (a, b) in enumerate(zip(one, other, strict=False)):
+        if a != b:
+            return one[:i]
+    return one[:min(len(one), len(other))]
+
+
+def _short(value: object, empty: str = "nothing") -> str:
+    """One tag value for a report: quoted, on one line, and cut where it stops being useful."""
+    if value is None or value == "":
+        return empty
+    text = str(value).replace("\n", "⏎").replace("\t", " ")
+    shown = f"{text[:SHOWN]}…" if len(text) > SHOWN else text
+    return f"“{shown}”"
 
 
 def run(

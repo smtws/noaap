@@ -5130,10 +5130,72 @@ to Cloudflare"* for the non-app path.
   `pytest_collection_modifyitems`, no new dependency): seeds 1, 2 and 3, **1624 passed, 11 skipped**
   each time, 0 `noaap-card-idle` threads alive at the end of each run.
 
+## BY. A dry run that names everything (P68, DESIGN §9, slice 85)
+
+- [x] **BY1 · R** — the defect, as the user met it
+
+  `noaap repair --dry-run` on the real library: *"3946 track(s) would get the length of their file"*,
+  *"246 album(s) would be tidied up"*, and **not a word about tags**. The real run then rewrote **376
+  opus files**, each 1–2 bytes smaller. The reviewer had told the user, on the dry run's word, that no
+  audio file would be touched. Cause in the code: renames, trims and retags all happen inside
+  `run(download=False)`, and the dry branch returned before reaching it.
+
+- [x] **BY2 · M** — the same two albums, dry against real, on copies
+
+  Copies of *Feuerschwanz — Die letzte Schlacht* and *Sabaton — Heroes* (31 opus files):
+
+  | | |
+  |---|---|
+  | the dry run's per-track lines | 18 retags named, with the value that changes |
+  | its own total | *"0 file(s) would be renamed and 18 audio file(s) would be rewritten (their tags)"* |
+  | files the dry run changed | **0 of 61** (hashes identical) |
+  | the real run's actions | **18**, and the two sets agree exactly |
+  | files the real run changed | 20 — 18 audio and 2 plans |
+  | size change per rewritten file | **−1 byte**, all 18 of them |
+
+- [x] **BY3 · M** — why those files and not their siblings, to the character
+
+  The only value that differs is `lyrics`, and it differs in its **last character**: LRCLIB ends a
+  synced lyric whose singing stops before the track does with a bare stamp — `[03:52.92] `, trailing
+  space and all. `update_track` wrote that text into the file's lyrics tag *and* into the signature
+  beside it; `read_sidecar` **strips** the text it hands to every later pass. So the signature never
+  matched again, and every tidying pass rewrote the file for one character. Counted over the test
+  library: **864** of 5142 done tracks stale (436 mp3, 376 flac, 52 opus), and of the 52 opus ones
+  **52** differ in exactly that character and nothing else. The `.lrc` on disk really does end
+  `b'[03:52.92] \n'`. Fixed where the text enters (`found.text.strip()`), so the writer and the reader
+  agree; files written before it get one catch-up rewrite, which the dry run now announces —
+  *"lyrics differs from character 2031 of 2032 → 2031: “ ” → the end of it"*.
+
+  The first version of that report showed sixty characters of each side and printed **the same text
+  twice**; it names the character they stop agreeing at because of this case.
+
+- [x] **BY4** — on fixtures: the set of actions the dry run prints equals the set the real run
+  performs, for an album that needs a rename **and** a retag, and again for one with a pending trim
+  (on an album that needs tidying for another reason — one whose plan is already right is skipped by
+  both runs alike). A dry run over a library that needs nothing says nothing about files, and a dry run
+  leaves every byte in the library as it was (hashes over every file).
+
+- [x] **BY5 · M** — *"1 leaked semaphore objects to clean up at shutdown"*, and whose it is
+
+  Not ours and not growing: one per process, created by **tqdm** the first time stable-ts draws a
+  progress bar — traced to the frame (`stable_whisper.align` → `tqdm.__new__` → `get_lock` →
+  `create_mp_lock`), and absent from every model load taken on its own. Nothing in noaap uses
+  multiprocessing, so tqdm is given a plain lock (`tqdm.set_lock`) before the first inference:
+  the warning is gone from a verified alignment. In the same run the progress bars left the log too —
+  stable-ts reads `verbose=False` as *"draw the bar, print no text"* and only `None` as *"say nothing"*,
+  and the checked alignment had been passing neither.
+
+- [x] **BY6** — `http` can listen (from the queue): `timing-serve` answers `/heard` with the words it
+  heard, `HttpTiming.heard` turns them back into `Heard`, and **the matching stays on the asking
+  machine** — the lyric never crosses the network. Cases: the words and their times come back with the
+  far end's model and version, the language goes with the request, a far end that cannot listen says so
+  before anything is sent, and one that refuses mid-request answers 400 with its own sentence.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BY cases (P68: a dry run that names everything) | 6 | **1 defect of mine in the report itself, found by running it** | `repair --dry-run` said lengths and albums and nothing about tags; the real run rewrote **376** of the user's audio files, after the user had been told none would be. The report is built from the pass's own predicates now — one line per track for renames, trims and retags with the values that change — and a test compares the dry set with the real set. On copies of two real albums: 18 retags named, 0 of 61 files touched by the dry run, the two sets agreeing exactly, and **−1 byte** on each rewritten file. Why those files: LRCLIB ends a lyric whose singing stops early with a bare stamp and its **trailing space**, which was written into the tag while the reader strips it — 52 of 52 stale opus files differ in exactly that character, 864 tracks in the test library were stale for it. Stripped where it enters now. My own defect: the first report showed sixty characters of each side and printed the same text twice, which is how the trailing space stayed invisible; it names the character they stop agreeing at. Also: the *"1 leaked semaphore"* is **tqdm's** multiprocessing lock behind stable-ts's progress bar (traced to the frame; a plain lock settles it, and `verbose=None` takes the bars out of the log), and `http` can now listen. 1633 pytest + 135 node. |
 | 2026-09-30 | the BX cases (P67c: the test that counted three releases) | 4 | 0 — the flaky test is the canary and keeps its assertion | CI saw `emptied == [1, 1, 1]` where one call was made, on two commits, passing on a rerun of the same commit. Cause, counted: every `App` starts a card-idle watcher with no lifecycle, **59** of them were alive after three test files, and when a window passes such a thread calls `release_gpu_memory()` — which reads `sys.modules["torch"]`, i.e. whatever the test running at that moment has stubbed there. Fixed at the root: the one line that starts the thread does nothing in tests, so 59 → **0**; three cases now say an `App` starts one, a window of 0 starts none, and no test leaves one running. The suite in shuffled order, seeds 1–3: 1624 passed each time. |
 | 2026-09-30 | the BW cases (P67b: a job holds only what it uses) | 5 | **2 defects of mine, both found by the reviewer using P67** | `listen` leaves 3.6 GB of the big model on the card; slice 82's gate counted it as room and sent the *alignment* that followed to a card with 3355 MiB free for a run that peaks at 3460 — it died half way through, which is two buttons pressed in turn. A job now lets go of what it will not use before it asks for room, and says so in its first line. Measured on a real server, second opinion on: `listen → align → listen` all succeed (29.9 / 21.5 / 29.8 s, peaks 4560 / 4448 / 4580 MiB, held after each 3856 / 568 / 3940 MiB), and four in a row from a held state too. Second defect: with every weight on the disk the log still greeted the model hub — measured to the component, it is the **separator** asking `hf_hub_download` for metadata about a file it has, not the aligner and not the big model. Every load now runs with the hub switched off both ways the library reads it, retrying once with a download that says so: **0** hub lines against 2 over the same jobs, and an opt-in test loads all three models with sockets forbidden. **And one of my own, unforced:** a `pkill` pattern of mine matched the user's own socket-activated service and stopped it; the socket brought it back in three seconds, but I had been told twice not to touch it. 1621 pytest + 135 node. |
 | 2026-09-30 | the BV cases (P67: words placed by listening first) | 7 | 0 | Forced alignment cannot know that a line is not in the recording; a transcript can. `listen`, asked of the drafting slot, with the matching in the core: `difflib` over normalised words, a chorus matched to its three occurrences in order, and a line placed when **half** of its own words are found in one run. Measured over fifteen tracks (725 lines) and the reported case: the aligner places **96%** at a median 0.27 s and refuses 3 of the 4 absent lines; listening places **57%** at 0.49 s and refuses **4 of 4** — so it is a second action, not a replacement. Two measurements changed the design mid-build: a model left to detect the language wrote **27 words of Russian boilerplate** over a German song (the words name their language now, when two stopword lists are sure), and a speech vendor over a band returned an **empty transcript on five of six tracks** (a vendor is sent the isolated voice, the local model the track — 412 lines against 399, and 36 against 0 on the case). Report only: the aligner vetoed by the transcript is the most accurate thing measured (92% within a second) and costs 330 right stamps, with no setting that refuses the fourth absent line for free. Deepgram: 13 calls, 47.55 of 60 minutes. 1611 pytest + 135 node. |
