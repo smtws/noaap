@@ -117,3 +117,21 @@ def test_the_script_and_the_unit_agree_on_where_a_release_lives(tmp_path):
                  PYTHONPATH=str(Path(__file__).parent.parent / "src")))
     assert said.returncode == 0, said.stderr
     assert str(elsewhere / "bin" / "noaap") in said.stdout
+
+
+def test_the_helpers_are_a_list_the_caller_can_replace():
+    """The extras are the package's; the helpers are the *machine's* (§9, slice 93, P74b) — two CUDA 12
+    wheels ctranslate2 needs where torch brings CUDA 13's, and the keyring client yt-dlp reads Chrome's
+    cookies with. A release that cannot get one of them should stop, not run quietly on the processor."""
+    text = SCRIPT.read_text()
+    assert 'HELPERS="${NOAAP_RELEASE_HELPERS:-nvidia-cublas-cu12 nvidia-cudnn-cu12 secretstorage}"' in text
+    # one resolution for the wheel and the helpers, so a missing helper fails the install
+    assert 'uv pip install --quiet --python "$VENV/bin/python" "$spec" $HELPERS' in text
+
+
+def test_the_helper_list_needs_a_value_and_the_help_explains_it(repo):
+    assert '--helpers needs a list' in run(repo, "--helpers").stderr
+    said = run(repo, "--help").stdout
+    for helper in ("nvidia-cublas-cu12", "nvidia-cudnn-cu12", "secretstorage"):
+        assert helper in said
+    assert "NOAAP_RELEASE_HELPERS" in said

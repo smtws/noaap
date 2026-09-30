@@ -149,6 +149,20 @@ reports afterwards. `--no-restart` installs without touching the running service
 `NOAAP_RELEASE_VENV` puts the release somewhere else — `noaap service install` reads the same variable,
 so both sides agree about where it lives, and the script says so when the installed unit names another.
 
+It also installs the `timing,timing-check` extras and three **helpers the package does not declare** but
+the service needs on a machine like this one:
+
+| helper | why it is there |
+|---|---|
+| `nvidia-cublas-cu12` | faster-whisper runs on ctranslate2, which is built against **CUDA 12's** cuBLAS. torch brings the CUDA 13 wheels (`nvidia-cublas` 13.x), which ctranslate2 cannot load. |
+| `nvidia-cudnn-cu12` | the same for cuDNN. Without the two, a second opinion falls back to the processor — about 11× slower, measured on this machine. |
+| `secretstorage` | Chrome and Chromium keep their cookies encrypted with a key in the desktop keyring, and yt-dlp needs this to read it; without it every `v11` cookie is dropped with a warning. |
+
+`NOAAP_RELEASE_HELPERS` or `--helpers "…"` replaces that list, `--helpers ""` installs none of them, and
+`NOAAP_RELEASE_EXTRAS` does the same for the extras. The wheel and the helpers are resolved in one
+install, so a helper that cannot be had fails the release rather than leaving a service that quietly
+runs on the processor.
+
 Everything else keeps running from a checkout: `uv run noaap …` is always this tree, and
 `noaap service install --from-checkout` writes a unit that deliberately follows it — for development,
 not for the machine you use.
@@ -1036,8 +1050,10 @@ and with it two things:
 
 On CUDA there is a packaging trap worth knowing about: `ctranslate2` wants CUDA 12's `libcublas`
 while the installed `torch` may bring a different one. noaap notices, says so, and falls back to
-the processor; `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` puts the GPU back. On a machine
-without a GPU none of this applies — it is simply slower.
+the processor; `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` puts the GPU back — and a
+[release install](#two-ways-to-have-it-installed-and-which-one-your-service-should-run) brings those
+two along by itself, which is what they are doing in its helper list. On a machine without a GPU none
+of this applies — it is simply slower.
 
 ### The paid ones
 

@@ -2719,6 +2719,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    0.18 s into 51 MB; and a release venv costs tens of megabytes of real blocks under `$HOME`, where
    uv hardlinks from its cache, against ~7 GB on another filesystem, where it copies — which is why
    the script refuses `/tmp`.
+   **And the installer brings what the runtime needs and the package does not declare** (P74b, found by
+   the reviewer on the first real release): `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`, because
+   faster-whisper runs on ctranslate2, which is built against CUDA 12's libraries while torch brings
+   CUDA 13's — without them the second opinion falls back to the processor, some 11× slower — and
+   `secretstorage`, without which yt-dlp cannot read Chrome's cookies at all. These are not
+   dependencies: each is true of *this kind of machine*, not of the package, which is exactly the kind
+   of thing a release install has to carry and a `pyproject.toml` cannot say. The wheel and the helpers
+   are resolved in one install, so a helper that cannot be had fails the release instead of leaving a
+   service that quietly runs slowly.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
@@ -2932,6 +2941,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   invocation.
 - **Measure the disk before claiming it is free.** uv hardlinks within one filesystem and copies across
   two: the same venv is tens of megabytes or seven gigabytes depending on where it is put.
+- **A dependency of the machine is not a dependency of the package.** Two CUDA 12 wheels and a keyring
+  client are true of this laptop, not of noaap; the release install is the one place that can say so.
+- **Fail the release rather than install a slower one.** A missing helper that only shows up as "why is
+  this suddenly on the processor" is worse than an install that stops and says which package it wanted.
 
 ### Decisions of 2026-09-30 (only what is needed, §9, slice 92)
 

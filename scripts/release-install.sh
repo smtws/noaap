@@ -13,6 +13,13 @@
 #   scripts/release-install.sh                 # the tag at HEAD
 #   scripts/release-install.sh v1.22.0         # a named tag
 #   scripts/release-install.sh --no-restart    # install, leave the running service alone
+#   scripts/release-install.sh --helpers ""    # without the helpers below
+#
+# It installs the extras `timing,timing-check` and three **helpers** the package does not declare but
+# the service needs on a machine like this one: `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`, without
+# which the second opinion runs on the processor (ctranslate2 wants CUDA 12's libraries and torch
+# brings CUDA 13's), and `secretstorage`, without which yt-dlp cannot read Chrome's cookies.
+# `NOAAP_RELEASE_HELPERS` or `--helpers` replaces that list; `NOAAP_RELEASE_EXTRAS` the extras.
 #
 # Undo: `scripts/release-install.sh <the previous tag>`, or point the unit back at a checkout with
 # `noaap service install --from-checkout`.
@@ -21,6 +28,15 @@ set -euo pipefail
 
 VENV="${NOAAP_RELEASE_VENV:-$HOME/.local/noaap-release}"
 EXTRAS="${NOAAP_RELEASE_EXTRAS:-timing,timing-check}"
+# **What the runtime needs and the package does not declare** (§9, slice 93). Not dependencies: each is
+# a thing the service needs on *this* kind of machine, and the release install is what has to bring it.
+#   nvidia-cublas-cu12, nvidia-cudnn-cu12  faster-whisper runs on ctranslate2, which is built against
+#     CUDA 12's cuBLAS and cuDNN. torch brings the CUDA 13 wheels (`nvidia-cublas` 13.x,
+#     `nvidia-cudnn-cu13`), which ctranslate2 cannot load, so the second opinion falls back to the
+#     processor — about 11× slower, measured on this machine.
+#   secretstorage  Chrome and Chromium keep their cookies encrypted with a key in the desktop keyring,
+#     and yt-dlp needs this to read it; without it every `v11` cookie is dropped with a warning.
+HELPERS="${NOAAP_RELEASE_HELPERS:-nvidia-cublas-cu12 nvidia-cudnn-cu12 secretstorage}"
 PYTHON="${NOAAP_RELEASE_PYTHON:-3.14}"
 UNIT="noaap.service"
 restart=yes
@@ -38,6 +54,7 @@ while [ $# -gt 0 ]; do
     --allow-untagged) allow_untagged=yes ;;
     --venv) shift; [ $# -gt 0 ] || die "--venv needs a path"; VENV="$1" ;;
     --extras) shift; [ $# -gt 0 ] || die "--extras needs a list, or \"\" for none"; EXTRAS="$1" ;;
+    --helpers) shift; [ $# -gt 0 ] || die "--helpers needs a list, or \"\" for none"; HELPERS="$1" ;;
     -h|--help) awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
     -*) die "unknown option $1" ;;
     *) [ -z "$tag" ] || die "one tag at a time (got $tag and $1)"; tag="$1" ;;
@@ -92,8 +109,15 @@ fi
 
 spec="noaap @ $wheel"
 [ -z "$EXTRAS" ] || spec="noaap[$EXTRAS] @ $wheel"
-say "installing $spec"
-uv pip install --quiet --python "$VENV/bin/python" "$spec"
+if [ -n "$HELPERS" ]; then
+  say "installing $spec, with $HELPERS"
+else
+  say "installing $spec"
+fi
+# one resolution for the wheel and the helpers, so a helper that cannot be had fails the release
+# instead of leaving a service that quietly runs on the processor. $HELPERS is a list on purpose.
+# shellcheck disable=SC2086
+uv pip install --quiet --python "$VENV/bin/python" "$spec" $HELPERS
 # `noaap --version` exists from 1.23.0 on; anything older still has its metadata to read
 installed="$("$VENV/bin/noaap" --version 2>/dev/null || true)"
 if [ -z "$installed" ]; then
