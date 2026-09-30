@@ -730,7 +730,7 @@ wheels = [
 
 [[package]]
 name = "noaap"
-version = "1.24.2"
+version = "1.24.3"
 source = { editable = "." }
 dependencies = [
     { name = "bgutil-ytdlp-pot-provider" },
