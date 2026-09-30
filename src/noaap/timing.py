@@ -751,3 +751,68 @@ __all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "V
            "HttpTiming", "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of",
            "kind_for", "language_of", "line_starts", "lines_from_words", "plain_lines", "provider",
            "release_gpu_memory", "stamped", "verified", "verifies_with"]
+
+
+# -- a line is placed when something supports it (§9, slice 81) --------------------------------------
+#
+# **Forced alignment places everything, because that is what it is.** Given words that are not in the
+# recording it finds the least bad path for them anyway — and a user's own case showed what that looks
+# like: four lines of an LRCLIB entry that this cut does not sing were pinned to 0.0, 53.2, 53.7 and
+# 55.8 s, the first three of them where nobody is singing at all, and the whole song after them came
+# out ~4.8 s late. Nothing objected, and the result said *placed 49 of 49*.
+#
+# So a placement needs evidence of its own, and the evidence that is measurable here is **whether
+# anybody was singing where the line was put**. The aligner's own score is recorded beside every line,
+# but on this material it does not separate: measured over that case, the four lines that are not in
+# the recording scored 0.001–0.006 while genuine lines scored 0.002–0.824, with four genuine lines at
+# or below the worst of the four. A gate on that number would throw away real lines.
+
+VOICED_ENOUGH = 0.25   # of the stretch a line claims, measured; see the slice for the distribution
+# characters per second, from a line's own start to the next line's — the backstop of §9 slice 81,
+# never the first test. Measured over 128 263 line gaps of a real library: median 8.3, p90 14.7,
+# p99 25.7, p99.9 145; everything above ~60 is a stamp artefact rather than anybody singing, and the
+# fastest lines that *are* sung (a scat, a patter verse) sit at 50 and below.
+TOO_FAST = 60.0
+
+
+def voiced_share(start: float | None, end: float | None, sung: list[tuple[float, float]]) -> float | None:
+    """How much of `[start, end]` lies inside a stretch where somebody is singing, or None."""
+    if start is None or end is None or end <= start or not sung:
+        return None
+    inside = sum(max(0.0, min(end, b) - max(start, a)) for a, b in sung)
+    return max(0.0, min(1.0, inside / (end - start)))
+
+
+def unplace_unsupported(timed: Timed, sung: list[tuple[float, float]],
+                        scores: dict[int, float] | None = None) -> list[str]:
+    """Take back the placements nothing supports, and say why. Returns one sentence per line taken.
+
+    The line keeps its place in the order and its words; only its stamps go, which is what "unplaced"
+    has always meant here. Two reasons, in this order:
+
+    1. **nobody was singing there** — the claim is measured against the vocal stem the aligner already
+       made, over the stretch from this line's start to the next line's (or its own end, whichever is
+       longer, so that a line followed by an instrumental break is not judged on the break);
+    2. **the words could not have been sung that fast** — the backstop, and only where the first test
+       had nothing to say.
+    """
+    taken: list[str] = []
+    starts = [line.start for line in timed.lines]
+    for i, line in enumerate(timed.lines):
+        if line.start is None:
+            continue
+        nxt = next((s for s in starts[i + 1:] if s is not None), None)
+        claimed_end = max(line.end or line.start, min(nxt, line.start + 1.0) if nxt else line.start)
+        share = voiced_share(line.start, claimed_end, sung)
+        if share is not None and share < VOICED_ENOUGH:
+            line.start = line.end = None
+            taken.append(f"line {i + 1}: nobody is singing there ({share:.0%} of it)")
+            continue
+        gap = (nxt - line.start) if nxt is not None else None
+        if gap and gap > 0.01 and len(line.text) / gap > TOO_FAST:
+            line.start = line.end = None
+            taken.append(f"line {i + 1}: {len(line.text)} characters in {gap:.2f}s is not singing")
+    if scores:
+        timed.parameters["line_scores"] = ",".join(
+            f"{i + 1}:{scores[i]:.3f}" for i in sorted(scores) if i in scores)
+    return taken

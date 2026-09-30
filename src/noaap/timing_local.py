@@ -40,6 +40,7 @@ from .timing import (
     language_of,
     release_gpu_memory,
     signals_of,
+    unplace_unsupported,
     verified,
 )
 
@@ -177,7 +178,12 @@ class LocalTiming:
         timed = Timed(lines=placed, provider=self.name, model=f"{BUNDLES[lang]} + {SEPARATOR}",
                       version=torchaudio.__version__,
                       parameters={"device": device, "language": lang, "separated": "vocals"})
-        per_line = [statistics.median(v) for v in scored.values() if v]
+        by_line = {i: statistics.median(v) for i, v in scored.items() if v}
+        self._last_line_scores = by_line        # what each line is worth, for whoever measures
+        self._last_line_evidence = {i: {"score": by_line.get(i), "words": len(scored.get(i, [])),
+                                        "start": starts.get(i), "end": ends.get(i)}
+                                    for i in range(len(lines))}
+        per_line = list(by_line.values())
         if per_line:
             timed.parameters["confidence"] = format(statistics.median(per_line), ".3f")
         # What this answer says about itself, always — not only when a second method is checking it
@@ -185,6 +191,13 @@ class LocalTiming:
         # whether an lrclib entry's words belong to this recording (§9, slice 46).
         sung = sung_stretches(wave.cpu(), bundle.sample_rate)
         length = wave.size(1) / bundle.sample_rate
+        # **what nothing supports is not placed** (§9, slice 81). Forced alignment puts every line
+        # somewhere; this takes back the ones that were put where nobody sings, or faster than
+        # anybody sings, and says so in the result.
+        if taken := unplace_unsupported(timed, sung, by_line):
+            timed.parameters["unsupported"] = "; ".join(taken)
+            for said in taken:
+                self.log(f"  not placed — {said}")
         mine = signals_of([line.start for line in timed.lines], length=length, sung=sung,
                           failed=len(timed.unplaced), confidence=_number(timed.parameters.get("confidence")))
         timed.parameters.update(mine.to_parameters("own"))

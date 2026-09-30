@@ -177,3 +177,34 @@ test("and when it cannot say which, it says that too", () => {
   assert.match(text, /nothing here can say which of them is right/);
   assert.doesNotMatch(text, /lost it:/);
 });
+
+// -- why a line was not placed, and the check's own objection (§9, slice 81) ------------------------
+
+test("the notice says why a line kept no stamp", () => {
+  const notice = alignNotice({provider: "local", model: "wav2vec2", parameters: {
+    unsupported: "line 1: nobody is singing there (0% of it); line 2: nobody is singing there (9% of it)",
+  }}, {unplaced: [0, 1], kept: 0});
+
+  assert.ok(notice.includes("2 lines could not be placed"), notice);
+  assert.ok(notice.includes("nobody is singing there"), notice);
+  assert.ok(notice.includes("and 1 more"), notice);
+});
+
+test("and the check objects to stamps that sit in silence or on top of each other", () => {
+  const notice = alignNotice({provider: "local", model: "m", parameters: {
+    own_in_silence: "2", own_piled: "3", verified_against: "whisper",
+  }}, {unplaced: [], kept: 0});
+
+  assert.ok(notice.includes("The check objects"), notice);
+  assert.ok(notice.includes("2 stamps sit where nobody is singing"), notice);
+  assert.ok(notice.includes("3 sit on top of each other"), notice);
+});
+
+test("a clean result says none of that", () => {
+  const notice = alignNotice({provider: "local", model: "m", parameters: {
+    own_in_silence: "0", own_piled: "0", verified_against: "whisper",
+  }}, {unplaced: [], kept: 0});
+
+  assert.ok(!notice.includes("objects"), notice);
+  assert.ok(notice.includes("A second method agreed"), notice);
+});

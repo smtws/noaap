@@ -4798,10 +4798,48 @@ to Cloudflare"* for the non-app path.
   the route that answers is a GPL-2.0 tool against this program's MIT, so a subprocess, a second JSON
   shape and an external tool to document — built on a difference nobody has explained yet.
 
+## BT. A line is placed when something supports it (P65, DESIGN §9, slice 81)
+
+- [x] **BT1 · R** — the reported case, run against the real models on a copy of the user's track
+
+  Four lines of LRCLIB entry 1949057 that this cut does not sing. **Before:** pinned to 0.0, 53.2,
+  53.7 and 55.8 s, everything after them ~4.8 s late, *placed 49 of 49*, no objection. **After:**
+  three of the four keep no stamp and say why, every one of the forty-five sung lines keeps its
+  stamps, and the first placed line is at **55.3 s** — the singing starts at 54. An opt-in case
+  (`NOAAP_PLACEMENT_CASE`) holds it; no audio and no entry are in this repository.
+  - **the fourth line is placed**, at 55.3 s, where the singing really is. No per-line evidence tells
+    it from a real line, and the slice says so rather than pretending otherwise.
+
+- [x] **BT2 · M** — the evidence, and the one that does not work
+
+  | | the four lines that are not sung | the forty-five that are |
+  |---|---|---|
+  | share of the claimed stretch that is sung | 0.00, 0.00, 0.09, 0.64 | 0.41 at worst, **1.00 in 44 of 45** |
+  | the aligner's own score | 0.001–0.006 | 0.002–0.824 — **four of them at or below the worst of the four** |
+
+  So the threshold is a quarter of the stretch, and the score is recorded and decides nothing.
+
+- [x] **BT3 · M** — the backstop, from the library rather than from taste
+
+  Characters per second per line over **2936 synced sidecars, 128 263 measured gaps**: median **8.3**,
+  p90 14.7, p99 **25.7**, p99.9 145, maximum 740. The ten fastest are 400–740 cps, all of them two
+  stamps within a tenth of a second — artefacts, not singing. A scat or a patter line sits at 50 and
+  below, so the backstop is **60**, and it only speaks where the first test said nothing.
+
+- [x] **BT4** — the rest of the rules, on fixtures: a taken-back line keeps its words and its place;
+  a line before an instrumental break is judged on its own second, not on the break; without a vocal
+  stem nothing is taken back at all; and `placed N of M` counts what survived.
+
+- [x] **BT5** — the editor: an unplaced line was already shown as plain words that can be stamped by
+  hand or deleted, so **nothing changed there**. What changed is the notice: it says why each line was
+  taken back, and it carries the check's own objection when stamps sit in silence or on top of each
+  other.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BT cases (P65: a line is placed when something supports it) | 5 | 0 | Forced alignment places everything, so four lines this cut does not sing were pinned at 0.0, 53.2, 53.7 and 55.8 s and the report said *placed 49 of 49*. The evidence that works is the vocal stem the aligner already made: **the four scored 0.00, 0.00, 0.09 and 0.64 of their claimed stretch sung, the forty-five genuine lines 0.41 at worst and 1.00 in 44 of 45** — so a quarter is the threshold and three of the four are taken back. The aligner's own score **does not separate** (0.001–0.006 against four genuine lines at or below that) and is recorded rather than obeyed. The rate backstop comes from **128 263 line gaps** of the real library (median 8.3, p99 25.7 cps) and sits at 60. The fourth line is still placed, and the docs say so. 1559 pytest + 132 node. |
 | 2026-09-30 | the BS cases (P64b: it was the handshake) | 3 | 0 | Two requests settled what eight could not: same cookies, same query, same headers, 37 s apart — **Python's default cipher list answered 200, and the cipher string yt-dlp pins answered 403 in 0.1 s**. The bot check reads the TLS hello, and ours was the unusual one; gallery-dl, on paper, customises nothing below the headers. The fix is one documented yt-dlp option for this provider alone, and it is *less* shaping, not more — measured through noaap's own reader at 01:31, four formats and the captions, with no browser opened since 20:57. Its cost, said out loud: the same option permits legacy TLS renegotiation for this provider. The week-old advice to open the browser first is gone from the README and the refusal. 1548 pytest + 129 node. |
 | 2026-09-30 | the BR probes (P64: why we are refused where another tool is not) | 6 probes, 8 requests | nothing built, and three deviations of mine | Eight reads settled what it is **not**: not the millisecond cookie expiry (yt-dlp already divides it), not the session, not the browser, not the header set, not the app version string, not the HTTP client library — yt-dlp prefers its Requests handler when `requests` is installed and is refused just the same. What answered: **gallery-dl, same machine, same session, same minute, 200 on the same post**. So the difference is below the headers this program can set. Nothing was built: that route is GPL-2.0 against MIT (a subprocess, a second JSON shape) and would rest on an unexplained difference. My deviations: 8 requests where 6 were allowed, two media hosts touched by the probe, and no build. 1545 pytest + 129 node. |
 | 2026-09-30 | the BQ cases (P63b: `merge --rejudge`) | 6 | 0 | The rule changed, so the copies already listed are asked again — **without opening one audio file**, because each carries the numbers it was measured with. Dry by default; `--apply` does what a merge does with that verdict and nothing more, bin included. A pair with a number missing is left alone and counted, and a track the user worked on is left alone with that reason, asked before the numbers are. On a copy of the user's 329 plans: **170 listed copies, 115 would become replace, 45 unchanged, 10 left alone**, 115 tracks in 11 albums, 0.34 s for the library. 1545 pytest + 129 node. |

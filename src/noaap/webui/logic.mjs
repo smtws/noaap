@@ -386,9 +386,21 @@ export function alignNotice(timed, result) {
     : p.disagreed && Number(p.disagreed) > 0
     ? ` Two methods were compared and disagreed on ${p.disagreed} of ${p.compared} lines, which is why those have no stamp.`
     : p.verified_against ? " A second method agreed with every line it could compare." : "");
+  // **why a line was not placed** (\u00a79, slice 81): forced alignment puts every line somewhere, so
+  // "could not be placed" here means the result was taken back — because nobody was singing there,
+  // or because the words could not have been sung that fast. The reasons are the aligner's own.
+  const why = p.unsupported ? ` ${String(p.unsupported).split("; ")[0]}${
+    String(p.unsupported).split("; ").length > 1 ? `, and ${String(p.unsupported).split("; ").length - 1} more` : ""}.` : "";
+  // and the arithmetic's own objection to what is left: stamps where nobody sings, or piled together
+  const silent = Number(p.own_in_silence || 0);
+  const piled = Number(p.own_piled || 0);
+  const objection = silent || piled
+    ? ` The check objects: ${[silent ? `${silent} stamp${silent > 1 ? "s sit" : " sits"} where nobody is singing` : "",
+        piled ? `${piled} sit on top of each other` : ""].filter(Boolean).join(" and ")} \u2014 play the first lines before you save.`
+    : "";
   return `timed by ${by} \u2014 a machine's proposal, nothing is saved yet: press \u25b6 on the first line`
-    + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.` : ".")
-    + checked
+    + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.${why}` : ".")
+    + checked + objection
     + (kept
       ? kept > 1
         ? ` ${kept} stamped lines without words were left as they were; check they are still in order.`

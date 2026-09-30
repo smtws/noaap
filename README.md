@@ -55,7 +55,10 @@ Comes with a command line and a small web app for the library.
   a *timing provider* configured, **"⚖ align these words"** in the editor puts every line on the
   file's clock. It
   writes nothing — the stamps appear in the editor, you play a line to check them and press Save, and
-  the words stay yours while the clock is recorded as the provider's. Measured on twenty real tracks
+  the words stay yours while the clock is recorded as the provider's. **A line it cannot support
+  keeps no stamp**: an aligner places every line whatever you give it, so a line put where nobody is
+  singing — the first verses of an entry your cut does not have, say — comes back as plain words with
+  the reason beside it, for you to stamp by hand or delete. Measured on twenty real tracks
   before it was built: a median of under a second per line, growled vocals no harder than clean ones
   ([the spike](docs/spikes/2026-09-alignment.md)).
 - **You can time the lyrics by tapping.** With the song playing, **"⏱ stamp this line"** (or one

@@ -2353,6 +2353,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    requests this package had already overspent. So: the advice to open the browser stays, because it
    is measured to work, and the next package gets the experiment.
 
+81. ✅ **A line is placed when something supports it** (2026-09-30, P65). The user aligned an LRCLIB
+   entry whose first four lines this cut does not sing. The result: those four pinned to 0.0, 53.2,
+   53.7 and 55.8 s, the whole song after them ~4.8 s late, nothing objected, and the report said
+   **placed 49 of 49**. Forced alignment places everything, because that is what forced alignment is:
+   given words that are not in the recording it finds the least bad path for them anyway.
+   **The evidence that works is whether anybody was singing there.** The vocal stem the aligner has
+   already made says when somebody sings; a line is taken back when less than **a quarter** of the
+   stretch it claims — its own span, or its first second, whichever is longer, so that a line before
+   an instrumental break is not judged on the break — lies inside any of those stretches. Measured on
+   the reported track: the four lines that are not in the recording scored **0.00, 0.00, 0.09 and
+   0.64**; the forty-five that are scored **0.41 at worst and 1.00 in forty-four of them**.
+   **The aligner's own score does not separate, and that is a measurement, not an opinion.** Those
+   four lines scored 0.001–0.006, and four genuine lines scored at or below the worst of them
+   (0.002, 0.003, 0.005, 0.006). A gate on that number would throw real lines away, so it is recorded
+   beside the result — `line_scores` — and decides nothing. *A number that is there is not evidence
+   because it is there.*
+   **The rate is a backstop and never the first test.** Characters per second from one line's start
+   to the next, measured over **128 263 line gaps** of the user's library: median 8.3, p90 14.7, p99
+   25.7, p99.9 145, maximum 740 — and everything above about 60 is a stamp artefact rather than
+   anybody singing, while the fastest lines that *are* sung sit at 50. So 60, and it only speaks where
+   the first test had nothing to say.
+   **What is left, honestly:** three of the four lines are taken back, and the fourth is placed where
+   the singing really is — no per-line evidence tells it from a real line. That is what the second
+   opinion is for, and its objection now reaches the editor: stamps that sit where nobody sings, or on
+   top of each other, are counted and said in the notice, beside the reason each unplaced line was
+   taken back. An unplaced line already kept its words and its place in the order and could be stamped
+   by hand; that needed no change, and it got none.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

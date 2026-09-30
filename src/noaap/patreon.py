@@ -86,11 +86,10 @@ NOT_IN_TIER = "this post is not in your tier"
 # RFC 5746; it applies to this provider's requests and to nothing else in the program.
 PLAIN_TLS = {"legacyserverconnect": True}
 
-# **it says what to do, and does not claim to know which of the two it is** (§9, slice 72). Patreon
-# answers 403 both when a login has lapsed and when Cloudflare wants its bot check again — and the
-# bot-check cookie `__cf_bm` lives **thirty minutes**, so a session that worked an hour ago fails
-# with a login that is perfectly valid. Measured: the P59 live run was refused while `session_id` was
-# good for another year and `__cf_bm` had expired 45 minutes earlier. One action fixes both.
+# **what a 403 means now** (§9, slice 80). It used to mean either of two things — a login that had
+# ended, or Cloudflare wanting its thirty-minute bot cookie again — and the sentence had to name an
+# action that fixed both. Since the handshake stopped being the unusual one, a read works with a bot
+# cookie eleven hours expired, so what is left is the login: measured, and said plainly.
 LAPSED = ("Patreon would not answer for this session — sign in again in the browser noaap reads "
           "cookies from, then try again")
 _STALE = re.compile(r"HTTP Error 40[13]|forbidden|unauthorized|log ?in|sign ?in", re.I)
