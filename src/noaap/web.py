@@ -947,7 +947,8 @@ class App:
                 return self.jobs.submit("take_in_check" if dry else "take_in",
                                         f"{what} {folder.name} would do ({mode})" if dry
                                         else f"{what} {folder.name} ({mode})",
-                                        lambda s: s.take_in(folder, mode, dry_run=dry))
+                                        lambda s: s.take_in(folder, mode, dry_run=dry,
+                                                            new=bool(body.get("new"))))
             case "except":
                 # **the one thing kept per album** (§9, slice 100), and only the user writes it: the
                 # album view turning one of the library's operations off for this album alone.

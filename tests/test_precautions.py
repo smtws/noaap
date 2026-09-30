@@ -226,3 +226,40 @@ def test_a_field_of_theirs_that_a_pass_dropped_is_named(collection, tmp_path):
     done = precautions.restore(snap, collection, apply=True)
     assert done.lost == [f"{snap.files[0].path}: comment"]
     assert done.changed == [], "the recording itself is untouched, which is the other question"
+
+
+def test_the_copy_it_writes_to_is_the_same_kind_of_file(tmp_path, one_second_of_sound):
+    """`tag.kind` decides the format by the suffix, so the temporary copy has to keep it.
+
+    Found on the user's own collection: with the copy named `.x.mp3.noaap-new`, every mp3 was opened
+    as an Opus and **1662 of 2000 files were not tagged** — *"read b'ID3', expected b'OggS'"*. Nothing
+    was damaged, because the write fails before the replace; nothing was written either.
+    """
+    from noaap.tag import kind
+
+    seen = []
+    for suffix in (".opus", ".mp3", ".flac", ".m4a"):
+        path = tmp_path / f"track{suffix}"
+        shutil.copy(one_second_of_sound, path)          # the bytes do not matter here, the name does
+        precautions.safely(path, lambda tmp: seen.append((kind(path), kind(tmp))))
+    assert seen == [("opus", "opus"), ("mp3", "mp3"), ("flac", "flac"), ("mp4", "mp4")]
+
+
+def test_two_files_of_one_recording_are_not_taken_for_each_other(tmp_path, one_second_of_sound):
+    """The same track on an album and on a best-of holds the same audio.
+
+    The digest search looks for a renamed file by what it holds; if it may claim a file the snapshot
+    records under its own name, it renames somebody else's file away — which is how the first version
+    of this left a `FileNotFoundError` behind on a fixture where both files were the same tone.
+    """
+    root = tmp_path / "collection"
+    (root / "Album").mkdir(parents=True)
+    for name in ("01 One.opus", "02 Two.opus"):
+        shutil.copy(one_second_of_sound, root / "Album" / name)   # the same recording twice
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+
+    (root / "Album" / "01 One.opus").unlink()                     # one of them is gone
+    done = precautions.restore(snap, root, apply=True)
+
+    assert done.missing == ["Album/01 One.opus"], "named, not filled in with the other one"
+    assert (root / "Album" / "02 Two.opus").is_file(), "and the other one is where it was"

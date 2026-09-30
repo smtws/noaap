@@ -1818,7 +1818,8 @@ class Service:
 
     # -- taking a folder in (§9, slice 92) -----------------------------------------------
 
-    def take_in(self, folder: Path, mode: str = "merge", dry_run: bool = True) -> Outcome:
+    def take_in(self, folder: Path, mode: str = "merge", dry_run: bool = True,
+                new: bool = False) -> Outcome:
         """Take another folder into the library: the same two passes the command line runs.
 
         `merge` compares it with what is here and takes the better copies (the other side is never
@@ -1839,10 +1840,22 @@ class Service:
             found = merge_pass.survey(folder, self.library, log=self.log)
             for line in merge_pass.report(found, applying=not dry_run):
                 self.log(line)
+            if new:
+                # **the albums this library does not have at all** (§9, slice 92, the `--new` half):
+                # a merge compares what both sides hold, so an album only they have is invisible to it
+                # until it is asked for by name.
+                missing = merge_pass.unpaired_albums(found)
+                self.log(f"{len(missing)} album(s) are not in this library at all")
+                for album_dir, tracks in sorted(missing.items()):
+                    self.log(f"  {tracks[0].plan.albumartist} — {tracks[0].plan.album} "
+                             f"({len(tracks)} track(s))")
             if dry_run:
                 return Outcome("ok", message="nothing was written")
             self.check()
             done = merge_pass.carry_out(found, self.library, log=self.log)
+            if new:
+                got = merge_pass.take_new(found, lambda url: self.fetch(url), log=self.log)
+                self.log(f"{got['taken']} album(s) fetched, {got['held']} already here and left alone")
             self.log(f"{done['replaced']} replaced, {done['filled']} filled, "
                      f"{done['offered']} listed for you to decide"
                      + (f", {done['failed']} could not be taken" if done["failed"] else ""))

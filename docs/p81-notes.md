@@ -57,6 +57,7 @@ R-338 (the settings are the state; an album may only be excepted), R-339 (measur
 |---|---|---|---|
 | dry run, as first built | 171.9 | 43.77 GB | 0 |
 | dry run, after the fix below | **8.8** | **1.63 GB** | 0 |
+| real pass, everything on, originals kept | 277.4 | 86.1 GB | 87.7 GB |
 
 Both said the same thing: 132 albums, 2000 tracks, 440 files would be renamed, 1896 retagged.
 
@@ -68,7 +69,52 @@ copies of one recording; an adoption never asks it. `sources_folder.measure(path
 At 30 MB/s (R-340), for the user's 11,000 tracks: the dry run is **~4.5 minutes** instead of
 **~2.2 hours**.
 
-Still to measure: the real pass (with `--keep-originals`), the restore, and the price of the lookups.
+**The real pass found a bug that would have hit the whole collection**: `safely()` wrote to a copy
+named `.track.mp3.noaap-new`, and `tag.kind` decides the format **by the suffix** — so every mp3 was
+opened as an Opus and **1662 of 2000 files were not tagged** (*"read b'ID3', expected b'OggS'"*). The
+renames went through; nothing was damaged, because the write fails before the atomic replace and the
+originals were kept. Fixed (the copy keeps the suffix) with a case over all four formats. **The
+numbers above are therefore for a pass that renamed 2000 files and tagged only the 338 Opus ones**;
+the pass is being re-measured after the restore.
+
+**The restore found two more**, measured on the same 2000 files (102 s, 44.96 GB read, 37.94 GB
+written, 0 files whose audio had changed, 0 fields of theirs lost):
+
+- It gave up on **52 files** it could not find, although their originals were sitting in the kept
+  store — a pass that renames a file *and* moves its folder defeats both the path and the digest
+  search. The kept copy needs no search at all, and is used now.
+- The digest search was gated on an equal size, which a retagged file never has. Ungating it
+  uncovered the opposite trap on a fixture: two files can hold the **same recording** (a track on an
+  album and on a best-of), and claiming one for the other renames somebody else's file away. It now
+  asks the same-sized files first and never claims a file the snapshot records under its own name.
+
+Checked against the pristine `~/Music/legacy` after that restore: of the 2093 names present in both,
+**2093 are byte-identical**. The rest of the difference is the pass's own files (132 plans) and the
+albums whose folder it renamed — the restore puts files back under their recorded path and **names
+what it left alone** rather than deleting anything.
+
+Still to measure: the re-run with all three fixes (running), and the price of the lookups.
+
+### What the real pass costs, and three ways to cut it
+
+The pass as built pays for the strongest promise at every layer. Over 2000 tracks / 41 GB that is,
+roughly: the snapshot reads every byte (a packet digest per file), `--keep-originals` writes every
+byte again, and each careful write copies a file and digests **both** copies. Measured totals are
+being collected; the arithmetic says ~200 GB read and ~80 GB written for this collection, which at
+30 MB/s is hours over a network.
+
+Three ways to cut it, each giving something up — **for the reviewer and the user to choose**:
+
+1. **Reuse the snapshot's digest in the careful write.** The pass has just computed the source's
+   packet digest; `safely(..., expect=<digest>)` would digest only the temporary file. Halves the
+   verification, gives up nothing. *(My recommendation; not implemented yet.)*
+2. **Verify cheaply where the original is kept.** With `--keep-originals` a bad write is already
+   recoverable byte for byte, so the write could check that the file opens and its length and stream
+   parameters are unchanged (header reads) instead of digesting. Removes most of the remaining
+   verification I/O; gives up "the packets are provably identical" at the moment of writing.
+3. **A snapshot without digests** (`--fast-snapshot`). Records path, size, mtime and tags only:
+   reading ~1.6 GB instead of 43.8. The restore can still put names and tags back; it can no longer
+   *prove* the audio is the audio that was written down.
 
 ## Next steps, in order
 

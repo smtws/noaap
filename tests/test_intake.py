@@ -166,3 +166,23 @@ def test_the_choices_are_a_treatment_and_are_not_recorded(collection, service, t
     plan = load_plan(collection / "Aphelion/Nocturnes")
     assert plan.exceptions in (None, {}), "a quick take-in is not an exception for ever"
     assert embedded_cover(collection / "Aphelion/Nocturnes" / plan.tracks[0].filename) is None
+
+
+def test_the_page_can_run_the_whole_pass(collection, service, tmp_path):
+    """`Service.take_in_all` is what the page's Take-in dialog calls (§9, slice 101).
+
+    The switches arrive as the page sends them, and the library itself is an allowed root — a
+    collection that is already where it belongs is exactly what this pass is for.
+    """
+    done = service.take_in_all(collection, names="keep", musicbrainz=False, lyrics=False,
+                               cover_beside=True, cover_embedded=False, lyrics_embedded=False,
+                               tags=True, dry_run=True)
+    assert done.status == "ok"
+    assert "3 album(s), 6 track(s) would be taken in" in done.message
+
+    # and it is refused where it would be pointless or harmful
+    from noaap.service import refuse_folder
+    assert refuse_folder(collection, collection, itself=True) == ""
+    assert refuse_folder(collection, collection) == "that is the library itself"
+    assert refuse_folder(collection / "Aphelion", collection, itself=True) == ""
+    assert "inside the library" in refuse_folder(collection / "Aphelion", collection)

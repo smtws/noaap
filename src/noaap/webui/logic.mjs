@@ -1049,10 +1049,13 @@ export function takeInState({ folder = "", mode = "merge", check = null, running
              note: "Something is writing to the library — taking a folder in waits for it." };
   }
   if (!matches) {
-    return { matches, canCheck: true, canApply: false,
-             note: mode === "merge"
-               ? "Check first: it compares both sides and writes nothing. The other folder is never written to."
-               : "Check first: it reads the folder and writes nothing." };
+    const first = {
+      merge: "Check first: it compares both sides and writes nothing. The other folder is never written to.",
+      adopt: "Check first: it reads the folder and writes nothing.",
+      "take-in": "Check first: it reads the whole collection and writes nothing — not even the record "
+                 + "of what every file was, which the real run writes before it touches anything.",
+    };
+    return { matches, canCheck: true, canApply: false, note: first[mode] || first.adopt };
   }
   return { matches, canCheck: true, canApply: Boolean(check.lines?.length),
            note: check.lines?.length

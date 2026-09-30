@@ -1960,6 +1960,20 @@ let lastTakeIn = null;   // { folder, mode, lines } of the last check that was r
 const TAKE_IN_MODES = [
   ["merge", "merge \u2014 compare it with this library, keep the better copy"],
   ["adopt", "adopt \u2014 take it in where it stands, one plan per album"],
+  ["take-in", "take in \u2014 a whole collection, to one state: adopt, look up, cover, word, tag"],
+];
+
+// **What a take-in does tonight** (§9, slice 101). Each is on unless switched off, and none of them is
+// recorded against the album: what an album should have is a setting, and the next check or repair
+// brings every album to it. They are here so that eleven thousand tracks can be taken in quickly.
+const TAKE_IN_SWITCHES = [
+  ["musicbrainz", "Look the albums up at MusicBrainz", "names, years, covers and tracklists"],
+  ["lyrics", "Look the words up at LRCLIB", "a `.lrc` beside each track"],
+  ["cover_beside", "Write a cover beside each album", "`cover.jpg` in the album folder"],
+  ["cover_embedded", "Embed the cover in the files", "a rewrite of every file"],
+  ["lyrics_embedded", "Embed the words in the files", "the `LYRICS` tag beside the `.lrc`"],
+  ["tags", "Write noaap's tags into the files",
+   "fields this program does not model \u2014 your comment, your replaygain \u2014 are left alone"],
 ];
 
 function takeInSection() {
@@ -1967,6 +1981,29 @@ function takeInSection() {
                               placeholder: "/mnt/nas/Music", "aria-label": "the folder to take in" });
   const mode = h("select", { class: "take-in-mode" },
     TAKE_IN_MODES.map(([value, text]) => h("option", { value }, text)));
+  const names = h("select", { class: "take-in-names" },
+    h("option", { value: "scheme" }, "rename into noaap's scheme"),
+    h("option", { value: "keep" }, "keep the collection's own names"));
+  const switches = new Map(TAKE_IN_SWITCHES.map(([key]) =>
+    [key, h("input", { type: "checkbox", checked: true })]));
+  const keep = h("input", { type: "text", class: "take-in-keep", autocomplete: "off", spellcheck: "false",
+                            placeholder: "/home/you/noaap-originals",
+                            "aria-label": "where to keep the untouched originals" });
+  const choices = h("div", { class: "take-in-choices", hidden: true },
+    h("div", { class: "muted" },
+      "What this run does. None of it is recorded against the albums \u2014 what an album should have "
+      + "is a setting above, and the next check or repair brings every album to it."),
+    h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, "Names"), h("small", { class: "muted" }, "the files and the folders")),
+      names),
+    ...TAKE_IN_SWITCHES.map(([key, title, help]) => h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, title), h("small", { class: "muted" }, help)), switches.get(key))),
+    h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, "Keep the originals in"),
+        h("small", { class: "muted" },
+          "a folder outside the collection: each file is copied there whole before its first write, "
+          + "which is the only way back byte for byte. Costs as much disk as the collection.")),
+      keep));
   const note = h("div", { class: "muted take-in-note" });
   const check = h("button", { class: "quiet", type: "button" }, "Check");
   const apply = h("button", { class: "quiet", type: "button" }, "Apply");
@@ -1982,11 +2019,16 @@ function takeInSection() {
     listing.textContent = said.matches ? (lastTakeIn.lines.join("\n") || "nothing to do") : "";
   };
   folder.addEventListener("input", update);
-  mode.addEventListener("change", update);
+  mode.addEventListener("change", () => { choices.hidden = mode.value !== "take-in"; update(); });
   // Enter in a path field would submit the settings form, which is not what anybody means by it
   folder.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); check.click(); } });
-  check.addEventListener("click", () => checkTakeIn(folder.value.trim(), mode.value, check, update));
-  apply.addEventListener("click", () => applyTakeIn(apply, update));
+  // what the two buttons send: the folder, the way of taking it in, and — for a take-in — its switches
+  const asked = () => (mode.value !== "take-in" ? {} : {
+    names: names.value, keep_originals: keep.value.trim(),
+    ...Object.fromEntries([...switches].map(([key, box]) => [key, box.checked])),
+  });
+  check.addEventListener("click", () => checkTakeIn(folder.value.trim(), mode.value, check, update, asked()));
+  apply.addEventListener("click", () => applyTakeIn(apply, update, asked()));
   update();
   return h("div", { class: "setting take-in" },
     h("strong", {}, "Take in a folder"),
@@ -2003,15 +2045,16 @@ function takeInSection() {
       h("span", {}, h("strong", {}, "Folder"), h("small", { class: "muted" }, "a local path, or a mounted share")),
       folder),
     h("label", { class: "setting" },
-      h("span", {}, h("strong", {}, "How"), h("small", { class: "muted" }, "the same two ways the command line offers")),
+      h("span", {}, h("strong", {}, "How"), h("small", { class: "muted" }, "the same ways the command line offers")),
       mode),
+    choices,
     note,
     h("div", { class: "actions" }, check, apply),
     listing);
 }
 
-async function checkTakeIn(folder, mode, button, update) {
-  const id = await submit("take_in", { folder, mode, dry_run: true }, button);
+async function checkTakeIn(folder, mode, button, update, asked = {}) {
+  const id = await submit("take_in", { folder, mode, dry_run: true, ...asked }, button);
   if (id == null) return;
   const job = await jobSettled(id, 2400);
   if (!job || job.state !== "done") return;          // submit() and the job log have said why
@@ -2019,7 +2062,7 @@ async function checkTakeIn(folder, mode, button, update) {
   update();
 }
 
-async function applyTakeIn(button, update) {
+async function applyTakeIn(button, update, asked = {}) {
   if (!lastTakeIn) return;
   const { folder, mode, lines } = lastTakeIn;
   if (!confirm(`Take ${folder} into the library (${mode})?\n\n`
@@ -2027,7 +2070,7 @@ async function applyTakeIn(button, update) {
                + (lines.length > 12 ? `\n\u2026 and ${lines.length - 12} more lines` : "")
                + "\n\nThis is what the check listed. Nothing is deleted"
                + (mode === "merge" ? " and that folder is not written to." : "."))) return;
-  const id = await submit("take_in", { folder, mode }, button);
+  const id = await submit("take_in", { folder, mode, ...asked }, button);
   if (id == null) return;
   await jobSettled(id, 4800);
   lastTakeIn = null;                                  // the library has changed: check again

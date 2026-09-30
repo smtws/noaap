@@ -170,18 +170,30 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     here = {p: (p.stat().st_size, None) for p in audio_under(root)}   # digests are read only if needed
     by_path = {str(p.relative_to(root)): p for p in here}
     unclaimed = dict(by_path)
+    recorded = {r.path for r in snapshot.files}
 
     for was in snapshot.files:
         done.files += 1
-        now = by_path.get(was.path)
-        if now is None:
-            now = _found_again(was, unclaimed, here)
-        if now is None:
-            done.missing.append(was.path)
-            continue
-        unclaimed.pop(str(now.relative_to(root)), None)
         want = root / was.path
         source = kept / was.path if kept and (kept / was.path).is_file() else None
+        now = by_path.get(was.path)
+        if now is None:
+            now = _found_again(was, unclaimed, here, recorded, root)
+        if now is None and source is None:
+            done.missing.append(was.path)
+            continue
+        if now is None:
+            # **the kept original does not need the file on disk** (§9, slice 99). Where a pass renamed
+            # a file *and* moved its folder, looking for it can fail — measured: 52 of 2000 — and the
+            # copy put aside before the first write is the answer to all of them.
+            if apply:
+                want.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, want)
+                os.utime(want, ns=(was.mtime_ns, was.mtime_ns))
+            done.retagged += 1
+            done.renamed += 1
+            continue
+        unclaimed.pop(str(now.relative_to(root)), None)
 
         if now != want:
             log(f"  {'would put' if not apply else 'put'} {now.relative_to(root)} back as {was.path}")
@@ -199,7 +211,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
             want.parent.mkdir(parents=True, exist_ok=True)
             now.rename(want)
             now = want
-        if apply:
+        if apply and now.exists():
             if restore_tags(now, was.tags):
                 done.retagged += 1
             else:
@@ -212,6 +224,13 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
                 done.lost.append(f"{was.path}: {', '.join(sorted(lost))}")
         else:
             done.retagged += 1
+    # what is under the root that the snapshot never saw: the plans a pass wrote, and any file it
+    # renamed that could not be matched. Named, never removed — this pass only puts back.
+    left = [name for name in unclaimed if name not in {r.path for r in snapshot.files}]
+    if left:
+        log(f"{len(left)} file(s) under the root are not in the snapshot and were left alone "
+            f"(a pass's own files: plans, covers): {', '.join(sorted(left)[:3])}"
+            + (" …" if len(left) > 3 else ""))
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
             f"name; nothing was changed. `--restore … --apply` does it.")
@@ -221,12 +240,22 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     return done
 
 
-def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tuple[int, str | None]]) -> Path | None:
-    """A renamed file, by what it holds: the same size, then the same packets."""
-    same_size = [p for name, p in unclaimed.items() if here[p][0] == was.size]
-    if not same_size or not was.packets:
+def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tuple[int, str | None]],
+                 recorded: set[str] | None = None, root: Path | None = None) -> Path | None:
+    """A renamed file, by what it holds: the packets, with the same-sized ones asked first.
+
+    **The size is not a gate**, because a file retagged on the way is a different size — gating on it
+    left 52 of 2000 unfindable in the measured run — but it is a good first guess.
+
+    **A file that the snapshot records under its own name is never taken for another one.** Two files
+    can hold the same recording (the same track on an album and on a best-of), and claiming one for
+    the other renames somebody else's file away.
+    """
+    if not was.packets:
         return None
-    for path in same_size:
+    mine = [(name, path) for name, path in unclaimed.items()
+            if not recorded or name not in recorded]
+    for _, path in sorted(mine, key=lambda pair: here[pair[1]][0] != was.size):
         if stream_sha(path) == was.packets:
             return path
     return None
@@ -269,7 +298,11 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
     With `keep` (and `root`), the original is copied there **before** the replace and only the first
     time, so a second pass does not overwrite the first copy with an already-written file.
     """
-    tmp = path.with_name(f".{path.name}.noaap-new")
+    # **the copy keeps the suffix.** `tag.kind` is the one place a suffix decides anything, and a
+    # temporary file called `.x.mp3.noaap-new` reads as an Opus — measured on the user's own
+    # collection, where 1662 of 2000 files failed to be tagged with "read b'ID3', expected b'OggS'".
+    # Nothing was damaged (the write fails before the replace), and nothing was written either.
+    tmp = path.with_name(f".{path.stem}.noaap-new{path.suffix}")
     if tmp.exists():
         tmp.unlink()
     shutil.copy2(path, tmp)
