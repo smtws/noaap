@@ -3,17 +3,100 @@
 [![tests](https://github.com/smtws/noaap/actions/workflows/tests.yml/badge.svg)](https://github.com/smtws/noaap/actions/workflows/tests.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-6b4fd8)](LICENSE)
 
-**Not Officially An Audio Player.** This program was called **ytalbum** up to and including 0.9.0;
-1.0.0 is the same program under a new name, in a new repository, and a machine set up as ytalbum
-keeps working without being told anything — see [Coming from ytalbum](#coming-from-ytalbum).
+**Not Officially An Audio Player.** Turn YouTube playlists into properly tagged albums: the right
+artist and title on every track, album art, MusicBrainz data where it exists, and the audio copied
+without re-encoding. It comes with a command line and a small web app for the library — and with
+SoundCloud, Patreon and a folder you already have as further places music can come from.
 
-Turn YouTube playlists into properly tagged albums: correct artist and title per track,
-album art, MusicBrainz data where it exists, and the audio copied without re-encoding.
-Comes with a command line and a small web app for the library.
+It was called **ytalbum** up to 0.9.0; a machine set up as ytalbum keeps working without being told
+anything ([Coming from ytalbum](#coming-from-ytalbum)).
 
 ![The library in the web UI](docs/screenshots/library.jpg)
 
+## Quick start
+
+From nothing to an album you can play. Everything else in this file is optional.
+
+```sh
+sudo apt install ffmpeg                             # brew install ffmpeg on macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
+
+git clone https://github.com/smtws/noaap.git && cd noaap
+uv sync                                             # venv, dependencies, and Python 3.14 if you lack it
+
+uv run noaap config --library ~/Music/YouTube       # where albums go, once
+uv run noaap fetch "https://www.youtube.com/playlist?list=…"
+uv run noaap serve                                  # the library at http://localhost:8765
+```
+
+That is a working library: tagged files on disk, a cover on each album, lyrics where LRCLIB has them,
+and a page to play and fix them in.
+
+Three things you may need, in the order you are likely to meet them:
+
+- **YouTube starts refusing requests** ("Sign in to confirm you're not a bot"), or a video is
+  age-restricted. Both are the same fix — point noaap at a browser you are signed in to:
+  `uv run noaap config --cookies-from-browser firefox` (or `chrome`, or `--cookies-file cookies.txt`).
+  yt-dlp reads that session at request time; nothing of it is stored.
+- **A video hands out no audio stream** until the client presents a proof-of-origin token. That needs a
+  small Node server, cloned once — see [Proof-of-origin tokens](#proof-of-origin-tokens).
+- **A JavaScript runtime for yt-dlp** ([Node](https://nodejs.org/) ≥ 20, [deno](https://deno.com/) or
+  bun). `noaap config` says whether it found one, along with ffmpeg and the token helper.
+
+To have the web UI always there without a terminal (Linux):
+
+```sh
+uv run noaap service install    # systemd user socket: starts on the first request, idles out
+uv run noaap app install        # menu entry with its own window and icon
+```
+
+The library, the command line and the web UI are platform-independent; `noaap service` (systemd) and
+`noaap app` (freedesktop launcher) are Linux-only. For the machine you actually use, read
+[Keeping it running](#keeping-it-running) — a service should run a released snapshot, not your checkout.
+
+## What it needs
+
+**Python ≥ 3.14**, [uv](https://docs.astral.sh/uv/), [ffmpeg](https://ffmpeg.org/) and a JavaScript
+runtime for yt-dlp ([Node](https://nodejs.org/) ≥ 20, [deno](https://deno.com/) or bun). `uv sync` needs
+no system Python 3.14 — uv fetches the interpreter itself.
+
+**ffmpeg is reported, not required:** a library can be browsed, tagged, searched and have its lyrics
+fetched without it — downloading and trimming are what stop, and they stop at the moment of use.
+`noaap config` says what it found.
+
+Ubuntu's own `nodejs` is 18.x on 24.04 and ships no npm, which the token generator needs — take it from
+NodeSource, or use nvm, or install deno instead:
+
+```sh
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs
+```
+
+### Proof-of-origin tokens
+
+Some videos only hand out their audio streams when the client presents a token. This needs **two
+halves**, and `uv sync` installs only the first:
+
+1. the yt-dlp **plugin**, `bgutil-ytdlp-pot-provider`, a Python package already pulled in by
+   `uv sync` — `pyproject.toml` pins `>=2.0.0`;
+2. the **Node server** that actually mints the tokens, which is a separate repository you clone
+   yourself.
+
+The two are versioned together, so clone the branch that matches the plugin you have — check with
+`uv pip show bgutil-ytdlp-pot-provider` and use that major version. With the pin at `>=2.0.0` the
+2.0.0 branch is the right one today; if the plugin ever resolves to 3.x, clone `3.0.0` instead.
+
+```sh
+git clone --single-branch --branch 2.0.0 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git .pot-provider
+(cd .pot-provider/server && npm ci && npx tsc)
+```
+
+noaap finds it, starts a local token server when it needs one and stops it after five
+idle minutes. `pot_provider_home` defaults to `.pot-provider/server` **relative to the noaap
+clone** — not to your working directory — so the command above puts it exactly where noaap looks.
+Set the key to an absolute path if you keep it elsewhere.
+
 ## What it does
+
 
 - **You give it a URL or a name.** A playlist, a video, a channel, or just an artist name.
 - **It works out what kind of thing that is:** an official album, an artist's playlist, a
@@ -98,136 +181,17 @@ Comes with a command line and a small web app for the library.
 - **You can find what you have.** Filter the library by album, artist **or song** — matches
   are highlighted, and one button plays them, across albums.
 
-## Install
-
-Needs **Python ≥ 3.14**, [uv](https://docs.astral.sh/uv/), [ffmpeg](https://ffmpeg.org/)
-and a JavaScript runtime for yt-dlp ([Node](https://nodejs.org/) ≥ 20,
-[deno](https://deno.com/) or bun).
-
-```sh
-sudo apt install ffmpeg                             # brew install ffmpeg on macOS
-
-# Node ≥ 20. Ubuntu's own `nodejs` is 18.x on 24.04 and ships no npm, which the token
-# generator below needs — so take it from NodeSource, or use nvm, or install deno instead:
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt install -y nodejs
-curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
-
-git clone https://github.com/smtws/noaap.git
-cd noaap
-uv sync                                             # venv + dependencies
-uv run noaap config                               # shows what it found: ffmpeg, JS runtime, token helper
-```
-
-`uv sync` needs no system Python 3.14 — uv fetches the interpreter itself.
-
-`noaap config` reports whether it found ffmpeg, a JavaScript runtime and the token helper.
-**ffmpeg is reported, not required:** a library can be browsed, tagged, searched and have its lyrics
-fetched without it — downloading and trimming are what stop, and they stop at the moment of use.
-
-### Two ways to have it installed, and which one your service should run
-
-The checkout above is the **development** install: `uv sync` makes an editable venv, so the code the
-program runs is the code in `src/`. That is what you want while changing it — and it is not what a
-service should run, because the web UI reads its page files per request and starts itself on demand:
-an editable install means the next start after an idle window runs whatever the working tree holds at
-that second, half-saved edits included.
-
-So the service runs a **release install**: a venv of its own holding the built wheel, which is a
-snapshot and cannot change under it.
-
-```sh
-scripts/release-install.sh v1.22.0      # build that tag, install it into ~/.local/noaap-release, restart
-noaap service install                   # once: points the unit at that venv (it names it when it exists)
-noaap --version                         # 1.22.0 — release install     (a checkout says which commit it is)
-```
-
-`release-install.sh` builds from the **tag**, extracted into a temporary directory, so a dirty checkout
-cannot leak into a release; it refuses a dirty tree or an untagged commit unless you say otherwise, it
-refuses a venv outside your home or in a temporary filesystem (uv copies instead of hardlinking across
-filesystems — that is the whole of torch, some 7 GB), and it prints the version the running service
-reports afterwards. `--no-restart` installs without touching the running service. `--venv PATH` or
-`NOAAP_RELEASE_VENV` puts the release somewhere else — `noaap service install` reads the same variable,
-so both sides agree about where it lives, and the script says so when the installed unit names another.
-
-It also installs the `timing,timing-check` extras and three **helpers the package does not declare** but
-the service needs on a machine like this one:
-
-| helper | why it is there |
-|---|---|
-| `nvidia-cublas-cu12` | faster-whisper runs on ctranslate2, which is built against **CUDA 12's** cuBLAS. torch brings the CUDA 13 wheels (`nvidia-cublas` 13.x), which ctranslate2 cannot load. |
-| `nvidia-cudnn-cu12` | the same for cuDNN. Without the two, a second opinion falls back to the processor — about 11× slower, measured on this machine. |
-| `secretstorage` | Chrome and Chromium keep their cookies encrypted with a key in the desktop keyring, and yt-dlp needs this to read it; without it every `v11` cookie is dropped with a warning. |
-
-`NOAAP_RELEASE_HELPERS` or `--helpers "…"` replaces that list, `--helpers ""` installs none of them, and
-`NOAAP_RELEASE_EXTRAS` does the same for the extras. The wheel and the helpers are resolved in one
-install, so a helper that cannot be had fails the release rather than leaving a service that quietly
-runs on the processor.
-
-Everything else keeps running from a checkout: `uv run noaap …` is always this tree, and
-`noaap service install --from-checkout` writes a unit that deliberately follows it — for development,
-not for the machine you use.
-
-The settings view names which of the two is answering (**noaap version**: `1.22.0 — release install`,
-or `1.22.0 — checkout v1.22.0-3-gabc1234`), and so does `noaap --version`.
-
-## First run
-
-```sh
-uv run noaap config --library ~/Music/YouTube        # once
-uv run noaap fetch "https://www.youtube.com/playlist?list=…"
-uv run noaap serve                                   # web UI on http://localhost:8765
-```
-
-To have the web UI always there without a terminal (Linux):
-
-```sh
-uv run noaap service install    # systemd user socket: starts on the first request, idles out
-uv run noaap app install        # menu entry with its own window and icon
-```
-
-The library, the CLI and the web UI are platform-independent; `noaap service` (systemd)
-and `noaap app` (freedesktop launcher) are Linux-only.
-
-**Cookies: the bot check, and age-restricted videos.** After a few hundred requests YouTube starts
-refusing everything ("Sign in to confirm you're not a bot"), and some videos are age-restricted in
-any case. Both are fixed by the same thing — a logged-in YouTube session, which yt-dlp reads at request time. It does two things: it gets past the bot check, and it unlocks age-restricted videos:
-
-```sh
-uv run noaap config --cookies-from-browser firefox   # or chrome, or --cookies-file cookies.txt
-```
-
-**Proof-of-origin tokens.** Some videos only hand out their audio streams when the client
-presents a token. This needs **two halves**, and `uv sync` installs only the first:
-
-1. the yt-dlp **plugin**, `bgutil-ytdlp-pot-provider`, a Python package already pulled in by
-   `uv sync` — `pyproject.toml` pins `>=2.0.0`;
-2. the **Node server** that actually mints the tokens, which is a separate repository you clone
-   yourself.
-
-The two are versioned together, so clone the branch that matches the plugin you have — check with
-`uv pip show bgutil-ytdlp-pot-provider` and use that major version. With the pin at `>=2.0.0` the
-2.0.0 branch is the right one today; if the plugin ever resolves to 3.x, clone `3.0.0` instead.
-
-```sh
-git clone --single-branch --branch 2.0.0 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git .pot-provider
-(cd .pot-provider/server && npm ci && npx tsc)
-```
-
-noaap finds it, starts a local token server when it needs one and stops it after five
-idle minutes. `pot_provider_home` defaults to `.pot-provider/server` **relative to the noaap
-clone** — not to your working directory — so the command above puts it exactly where noaap looks.
-Set the key to an absolute path if you keep it elsewhere.
-
 ## Screenshots
+
 
 | | |
 |---|---|
 | ![Album view](docs/screenshots/album.jpg) | ![The lyrics editor](docs/screenshots/editor.jpg) |
-| **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the ⏱ column says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what may be done with them — here, that these are LRCLIB's words and so not yours to give back. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing and moves on to the next line — scrolling it into view, so a long lyric can be stamped line after line from the keyboard (Ctrl+Enter); on the **last** line it stamps once and then says *that was the last line* rather than rewriting it — the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. The box grows with what you type. Nothing is written until Save. |
+| **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the **trim** column holds the marks, and the orange number beside it says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what is known about them — here that LRCLIB's entry is 24 s from this file and its words still fit it, **so they are LRCLIB's words and not yours to give back**. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing and moves on to the next line — scrolling it into view, so a long lyric can be stamped line after line from the keyboard (Ctrl+Enter); on the **last** line it stamps once and then says *that was the last line* rather than rewriting it — the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. The box grows with what you type. Nothing is written until Save. |
 | ![Settings](docs/screenshots/settings.jpg) | ![Channel listing](docs/screenshots/search.jpg) |
-| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. **Only the fields those two choices need are shown**, so a machine that aligns locally is not asked for an endpoint; a key that is set reads `•••••••• (set)` and is never shown again. Under **Sources**, one row per source that is set up, with what it has and an Edit and a Remove; the fields live in that source's own dialog. Below (not shown): **Library** — check the sources, repair, take in a folder, watched folders — and what noaap found. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
+| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. **Only the fields those two choices need are shown**, so a machine that aligns locally is not asked for an endpoint; a key that is set reads `•••••••• (set)` and is never shown again. Under **Sources**, one row per source that is set up, with what it has and an Edit and a Remove; the fields live in that source's own dialog. Below (not shown): **Library** — check the sources, repair, take in a folder, watched folders — and what noaap found. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. Here a curator's channel: the twenty playlists it publishes, each marked **in library** where it is already here, tick what you want (or **select all**) and **Download selected**. A bare artist name searches instead. |
 | ![Library](docs/screenshots/library.jpg) | ![Two copies of one song](docs/screenshots/copies.jpg) |
-| **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | **Two copies of one song:** what `merge` could not decide, kept where you can decide it — the panel of one track, opened with **⇄**. Every copy is named by the last two parts of its path (the whole path is in its tooltip) and carries what was measured: codec, bitrate, where the audio stops, length, size. The one in use says so; the other says what stopped the pass from ranking it — here two files that are the same recording by every number there is and **3 seconds apart**, which is inside the range where this program shows you rather than decides. **take this one** fetches it, **not this one** is remembered for good, and the count on the album card can only fall. |
+| **Library:** 7 of 20 albums, because the filter matched the word *lullaby* — in an album's name, an artist's, or a **song title**, all three at once, with what it matched highlighted; **▶ Play 13 tracks** queues everything it found, across albums. ♪ counts the tracks whose lyrics are here, **1 with odd lengths** marks an album that is not the length it should be, and **11 need you** collects what is waiting for a decision — a track where LRCLIB has words the aligner could not place, or two copies nobody could rank; nothing was taken, and each is one click from the numbers. Pressing it again (**show all albums**) puts the rest back. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | **Two copies of one song:** what `merge` could not decide, kept where you can decide it — the panel of one track, opened with **⇄**. Every copy is named by the last two parts of its path (the whole path is in its tooltip) and carries what was measured: codec, bitrate, where the audio stops, length, size. The one in use says so; the other says what stopped the pass from ranking it — here two files that are the same recording by every number there is and **3 seconds apart**, which is inside the range where this program shows you rather than decides. **take this one** fetches it, **not this one** is remembered for good, and the count on the album card can only fall. |
 
 The compilations throughout these screenshots are
 [**My Dark Lullabies**](https://www.youtube.com/@MyDarkLullabies) — *"a curated collection
@@ -242,7 +206,123 @@ The one exception is **Two copies of one song**, which is a 1970s rock compilati
 twenty Lullabies volumes holds a copy nobody could choose between, and a panel about two copies has
 to be photographed where there are two.
 
-## How it works
+## The web UI
+
+`noaap serve` opens the library at `http://localhost:8765`: every album as a card, a filter over
+albums, artists and song titles, and a player that queues what the filter found. Opening an album gives
+the [album view](#screenshots) — every field editable, where each value came from, drag to reorder, the
+lyrics panel, the trim marks. The header holds the search, the recycle bin when it holds something, the
+theme and the settings, and nothing else.
+
+### Playing, and the trim marks
+
+**A click on a lyric line seeks — it never starts the track again**, and the trim is added to the stamp
+only while the untouched original is what is playing. Where no original is kept beside a cut track the
+file on disk is played as it is, because that is what the server can serve. And a jump to a point before
+the trim start is left where you put it; the head is only skipped when you play into it.
+
+**The first press of play is quick, even after a refresh.** Albums are indexed, covers are cached and
+revalidated, and a card's cover is fetched only when the card comes near the screen; a request that
+still takes longer than half a second writes one line saying where the time went. What it was before,
+and the numbers that found it, are in [DESIGN.md](DESIGN.md) §9, slice 90.
+
+**A save never interrupts what you are hearing.** When a trim is saved, the page updates what it
+knows — which file to ask for next time, and what the saved marks are — and the sound carries on. The
+next time you start that track it plays the untouched original with the trim previewed, which is how a
+cut track is always played. Marks you have moved but not saved are kept when the page refreshes.
+
+**And the trim window is only ever applied to the file the player actually loaded.** A cut track is
+played from its untouched original, so the marks and what you hear share one clock; where the player is
+holding the cut file instead — the seconds between a save and the page learning of it — the cut is
+already in the bytes and nothing is added to it. Getting this wrong is what made a cut track begin 4.9 s
+into itself and the track after it start at 4.948 instead of 0.
+
+### The settings
+
+**The library's own actions are in the settings, under Library**, where each of them has room to say
+what it does: *Check the sources for new tracks*, with *Read every album in full* beside it; the
+two-step repair; taking a folder in; and the watched folders.
+
+**A repair is a check and then an apply.** *Check* runs the dry pass and shows its list in the page;
+*Apply* appears only after a check and does exactly what that check listed. A check taken before
+something else wrote to the library is stale, and says so rather than being applied.
+
+**The settings only ask for what your choices need.** A timing field appears when the provider of its
+slot uses it — the endpoint for `http`, where the model runs and whether it checks itself for `local`,
+one API key for a vendor you actually chose — and both slots are asked for together, so aligning locally
+and drafting with Deepgram shows three fields and no endpoint. Switching a provider shows and hides them
+at once, and a field that hides **keeps what you typed**: it is not sent while it is hidden, so what the
+config holds for it stays as it was.
+
+**Settings › Sources is a list of the sources you have set up**, one row each: the provider, one line
+saying what it has (*session from Firefox · audio taken out of video posts*), an **Edit** and a
+**Remove**. *Add a source* offers the ones that can be set up and are not yet. A row's fields live in
+**that source's own dialog** — a session from a browser you are already logged in with, or the **path**
+of a cookies file (the path is all noaap keeps; the file is read on this machine while a download runs
+and its contents never reach the page), and for Patreon *take the audio out of a video post* and *keep
+the post's captions as lyrics*. Nothing of another source is in that dialog, and **Remove** clears that
+one provider after saying what it clears — no file of yours is touched, and the source still works for
+anything that needs no login.
+
+The list is built from what the program actually has: a provider that needs a session appears there
+without anybody editing the page, and a config you wrote by hand shows up as a row. The config keys are
+unchanged — `<provider>_cookies_from_browser`, `<provider>_cookies_file`, and Patreon's two switches.
+
+**Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
+in full — somewhere else on this machine, or a share you have mounted — and choose how:
+
+- **merge** compares it with this library track by track and copies in only what is better. The other
+  folder is never written to, and a file that is replaced goes to the recycle bin.
+- **adopt** writes one plan per album in that folder and nothing else: no file renamed, moved or
+  retagged. That makes the collection readable where it stands, as its own root — point the library at
+  it afterwards, watch it, or merge from it.
+
+It runs like the repair: **Check** is a read that writes nothing and shows the pass's own lines, the same
+ones the command prints; **Apply** does exactly what that check listed, and is offered only while the
+folder and the mode are still the ones you checked. A path that is not a folder, or that is the library,
+inside it, or holds it, is refused with a sentence.
+
+**Watched folders are editable in the settings**, in the same two shapes the config allows, and are
+written back as `[[watch]]` tables. The page says what it always said: the watcher is a separate service
+you start yourself, and whether it has been here.
+
+**The recycle bin has its own place**, in the header, and only when it holds something — see
+[Removing it](#the-recycle-bin) for what goes in and how it comes back out.
+
+## Command line
+
+
+| Command | What it does |
+|---|---|
+| `noaap fetch <url>` | Plan and download a playlist, video or channel. `--dry-run` prints the plan only, `--pick 1,3-5` / `--all` choose from a channel, `--no-mb` skips MusicBrainz, `--library PATH` overrides the library, `--dump-collection FILE` also saves what YouTube returned (for test fixtures), `--no-lyrics` skips the lyrics lookup. |
+| `noaap search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`, `--library`, `--no-mb`, `--no-lyrics`). |
+| `noaap plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer noaap left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
+| `noaap download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
+| `noaap update` | Re-check every album against its source, and measure the files of the albums it touches. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
+| `noaap prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
+| `noaap delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
+| `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
+| `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900), and points the unit at the release venv `~/.local/noaap-release` when there is one — `--from-checkout` makes it follow this tree instead. `restart` refuses while a job runs unless given `--force`. |
+| `noaap --version` | The version, and whether this is a release install or a checkout (with its `git describe`). |
+| `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
+| `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look, `--interval` and `--settle` how often it looks and how long an arrival must lie still, `--port` which app to hand it to. |
+| `noaap watch-service install\|uninstall\|status` | The watcher as a user service of its own — it is always on, where the web service starts on demand. `--port` names the app, `--from-checkout` makes the unit follow this tree instead of the release venv. |
+| `noaap migrate` | Report what a ytalbum installation left behind and, with `--apply`, move its settings over; `--uninstall-old` also removes its units and launcher. See **[Coming from ytalbum](#coming-from-ytalbum)**. |
+| `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
+| `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
+| `noaap merge <folder>` | Compare another library with this one track by track and take the better copies. Dry by default; `--apply` acts, `--only` / `--album` narrow, `--new` also fetches the albums this library does not have, `--undecided` lists only the pairs nobody could rank, `--rejudge` settles the copies already listed here. See **[two copies of one song](#two-copies-of-one-song)**. |
+| `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. `--find-moved` looks for a track's file again by what the file holds, `--strays` for copies an old version left in an adopted album's root, `--under FOLDER` also searches there; those two report only, and **`--apply` is what makes them act** — without it the whole run is a dry one. |
+| `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
+| `noaap timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
+| `noaap recycle list\|restore\|empty` | What noaap moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
+
+`-v` / `--verbose` before the subcommand turns on debug logging for any of them.
+
+Exit codes: `0` fine, `1` something failed, `2` wrong usage, `3` YouTube is blocking
+requests, `130` interrupted.
+
+## Where the music comes from
+
 
 ```
 address ─► resolve ─► inspect ─► classify ─► enrich ─► plan ─► [you edit] ─► download ─► tag
@@ -409,6 +489,7 @@ own, and noaap does not make it quietly in the middle of an import.
 
 ## A collection you already have
 
+
 `noaap adopt <folder>` takes a collection in **where it stands**. It reads every album folder under
 that root and writes one file per album — the plan, beside the audio you already arranged. Nothing
 is renamed, no folder is moved, and **not one tag is written into your files**. Dry by default;
@@ -426,88 +507,6 @@ those plans recorded only the bare name of a file in a sub-folder, and the first
 copied it into the album's root. `repair` looks each file up where your collection says it is, and a
 finished track of an adopted album is never fetched again in any case.
 
-**A cut file starts at zero.** Until 1.18.0 the cut kept the packets before the trim point and marked
-them with negative timestamps (`start_time = -0.900000` for a 4.9 s trim), which left a player with a
-clock running past the length it was told and — with the bug below — made the *next* track in the queue
-begin a few seconds into itself. The cut drops those packets now and the first stamp is `0.000`; the
-cost is the one 20 ms packet the trim point falls inside, and nothing is re-encoded. Files cut by an
-older version are found by their own start time and **cut again from the untouched original** beside
-them: `noaap repair --dry-run` names each one (*"01 would be cut again: its clock starts at -0.900 s"*)
-and says so when no original is kept, in which case nothing is touched.
-
-**A click on a lyric line seeks — it never starts the track again**, and the trim is added to the stamp
-only while the untouched original is what is playing. Where no original is kept beside a cut track the
-file on disk is played as it is, because that is what the server can serve. And a jump to a point before
-the trim start is left where you put it; the head is only skipped when you play into it.
-
-**The first press of play is quick, even after a refresh.** Two things used to stand in its way, both
-in the server: every request that named an album read the plans until it found it (6 ms for the first
-album in a library, 155 ms for the last), and album covers were sent with `no-store`, so a refresh
-downloaded every one of them again — 52 MB on a 250-album library, with the audio request queued behind
-it for more than ten seconds. Albums are indexed now, covers are cached and revalidated (a revisit costs
-a few kilobytes), and a card's cover is only fetched when the card comes near the screen. A request that
-still takes longer than half a second writes one line saying what it was and where the time went.
-
-**A save never interrupts what you are hearing.** When a trim is saved, the page updates what it
-knows — which file to ask for next time, and what the saved marks are — and the sound carries on. The
-next time you start that track it plays the untouched original with the trim previewed, which is how a
-cut track is always played. Marks you have moved but not saved are kept when the page refreshes.
-
-**And the trim window is only ever applied to the file the player actually loaded.** A cut track is
-played from its untouched original, so the marks and what you hear share one clock; where the player is
-holding the cut file instead — the seconds between a save and the page learning of it — the cut is
-already in the bytes and nothing is added to it. Getting this wrong is what made a cut track begin 4.9 s
-into itself and the track after it start at 4.948 instead of 0.
-
-**The header holds the search, the recycle bin and the settings — nothing else.** Checking the sources
-and repairing the library are in the settings view, under **Library**, where each of them says what it
-does: *Check the sources for new tracks* (with *Read every album in full* beside it, which used to be a
-shift-click) and the two-step repair below.
-
-**In the web UI a repair lives in the settings, in two steps.** *Check* runs the dry pass and shows
-its list in the page; *Apply* appears only after a check and does what that check listed. A check taken
-before something else wrote to the library is stale and says so rather than being applied. (It used to
-be a button in the header, where "repair" could have meant anything.)
-
-**The settings only ask for what your choices need.** A timing field appears when the provider of its
-slot uses it — the endpoint for `http`, where the model runs and whether it checks itself for `local`,
-one API key for a vendor you actually chose — and both slots are asked for together, so aligning locally
-and drafting with Deepgram shows three fields and no endpoint. Switching a provider shows and hides them
-at once, and a field that hides **keeps what you typed**: it is not sent while it is hidden, so what the
-config holds for it stays as it was.
-
-**Settings › Sources is a list of the sources you have set up**, one row each: the provider, one line
-saying what it has (*session from Firefox · audio taken out of video posts*), an **Edit** and a
-**Remove**. *Add a source* offers the ones that can be set up and are not yet. A row's fields live in
-**that source's own dialog** — a session from a browser you are already logged in with, or the **path**
-of a cookies file (the path is all noaap keeps; the file is read on this machine while a download runs
-and its contents never reach the page), and for Patreon *take the audio out of a video post* and *keep
-the post's captions as lyrics*. Nothing of another source is in that dialog, and **Remove** clears that
-one provider after saying what it clears — no file of yours is touched, and the source still works for
-anything that needs no login.
-
-The list is built from what the program actually has: a provider that needs a session appears there
-without anybody editing the page, and a config you wrote by hand shows up as a row. The config keys are
-unchanged — `<provider>_cookies_from_browser`, `<provider>_cookies_file`, and Patreon's two switches.
-
-**Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
-in full — somewhere else on this machine, or a share you have mounted — and choose how:
-
-- **merge** compares it with this library track by track and copies in only what is better. The other
-  folder is never written to, and a file that is replaced goes to the recycle bin.
-- **adopt** writes one plan per album in that folder and nothing else: no file renamed, moved or
-  retagged. That makes the collection readable where it stands, as its own root — point the library at
-  it afterwards, watch it, or merge from it.
-
-It runs like the repair: **Check** is a read that writes nothing and shows the pass's own lines, the same
-ones the command prints; **Apply** does exactly what that check listed, and is offered only while the
-folder and the mode are still the ones you checked. A path that is not a folder, or that is the library,
-inside it, or holds it, is refused with a sentence.
-
-**Watched folders are editable in the settings**, in the same two shapes the config allows, and are
-written back as `[[watch]]` tables. The page says what it always said: the watcher is a separate service
-you start yourself, and whether it has been here.
-
 **Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
 prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*
 with the values that change, *would be cut to its trim points* — and ends with its own total:
@@ -523,6 +522,13 @@ out of date on the next pass and `repair` rewrote the file for **one character**
 18 of 31 files of two albums). New sidecars no longer carry it; files written before this still get one
 catch-up rewrite, and now the dry run says so, down to the character: *"lyrics differs from character
 2031 of 2032 → 2031"*.
+
+**A cut file starts at zero**, so a trimmed track plays from 0.000 in every player and its length is
+what you cut it to. Files cut by a version before 1.18.0 begin at a negative time instead; they are
+found by it and **cut again from the untouched original** beside them, and `noaap repair --dry-run`
+names each one (*"01 would be cut again: its clock starts at -0.900 s"*) and says so when no original is
+kept, in which case nothing is touched. Why it was wrong, and what `-ss` after `-i` has to do with it,
+is in [DESIGN.md](DESIGN.md) §9, slice 86.
 
 **A file you renamed or moved is found again: `noaap repair --find-moved`.** It asks what a file
 *holds*, not what it is called — so a track you renamed, or moved into a disc folder, is re-attached to
@@ -574,6 +580,7 @@ noaap adopt ~/Music/my-collection --undo --apply   # give it all back
 
 ## A folder that is watched
 
+
 `noaap watch` looks at the folders you name in the config file and hands what arrives in them to
 the app. **It never does the work itself**: it notices, waits until the arrival has stopped moving,
 and asks for an ordinary job — the same one `noaap fetch <folder>` would run. Nothing is watched
@@ -612,6 +619,7 @@ systemctl --user stop noaap-watch    # and that is how you stop it
 ```
 
 ## Two copies of one song
+
 
 `noaap merge <another library>` looks at both, pairs what is the same song, and tells you which copy
 is better. It changes nothing until you add `--apply`, and the library you point it at is never
@@ -694,7 +702,10 @@ have re-fetched each one into a second folder beside the first.
 More detail, including what was measured and deliberately rejected, is in
 [DESIGN.md](DESIGN.md).
 
-### On disk
+## Where things are on disk
+
+One folder per album, under one per album artist, and everything about an album inside its own folder
+— which is what makes a library something you can copy, move or hand to another program.
 
 ```
 Library/
@@ -760,132 +771,8 @@ treated as *yours* and is never overwritten by a later update — that is the wh
 editing a value is how you take ownership, and editing `auto` to match only throws your edit away at
 the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 
-## Command line
-
-| Command | What it does |
-|---|---|
-| `noaap fetch <url>` | Plan and download a playlist, video or channel. `--dry-run` prints the plan only, `--pick 1,3-5` / `--all` choose from a channel, `--no-mb` skips MusicBrainz, `--library PATH` overrides the library, `--dump-collection FILE` also saves what YouTube returned (for test fixtures), `--no-lyrics` skips the lyrics lookup. |
-| `noaap search <artist>` | Find an artist's albums, singles and playlists and pick from them (`--pick`, `--all`, `--dry-run`, `--library`, `--no-mb`, `--no-lyrics`). |
-| `noaap plan <url>` | Write the plan into the album folder without downloading, for editing by hand (`--no-mb` skips MusicBrainz). `--verify` instead reads every plan in the library and reports anything a rewrite would lose — it writes nothing, and names any field a newer noaap left behind. See **[editing a plan by hand](#editing-a-plan-by-hand)**. |
-| `noaap download <album-folder>` | Run an (edited) plan: fetch what is missing, rename, retag, trim. `--no-lyrics` skips the lyrics lookup. |
-| `noaap update` | Re-check every album against its source, and measure the files of the albums it touches. `--dry-run` only reports, `--deep` reads every album fully instead of skipping unchanged ones, `--no-mb` / `--no-lyrics` skip the lookups. |
-| `noaap prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
-| `noaap delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
-| `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
-| `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900), and points the unit at the release venv `~/.local/noaap-release` when there is one — `--from-checkout` makes it follow this tree instead. `restart` refuses while a job runs unless given `--force`. |
-| `noaap --version` | The version, and whether this is a release install or a checkout (with its `git describe`). |
-| `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
-| `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look; `noaap watch-service install` runs it as a user service. |
-| `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser`, `--lyrics` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
-| `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
-| `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. |
-| `noaap lyrics` | Fetch the lyrics of every track that has none yet — a `.lrc` beside the file plus a `LYRICS` tag. Nothing is downloaded and nothing is asked twice. `--artist NAME` limits it, `--refetch` looks every track up again (lyrics you wrote yourself are always kept). `--near` then goes after the tracks LRCLIB refused on length — a **near miss**, explained under [when LRCLIB nearly has your recording](#near-misses-when-lrclib-nearly-has-your-recording): for each one with no words it aligns the nearest entry to the file and decides by the result, exactly as **⚖ check them** does for one track — add `--dry-run` to see what it would cost first, which looks up but aligns nothing. Needs a provider that can align. A track LRCLIB has nothing at all for is remembered as such, so the next `--near` does not ask about it again; `--refetch` asks anyway. The first `--refetch` over a library written before this version also asks LRCLIB what each stored entry says, to tell your edits from its own words — one extra request per track whose lyrics are no longer in the month-long cache, and never again afterwards. |
-| `noaap timing-serve` | Run the local aligner as a small HTTP service so another machine can use it: `--port 8770`, `--host` (**`0.0.0.0` by default** — the point is to be reachable), `--device auto\|cpu\|cuda`. Only needed for the `http` provider; see "placing lyrics on the clock" below. |
-| `noaap recycle list\|restore\|empty` | What noaap moved aside instead of deleting. `restore <entry>` puts one back; `empty [--older-than DAYS]` is the only thing that ever removes one. |
-| `noaap config` | Show or change settings: `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off`. |
-
-`-v` / `--verbose` before the subcommand turns on debug logging for any of them.
-
-Exit codes: `0` fine, `1` something failed, `2` wrong usage, `3` YouTube is blocking
-requests, `130` interrupted.
-
-## Web UI and HTTP API
-
-`noaap serve` listens on `127.0.0.1:8765`, serves the app and a small JSON API. The app
-is a single HTML page with no build step, and it can be installed as a PWA.
-
-Installing it from the browser works, but the window keeps the browser's window class
-(Chrome reports `WM_CLASS = "crx_<app-id>", "Google-chrome"`), and desktops group the
-taskbar by that class — so it appears as another browser window, with the browser's icon.
-No manifest setting changes this; the class comes from the browser process. `noaap app
-install` writes a launcher that starts the browser with `--class=noaap` and a profile
-directory of its own (the flag is only honoured by a browser process of its own), giving
-the app its own taskbar entry and icon.
-
-**The library view** sorts by artist, then year, then name — a discography reads
-chronologically, and compilations without a year keep their natural order (Vol. 1 … Vol. 20).
-A rail of initials down the side jumps to the first album of a letter (it appears once three
-or more are in view), and a button returns to the top of a long library.
-<kbd>/</kbd> jumps to the filter, which searches albums, artists and song titles at once:
-matching text is highlighted, <kbd>Enter</kbd> moves into the results, <kbd>Esc</kbd> clears
-it, and **▶ Play** queues everything it found. Opening an album from a filtered view tints
-the fields that matched — an input's value cannot be highlighted character by character, so
-the whole field is marked instead. Matching ignores case, accents and punctuation, including
-the letters Unicode cannot fold (`njord` finds *Njǫrð*) and umlauts typed the German way
-(`knueppel` finds *Knüppel*).
-
-**Playback keys.** While something is playing: <kbd>Space</kbd> pauses and resumes,
-<kbd>←</kbd>/<kbd>→</kbd> seek ten seconds (thirty with <kbd>Shift</kbd>), <kbd>n</kbd> is the
-next track and <kbd>b</kbd> goes back. These are handled in the page and always work.
-
-The keyboard's own media keys go through the Media Session API, which this page implements
-fully (play, pause, stop, seek, track changes and the playback state). **On Linux they may
-still land in the wrong browser:** Chrome claims the legacy `org.gnome.SettingsDaemon.MediaKeys`
-grab, which GNOME's and Cinnamon's key daemon honours ahead of MPRIS, so an idle Chrome keeps
-the keys while Firefox plays. Routing them to whichever player was last active fixes it:
-
-```sh
-sudo apt install playerctl        # then bind the media keys to:
-playerctl --player=playerctld play-pause   # next, previous, stop accordingly
-```
-
-`playerctld` starts on demand over D-Bus; add it to your session's autostart so it sees
-players from the beginning.
-
-**Safety:** localhost only by default; writing calls need the header `X-Noaap: 1` and a
-JSON content type (so other websites cannot use it through your browser); the `Host` header
-must be ours (DNS rebinding); files are only ever served by album and video id, never by a
-path from the request; strict CSP, and thumbnails are fetched by the server so the page
-never talks to Google. There is **no authentication** — do not expose it to an untrusted
-network.
-
-### Reading
-
-| Endpoint | Returns |
-|---|---|
-| `GET /api/state` | Library (albums with progress), recent jobs, settings, whether something is running. `settings.version` and `settings.running_from` say which code is answering — a release install, or a checkout with its `git describe`. |
-| `GET /api/album?id=<source-id>` | The full plan of one album. |
-| `GET /api/tracks` | Every track by album as compact rows (video id, artist, title, downloaded, trim points), with a version that changes when any plan does — what the library filter searches and plays. |
-| `GET /api/cover?id=<source-id>` | The album's cover image. |
-| `GET /api/thumb?u=<url>` | A thumbnail, fetched by the server (allow-listed hosts only, cached). |
-| `GET /api/audio?id=<source-id>&v=<video-id>` | The track's audio, with `Range` support so players can seek. |
-| `GET /api/job?id=<n>` | One job with its full log and result. |
-| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours), `words_by` and `timed_by` (who drafted and who timed them, when it was not a person), `timings` — set when the timestamps were written against a different file than the one on disk — `publish` (whether they may be given back to LRCLIB, and why not when they may not), `fit` (what was made of an entry that was nearly this recording) and `can_check` (whether ⚖ can be offered). |
-| `GET /api/mbseed?id=<source-id>` | The fields for MusicBrainz's own release editor, and its URL. Nothing is sent from here — the page builds their form with these and you submit it yourself. Refused, with the reason, for an album that is not one to offer. |
-
-### Writing (POST, JSON body, header `X-Noaap: 1`)
-
-| Endpoint | Body | Effect |
-|---|---|---|
-| `/api/open` | `{q}` | A URL or an artist name: preview, channel listing or search (the **read lane** — see [the two lanes](#the-two-lanes) below). A preview is a dry run — it reads from YouTube (and MusicBrainz, if that is on) exactly as a fetch does, so it costs the same requests, and it writes nothing. |
-| `/api/fetch` | `{urls: […]}` | Plan and download those sources. |
-| `/api/update` | `{artist?, deep?}` | Re-check the library, or one artist's albums. |
-| `/api/repair` | `{}` | Run `noaap repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
-| `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
-| `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
-| `/api/prune` | `{id}` | Delete tracks that left the playlist. |
-| `/api/draft` | `{id, video_id}` | Ask a transcribing provider what it hears on a track that has **no** words. Read-lane, writes nothing, refused for a track that has words. |
-| `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
-| `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
-| `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
-| `/api/check_lyrics` | `{id, video_id}` | Align LRCLIB's [near-miss](#near-misses-when-lrclib-nearly-has-your-recording) entry for that track against your file and decide what may be taken from it: the words and its timings, the words with our own stamps, nothing, or a rejection that is remembered. Needs a provider that can `align`. |
-| `/api/take_plain_lyrics` | `{id, video_id}` | Put a near-miss entry's words beside the track without its timings. They stay LRCLIB's words. |
-| `/api/publish_lyrics` | `{id, video_id}` | Give your own timed words back to LRCLIB. One press is one request, it is never retried, and it is refused for anything that is not your own timed words that LRCLIB has no equal of. |
-| `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
-| `/api/delete_track` | `{id, video_id}` | Delete one track. |
-| `/api/delete_album` | `{id}` | Delete an album (files noaap owns; anything else is kept). |
-| `/api/details` | `{refs: [{id, url}]}` | Ask for track counts and covers of search hits; a background runner fills them in. |
-| `/api/cancel` | `{id}` | Cancel a job; it stops at the next point where nothing is half-done. |
-| `/api/take_in` | `{folder, mode, dry_run?}` | Take another folder into the library: `mode` is `merge` (compare and copy in what is better) or `adopt` (one plan per album, where it stands). With `dry_run` it is a **read** and writes nothing, and its log is the pass's own lines. A folder that is not a directory, or is the library, inside it, or holds it, is refused. |
-| `/api/settings` | see below | Change settings at runtime, including the other sources (`<provider>_cookies_from_browser`, `<provider>_cookies_file` as a path, and Patreon's two switches) and the watched folders (`watches: [{name, folder, shape}]`, which rewrites the `[[watch]]` tables). |
-
-### The two lanes
-
-Jobs run in two lanes: everything that changes the library runs strictly one at a time, while
-searches and previews — the **read lane** — run alongside. So a long fetch never blocks a lookup,
-and two things can never rename the same album at once.
-
 ## Optional: placing lyrics on the clock
+
 
 Entirely optional, and **nothing below is installed or imported unless you ask for it**. With no
 provider configured — the default — noaap has no machine-learning dependency, the editor shows no
@@ -1058,7 +945,7 @@ and with it two things:
 On CUDA there is a packaging trap worth knowing about: `ctranslate2` wants CUDA 12's `libcublas`
 while the installed `torch` may bring a different one. noaap notices, says so, and falls back to
 the processor; `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12` puts the GPU back — and a
-[release install](#two-ways-to-have-it-installed-and-which-one-your-service-should-run) brings those
+[release install](#keeping-it-running) brings those
 two along by itself, which is what they are doing in its helper list. On a machine without a GPU none
 of this applies — it is simply slower.
 
@@ -1131,6 +1018,7 @@ request on), `NOAAP_TIMING_LIVE`, `NOAAP_ELEVENLABS_KEY`, `NOAAP_DEEPGRAM_KEY`, 
 
 ## Near misses: when LRCLIB nearly has your recording
 
+
 LRCLIB matches by length, and noaap will not take an entry whose length is more than three seconds
 from your file: a cover, a live version and a radio edit all share a title, and the length is the only
 thing that tells them apart. But a 2% difference on a four-minute song is ordinary, and measuring this
@@ -1154,12 +1042,13 @@ exist and how far off they are, with a button to take them as plain text if you 
 Either way the words stay LRCLIB's, and where noaap's own aligner placed the stamps it says whose
 clock they are.
 
-**“♪ N need you”.** Where the check could not settle it, the track waits for you, and the library
+**“N need you”.** Where the check could not settle it, the track waits for you, and the library
 says how many: the filter and the badge count **tracks with no lyrics whose near-miss verdict was
 *unclear* or *shown*** — in the app's own words, *tracks where lrclib has words and nothing could
 decide whether they are this recording's*. Click through and the panel shows both numbers.
 
 ## Giving the words back
+
 
 Lyrics in noaap come from [LRCLIB](https://lrclib.net)'s contributors. When you have timed a song
 yourself — by tapping, by nudging, or by checking what a model proposed — the lyrics panel offers
@@ -1181,6 +1070,7 @@ how this was tested without putting test words into the public one.
 
 ## Offering an album to MusicBrainz
 
+
 Where an album is one MusicBrainz has never heard of, the album head offers **“Add to MusicBrainz”**.
 It opens *their* release editor in a new tab with the boxes already filled in — the title, the artist,
 one Digital Media medium, the tracklist with the lengths measured from your files, the playlist's URL
@@ -1199,7 +1089,105 @@ confirm — and the change, if there is one to make, is yours.
 
 `NOAAP_MUSICBRAINZ_WEB` points both at another MusicBrainz (a test server, or a mirror).
 
+## The HTTP API
+
+
+`noaap serve` listens on `127.0.0.1:8765`, serves the app and a small JSON API. The app
+is a single HTML page with no build step, and it can be installed as a PWA.
+
+Installing it from the browser works, but the window keeps the browser's window class
+(Chrome reports `WM_CLASS = "crx_<app-id>", "Google-chrome"`), and desktops group the
+taskbar by that class — so it appears as another browser window, with the browser's icon.
+No manifest setting changes this; the class comes from the browser process. `noaap app
+install` writes a launcher that starts the browser with `--class=noaap` and a profile
+directory of its own (the flag is only honoured by a browser process of its own), giving
+the app its own taskbar entry and icon.
+
+**The library view** sorts by artist, then year, then name — a discography reads
+chronologically, and compilations without a year keep their natural order (Vol. 1 … Vol. 20).
+A rail of initials down the side jumps to the first album of a letter (it appears once three
+or more are in view), and a button returns to the top of a long library.
+<kbd>/</kbd> jumps to the filter, which searches albums, artists and song titles at once:
+matching text is highlighted, <kbd>Enter</kbd> moves into the results, <kbd>Esc</kbd> clears
+it, and **▶ Play** queues everything it found. Opening an album from a filtered view tints
+the fields that matched — an input's value cannot be highlighted character by character, so
+the whole field is marked instead. Matching ignores case, accents and punctuation, including
+the letters Unicode cannot fold (`njord` finds *Njǫrð*) and umlauts typed the German way
+(`knueppel` finds *Knüppel*).
+
+**Playback keys.** While something is playing: <kbd>Space</kbd> pauses and resumes,
+<kbd>←</kbd>/<kbd>→</kbd> seek ten seconds (thirty with <kbd>Shift</kbd>), <kbd>n</kbd> is the
+next track and <kbd>b</kbd> goes back. These are handled in the page and always work.
+
+The keyboard's own media keys go through the Media Session API, which this page implements
+fully (play, pause, stop, seek, track changes and the playback state). **On Linux they may
+still land in the wrong browser:** Chrome claims the legacy `org.gnome.SettingsDaemon.MediaKeys`
+grab, which GNOME's and Cinnamon's key daemon honours ahead of MPRIS, so an idle Chrome keeps
+the keys while Firefox plays. Routing them to whichever player was last active fixes it:
+
+```sh
+sudo apt install playerctl        # then bind the media keys to:
+playerctl --player=playerctld play-pause   # next, previous, stop accordingly
+```
+
+`playerctld` starts on demand over D-Bus; add it to your session's autostart so it sees
+players from the beginning.
+
+**Safety:** localhost only by default; writing calls need the header `X-Noaap: 1` and a
+JSON content type (so other websites cannot use it through your browser); the `Host` header
+must be ours (DNS rebinding); files are only ever served by album and video id, never by a
+path from the request; strict CSP, and thumbnails are fetched by the server so the page
+never talks to Google. There is **no authentication** — do not expose it to an untrusted
+network.
+
+### Reading
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/state` | Library (albums with progress), recent jobs, settings, whether something is running. `settings.version` and `settings.running_from` say which code is answering — a release install, or a checkout with its `git describe`. |
+| `GET /api/album?id=<source-id>` | The full plan of one album. |
+| `GET /api/tracks` | Every track by album as compact rows (video id, artist, title, downloaded, trim points), with a version that changes when any plan does — what the library filter searches and plays. |
+| `GET /api/cover?id=<source-id>` | The album's cover image. |
+| `GET /api/thumb?u=<url>` | A thumbnail, fetched by the server (allow-listed hosts only, cached). |
+| `GET /api/audio?id=<source-id>&v=<video-id>` | The track's audio, with `Range` support so players can seek. |
+| `GET /api/job?id=<n>` | One job with its full log and result. |
+| `GET /api/lyrics?id=<source-id>&v=<video-id>` | One track's lyrics as the `.lrc` beside it has them, with `status`, `lrclib_id`, `owner` (`user` when they are yours), `words_by` and `timed_by` (who drafted and who timed them, when it was not a person), `timings` — set when the timestamps were written against a different file than the one on disk — `publish` (whether they may be given back to LRCLIB, and why not when they may not), `fit` (what was made of an entry that was nearly this recording) and `can_check` (whether ⚖ can be offered). |
+| `GET /api/mbseed?id=<source-id>` | The fields for MusicBrainz's own release editor, and its URL. Nothing is sent from here — the page builds their form with these and you submit it yourself. Refused, with the reason, for an album that is not one to offer. |
+
+### Writing (POST, JSON body, header `X-Noaap: 1`)
+
+| Endpoint | Body | Effect |
+|---|---|---|
+| `/api/open` | `{q}` | A URL or an artist name: preview, channel listing or search (the **read lane** — see [the two lanes](#the-two-lanes) below). A preview is a dry run — it reads from YouTube (and MusicBrainz, if that is on) exactly as a fetch does, so it costs the same requests, and it writes nothing. |
+| `/api/fetch` | `{urls: […]}` | Plan and download those sources. |
+| `/api/update` | `{artist?, deep?}` | Re-check the library, or one artist's albums. |
+| `/api/repair` | `{}` | Run `noaap repair` over the library: renames and retags only, nothing downloaded. Refused while another job is changing the library. |
+| `/api/edit` | `{id, edits}` | Album and track fields, trim points, audio choice, and a track's audio source (`source`: a YouTube URL or video id; empty puts the playlist's video back). Renames and retags; a changed source is fetched again. |
+| `/api/trim_channel` | `{channel, start, end}` | The same trim for every track from one uploader. |
+| `/api/prune` | `{id}` | Delete tracks that left the playlist. |
+| `/api/draft` | `{id, video_id}` | Ask a transcribing provider what it hears on a track that has **no** words. Read-lane, writes nothing, refused for a track that has words. |
+| `/api/align` | `{id, video_id, text}` | Ask the configured timing provider to place those words on that track's clock. Read-lane: it writes nothing and the answer (`timed`, with a `start` per line and `null` where it would not place one) goes back to the page. Refused when no provider offers `align`. |
+| `/api/lyrics` | `{id, refetch?}` | Look up the lyrics of one album's tracks that have none yet; `refetch` asks about every track again (never about lyrics you wrote). |
+| `/api/save_lyrics` | `{id, video_id, text}` | Write the lyrics of one track as given: the `.lrc` beside it, the `LYRICS` tag, marked as yours. Empty `text` removes them. Nothing is looked up, and it is refused while another job holds that album. |
+| `/api/check_lyrics` | `{id, video_id}` | Align LRCLIB's [near-miss](#near-misses-when-lrclib-nearly-has-your-recording) entry for that track against your file and decide what may be taken from it: the words and its timings, the words with our own stamps, nothing, or a rejection that is remembered. Needs a provider that can `align`. |
+| `/api/take_plain_lyrics` | `{id, video_id}` | Put a near-miss entry's words beside the track without its timings. They stay LRCLIB's words. |
+| `/api/publish_lyrics` | `{id, video_id}` | Give your own timed words back to LRCLIB. One press is one request, it is never retried, and it is refused for anything that is not your own timed words that LRCLIB has no equal of. |
+| `/api/lyrics_track` | `{id, video_id, reject?}` | Ask LRCLIB about one track again. With `reject`, the entry it gave is remembered as wrong for this track and never offered for it again — no later lookup, `--refetch` included, can pick it. |
+| `/api/delete_track` | `{id, video_id}` | Delete one track. |
+| `/api/delete_album` | `{id}` | Delete an album (files noaap owns; anything else is kept). |
+| `/api/details` | `{refs: [{id, url}]}` | Ask for track counts and covers of search hits; a background runner fills them in. |
+| `/api/cancel` | `{id}` | Cancel a job; it stops at the next point where nothing is half-done. |
+| `/api/take_in` | `{folder, mode, dry_run?}` | Take another folder into the library: `mode` is `merge` (compare and copy in what is better) or `adopt` (one plan per album, where it stands). With `dry_run` it is a **read** and writes nothing, and its log is the pass's own lines. A folder that is not a directory, or is the library, inside it, or holds it, is refused. |
+| `/api/settings` | see below | Change settings at runtime, including the other sources (`<provider>_cookies_from_browser`, `<provider>_cookies_file` as a path, and Patreon's two switches) and the watched folders (`watches: [{name, folder, shape}]`, which rewrites the `[[watch]]` tables). |
+
+### The two lanes
+
+Jobs run in two lanes: everything that changes the library runs strictly one at a time, while
+searches and previews — the **read lane** — run alongside. So a long fetch never blocks a lookup,
+and two things can never rename the same album at once.
+
 ## Configuration
+
 
 `~/.config/noaap/config.toml` (or `$XDG_CONFIG_HOME`), all keys optional:
 
@@ -1230,6 +1218,7 @@ confirm — and the change, if there is one to make, is yours.
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
 | `timing_idle_minutes` | `5.0` | How long `noaap timing-serve` keeps its models loaded with nothing to do. `0` = for ever. |
+| `watches` | – | The folders `noaap watch` looks at, as `[[watch]]` tables — see **[a folder that is watched](#a-folder-that-is-watched)**. The settings view writes them too. |
 | `timing_card_idle_seconds` | `60.0` | The same for the app's own service, in seconds, because a laptop shares its card with the desktop in front of it. `0` = for ever. Read when the service starts. |
 
 The `timing_*` keys may also be written as a table, if grouping reads better — the flat key wins
@@ -1243,7 +1232,55 @@ device = "auto"               # endpoint, elevenlabs_key, deepgram_key, verify,
 idle_minutes = 5.0            # verify_threshold, verify_lost, idle_minutes likewise
 ```
 
+## Keeping it running
+
+
+The checkout above is the **development** install: `uv sync` makes an editable venv, so the code the
+program runs is the code in `src/`. That is what you want while changing it — and it is not what a
+service should run, because the web UI reads its page files per request and starts itself on demand:
+an editable install means the next start after an idle window runs whatever the working tree holds at
+that second, half-saved edits included.
+
+So the service runs a **release install**: a venv of its own holding the built wheel, which is a
+snapshot and cannot change under it.
+
+```sh
+scripts/release-install.sh v1.22.0      # build that tag, install it into ~/.local/noaap-release, restart
+noaap service install                   # once: points the unit at that venv (it names it when it exists)
+noaap --version                         # 1.22.0 — release install     (a checkout says which commit it is)
+```
+
+`release-install.sh` builds from the **tag**, extracted into a temporary directory, so a dirty checkout
+cannot leak into a release; it refuses a dirty tree or an untagged commit unless you say otherwise, it
+refuses a venv outside your home or in a temporary filesystem (uv copies instead of hardlinking across
+filesystems — that is the whole of torch, some 7 GB), and it prints the version the running service
+reports afterwards. `--no-restart` installs without touching the running service. `--venv PATH` or
+`NOAAP_RELEASE_VENV` puts the release somewhere else — `noaap service install` reads the same variable,
+so both sides agree about where it lives, and the script says so when the installed unit names another.
+
+It also installs the `timing,timing-check` extras and three **helpers the package does not declare** but
+the service needs on a machine like this one:
+
+| helper | why it is there |
+|---|---|
+| `nvidia-cublas-cu12` | faster-whisper runs on ctranslate2, which is built against **CUDA 12's** cuBLAS. torch brings the CUDA 13 wheels (`nvidia-cublas` 13.x), which ctranslate2 cannot load. |
+| `nvidia-cudnn-cu12` | the same for cuDNN. Without the two, a second opinion falls back to the processor — about 11× slower, measured on this machine. |
+| `secretstorage` | Chrome and Chromium keep their cookies encrypted with a key in the desktop keyring, and yt-dlp needs this to read it; without it every `v11` cookie is dropped with a warning. |
+
+`NOAAP_RELEASE_HELPERS` or `--helpers "…"` replaces that list, `--helpers ""` installs none of them, and
+`NOAAP_RELEASE_EXTRAS` does the same for the extras. The wheel and the helpers are resolved in one
+install, so a helper that cannot be had fails the release rather than leaving a service that quietly
+runs on the processor.
+
+Everything else keeps running from a checkout: `uv run noaap …` is always this tree, and
+`noaap service install --from-checkout` writes a unit that deliberately follows it — for development,
+not for the machine you use.
+
+The settings view names which of the two is answering (**noaap version**: `1.22.0 — release install`,
+or `1.22.0 — checkout v1.22.0-3-gabc1234`), and so does `noaap --version`.
+
 ## What 1.0.0 promises
+
 
 A major version is a promise about what will not move under you. Here it covers three things:
 
@@ -1259,6 +1296,7 @@ Nothing outside this repository implements it yet; when something does, it gets 
 
 ## Limits
 
+
 - **A library survives being moved — once its plans have been converted.** An album taken in from a
   folder used to record where its files are as an absolute path, so a copy of the library kept
   using the *original's* files and only a deletion of the original showed it. Since 1.6.0 a path
@@ -1270,17 +1308,10 @@ Nothing outside this repository implements it yet; when something does, it gets 
   holds a relative path says `schema: 2`, and only a collection taken in with `noaap adopt` does —
   every YouTube and SoundCloud album keeps `schema: 1`. An older version refuses a schema it does not
   know rather than guessing, so it says so plainly about the adopted ones and reads all the rest.
-- **An album holding a copy from another source is safe with an older version, until it fetches.**
-  Since `merge` there can be a YouTube album whose chosen copy came from a folder. ytalbum 0.9.1 and
-  noaap 1.1.0 to 1.5.0 can all read, play and save such an album, and nothing is lost — noaap puts back
-  what they change. But if one of those older versions is asked to **fetch that track again**, it asks
-  the wrong source, because it takes the copy for the album's own. Fetch it with 1.6.0 or later.
-- **1.1.0 to 1.5.0 broke that, and 1.6.0 fixes it.** Those versions wrote a copy's newer measurements
-  *inside* the copy, where ytalbum 0.9.1 builds one with a bare constructor and refuses the whole
-  plan — `Candidate.__init__() got an unexpected keyword argument 'length_by'`, on 153 of one real
-  library's 329 albums. A copy is now written in the shape 0.9.1 knows, with everything added since
-  beside it on the track, where an older reader carries it through untouched. Nothing changes in
-  memory or on the page. Run `noaap repair` once to write a library that way.
+- **A library written before 1.6.0 is worth repairing once.** `noaap repair` writes every plan in the
+  shape every version can read, which matters only if an older noaap or ytalbum still opens this
+  library — what exactly was wrong, and on how many albums, is under
+  [Coming from ytalbum](#coming-from-ytalbum).
 - **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
   uploader provided. No setting can make that better, and FLAC it will never be.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also
@@ -1319,24 +1350,8 @@ Nothing outside this repository implements it yet; when something does, it gets 
   it cannot warn you about duplicates.
 - **No authentication** in the web UI (see above).
 
-## The documentation, and what order to read it in
-
-For using noaap, in this order: **What it does** → **Install** and **First run** → **How it works**
-and **On disk** → **Command line** and **Configuration** → **Limits**. Then, only if you want a model
-to place lyrics on the clock, **Optional: placing lyrics on the clock** and the sections after it.
-[SECURITY.md](SECURITY.md) is short and worth reading before you expose anything to a network.
-
-The rest is internal and written for whoever works on this, not for using it:
-
-| file | what it is |
-|---|---|
-| [DESIGN.md](DESIGN.md) | ~1500 lines: every decision, what was measured, and what was measured and dropped. §9 is the slice log, §12 the dated decisions. |
-| [docs/qa-catalog.md](docs/qa-catalog.md) | the hand-run checklist for the seams, and the record of what each pass found |
-| [docs/backlog.md](docs/backlog.md) | **a record, not a queue** — all 21 items are done; read it to find out *why* something works as it does |
-| [docs/regression.md](docs/regression.md) | the corpus that keeps the measurements, and the rule for adding to it |
-| [docs/spikes/](docs/spikes/) | measurements taken before a decision: alignment, and where YouTube is assumed |
-
 ## Removing it
+
 
 ### The recycle bin
 
@@ -1413,6 +1428,7 @@ check before deleting.
 
 ## Coming from ytalbum
 
+
 Nothing has to be done. noaap reads ytalbum's settings file while it has none of its own, accepts
 every `YTALBUM_*` variable, and never touched the library in the first place. Each of those says so
 once, in one line, when it happens.
@@ -1439,7 +1455,37 @@ One thing to know if you keep both: they default to the same port. `noaap servic
 and stops rather than letting systemd answer "Address already in use" — give it `--port 8766`, or
 stop ytalbum's socket first.
 
+**If you keep opening this library with ytalbum 0.9.1, run `noaap repair` once.** Since `merge` there
+can be a YouTube album whose chosen copy came from a folder. ytalbum 0.9.1 and noaap 1.1.0 to 1.5.0
+read, play and save such an album without losing anything — but asked to **fetch that track again**
+they ask the wrong source, because they take the copy for the album's own; fetch it with 1.6.0 or
+later. And 1.1.0 to 1.5.0 wrote a copy's newer measurements *inside* the copy, where 0.9.1 builds one
+with a bare constructor and refuses the whole plan (`Candidate.__init__() got an unexpected keyword
+argument 'length_by'`, on 153 of one real library's 329 albums). A copy is written in the shape 0.9.1
+knows now, with everything added since beside it on the track; `repair` converts a whole library in
+one pass.
+
+## The documentation, and what order to read it in
+
+
+For using noaap, in this order: **Quick start** → **What it does** → **The web UI** → **Command line**
+→ **Where the music comes from** and **Where things are on disk** → **Configuration** → **Limits**.
+**Keeping it running** matters as soon as you want the page always there. Then, only if you want a
+model to place lyrics on the clock, **Optional: placing lyrics on the clock** and the sections after
+it. [SECURITY.md](SECURITY.md) is short and worth reading before you expose anything to a network.
+
+The rest is internal and written for whoever works on this, not for using it:
+
+| file | what it is |
+|---|---|
+| [DESIGN.md](DESIGN.md) | ~1500 lines: every decision, what was measured, and what was measured and dropped. §9 is the slice log, §12 the dated decisions. |
+| [docs/qa-catalog.md](docs/qa-catalog.md) | the hand-run checklist for the seams, and the record of what each pass found |
+| [docs/backlog.md](docs/backlog.md) | **a record, not a queue** — all 21 items are done; read it to find out *why* something works as it does |
+| [docs/regression.md](docs/regression.md) | the corpus that keeps the measurements, and the rule for adding to it |
+| [docs/spikes/](docs/spikes/) | measurements taken before a decision: alignment, and where YouTube is assumed |
+
 ## Where this comes from
+
 
 The repository has three generations, all in its history:
 
@@ -1471,6 +1517,7 @@ a measurement contradicted the plan.
 
 ## Built on
 
+
 [yt-dlp](https://github.com/yt-dlp/yt-dlp) ·
 [MusicBrainz](https://musicbrainz.org/) and the [Cover Art Archive](https://coverartarchive.org/) ·
 [LRCLIB](https://lrclib.net) ·
@@ -1494,6 +1541,7 @@ does not have to. This repository takes no donations and has no sponsor button.
 
 ## Licence
 
+
 [MIT](LICENSE) for this code.
 
 Two dependencies are copyleft and are installed separately by `uv`/`pip`, not shipped
@@ -1503,6 +1551,7 @@ contains them (a PyInstaller binary, a container image) is a combined work and h
 distributed under the GPL.
 
 ## Tests
+
 
 ```sh
 uv run pytest        # 780 tests, offline, ~70 s — including the page's own 91, under node
