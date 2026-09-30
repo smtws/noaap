@@ -138,9 +138,30 @@ def with_exception(plan: Any, key: str, on: bool) -> dict[str, bool]:
     return mine
 
 
+# -- what it comes to for one album's files ----------------------------------------------------------
+#
+# An adopted album keeps its owner's names and tags — that is what adoption means, and it is recorded
+# on the plan as a fact. Whether the library nonetheless wants such an album renamed into noaap's
+# scheme, or its tags rewritten, is a **setting**; an album excepted from it keeps them either way.
+
+
+def renames(plan: Any, want: Treatment | None) -> bool:
+    """Whether this album's files may be renamed into noaap's scheme."""
+    if not getattr(plan, "keep_names", False):
+        return True
+    return bool(want and want.rename_adopted)
+
+
+def retags(plan: Any, want: Treatment | None) -> bool:
+    """Whether noaap's tags may be written into this album's files."""
+    if not getattr(plan, "keep_tags", False):
+        return True
+    return bool(want and want.retag_adopted)
+
+
 def known_fields() -> tuple[str, ...]:
     return tuple(f.name for f in fields(Treatment))
 
 
 __all__ = ["EXCEPTIONS", "OPERATIONS", "SAYS", "Treatment", "exceptions_of", "for_album",
-           "held_back", "known_fields", "says_exceptions", "with_exception"]
+           "held_back", "known_fields", "renames", "retags", "says_exceptions", "with_exception"]

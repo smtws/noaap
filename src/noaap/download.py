@@ -32,6 +32,7 @@ from .lyrics import (
 )
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import refresh_derived, wanted_filename, wanted_folder
+from .precautions import safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
     KEEP_IF_PRESENT,
@@ -43,6 +44,7 @@ from .tag import (
     tag_file,
     tags_in,
 )
+from .treatment import Treatment, renames, retags
 from .trim import apply as apply_trim
 from .trim import original_path, starts_before_zero
 from .trim import signature as trim_signature
@@ -338,12 +340,13 @@ def find_plan(library: Path, source_id: str) -> tuple[Path, AlbumPlan] | None:
     return next(((d, p) for d, p in iter_plans(library) if p.source_id == source_id), None)
 
 
-def relocate(album_dir: Path, plan: AlbumPlan, library: Path) -> Path:
+def relocate(album_dir: Path, plan: AlbumPlan, library: Path, want: Treatment | None = None) -> Path:
     """Move the album folder to where the (edited) plan says it belongs. Never overwrites.
 
-    An album that keeps its names stays where its owner put it (§9, slice 58).
+    An album that keeps its names stays where its owner put it (§9, slice 58) — unless the library is
+    set to rename adopted albums and this one is not excepted from that (§9, slice 100).
     """
-    if plan.keep_names:
+    if not renames(plan, want):
         return album_dir
     target = library / wanted_folder(plan)
     if not album_dir.exists() or album_dir.resolve() == target.resolve():
@@ -517,7 +520,7 @@ SHOWN = 60
 
 
 def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
-             library: Path | None = None) -> list[str]:
+             library: Path | None = None, want: Treatment | None = None) -> list[str]:
     """Everything `run(..., download=False)` would change about this album, one line each.
 
     **The dry run's source of truth** (§9, slice 85). It asks the same three questions the pass itself
@@ -529,7 +532,11 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     Reads files; writes nothing, and asks nobody anything.
     """
     said: list[str] = []
-    if library is not None and not plan.keep_names:
+    # what the library is set to want, narrowed by this album's own exceptions (§9, slice 100)
+    rename, retag = renames(plan, want), retags(plan, want)
+    if want is not None and not want.cover_embedded:
+        cover = None
+    if library is not None and rename:
         target = library / wanted_folder(plan)
         if album_dir.exists() and album_dir.resolve() != target.resolve():
             said.append(f"the album folder would move to {wanted_folder(plan)}"
@@ -537,7 +544,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     for track in plan.tracks:
         if track.state != "done":
             continue
-        wanted = track.filename if plan.keep_names else wanted_filename(plan, track)
+        wanted = wanted_filename(plan, track) if rename else track.filename
         here = album_dir / track.filename
         if track.filename != wanted:
             said.append(f"{track.number:02d} would be renamed: {track.filename} → {wanted}")
@@ -554,9 +561,11 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                         if kept.exists() else
                         f"{track.number:02d} starts at {before:.3f} s and cannot be cut again: "
                         "no untouched original is kept beside it")
-        if plan.keep_tags:
-            continue   # nothing is ever written into this file (§9, slice 58)
+        if not retag:
+            continue   # nothing is written into this file: adopted, and the library does not ask
         text = read_sidecar(album_dir, track)
+        if want is not None and not want.lyrics_embedded:
+            text = None   # the words stay beside the track, not in it
         if track.tagged == signature(plan, track, cover, text):
             continue
         path = final if final.exists() else here
@@ -568,7 +577,9 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         wanted_tags = build_tags(plan, track, text)
         changed = [_change(key, have.get(key), value)
                    for key, value in wanted_tags.items() if str(have.get(key) or "") != str(value or "")]
-        gone = [key for key in have if key not in wanted_tags and key not in KEEP_IF_PRESENT]
+        # an adopted album's other fields are left alone, so the dry run must not claim they go
+        gone = ([] if plan.adopted else
+                [key for key in have if key not in wanted_tags and key not in KEEP_IF_PRESENT])
         if changed or gone:
             said.append(f"{track.number:02d} would be retagged: "
                         + "; ".join(changed + [f"{key} would be dropped" for key in gone]))
@@ -636,6 +647,13 @@ def run(
     plan: AlbumPlan,
     album_dir: Path,
     source: Source,
+    # **what the library is set to want** (§9, slice 100), narrowed by this album's exceptions. None
+    # means what every pass meant before it existed: rename and retag unless the album is adopted.
+    want: Treatment | None = None,
+    # **files that cannot be fetched again are written the careful way** (§9, slice 99): to a copy
+    # beside them, proved to hold the same recording, then an atomic replace. It costs a copy and a
+    # digest per write, which is why noaap's own downloads do not pay it.
+    careful: bool = False,
     # A track's audio comes from its chosen candidate, which carries its own provider: one album can
     # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
     # — the cover — and this answers for a track.
@@ -665,9 +683,12 @@ def run(
         save_plan(plan, album_dir)
     parts = album_dir / PARTS_DIR
 
+    rename, retag = renames(plan, want), retags(plan, want)
+    if want is not None and not want.cover_embedded:
+        cover = None          # the picture stays beside the album, not inside every file
     for track in plan.tracks:
         check()
-        wanted = track.filename if plan.keep_names else wanted_filename(plan, track)
+        wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted
             if old.exists() and not new.exists():
@@ -704,14 +725,23 @@ def run(
             looked_up = lyrics is not None and track.lyrics is None
             if looked_up:
                 text = update_track(lyrics, plan, track, album_dir, final)
+            if want is not None and not want.lyrics_embedded:
+                text = None   # …and the words stay beside the track
             try:
-                if plan.keep_tags:
+                if not retag:
                     # nothing is written into this file by any pass (§9, slice 58). The words still
                     # arrive as a sidecar beside it; the tag inside the file is the owner's.
                     if looked_up or measured or failed_trim or reconciled:
                         save_plan(plan, album_dir)
                 elif track.tagged != signature(plan, track, cover, text):
-                    track.tagged = tag_file(final, plan, track, cover, text)
+                    # **an album that came in from somebody's folder keeps the fields we do not
+                    # model** (§9, slice 100): replaygain, ISRC, their own comment. Until the library
+                    # could be told to retag such an album this never arose — `keep_tags` meant
+                    # nothing was written at all — and the first case that turned retagging on lost
+                    # a `comment` that had been in the file since 2006.
+                    theirs = bool(plan.adopted)
+                    write = lambda f: tag_file(f, plan, track, cover, text, keep_unknown=theirs)  # noqa: E731
+                    track.tagged = safely(final, write, log=say) if careful else write(final)
                     save_plan(plan, album_dir)
                     on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")
                 elif looked_up or measured or failed_trim or reconciled:
@@ -757,8 +787,8 @@ def run(
                     # **an adopted album keeps its name here too** (§9, slice 61): only the suffix
                     # follows the file, because deriving the whole name is the one thing adoption
                     # promised not to do — and it would move the file out of its own folder.
-                    track.filename = str(Path(track.filename).with_suffix(f".{got}")) \
-                        if plan.keep_names else wanted_filename(plan, track)
+                    track.filename = (wanted_filename(plan, track) if rename
+                                      else str(Path(track.filename).with_suffix(f".{got}")))
                     final = album_dir / track.filename
                 if captions_said:
                     say(f"  {track.number:02d} {captions_said}")

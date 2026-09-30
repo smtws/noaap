@@ -93,6 +93,7 @@ from .timing import (
     with_gaps,
 )
 from .timing import kind_for as timing_kind
+from .treatment import for_album, held_back
 from .trim import ORIGINALS, kept_originals, originals_of
 from .trim import key as trim_key
 
@@ -363,7 +364,7 @@ class Service:
             if report_only:
                 return Outcome("reported", plan, old_dir)
             self._settle_artist(plan)  # before the folder is chosen, or the album stays put
-            album_dir = relocate(old_dir, plan, self.library)
+            album_dir = relocate(old_dir, plan, self.library, for_album(self.cfg, plan))
         else:
             if report_only:
                 self.log(f"not in the library yet: {plan.folder}")
@@ -493,12 +494,19 @@ class Service:
         plan.provenance["albumartist"] = Provenance.MB
         refresh_derived(plan)  # or a new album keeps the folder of the spelling just dropped
 
+    def _run(self, plan: AlbumPlan, album_dir: Path, **kw: Any) -> AlbumPlan:
+        """Every pass that writes files goes through here, so every pass brings the album to the
+        library's state (§9, slice 100) and writes carefully where the files are not ours to lose
+        (§9, slice 99). The treatment is the settings, minus this album's own exceptions."""
+        return run(plan, album_dir, self.source_for(plan), want=for_album(self.cfg, plan),
+                   careful=bool(plan.adopted), track_source=self._track_source(plan),
+                   on_track=self.on_track, check=self.check, **kw)
+
     def execute(self, plan: AlbumPlan, album_dir: Path) -> Outcome:
         todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan),
-            on_track=self.on_track, check=self.check, say=self.log,
-            lyrics=self.lrclib if self.may_look_up(plan) else None)
+        self._run(plan, album_dir, say=self.log,
+                  lyrics=self.lrclib if self.may_look_up(plan) else None)
         failed = [t for t in plan.tracks if t.state != "done" and t.in_source]
         self.log(f"{len(plan.tracks) - len(failed)}/{len(plan.tracks)} tracks done" + (f", {len(failed)} not yet — run again to retry" if failed else ""))
         if any(t.error_kind == Failure.BOT_CHECK for t in failed):
@@ -512,7 +520,7 @@ class Service:
         if not plan:
             return Outcome("failed", message=f"no plan in {album_dir}")
         library = album_dir.resolve().parents[1]  # <library>/<artist>/<album>
-        album_dir = relocate(album_dir, plan, library)
+        album_dir = relocate(album_dir, plan, library, for_album(self.cfg, plan))
         self.on_plan(plan)
         return self.execute(plan, album_dir)
 
@@ -888,7 +896,7 @@ class Service:
         save_plan(plan, album_dir)
         # retag through the ordinary pass, with no lyrics client: it rewrites the LYRICS tag from
         # the sidecar as every pass does, and downloads nothing
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
+        self._run(plan, album_dir, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -1217,7 +1225,7 @@ class Service:
             mine = " — yours from now on" if t.provenance.get("lyrics") == Provenance.USER else ""
             self.log(f"{t.title}: {t.lyrics}{mine}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
+        self._run(plan, album_dir, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -1304,7 +1312,7 @@ class Service:
             self.log(f"{track.title}: lrclib's words are this song's, its timings are {track.lyrics_fit['why']}'s — "
                      f"kept the words and timed them to this file with {timed.by}")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
+        self._run(plan, album_dir, download=False)
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
@@ -1443,7 +1451,7 @@ class Service:
         track.lyrics_timed_by = None
         track.lyrics_fit = {**(track.lyrics_fit or {}), "decided": "words by hand"}
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
+        self._run(plan, album_dir, download=False)
         save_plan(plan, album_dir)
         self.log(f"{track.title}: took lrclib's words without their timings, on your say-so")
         return Outcome("ok", plan, album_dir)
@@ -1501,12 +1509,12 @@ class Service:
         else:
             self.log(f"{track.title}: nothing lrclib has fits this recording")
         save_plan(plan, album_dir)
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)  # the tag follows the file
+        self._run(plan, album_dir, download=False)  # the tag follows the file
         save_plan(plan, album_dir)
         return Outcome("ok", plan, album_dir)
 
     def _lyrics_pass(self, plan: AlbumPlan, album_dir: Path, api: LyricsAPI) -> Outcome:
-        run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False, lyrics=api)
+        self._run(plan, album_dir, download=False, lyrics=api)
         return Outcome("ok", plan, album_dir)
 
     # -- offline repair --------------------------------------------------------------------
@@ -1770,7 +1778,10 @@ class Service:
                 # **the dry run names what the real run would do to the files** (§9, slice 85). It used
                 # to stop here, so renames and retags — which happen inside `run` below — were never
                 # mentioned: the user was told no audio file would be touched and 376 were rewritten.
-                would = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library)
+                want = for_album(self.cfg, plan)
+                would = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library, want)
+                if stopped := held_back(self.cfg, plan):
+                    self.log(f"  this album is excepted from: {', '.join(stopped)}")
                 for line in would:
                     self.log(f"  {line}")
                 retags += sum(1 for line in would if "retagged" in line or "rewritten" in line)
@@ -1778,8 +1789,9 @@ class Service:
                 outcomes.append(Outcome("ok", plan, album_dir))
                 continue
             save_plan(plan, album_dir)
-            album_dir = relocate(album_dir, plan, self.library)
-            run(plan, album_dir, self.source_for(plan), track_source=self._track_source(plan), on_track=self.on_track, check=self.check, download=False)
+            want = for_album(self.cfg, plan)
+            album_dir = relocate(album_dir, plan, self.library, want)
+            self._run(plan, album_dir, download=False)
             outcomes.append(Outcome("ok", plan, album_dir))
         if moved_total.get("sources") or moved_total.get("would_source"):
             self.log(f"{moved_total.get('sources') or moved_total.get('would_source')} album(s) "
@@ -2157,7 +2169,7 @@ class Service:
                 for path in originals_of(album_dir, took):
                     path.unlink()
                 self.log(f"{t.title}: audio now from {t.effective_id} (was {took})")
-        album_dir = relocate(album_dir, plan, self.library)
+        album_dir = relocate(album_dir, plan, self.library, for_album(self.cfg, plan))
         return self.execute(plan, album_dir)
 
 
