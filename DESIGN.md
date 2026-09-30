@@ -2730,6 +2730,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    service that quietly runs slowly.
 
 
+94. ✅ **The line you are stamping stays in sight** (2026-09-30, P74c). The user: *"‘stamp this line’
+   (⏱) loses the focus on the line, while the nudge buttons keep it. So stamping line after line from
+   the keyboard breaks after the first."* Focus was never the thing. Measured on a 34-line lyric in an
+   8-row editor: twelve stamps walked the caret from line 1 to line 13 with `scrollTop` at **0** the
+   whole way and `document.activeElement` the textarea every time — so from the eighth stamp on, the
+   line being worked on was below the fold and the cursor invisible. **A programmatic selection does not
+   scroll a textarea**: Chrome scrolls to the caret for typing and for the arrow keys, not for a
+   `setSelectionRange`, and every control in this editor sets the selection itself. The stamp is the
+   only one that moves the caret to *another* line, which is why it alone looked broken and why the four
+   nudges — which rewrite one line and put the caret back on it — always felt right.
+   `scrollToLine()` answers where the box has to be, keeping one line of context where there is room for
+   it, and `showLine()` is the one place that focuses, sets the caret and applies it — the stamp, the
+   nudges and the aligner's return to the top all go through it. Verified the same way it was found: the
+   same twelve stamps, the caret in view at every one of them (`scrollTop` 0 → 25 → 65 → 106, moving
+   only when it must), the nudge unchanged.
+   Kept deliberately: **the stamp still moves to the next line.** That is what stamping line after line
+   from the keyboard needs, and it is what its tooltip promises; what was wrong was that the next line
+   could not be seen.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2924,6 +2944,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (the line stays in sight, §9, slice 94)
+
+- **"It loses the focus" may not be about focus.** Measure `document.activeElement` before believing a
+  focus report: here it never moved, and the fault was a scroll position.
+- **Whoever moves a caret owns what can be seen.** A `setSelectionRange` is not a scroll, so a handler
+  that moves the caret has to put the line in view itself.
+- **One place for "put the caret here".** Four handlers each did their own focus-and-select; the one
+  that also had to scroll would otherwise have been the only one that did.
+- **Keep the behaviour the flow needs.** The advance to the next line is what makes stamping from the
+  keyboard possible; the answer was to make it visible, not to undo it.
 
 ### Decisions of 2026-09-30 (a released snapshot, §9, slice 93)
 

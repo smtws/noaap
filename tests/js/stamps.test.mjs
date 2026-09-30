@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { audioRequest, lineAt, lineStart, nudged, shifted, stampOf, stampText, syncEntry, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
+import { audioRequest, lineAt, lineStart, nudged, scrollToLine, shifted, stampOf, stampText, syncEntry, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
   from "../../src/noaap/webui/logic.mjs";
 
 test("an untrimmed track has one clock", () => {
@@ -279,4 +279,99 @@ test("a finished save also says whether an original is kept", () => {
   assert.equal(patched.original_kept, true);
   assert.equal(audioRequest(patched).original, true);
   assert.equal(trimOffset({ ...patched, playingOriginal: true }), 6.5);
+});
+
+
+// -- the line being worked on stays in sight (§9, slice 94) ----------------------------------------
+//
+// The user: "stamp this line loses the focus on the line, while the nudge buttons keep it. So stamping
+// line after line from the keyboard breaks after the first." Focus was never the thing — measured on a
+// 34-line lyric in an 8-row editor, twelve stamps walked the caret from line 1 to line 13 with
+// `scrollTop` at 0 the whole way, the editor focused every time. A programmatic selection does not
+// scroll a textarea, and the stamp is the only control that moves the caret to another line.
+
+// nine lines fit in the box, and the lyric is longer than that
+const BOX = { lineHeight: 20, clientHeight: 180, lines: 34 };
+const WORDS = Array.from({ length: 34 }, (_, n) => `line ${n + 1}`).join("\n");
+
+// where each control leaves the caret, as the five handlers do it: the caret belongs to the text the
+// control just wrote, not to the one it read — that is what `showLine` is given
+const afterStamp = (text, caret) => {
+  const got = tapped(text, caret, 12.3);
+  return { text: got.text, caret: got.caret };
+};
+const afterNudge = (text, caret) => {
+  const i = lineAt(text, caret);
+  const lines = text.split("\n");
+  const moved = nudged(lines[i], -0.1) || { line: lines[i] };
+  lines[i] = moved.line;
+  const written = lines.join("\n");
+  return { text: written, caret: lineStart(written, i) };
+};
+
+test("the stamp moves to the next line and the nudges stay on theirs", () => {
+  const stamped = afterStamp(WORDS, 0);
+  assert.equal(lineAt(stamped.text, stamped.caret), 1, "the stamp goes on to line 2");
+  // and a stamped line can be nudged four ways without the caret leaving it
+  const stampedLine = withStamp("line 9", 30);
+  for (const delta of [-0.5, -0.1, 0.1, 0.5]) {
+    assert.ok(nudged(stampedLine, delta), `${delta} moves a stamp`);
+  }
+  // a lyric whose ninth line already carries a stamp, which is what a nudge needs
+  const withNinth = WORDS.split("\n").map((line, i) => (i === 8 ? withStamp(line, 30) : line)).join("\n");
+  const nudgedThere = afterNudge(withNinth, lineStart(withNinth, 8));
+  assert.equal(lineAt(nudgedThere.text, nudgedThere.caret), 8, "the nudge stays on line 9");
+  assert.match(nudgedThere.text.split("\n")[8], /^\[00:29\.9\]/, "and it moved that line's stamp");
+});
+
+test("each of the five controls keeps its line in sight", () => {
+  // the caret sits on the last line the box shows; the stamp is the one that leaves the box
+  const at = lineStart(WORDS, 8);                        // line 9, the bottom of the view
+  const stamped = afterStamp(WORDS, at);
+  const stampLine = lineAt(stamped.text, stamped.caret) + 1;
+  assert.equal(stampLine, 10, "the stamp is now working on the line below the fold");
+  assert.equal(scrollToLine({ ...BOX, line: stampLine, scrollTop: 0 }), 40,
+               "the box scrolls so the stamped line and one line of context are visible");
+
+  for (const delta of [-0.5, -0.1, 0.1, 0.5]) {
+    const moved = afterNudge(WORDS, at);
+    const line = lineAt(moved.text, moved.caret) + 1;
+    assert.equal(line, 9, `a nudge (${delta}) stays on its line`);
+    assert.equal(scrollToLine({ ...BOX, line, scrollTop: 0 }), null, "so nothing scrolls");
+  }
+});
+
+test("a line already in view does not move the box", () => {
+  for (const line of [1, 2, 5, 9]) {
+    assert.equal(scrollToLine({ ...BOX, line, scrollTop: 0 }), null, `line ${line}`);
+  }
+});
+
+test("a line above the view scrolls back up, and the top is the top", () => {
+  assert.equal(scrollToLine({ ...BOX, line: 2, scrollTop: 400 }), 0);
+  assert.equal(scrollToLine({ ...BOX, line: 12, scrollTop: 400 }), 200);
+  assert.equal(scrollToLine({ ...BOX, line: 1, scrollTop: 40 }), 0);
+});
+
+test("the last line cannot scroll past the end of the text", () => {
+  const highest = BOX.lines * BOX.lineHeight - BOX.clientHeight;   // 500
+  assert.equal(scrollToLine({ ...BOX, line: 34, scrollTop: 0 }), highest);
+  assert.equal(scrollToLine({ ...BOX, line: 34, scrollTop: highest }), null);
+});
+
+test("a lyric that fits needs no scrolling at all", () => {
+  const small = { lineHeight: 20, clientHeight: 180, lines: 6 };
+  for (const line of [1, 3, 6]) assert.equal(scrollToLine({ ...small, line, scrollTop: 0 }), null);
+});
+
+test("an editor that cannot be measured is left alone", () => {
+  // before layout, or in a hidden panel: no line height and no height to compare it with
+  assert.equal(scrollToLine({ line: 12, lineHeight: 0, clientHeight: 180, lines: 34 }), null);
+  assert.equal(scrollToLine({ line: 12, lineHeight: 20, clientHeight: 0, lines: 34 }), null);
+  assert.equal(scrollToLine(), null);
+});
+
+test("a box too small for context still shows the line", () => {
+  const tiny = { lineHeight: 20, clientHeight: 40, lines: 34 };   // two lines
+  assert.equal(scrollToLine({ ...tiny, line: 5, scrollTop: 0 }), 60);
 });

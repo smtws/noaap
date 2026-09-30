@@ -290,6 +290,31 @@ export function tapped(text, caret, seconds) {
   return { text: value, caret: lineStart(value, next), line: i, at: tenth(seconds), last: i >= lines.length - 1 };
 }
 
+/** Where a textarea has to be scrolled for the line the caret is on to be seen (§9, slice 94).
+ *
+ * **Moving a caret does not scroll a textarea.** Chrome scrolls to the caret for typing and for the
+ * arrow keys, not for a `setSelectionRange` — and every control in this editor sets the selection
+ * itself. The stamp is the only one that moves the caret to *another* line, so it is the only one that
+ * can put the line being worked on out of sight: measured on a 34-line lyric in an 8-row editor, twelve
+ * stamps walked the caret from line 1 to line 13 with `scrollTop` at 0 the whole way. From the eighth
+ * on, the user was stamping a line they could not see — which is what "it loses the line" was.
+ *
+ * Returns the `scrollTop` the box should have, or null when the line is already in view. It keeps a
+ * line of context where there is one, so the line does not sit flat against the edge.
+ */
+export function scrollToLine({ line = 1, lineHeight = 0, clientHeight = 0, scrollTop = 0, lines = 0 } = {}) {
+  if (!(lineHeight > 0) || !(clientHeight > 0)) return null;   // nothing measurable to scroll
+  const top = Math.max(0, line - 1) * lineHeight;
+  const room = Math.floor(clientHeight / lineHeight);
+  const context = room > 2 ? lineHeight : 0;    // one line above or below, where the box has room for it
+  const highest = Math.max(0, lines * lineHeight - clientHeight);
+  if (top < scrollTop) return Math.min(highest, Math.max(0, top - context));
+  if (top + lineHeight > scrollTop + clientHeight) {
+    return Math.min(highest, top + lineHeight + context - clientHeight);
+  }
+  return null;
+}
+
 // A nudge is the same rewrite with the stamp's own value moved; a line with no stamp has
 // nothing to move, and says so rather than growing one by accident.
 export function nudged(line, delta) {

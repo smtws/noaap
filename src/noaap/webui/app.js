@@ -3,7 +3,8 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          binLabel, candidateLine, copyLabels, repairState, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
-         scrollForActive, seedConfirm, shifted, sourceChange, stampOf, takeInState, tapped, tenth,
+         scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
+         tapped, tenth,
          timingFields, timingNotice,
          toFileClock, trimOffset, trimTarget, watchTrouble, wordsAfterClaim }
   from "./logic.mjs";
@@ -1107,8 +1108,20 @@ function tapStamp(p, t, area) {
   if (!playing) return toast("Play this track first — a stamp is the moment you are hearing", "blocked");
   const got = tapped(area.value, area.selectionStart, toFileClock(audio.currentTime, trimOffset(playing)));
   editorText(area, got.text);
+  showLine(area, got.caret);
+}
+
+// **Put the caret on a line and keep that line in sight** (§9, slice 94). Every control here sets the
+// selection itself, and a programmatic selection does not scroll a textarea — so the one control that
+// moves the caret to another line, the stamp, walked the line being worked on out of the box.
+function showLine(area, caret) {
   area.focus();
-  area.setSelectionRange(got.caret, got.caret);
+  area.setSelectionRange(caret, caret);
+  const lineHeight = parseFloat(getComputedStyle(area).lineHeight) || 0;
+  const to = scrollToLine({ line: lineAt(area.value, caret) + 1, lineHeight,
+                            clientHeight: area.clientHeight, scrollTop: area.scrollTop,
+                            lines: area.value.split("\n").length });
+  if (to != null) area.scrollTop = to;
 }
 
 function currentLine(area) {
@@ -1122,9 +1135,7 @@ function nudgeStamp(p, t, area, delta) {
   if (!got) return toast("This line has no stamp yet — stamp it first", "blocked");
   lines[i] = got.line;
   editorText(area, lines.join("\n"));
-  const caret = lineStart(area.value, i);
-  area.focus();
-  area.setSelectionRange(caret, caret);
+  showLine(area, lineStart(area.value, i));
   seekLyric(p, t, got.at);  // hearing it is the point; the seek converts back to the player's clock
 }
 
@@ -1222,8 +1233,7 @@ async function alignWords(button, p, t, area, notice, timing, method = "align") 
   // evidence and not only the verdict (§9, slice 44)
   timing.checked = timed.parameters || null;
   notice.textContent = `⚠ ${alignNotice(timed, got)}`;
-  area.focus();
-  area.setSelectionRange(0, 0);
+  showLine(area, 0);   // the words have all moved; the top is where a person reads them from
 }
 
 function editorKey(e, p, t, area) {
