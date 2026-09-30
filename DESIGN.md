@@ -2592,6 +2592,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    silent jump to the beginning. And the head-skip does not fire **after a jump**: somebody who asks to
    be before the trim start is asking for exactly that; playing into the head still skips it.
 
+89. ✅ **A save reads the track rows, and a save that cannot be built says so** (2026-09-30, P70c).
+   Found by the reviewer while measuring P70b: with a lyrics panel open, *"Save changes"* threw
+   `TypeError: Cannot read properties of null (reading 'value')` and saved **nothing, silently** — no
+   toast, no job. The page inserts its panels as extra rows after the row they belong to
+   (`<tr class="lyrics" data-id=…>`), carrying the track's own id and none of its fields, and the save
+   walked every row in the tbody. The first panel row it reached had no `[name=number]`, so it read
+   `null.value` and the exception left the handler before `submit` was ever called.
+   **A row is a track row when it is not a panel *and* carries the fields a save needs.** The second
+   test alone would do; both are there so that a panel kind nobody has thought of yet cannot slip
+   through. And the handler catches: a save that cannot be built now says *"This album could not be
+   saved: …"* in the page instead of writing to a console nobody has open — measured both ways on a copy
+   (before: no job, the title unchanged, the TypeError in the console; after: the job runs and the title
+   changes, with a panel open or closed).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2786,6 +2800,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (a save reads the track rows, §9, slice 89)
+
+- **A table's rows are not all the same kind of thing.** Whoever reads them says which kind they want.
+- **An exception in a handler is a silent failure.** Every door a person presses reports what happened
+  to it, in the page.
 
 ### Decisions of 2026-09-30 (a jump is answered where it was asked, §9, slice 88)
 

@@ -5343,10 +5343,36 @@ to Cloudflare"* for the non-app path.
 - [x] **CB4** — the same 12 clicks after the change: every one still lands where it was asked, and on the
   copy whose kept original was removed they land on the stamp itself rather than a trim late.
 
+## CC. A save with a panel open (P70c, DESIGN §9, slice 89)
+
+- [x] **CC1 · R** — the defect, measured before and after on the same copy with the same script
+
+  | | jobs created | the title on the server | the console |
+  |---|---|---|---|
+  | 1.19.2, panel closed | 1 | changed | — |
+  | **1.19.2, panel open** | **0** | **unchanged** | `TypeError: Cannot read properties of null (reading 'value')` |
+  | fixed, panel closed | 1 | changed | — |
+  | **fixed, panel open** | **1** | **changed** | — |
+
+  The page inserts its panels as extra rows after the row they belong to, carrying the track's own
+  `data-id` and none of its input fields; the save walked every row in the tbody and read `null.value`
+  on the first panel it met, before `submit` was called. Nothing was said because the exception left the
+  handler.
+
+- [x] **CC2 · R** — a save that cannot be built says so: with a field the save reads taken out of the
+  form, pressing Save creates **no job** and the page shows *"This album could not be saved: Cannot read
+  properties of undefined (reading 'value')"*. Before, the same thing was a console line.
+
+- [x] **CC3** — the collector on fixtures (7 node cases): a table with no panels is all tracks; the
+  lyrics panel of a track is not one of its rows; nor the source picker, nor both at once; a row without
+  the fields is left out whatever it calls itself; a row with no id is not a track; nothing to save is
+  nothing rather than a throw; and every field a save needs can be read from what comes back.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the CC cases (P70c: a save with a panel open) | 3 | 1 defect, found by the reviewer while measuring the last package | With a lyrics panel open, *"Save changes"* threw `TypeError: … (reading 'value')` and saved **nothing, silently**: the page inserts its panels as extra rows carrying the track's `data-id` and none of its fields, and the save walked every row in the tbody. Measured before and after with one script on one copy: panel open, 1.19.2 → no job and the title unchanged; fixed → the job runs and the title changes. A row is a track row when it is not a panel **and** carries the fields a save needs, and the handler now catches: *"This album could not be saved: …"* appears in the page where a console line used to be. 1640 pytest + 157 node. |
 | 2026-09-30 | the CB cases (P70b: a jump is answered where it was asked) | 4 | 1 defect found while measuring; **the reported one not reproduced** | The user: *"every jumppoint completely restarts the track."* 21 clicks in 8 states in Chrome app mode — playing, paused, during a pending load, two clicks 80–120 ms apart — and every one landed where it was asked with no reload, so the restart needs state this copy does not have. Found on the way and fixed: **`o=1` falls back to the cut file when no untouched original is kept**, and the page then added the trim to every stamp and applied the window to a file that already carries it (measured: a line stamped 20.00 landed at 32.25, twelve seconds late; now 20.4). The payload says `original_kept`, and the offset and the window follow the file actually asked for. Three rules besides: a line seeks the element holding that track and never reloads it, `playIndex` moves the playhead only where a caller says (the reset to zero from slice 87 is gone), and the head-skip does not fire after a jump. 1640 pytest + 150 node. |
 | 2026-09-30 | the CA cases (P70: the window belongs to the loaded file) | 4 | **3 defects, one of them mine from P69** | The user on 1.19.0: *"after saving it starts as if the cut part was the original."* Walked their flow in Chrome in app mode: the album object is refreshed only on a busy → idle transition **seen by a poll**, and cutting one track takes about a second — so a short job leaves the page believing the file is uncut. It then asks for the plain file (which by now is the cut one) and applies the window to it: the double skip. Two more in the same rows: the marks just saved were gone from the player (▶ from start went to 1.90 instead of 8.6), and after a reload the window was **not** applied at all — my slice 86 flag, which I had measured in P69 as "no skip" without asking which file was playing. Now: the window is applied only to the file the player loaded, the audio URL carries the shape of the file (measured: the element kept reporting 194.85 s for a file that had become 186.23 s), and a write job of ours refreshes the panel from its own ending — teaching the queue without touching the source, so a save never interrupts the sound and the *"play() request was interrupted"* message cannot arise. Same seven steps after the fix: no load at the save, then the original with its window at 10.69 s on a mark of 8.6, across a reload and on a track cut before load, no errors. 1640 pytest + 145 node. |
 | 2026-09-30 | the BZ cases (P69: a cut file starts at zero) | 5 | 0 — two defects of the program's, one of them mine from P63's measurement | The user's *"it jumps to the next one right from the middle"*, reproduced in Chrome **in app mode** on copies: a cut track began **4.9 s into itself** and the track after it began at **4.948**. The cause is the page — the trim guard measured an already-cut file's playhead against the *original's* trim points — and after the fix the same measurement reads no skip and **0.018** for the next track. Underneath it, the container: `-ss` before `-i` keeps the packets before the cut and marks them negative (`-0.900000` for a 4.9 s trim, every front-cut file in the library), so a player's clock runs past the duration it reports and `ended` came 2.8 s late. The cut now seeks on the output side with `make_zero`: first packet **0.000**, length within one 20 ms packet, 14 KB smaller, nothing re-encoded — and the obvious alternative (`make_zero` on the input seek) was measured and rejected because it keeps the pre-roll. Files already cut the old way are named in the dry run and cut again from the untouched original; where none is kept, nothing is touched and it says so. P63's fifteen clean clicks were measured on files that had never been cut, which is why they found nothing. 1640 pytest + 138 node. |

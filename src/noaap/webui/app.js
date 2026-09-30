@@ -2,7 +2,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         candidateLine, copyLabels, syncEntry, trimGuard, awaitingChoice, resetKind, roundMark,
+         candidateLine, copyLabels, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
          scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
          toFileClock, trimOffset, trimTarget, wordsAfterClaim }
   from "./logic.mjs";
@@ -1584,21 +1584,29 @@ function askAudioChoice(plan, track, button) {
 function saveAlbum(ev) {
   ev.preventDefault();
   const form = ev.target;
-  const edits = {
-    album: form.album.value, albumartist: form.albumartist.value, year: form.year.value,
-    tracks: [...form.querySelectorAll("tbody tr")].map((tr) => ({
-      video_id: tr.dataset.id,
-      moved: movedRows.has(tr.dataset.id),
-      number: tr.querySelector("[name=number]").value,
-      artist: tr.querySelector("[name=artist]").value,
-      title: tr.querySelector("[name=title]").value,
-      trim_start: tr.querySelector("[name=trim_start]").value,
-      trim_end: tr.querySelector("[name=trim_end]").value,
-      disc: tr.querySelector("[name=disc]").value,
-    })),
-  };
-  movedRows.clear();  // the arrangement being saved is the arrangement from now on
-  submit("edit", { id: currentAlbum.source_id, edits }, ev.submitter);
+  try {
+    const edits = {
+      album: form.album.value, albumartist: form.albumartist.value, year: form.year.value,
+      // **only the track rows** (§9, slice 89): a panel is a row too, with none of these fields
+      tracks: trackRows(form.querySelectorAll("tbody tr")).map((tr) => ({
+        video_id: tr.dataset.id,
+        moved: movedRows.has(tr.dataset.id),
+        number: tr.querySelector("[name=number]").value,
+        artist: tr.querySelector("[name=artist]").value,
+        title: tr.querySelector("[name=title]").value,
+        trim_start: tr.querySelector("[name=trim_start]").value,
+        trim_end: tr.querySelector("[name=trim_end]").value,
+        disc: tr.querySelector("[name=disc]").value,
+      })),
+    };
+    movedRows.clear();  // the arrangement being saved is the arrangement from now on
+    submit("edit", { id: currentAlbum.source_id, edits }, ev.submitter);
+  } catch (e) {
+    // **a save that cannot be built says so** (§9, slice 89). This one threw inside the handler, so the
+    // browser logged it to a console nobody had open and the page looked as if nothing had been pressed.
+    console.error("saveAlbum", e);
+    toast(`This album could not be saved: ${e.message}`, "failed");
+  }
 }
 
 // -- adding: preview / search / channel results -------------------------------------------

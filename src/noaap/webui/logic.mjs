@@ -698,6 +698,24 @@ export function claimOffer(d) {
  * front trim into the trimmed part". So `onTheOriginal` decides, and it is set from the URL the player
  * asked for, not from the plan's fields, which can be half a save old.
  */
+/** The rows of the album table that really are tracks (§9, slice 89).
+ *
+ * The page inserts panels — the lyrics editor, the source picker — as extra `tr`s after the row they
+ * belong to, and those carry the same `data-id` as the track. They have none of its input fields, so a
+ * save that walked every row in the tbody read `null.value` and **threw before it submitted anything**:
+ * with a lyrics panel open, "Save changes" saved nothing and said nothing (R-299). A row is a track row
+ * when it is not one of those panels *and* carries the fields a save needs — the second test on its own
+ * would be enough, and it is there so that a panel kind nobody has thought of yet cannot slip through.
+ */
+export const PANEL_ROW = /^(lyrics|source)$/;
+
+export function trackRows(rows, fields = "[name=number]") {
+  return [...(rows || [])].filter(
+    (tr) => tr && tr.dataset && tr.dataset.id
+            && ![...(tr.classList || [])].some((c) => PANEL_ROW.test(c))
+            && tr.querySelector(fields));
+}
+
 export const JUMP = 1.5;
 
 /** What the player must ask for to hear this track (§9, slice 87).
