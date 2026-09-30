@@ -284,10 +284,32 @@ export function lineStart(text, index) {
 export function tapped(text, caret, seconds) {
   const lines = (text || "").split("\n");
   const i = Math.min(lineAt(text, caret), lines.length - 1);
+  const last = i >= lines.length - 1;
+  // **the last line is stamped once** (§9, slice 96). There is no line after it to move to, so a
+  // further press used to rewrite the stamp it had just written with a later moment — a person
+  // stamping downwards ran off the end and silently spoiled their last line. It says so instead.
+  if (last && stampOf(lines[i]) != null) {
+    return { text, caret, line: i, at: tenth(seconds), last, refused: "that was the last line" };
+  }
   lines[i] = withStamp(lines[i], seconds);
   const value = lines.join("\n");
   const next = Math.min(i + 1, lines.length - 1);
-  return { text: value, caret: lineStart(value, next), line: i, at: tenth(seconds), last: i >= lines.length - 1 };
+  return { text: value, caret: lineStart(value, next), line: i, at: tenth(seconds), last };
+}
+
+/** How tall the editor's box is for this text (§9, slice 96).
+ *
+ * It used to be computed once, when the editor opened: a lyric written into an empty editor kept the
+ * smallest box however long it grew. It grows with what is typed, up to the height a full lyric gets,
+ * and **never shrinks while the editor is open** — a box that jumps back when a line is deleted moves
+ * the words somebody is reading.
+ */
+export const EDITOR_BOX = { least: 8, most: 26, spare: 2 };
+
+export function editorRows(text, now = 0) {
+  const lines = (text || "").split("\n").length;
+  const wanted = Math.min(EDITOR_BOX.most, Math.max(EDITOR_BOX.least, lines + EDITOR_BOX.spare));
+  return Math.max(wanted, Number(now) || 0);
 }
 
 /** Where a textarea has to be scrolled for the line the caret is on to be seen (§9, slice 94).

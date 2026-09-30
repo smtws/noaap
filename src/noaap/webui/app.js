@@ -1,5 +1,5 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
-         effectiveId, fixConfirm, fmt,
+         editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          binLabel, browserLabel, candidateLine, clearedSource, copyLabels, dialogFields, removeConfirm,
@@ -1015,7 +1015,7 @@ function editorText(area, value) {
 
 function lyricsEditor(p, t, d) {
   const area = h("textarea", { class: "lyrics-edit", spellcheck: "false",
-    rows: Math.min(26, Math.max(8, d.text.split("\n").length + 2)),
+    rows: editorRows(d.text),
     onkeydown: (e) => editorKey(e, p, t, area) });
   area.value = d.text;
   // read-only, and it writes nothing: Cancel leaves the file the truth again, Save makes the
@@ -1028,6 +1028,8 @@ function lyricsEditor(p, t, d) {
     "what you are editing, as it will play — click a line to hear it");
   let pending = null;
   area.addEventListener("input", () => {
+    // the box follows what is typed at once (§9, slice 96); the preview can wait for a pause
+    area.rows = editorRows(area.value, area.rows);
     clearTimeout(pending);
     pending = setTimeout(() => {
       preview.replaceChildren(...Array.from(lyricsLines(p, t, area.value).children));
@@ -1057,7 +1059,7 @@ function lyricsEditor(p, t, d) {
   return h("div", { class: "editor-with-preview" }, area, claimRow,
     h("div", { class: "panel-actions stamp-tools" },
       h("button", { class: "quiet small", type: "button",
-        title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.",
+        title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.\nOn the last line it stamps once and then says so, rather than rewriting it.",
         onclick: () => tapStamp(p, t, area) }, "⏱ stamp this line"),
       h("button", { class: "quiet small", type: "button", title: "Play from this line's stamp (Alt+Enter)",
         onclick: () => playLine(p, t, area) }, "▶"),
@@ -1108,6 +1110,8 @@ function tapStamp(p, t, area) {
   const playing = nowPlaying(p, t);
   if (!playing) return toast("Play this track first — a stamp is the moment you are hearing", "blocked");
   const got = tapped(area.value, area.selectionStart, toFileClock(audio.currentTime, trimOffset(playing)));
+  // the last line is stamped once: a further press changes nothing, and says why (§9, slice 96)
+  if (got.refused) return toast(got.refused, "blocked");
   editorText(area, got.text);
   showLine(area, got.caret);
 }

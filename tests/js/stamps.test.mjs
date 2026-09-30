@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { audioRequest, lineAt, lineStart, nudged, scrollToLine, shifted, stampOf, stampText, syncEntry, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
+import { audioRequest, editorRows, lineAt, lineStart, nudged, scrollToLine, shifted, stampOf, stampText, syncEntry, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
   from "../../src/noaap/webui/logic.mjs";
 
 test("an untrimmed track has one clock", () => {
@@ -81,8 +81,9 @@ test("the last line takes its stamp and the cursor stays there", () => {
 });
 
 test("a tap on a stamped line rewrites it rather than adding a second one", () => {
-  const got = tapped("[00:12.3] one", 3, 30);
-  assert.equal(got.text, "[00:30.0] one");
+  // on a line that is not the last: the last one is stamped once and then says so (§9, slice 96)
+  const got = tapped("[00:12.3] one\ntwo", 3, 30);
+  assert.equal(got.text, "[00:30.0] one\ntwo");
 });
 
 test("a nudge moves the stamp and leaves everything else alone", () => {
@@ -374,4 +375,55 @@ test("an editor that cannot be measured is left alone", () => {
 test("a box too small for context still shows the line", () => {
   const tiny = { lineHeight: 20, clientHeight: 40, lines: 34 };   // two lines
   assert.equal(scrollToLine({ ...tiny, line: 5, scrollTop: 0 }), 60);
+});
+
+// -- the box grows, and the last line is stamped once (§9, slice 96) -------------------------------
+
+test("the editor's box grows with what is typed, up to a full lyric's height", () => {
+  assert.equal(editorRows(""), 8, "an empty editor is the smallest box");
+  assert.equal(editorRows("one\ntwo"), 8, "a couple of lines still fit in it");
+  assert.equal(editorRows(Array.from({ length: 12 }, (_, n) => `line ${n}`).join("\n")), 14);
+  assert.equal(editorRows(Array.from({ length: 40 }, (_, n) => `line ${n}`).join("\n")), 26,
+               "and it stops at the height a full lyric gets");
+});
+
+test("the box never shrinks while the editor is open", () => {
+  // a box that jumps back when a line is deleted moves the words somebody is reading
+  assert.equal(editorRows("one", 20), 20);
+  assert.equal(editorRows("", 26), 26);
+  assert.equal(editorRows(Array.from({ length: 30 }, () => "x").join("\n"), 26), 26);
+});
+
+test("the last line is stamped once, and says so after that", () => {
+  const first = tapped("one\ntwo", 4, 12.3);
+  assert.equal(first.text, "one\n[00:12.3] two", "the last line takes its stamp");
+  assert.equal(first.last, true);
+  assert.equal(first.refused, undefined);
+  assert.equal(first.caret, 4, "and the caret stays on it, there being no line after it");
+
+  const again = tapped(first.text, first.caret, 15);
+  assert.equal(again.refused, "that was the last line");
+  assert.equal(again.text, first.text, "the stamp it already has is not rewritten");
+  assert.equal(again.caret, first.caret, "and nothing moves");
+});
+
+test("a line that is not the last is stamped as often as you like", () => {
+  const once = tapped("one\ntwo\nthree", 0, 5);
+  const twice = tapped(once.text, 0, 9);
+  assert.equal(twice.refused, undefined);
+  assert.equal(twice.text.split("\n")[0], "[00:09.0] one", "a middle line takes a new moment");
+});
+
+test("the last line of a one-line lyric is still stamped once", () => {
+  const only = tapped("just this", 0, 3.5);
+  assert.equal(only.text, "[00:03.5] just this");
+  assert.equal(tapped(only.text, 0, 8).refused, "that was the last line");
+});
+
+test("an empty last line takes a stamp like any other", () => {
+  // the words end with a blank line more often than not; it is not a special case until it is stamped
+  const got = tapped("one\n", 4, 7);
+  assert.equal(got.refused, undefined);
+  assert.equal(got.text, "one\n[00:07.0]", "a stamp with no words after it is just the stamp");
+  assert.equal(tapped(got.text, got.caret, 9).refused, "that was the last line");
 });

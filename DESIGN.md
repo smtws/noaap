@@ -2769,6 +2769,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    leaves the other exactly as it was.
 
 
+96. ✅ **The box grows, and the last line is stamped once** (2026-09-30, P77). Two things found while
+   measuring slice 94, neither of them what that package was about, both ruled on afterwards.
+   **The editor's height was computed when it opened**, so a lyric written into an empty editor kept the
+   smallest box — eight rows — however long it grew. It follows what is typed now, up to the
+   twenty-six rows a full lyric gets, and **never shrinks while the editor is open**: a box that jumps
+   back when a line is deleted moves the words somebody is reading. The growing is immediate; the
+   preview under it still waits for a pause in the typing.
+   **`tapped()` clamped the caret to the last line**, so pressing ⏱ again at the end of a lyric rewrote
+   the stamp it had just written with a later moment. Somebody stamping downwards ran off the end and
+   silently spoiled their last line. Now the last line takes its stamp once and a further press changes
+   nothing and says *that was the last line*; the caret stays where it is, and the tooltip says so
+   before it happens. A line that is **not** the last is still stamped as often as you like — hearing
+   that a stamp is half a second late and pressing again is the ordinary way to fix it.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2963,6 +2978,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (the box and the last line, §9, slice 96)
+
+- **A control computed once is a control that is wrong later.** The height was right for the text the
+  editor opened with and for no other.
+- **Growing is not shrinking.** Both directions are "following the text"; only one of them moves what a
+  person is reading.
+- **Clamping hides the end.** `Math.min(i + 1, last)` looks safe and quietly turns "move on" into "do it
+  again to the same line".
+- **Refuse out loud, and only where it matters.** The last line says so; every other line still takes a
+  second stamp, because that is how a late one is fixed.
 
 ### Decisions of 2026-09-30 (sources as a list, §9, slice 95)
 
