@@ -417,6 +417,7 @@ def test_the_model_is_loaded_from_the_disk_without_greeting_the_hub(monkeypatch)
     engine = LocalTiming(device="cpu")
     said: list[str] = []
     engine.log = said.append
+    engine._whisper_where = "cpu"   # so nothing here needs the timing extra installed
 
     assert engine._whisper_model() is not None
 
@@ -431,6 +432,7 @@ def test_a_model_that_is_not_there_yet_is_downloaded_and_said(monkeypatch):
     engine = LocalTiming(device="cpu")
     said: list[str] = []
     engine.log = said.append
+    engine._whisper_where = "cpu"   # so nothing here needs the timing extra installed
 
     assert engine._whisper_model() is not None
 
