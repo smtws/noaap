@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -171,6 +172,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     by_path = {str(p.relative_to(root)): p for p in here}
     unclaimed = dict(by_path)
     recorded = {r.path for r in snapshot.files}
+    near: Path | None = None        # where the last file of this album turned up: the first guess
 
     for was in snapshot.files:
         done.files += 1
@@ -178,7 +180,8 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
         source = kept / was.path if kept and (kept / was.path).is_file() else None
         now = by_path.get(was.path)
         if now is None:
-            now = _found_again(was, unclaimed, here, recorded, root)
+            now = _found_again(was, unclaimed, here, recorded, root, near)
+            near = now.parent if now is not None else near
         if now is None and source is None:
             done.missing.append(was.path)
             continue
@@ -224,12 +227,14 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
                 done.lost.append(f"{was.path}: {', '.join(sorted(lost))}")
         else:
             done.retagged += 1
-    # what is under the root that the snapshot never saw: the plans a pass wrote, and any file it
-    # renamed that could not be matched. Named, never removed — this pass only puts back.
-    left = [name for name in unclaimed if name not in {r.path for r in snapshot.files}]
+    # audio under the root that the snapshot never saw: a file a pass renamed and nothing could match,
+    # or one added since. Named, never removed — this pass only puts back. **A snapshot records audio
+    # files only**, so what a pass wrote beside them — plans, covers, `.lrc` sidecars — is not counted
+    # here and is not touched either; the README says so where the precautions are described.
+    left = [name for name in unclaimed if name not in recorded]
     if left:
-        log(f"{len(left)} file(s) under the root are not in the snapshot and were left alone "
-            f"(a pass's own files: plans, covers): {', '.join(sorted(left)[:3])}"
+        log(f"{len(left)} audio file(s) under the root are not in the snapshot and were left alone "
+            f"(renamed and unmatched, or added since): {', '.join(sorted(left)[:3])}"
             + (" …" if len(left) > 3 else ""))
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
@@ -240,12 +245,25 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     return done
 
 
+def _words(name: str) -> set[str]:
+    return {w for w in re.findall(r"[^\W\d_]+", Path(name).stem.casefold()) if len(w) > 2}
+
+
 def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tuple[int, str | None]],
-                 recorded: set[str] | None = None, root: Path | None = None) -> Path | None:
-    """A renamed file, by what it holds: the packets, with the same-sized ones asked first.
+                 recorded: set[str] | None = None, root: Path | None = None,
+                 near: Path | None = None) -> Path | None:
+    """A renamed file, by what it holds: the packets, with the likeliest candidates asked first.
 
     **The size is not a gate**, because a file retagged on the way is a different size — gating on it
     left 52 of 2000 unfindable in the measured run — but it is a good first guess.
+
+    **The order is everything, and the order decides nothing.** Only the digest says yes, so the
+    candidates may be ranked by anything at all; what it costs is one ffmpeg per candidate asked, and
+    with no ranking that is a digest of the whole collection per missing file. Measured: a pass that
+    renamed *and* retagged all 2000 files (so the size guess never fired) left the restore digesting
+    8 GB in four minutes and nowhere near done — hours for this copy, days for the collection. Asked
+    in this order — the folder the last file of this album turned up in, then the words the two names
+    share, then the size — the first candidate is almost always the right one.
 
     **A file that the snapshot records under its own name is never taken for another one.** Two files
     can hold the same recording (the same track on an album and on a best-of), and claiming one for
@@ -255,7 +273,16 @@ def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tup
         return None
     mine = [(name, path) for name, path in unclaimed.items()
             if not recorded or name not in recorded]
-    for _, path in sorted(mine, key=lambda pair: here[pair[1]][0] != was.size):
+    wanted = _words(was.path)
+
+    def likeliest(pair: tuple[str, Path]) -> tuple[Any, ...]:
+        name, path = pair
+        return (near is not None and path.parent != near,
+                -len(wanted & _words(name)),
+                here[path][0] != was.size,
+                name)
+
+    for _, path in sorted(mine, key=likeliest):
         if stream_sha(path) == was.packets:
             return path
     return None

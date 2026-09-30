@@ -162,9 +162,12 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         here = album_dir
         if root.resolve() == service.library.resolve():
             here = relocate(album_dir, plan, service.library, want)   # only where the root *is* the library
+        had_a_cover = dict(plan.cover_fetched)
         run(plan, here, service.source_for(plan), want=want, careful=True, keep=keep, keep_root=root,
-            track_source=service._track_source(plan), on_track=service.on_track,
+            track_source=service._track_source(plan), on_track=_counted(done, service.on_track),
             check=service.check, download=False)
+        if plan.cover_fetched != had_a_cover:
+            done.covers += 1        # a cover was written beside this album, and the plan records it
         finished.add(where)
         write_state(state, root, finished)
         log(f"  {plan.albumartist} — {plan.album}: {len(plan.tracks)} track(s)")
@@ -176,20 +179,41 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         # files does this rewrite?" (the lesson of §9, slice 85, applied to somebody's own collection)
         done.renamed = sum(1 for line in done.would if "would be renamed" in line)
         done.retagged = sum(1 for line in done.would if "would be retagged" in line)
-        done.covers = sum(1 for line in done.would if "cover" in line and "would" in line)
+        done.covers = sum(1 for line in done.would if "a cover would be saved beside" in line)
         asked = sum(1 for line in done.would if "would ask MusicBrainz" in line)
         asked_words = sum(1 for line in done.would if "would ask LRCLIB" in line)
         log(f"{done.adopted} album(s), {done.tracks} track(s) would be taken in; "
             f"{len(done.refused)} folder(s) refused")
         log(f"{done.renamed} file(s) would be renamed, {done.retagged} audio file(s) would be "
-            f"rewritten (their tags), {done.covers} cover(s) would be written")
+            f"rewritten (their tags), {done.covers} album(s) would be given a cover beside them")
         if asked or asked_words:
             log(f"{asked} album(s) would be asked about at MusicBrainz, {asked_words} at LRCLIB")
         log("nothing was written. `take-in … --apply` does it.")
     else:
         log(f"{done.adopted} album(s), {done.tracks} track(s) taken in; "
             f"{len(done.refused)} folder(s) refused")
+        log(f"{done.renamed} file(s) renamed, {done.retagged} audio file(s) rewritten (their tags), "
+            f"{done.covers} cover(s) written beside an album, {done.lyrics} track(s) with words")
+        if done.musicbrainz_requests or done.lrclib_requests:
+            log(f"{done.musicbrainz_requests} MusicBrainz and {done.lrclib_requests} LRCLIB "
+                "request(s) went out")
     return done
+
+
+def _counted(done: Progress, inner: Callable[[Any, str], None]) -> Callable[[Any, str], None]:
+    """Count what the pass really did, in the words the pass itself uses for it.
+
+    The dry run counted its own lines and the real run counted nothing, so a measured pass over 2000
+    files reported `renamed: 0, retagged: 0` — which is how the first real run's numbers said nothing
+    about the 1662 files it had failed to tag.
+    """
+    def said(track: Any, what: str) -> None:
+        if what == "renamed":
+            done.renamed += 1
+        elif what == "retagged" or what.startswith("lyrics ("):
+            done.retagged += 1
+        inner(track, what)
+    return said
 
 
 def _adopted(album_dir: Path, root: Path, source: Any, log: Callable[[str], None]) -> AlbumPlan | None:

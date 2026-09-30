@@ -296,7 +296,8 @@ two switches, and the `[[watch]]` tables below.
 years of ripped CDs — and it leaves **every album in one state** rather than needing four passes:
 adopted (one plan per album), looked up at MusicBrainz and LRCLIB, a cover beside it and inside its
 files, the words beside it and inside them, the tags written, and the names either kept as they are or
-renamed into noaap's scheme.
+renamed into noaap's scheme. Nobody published a cover for an album like this, so the one saved beside it
+comes out of its own files — the picture inside the first track that carries one.
 
 ```sh
 noaap take-in /mnt/nas/Music                          # says what it would do, writes nothing
@@ -327,6 +328,10 @@ yours that went missing on the way.
 **None of that is a backup.** It is a way back from what noaap did, not from a disk that fails, a share
 that goes away mid-pass, or a deleted snapshot.
 
+**The snapshot is of your audio files.** What a pass writes *beside* them — a plan, a `cover.jpg`, an
+`.lrc` — is not in it, and a restore leaves those where they are rather than deciding they are rubbish.
+It names any audio file it could not match instead of guessing at it.
+
 The pass expects to be interrupted: it writes down each album as it finishes, so running the same
 command again continues where it stood and repeats no album.
 
@@ -338,6 +343,9 @@ in full — somewhere else on this machine, or a share you have mounted — and 
 - **adopt** writes one plan per album in that folder and nothing else: no file renamed, moved or
   retagged. That makes the collection readable where it stands, as its own root — point the library at
   it afterwards, watch it, or merge from it.
+- **take in** is `noaap take-in` above: the whole collection to one state, with the same switches as the
+  command — the names, and each operation — and a box for where the originals are kept. This is the one
+  mode you may point at the library itself. Each switch says what it is about: this run, not the albums.
 
 It runs like the repair: **Check** is a read that writes nothing and shows the pass's own lines, the same
 ones the command prints; **Apply** does exactly what that check listed, and is offered only while the
@@ -1266,7 +1274,7 @@ and two things can never rename the same album at once.
 | `patreon_audio_from_video` | `false` | Take the audio stream out of a video post — copied, never re-encoded; the video is deleted and never enters the library. Off, such a post is refused. |
 | `patreon_captions` | `false` | Keep a post's own captions as an `.lrc` beside the track: the creator's words, marked as theirs, never in the file's tag and never offered to anyone. |
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
-| `cover_beside` | `true` | `cover.jpg` in each album folder. |
+| `cover_beside` | `true` | `cover.jpg` in each album folder. An album taken in where it stood has no published cover address, so the picture comes out of its own files; a pass adds one where the folder has none. |
 | `cover_embedded` | `true` | The picture inside every file. |
 | `lyrics_embedded` | `true` | The words in the file's tag, beside the `.lrc`. |
 | `rename_adopted` | `false` | Rename albums taken in where they stood into noaap's scheme. |

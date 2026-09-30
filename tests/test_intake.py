@@ -14,7 +14,7 @@ import subprocess
 import pytest
 from mutagen import File as MFile
 
-from noaap import intake, precautions
+from noaap import adopt, intake, precautions, sources
 from noaap.config import Config
 from noaap.download import load_plan
 from noaap.service import Service
@@ -51,6 +51,9 @@ def service(tmp_path):
 
 
 QUIET = intake.Choices(musicbrainz=False, lyrics=False)
+
+COVER = bytes.fromhex("ffd8ffe000104a46494600010100000100010000ffdb004300"
+                      + "01" * 64 + "ffd9")
 
 
 def test_a_dry_run_says_what_it_would_do_and_writes_nothing(collection, service, tmp_path):
@@ -186,3 +189,40 @@ def test_the_page_can_run_the_whole_pass(collection, service, tmp_path):
     assert refuse_folder(collection, collection) == "that is the library itself"
     assert refuse_folder(collection / "Aphelion", collection, itself=True) == ""
     assert "inside the library" in refuse_folder(collection / "Aphelion", collection)
+
+
+def test_the_covers_it_writes_are_counted_and_the_dry_run_says_so(collection, service, tmp_path):
+    """The pass reports what it did per kind — including covers, which it could not do before.
+
+    The number is the albums that were given a cover beside them, taken from the picture inside their
+    own files. The dry run says which albums would be asked, not how many pictures it will find:
+    knowing that is the same work as doing it.
+    """
+    from noaap.download import save_plan
+    from noaap.tag import tag_file
+
+    first = next(iter(sorted((collection / "Aphelion" / "Nocturnes").glob("*.opus"))))
+    found = adopt.examine(first.parent, sources.get("folder", service.cfg), collection)
+    tag_file(first, found.plan, found.plan.tracks[0], cover=COVER)
+    save_plan(found.plan, first.parent)     # so the next pass reads the album as adopted
+
+    said = []
+    dry = intake.take_in(service, collection, QUIET, dry_run=True, log=said.append)
+    assert dry.covers == 3, dry.would
+    assert any("would be given a cover beside them" in line for line in said)
+
+    done = intake.take_in(service, collection, QUIET, dry_run=False,
+                          snapshot=tmp_path / "snap.jsonl", log=lambda s: None)
+    assert done.covers == 1, "one album's files held a picture; the other two held none"
+    assert (collection / "Aphelion" / "Nocturnes" / "cover.jpg").read_bytes() == COVER
+    assert not list((collection / "Aphelion" / "Vigil").glob("cover.*"))
+
+
+def test_a_real_run_counts_what_it_did(collection, service, tmp_path):
+    """`renamed: 0, retagged: 0` is what the first measured run over 2000 files reported."""
+    done = intake.take_in(service, collection, QUIET, dry_run=False,
+                          snapshot=tmp_path / "snap.jsonl", log=lambda s: None)
+
+    assert done.tracks == 6
+    assert done.renamed == 6, "every file got noaap's name"
+    assert done.retagged == 6, "and every file was rewritten"

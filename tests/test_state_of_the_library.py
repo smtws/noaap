@@ -15,10 +15,10 @@ import pytest
 from mutagen import File as MFile
 
 from noaap.config import Config
-from noaap.download import save_plan, would_do
+from noaap.download import load_plan, save_plan, would_do
 from noaap.models import AlbumPlan, Kind, PlanTrack
 from noaap.service import Service
-from noaap.tag import embedded_cover
+from noaap.tag import embedded_cover, tag_file
 from noaap.treatment import Treatment, for_album, held_back
 
 COVER = bytes.fromhex("ffd8ffe000104a46494600010100000100010000ffdb004300"
@@ -132,3 +132,40 @@ def test_the_setting_alone_renames_an_adopted_album(adopted):
     assert not (album_dir / "01 First.opus").exists()
     assert list(Path(album_dir).glob("Aphelion - Nocturnes - 01*.opus")), \
         [p.name for p in album_dir.iterdir()]
+
+
+def test_a_cover_beside_the_album_comes_out_of_its_own_files(adopted):
+    """An adopted album has no published cover address — so its own folder is the address.
+
+    Before this, `cover_beside` was a switch nothing acted on: only a download ever fetched a cover,
+    so neither `repair` nor a take-in could put one beside an album somebody already owns.
+    """
+    library, album_dir, plan = adopted
+    (album_dir / "cover.jpg").unlink()               # no cover file, one track carries the picture
+    first = album_dir / plan.tracks[0].filename
+    tag_file(first, plan, plan.tracks[0], cover=COVER)
+    plan.tracks[0].tagged = ""                       # so the pass still has tags to write
+    save_plan(plan, album_dir)
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    assert cfg.cover_beside is True
+
+    said = would_do(plan, album_dir, None, library, for_album(cfg, plan))
+    assert any("a cover would be saved beside the album" in line for line in said), said
+
+    Service(cfg, library, log=lambda s: None).repair()
+    written = sorted(album_dir.glob("cover.*"))
+    assert written, [p.name for p in album_dir.iterdir()]
+    assert written[0].read_bytes() == COVER, "the picture out of the album's own file"
+    assert load_plan(album_dir).cover_fetched.get("sha1"), "and the plan records that noaap wrote it"
+
+
+def test_without_the_setting_no_cover_is_written_beside_the_album(adopted):
+    library, album_dir, plan = adopted
+    (album_dir / "cover.jpg").unlink()
+    tag_file(album_dir / plan.tracks[0].filename, plan, plan.tracks[0], cover=COVER)
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    cfg.cover_beside = False
+
+    assert would_do(plan, album_dir, None, library, for_album(cfg, plan)) == []
+    Service(cfg, library, log=lambda s: None).repair()
+    assert not list(album_dir.glob("cover.*")), "nobody asked for one"

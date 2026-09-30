@@ -534,6 +534,14 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     said: list[str] = []
     # what the library is set to want, narrowed by this album's own exceptions (§9, slice 100)
     rename, retag = renames(plan, want), retags(plan, want)
+    # **a cover beside the album is a line of its own** (§9, slice 101). Whether one can be found is
+    # the same work as finding it — for an adopted album, reading its files until a picture turns up —
+    # so the dry run says what would be asked and does not promise the answer.
+    if want is not None and want.cover_beside and cover is None:
+        if address := _cover_addresses(plan, album_dir):
+            said.append("a cover would be saved beside the album"
+                        + (" if a picture can be found in its files" if address[0] == str(album_dir)
+                           else f" from {address[0]}"))
     if want is not None and not want.cover_embedded:
         cover = None
     if library is not None and rename:
@@ -677,7 +685,11 @@ def run(
     save_plan(plan, album_dir)
     whose = track_source or (lambda _t: source)
     recorded = dict(plan.cover_fetched)
-    cover = _cover(plan, album_dir, source, fetch=download)
+    # **whether this album may be given a cover at all is the library's state** (§9, slice 100), not
+    # a property of the pass. Before that, only a download fetched one, so `repair` could never add
+    # the cover a setting asks for — and a take-in's own switch for it did nothing at all.
+    cover = _cover(plan, album_dir, source,
+                   fetch=want.cover_beside if want is not None else download)
     if plan.cover_fetched != recorded:
         # **the record of a cover we just wrote is saved now, not when a track happens to change**
         # (§9, slice 64). The plan is written above and then only again by a track that did something,
@@ -900,7 +912,7 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
     if not fetch:
         return None
     why: list[str] = []
-    for url in filter(None, _cover_addresses(plan)):
+    for url in filter(None, _cover_addresses(plan, album_dir)):
         if found := _download_cover(url, source, why):
             return _save_cover(plan, album_dir, *found)
     if plan.cover_url or _asks_its_source(plan):
@@ -922,16 +934,24 @@ def _asks_its_source(plan: AlbumPlan) -> bool:
     return bool(plan.source_url) and sources.private(plan.provider)
 
 
-def _cover_addresses(plan: AlbumPlan) -> list[str]:
-    """What to try, in order: what the plan holds, and — for a private album — its source itself.
+def _cover_addresses(plan: AlbumPlan, album_dir: Path | None = None) -> list[str]:
+    """What to try, in order: what the plan holds, and — for some albums — its source itself.
 
     The provider answers a collection address by reading it and taking the image out of that read, so
     the signed address exists for the length of one request and is never written down. It happens only
     while a fetch or an update is running for that album anyway; there is no pass of its own.
+
+    **An adopted album's address is its own folder** (§9, slice 101). Its plan holds no cover url —
+    nobody published it — so without this an album somebody already owns could never be given a
+    cover beside it, however the library is set. Asking its own source for it reads the files that
+    are already there and reaches nobody: measured on the reference collection, 269 of 2000 files
+    carry a picture.
     """
     found = [plan.cover_url, plan.cover_fallback_url]
     if not any(found) and _asks_its_source(plan):
         found.append(plan.source_url)
+    if not any(found) and plan.adopted and album_dir is not None:
+        found.append(str(album_dir))
     return [url for url in found if url]
 
 

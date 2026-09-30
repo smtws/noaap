@@ -53,3 +53,23 @@ def one_second_of_sound(tmp_path_factory) -> Path:
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
                     "-c:a", "libopus", str(path)], check=True)
     return path
+
+
+@pytest.fixture(scope="session")
+def one_second_of_mp3(tmp_path_factory) -> Path:
+    """The same second of tone as **MP3** — the format the fixtures here did not have.
+
+    Everything in this suite was Opus, and the user's own collection is mostly mp3. Three faults in
+    the take-in were mp3-only and none of them could be reproduced here: a temporary copy that lost
+    its suffix (so every mp3 was opened as an Ogg), a restore that could not find a retagged file
+    (an ID3 rewrite changes the size; a padded Ogg comment does not), and a search whose one guess
+    was that very size. A test that means to be about somebody's own music uses this one.
+    """
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    path = tmp_path_factory.mktemp("tone") / "tone.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1",
+                    "-c:a", "libmp3lame", str(path)], check=True)
+    if not path.is_file():
+        pytest.skip("this ffmpeg cannot write mp3")
+    return path

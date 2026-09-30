@@ -2829,6 +2829,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    it writes the same values back: measured here, same size, different bytes. What none of it covers
    is said out loud — a disk that fails, a NAS that goes away, somebody deleting the snapshot. It is
    a way back from what noaap did, not a backup.
+   **Measured on a copy of the user's own collection — 132 albums, 2000 tracks, 41 GB — and it found
+   four faults that no fixture here could have**, because every fixture was Opus and the collection
+   is mp3. (1) The copy the careful write writes to lost its suffix, and `tag.kind` reads the format
+   off the suffix, so every mp3 was opened as an Ogg and **1662 of 2000 files were renamed and never
+   tagged**. Nothing was damaged: the write fails before the replace. (2) The restore gave up on 52
+   files whose kept originals were sitting there — a pass that renames a file *and* moves its folder
+   defeats both the path and the digest search, and the kept copy needs neither. (3) The digest
+   search was gated on an equal size, which a retagged file never has; ungating it uncovered the
+   opposite trap, that two files can hold the same recording (a track on an album and on a best-of),
+   so it never claims a file the snapshot records under its own name. (4) **The search did not
+   scale**: with every file renamed *and* retagged its one guess was gone, so it asked ffmpeg about
+   every candidate in the tree for every file — hours for that copy, days for the collection. The
+   candidates are ranked now (the folder the last file of this album turned up in, the words the two
+   names share, then the size) and only the digest decides, so the ranking cannot be wrong, only
+   slow: 54 digests unranked against 24 ranked on a twelve-file fixture. That fixture is in mp3, and
+   so are two others, because mutagen's ID3 padding swallows a small retag and an Opus file cannot
+   show any of this.
 
 100. ✅ **The settings are the state; an album may only be excepted** (2026-10-01, P81). The user
    asked twice, and the second time settled it: *"we had consistent state and now we got persisted
@@ -2859,6 +2876,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    finished — so a pass that stops is resumed by the same command and repeats no album. Measured on a
    fixture: stopped after two albums, resumed, the third taken in and the first two untouched.
    `--restore <snapshot>` is the way back, and with the kept originals it is byte for byte.
+   **A cover beside an adopted album comes out of its own files.** Nobody published one, so its plan
+   holds no address; before this, `cover_beside` was a setting nothing could act on, because only a
+   download ever fetched a cover. An adopted album's address is its folder, which its own source
+   answers by reading the picture inside the first track that carries one — 269 of 2000 files in the
+   reference collection — so a pass can add what the settings ask for without asking anybody
+   anything.
+   **What it cost, measured, and what it would cost over a share** (30 MB/s, the user's ceiling, for
+   11,000 tracks): the dry run 1.63 GB and 8.8 s locally — 5 minutes over the share, against 2.2
+   hours before an adoption stopped digesting every file it read (`FolderSource.digests`, which only
+   `merge` needs). The pass with everything on and the originals kept: 87 GB read, 88 GB written,
+   10 minutes locally — **~9 hours over the share**. The restore: 45 GB read, 38 GB written. Of the
+   2093 names present in both the restored copy and the pristine original, 2093 were byte-identical.
+   The numbers are what make the three ways to cut the pass worth a decision rather than a shrug, and
+   they are recorded with their arithmetic in `docs/p81-notes.md`.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)

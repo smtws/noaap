@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -263,3 +264,89 @@ def test_two_files_of_one_recording_are_not_taken_for_each_other(tmp_path, one_s
 
     assert done.missing == ["Album/01 One.opus"], "named, not filled in with the other one"
     assert (root / "Album" / "02 Two.opus").is_file(), "and the other one is where it was"
+
+
+def test_a_renamed_collection_is_found_without_digesting_all_of_it(tmp_path, one_second_of_mp3):
+    """Roughly one digest per file, not one per file per file.
+
+    Measured on the user's own collection: a pass that renamed *and* retagged all 2000 files left the
+    restore asking ffmpeg about every candidate for every file — 8 GB read in four minutes and nowhere
+    near done, hours for that copy and days for the collection. The candidates are ranked now, and
+    only the digest decides, so the ranking costs nothing and may be as rough as it likes.
+
+    **In mp3, because this could not happen in Opus.** Every file here holds a different recording (a
+    candidate that is not the one wanted has to be digested to find out), the retag is big enough to
+    change the size (mutagen's padding swallows a small one, which is why the fixtures never showed
+    this), and the new names reverse the order the tree is walked in. Unranked: 54 digests for these
+    twelve files. Ranked: 24, which is one to find each file and one to prove its audio survived.
+    """
+    root = tmp_path / "collection"
+    made = 0
+    for artist in ("Aphelion", "Bramblewood"):
+        folder = root / artist / "Album"
+        folder.mkdir(parents=True)
+        for n, title in enumerate(["First", "Second", "Third", "Fourth", "Fifth", "Sixth"], 1):
+            path = folder / f"{n:02d} {title}.mp3"
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi",
+                            "-i", f"sine=frequency={300 + 70 * made}:duration=1",
+                            "-c:a", "libmp3lame", str(path)], check=True)
+            audio = MFile(path, easy=True)
+            audio["title"] = [title]
+            audio["artist"] = ["x" * (n * 40)]
+            audio.save()
+            made += 1
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+
+    for was in snap.files:                        # the pass: renamed, retagged, and the folder moved
+        old = root / was.path
+        number = int(Path(was.path).name[:2])
+        new = (root / was.path.split("/")[0] / "Album Renamed"
+               / f"noaap - {99 - number:02d} - {Path(was.path).stem[3:]}.mp3")
+        new.parent.mkdir(parents=True, exist_ok=True)
+        old.rename(new)
+        audio = MFile(new, easy=True)
+        audio["artist"] = ["noaap wrote this " * 4000]
+        audio.save()
+
+    asked = []
+    real = precautions.stream_sha
+    precautions.stream_sha = lambda path: (asked.append(path), real(path))[1]
+    try:
+        done = precautions.restore(snap, root, apply=True)
+    finally:
+        precautions.stream_sha = real
+
+    assert done.missing == [] and done.renamed == 12
+    assert len(asked) <= 2 * done.files + 2, f"{len(asked)} digests for {done.files} files"
+    assert sorted(files_under(root)) == [r.path for r in snap.files]
+
+
+def test_a_careful_tag_write_to_a_real_mp3_goes_through(tmp_path, one_second_of_mp3):
+    """The whole careful write, on the format the collection is actually in.
+
+    The suffix case above proves the copy is named right; this one proves the write that follows
+    works — the tags land, the recording is the one that was there, and the original is kept. On the
+    user's collection this failed for 1662 files and the suite could not see it, because every
+    fixture here was Opus.
+    """
+    from noaap.tag import raw_tags
+
+    path = tmp_path / "collection" / "Artist" / "Album" / "01 Track.mp3"
+    path.parent.mkdir(parents=True)
+    shutil.copy(one_second_of_mp3, path)
+    before = path.read_bytes()
+    kept = tmp_path / "originals"
+
+    def write(tmp: Path) -> str:
+        audio = MFile(tmp, easy=True)
+        audio["title"] = ["What noaap says it is"]
+        audio["artist"] = ["Artist"]
+        audio.save()
+        return "written"
+
+    answer = precautions.safely(path, write, keep=kept, root=tmp_path / "collection")
+
+    assert answer == "written"
+    assert raw_tags(path).get("TIT2") == ["What noaap says it is"]   # ID3 frames, by their own names
+    assert not list(path.parent.glob(".*noaap-new*")), "and nothing left beside it"
+    assert (kept / "Artist/Album/01 Track.mp3").read_bytes() == before, "the original, byte for byte"
