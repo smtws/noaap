@@ -93,7 +93,7 @@ from .timing import (
     with_gaps,
 )
 from .timing import kind_for as timing_kind
-from .treatment import for_album, held_back
+from .treatment import for_album, held_back, says_exceptions, with_exception
 from .trim import ORIGINALS, kept_originals, originals_of
 from .trim import key as trim_key
 
@@ -1859,6 +1859,22 @@ class Service:
         done = adopt_pass.carry_out(found, log=self.log)
         self.log(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
         return Outcome("ok", message=f"{done['adopted']} album(s) adopted")
+
+    def set_exception(self, source_id: str, key: str, on: bool) -> Outcome:
+        """Except this album from one of the library's operations, or stop excepting it.
+
+        **Only this writes an exception** (§9, slice 100). No pass ever sets one: an album that a pass
+        could quietly except from the library's state would be a second state for the library to be in.
+        """
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message="no such album")
+        album_dir, plan = found
+        plan.exceptions = with_exception(plan, key, on) or None
+        save_plan(plan, album_dir)
+        said = says_exceptions(plan)
+        return Outcome("ok", plan, album_dir,
+                       message=f"{plan.album}: {said}" if said else f"{plan.album}: no exceptions")
 
     # -- deleting (always asked for explicitly) -------------------------------------------
 

@@ -919,6 +919,57 @@ export function removeConfirm(name, sources = {}) {
     + "You can set it up again at any time.";
 }
 
+/** What the library is set to want, and what one album is excepted from (§9, slice 100).
+ *
+ * The user: *"if i do an intake with deliberately few options checked to speed things up and decide
+ * that i now want to have the image embedded everywhere i am not going to hop through 700 albums
+ * manually."* So these are settings, not per-album records, and the only per-album thing is an
+ * exception — which can only take something away, because an album that could ask for *more* would
+ * be a second state for the library to be in.
+ */
+export const STATE_SWITCHES = [
+  ["musicbrainz", "Look albums up at MusicBrainz",
+   "names, years, covers and tracklists, for every album that may be looked up"],
+  ["lyrics", "Look words up at LRCLIB",
+   "a `.lrc` beside the track, and the words in its tag where the next switch allows it"],
+  ["cover_beside", "A cover beside each album",
+   "`cover.jpg` in the album folder — what a file manager and most players show"],
+  ["cover_embedded", "The cover inside the files",
+   "every track carries the picture; costs a rewrite of each file when it is switched on"],
+  ["lyrics_embedded", "The words inside the files",
+   "the `LYRICS` tag beside the `.lrc`, for players that read only tags"],
+  ["rename_adopted", "Rename albums taken in where they stood",
+   "off by default: a collection taken in keeps the names its owner gave it"],
+  ["retag_adopted", "Write noaap's tags into albums taken in where they stood",
+   "off by default, and it never removes a field noaap does not model"],
+];
+
+export const EXCEPTION_LABELS = {
+  names: "Keep this album's names",
+  tags: "Write no tags into this album's files",
+  cover_embedded: "Do not embed the cover here",
+  lyrics_embedded: "Do not embed the words here",
+  musicbrainz: "Do not look this album up at MusicBrainz",
+  lyrics: "Do not look this album's words up at LRCLIB",
+};
+
+/** Which of the library's operations this album's own exceptions hold back. */
+export function heldBack(state = {}, exceptions = {}) {
+  const off = [];
+  for (const [key, on] of Object.entries(exceptions || {})) {
+    if (!on) continue;
+    if (key === "names" && state.rename_adopted) off.push("rename_adopted");
+    else if (key === "tags" && state.retag_adopted) off.push("retag_adopted");
+    else if (state[key]) off.push(key);
+  }
+  return off;
+}
+
+/** One line for the album view: what this album is excepted from, or nothing. */
+export const saysExceptions = (exceptions = {}) =>
+  Object.keys(EXCEPTION_LABELS).filter((key) => (exceptions || {})[key])
+    .map((key) => EXCEPTION_LABELS[key]).join(" · ");
+
 /** Which timing fields a slot's provider actually uses (§9, slice 92).
  *
  * The settings showed every one of them whatever was selected — an endpoint for `local`, two API keys

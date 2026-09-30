@@ -2,7 +2,8 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         binLabel, browserLabel, candidateLine, clearedSource, copyLabels, dialogFields, removeConfirm,
+         EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
+         copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
          repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
          resetKind, roundMark, watchesAfter, watchesWithout,
          scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
@@ -1413,6 +1414,7 @@ function renderAlbum() {
         : null,
       h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", { title: "position in the album" }, "#"), h("th", {}, "Artist"), h("th", {}, "Title"), h("th", { title: "each disc is numbered from 1" }, "disc"), h("th", { title: "cut the front / play until — for label idents and previews" }, "trim"), h("th", {}, "from"), h("th", {}, ""))), h("tbody", {}, rows)),
       skipped.length ? h("details", {}, h("summary", { class: "muted" }, `${skipped.length} skipped`), h("ul", {}, skipped)) : null,
+      exceptionsFor(p),
       h("div", { class: "actions" },
         h("button", { type: "submit" }, "Save changes (rename + retag + trim)"),
         h("button", { class: "quiet", type: "button", onclick: (e) => submit("fetch", { urls: [p.source_url] }, e.currentTarget) }, "Re-check source"),
@@ -1425,6 +1427,45 @@ function renderAlbum() {
   panel.hidden = false;
   markAlbumFields();
   reopenLyrics();
+}
+
+// **What this one album is excepted from** (§9, slice 100). The settings say what every album should
+// have and every pass brings an album to them; this is the only thing kept per album, it can only take
+// something away, and nothing but this writes one.
+function exceptionsFor(p) {
+  const wanted = state.settings?.state || {};
+  const mine = p.exceptions || {};
+  const said = saysExceptions(mine);
+  const stopped = heldBack(wanted, mine);
+  const box = h("details", { class: "exceptions" },
+    h("summary", { class: "muted" },
+      said ? `This album is excepted: ${said}` : "This album follows the library's settings"),
+    h("div", { class: "muted" },
+      "An exception holds for this album alone, through every pass. It can only leave something out — "
+      + "what the settings do not ask for cannot be asked for here."),
+    ...Object.entries(EXCEPTION_LABELS).map(([key, label]) =>
+      h("label", { class: "setting" },
+        h("span", {}, h("strong", {}, label),
+          h("small", { class: "muted" }, stopped.includes(key) || (key === "names" && stopped.includes("rename_adopted"))
+            || (key === "tags" && stopped.includes("retag_adopted"))
+            ? "in force — the settings ask for this and this album is left out"
+            : "the settings do not ask for this at the moment, so it changes nothing yet")),
+        h("input", { type: "checkbox", checked: Boolean(mine[key]),
+                     onchange: (e) => setException(p, key, e.currentTarget.checked, e.currentTarget) }))));
+  return box;
+}
+
+async function setException(p, key, on, control) {
+  control.disabled = true;
+  try {
+    const id = await submit("except", { id: p.source_id, key, on });
+    if (id != null) await jobSettled(id);
+    await refreshAlbumPanel();
+  } catch (e) {
+    toast(e.message, "failed");
+  } finally {
+    control.disabled = false;
+  }
 }
 
 // -- reordering by dragging -------------------------------------------------------------
@@ -2386,8 +2427,6 @@ function openSettings() {
         h("input", { type: "text", name: "library", value: st.library })),
       row("YouTube login", "browser whose YouTube session is used — avoids the bot check, needed for age-restricted videos",
         h("select", { name: "cookies_from_browser" }, browsers.map((b) => h("option", { value: b, selected: b === (st.cookies_from_browser || "") }, b ? browserLabel(b) : "none")))),
-      row("MusicBrainz", "look up correct names, years, covers and tracklists",
-        h("input", { type: "checkbox", name: "musicbrainz", checked: st.musicbrainz })),
       row("Token helper", "proof-of-origin tokens for streams YouTube withholds; server = started on demand",
         h("select", { name: "pot_mode" }, ["server", "script", "off"].map((m) => h("option", { value: m, selected: m === st.pot_mode }, m)))),
       row("Token server stops after", "minutes without YouTube activity",
@@ -2406,6 +2445,14 @@ function openSettings() {
       timingDetails(st),
       h("h3", {}, "Sources"),
       sourcesSection(),
+      h("h3", {}, "What every album should have"),
+      h("p", { class: "muted setting" },
+        "The state this library is in. A pass brings the albums it touches to these, so switching one "
+        + "on today reaches every album the next time you check or repair — you do not visit them. "
+        + "One album can be excepted in its own view."),
+      STATE_SWITCHES.map(([key, title, help]) =>
+        row(title, help, h("input", { type: "checkbox", name: `state_${key}`,
+                                      checked: Boolean(st.state?.[key]) }))),
       h("h3", {}, "Library"),
       updateSection(),
       repairSection(),
@@ -2442,7 +2489,7 @@ async function saveSettings(ev) {
   setWorking(button, true);
   try {
     state.settings = await api("/api/settings", {
-      library: f.library.value, cookies_from_browser: f.cookies_from_browser.value, musicbrainz: f.musicbrainz.checked,
+      library: f.library.value, cookies_from_browser: f.cookies_from_browser.value,
       pot_mode: f.pot_mode.value, pot_idle_minutes: Number(f.pot_idle_minutes.value), concurrency: Number(f.concurrency.value),
       // the two slots are what the page writes now; `timing_provider` stays in the config as the
       // fallback for whatever was there before, and is not touched from here (§9, slice 40)
@@ -2455,6 +2502,8 @@ async function saveSettings(ev) {
       ...Object.fromEntries((state.settings.timing?.vendors || [])
         .filter((v) => shows(f, `key:${v}`) && f[`timing_${v}_key`]?.value)
         .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
+      // what every album should have (§9, slice 100): the state the library is in
+      ...Object.fromEntries(STATE_SWITCHES.map(([key]) => [key, f[`state_${key}`].checked])),
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;

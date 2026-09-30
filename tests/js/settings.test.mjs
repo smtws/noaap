@@ -2,9 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TIMING_FIELDS, clearedSource, dialogFields, folderSummary, removeConfirm, sourceRows,
-         sourceSummary, takeInState, timingFields, watchTrouble, watchesAfter, watchesWithout }
-  from "../../src/noaap/webui/logic.mjs";
+import { STATE_SWITCHES, TIMING_FIELDS, clearedSource, dialogFields, folderSummary, heldBack,
+         removeConfirm, saysExceptions, sourceRows, sourceSummary, takeInState, timingFields,
+         watchTrouble, watchesAfter, watchesWithout } from "../../src/noaap/webui/logic.mjs";
 
 // -- 1. a field is shown only when the selected provider uses it ---------------------------------
 
@@ -291,4 +291,34 @@ test("the dialog's rules are the config's rules, over the whole set", () => {
   // and one nested in another
   const nested = watchesAfter([DROP], null, { name: "inner", folder: "/mnt/nas/incoming/more" });
   assert.match(watchTrouble(nested, library)[0], /may not be nested/);
+});
+
+// -- 8. the state of the library, and one album's exceptions (§9, slice 100) ---------------------
+
+test("every switch of the library's state has a label and a sentence", () => {
+  const keys = STATE_SWITCHES.map(([key]) => key);
+  assert.deepEqual(keys, ["musicbrainz", "lyrics", "cover_beside", "cover_embedded",
+                          "lyrics_embedded", "rename_adopted", "retag_adopted"]);
+  for (const [, title, help] of STATE_SWITCHES) {
+    assert.ok(title.length > 4 && help.length > 10);
+  }
+});
+
+test("an exception holds something back only while the settings ask for it", () => {
+  const all = { musicbrainz: true, lyrics: true, cover_beside: true, cover_embedded: true,
+                lyrics_embedded: true, rename_adopted: false, retag_adopted: false };
+  assert.deepEqual(heldBack(all, { cover_embedded: true }), ["cover_embedded"]);
+  assert.deepEqual(heldBack(all, { names: true }), [],
+                   "renaming adopted albums is off, so keeping their names changes nothing yet");
+  assert.deepEqual(heldBack({ ...all, rename_adopted: true }, { names: true }), ["rename_adopted"]);
+  assert.deepEqual(heldBack({ ...all, retag_adopted: true }, { tags: true }), ["retag_adopted"]);
+  assert.deepEqual(heldBack(all, {}), []);
+  assert.deepEqual(heldBack(all, { cover_embedded: false }), [], "a switch that is off is no exception");
+});
+
+test("an album says what it is excepted from, in the order the labels are written", () => {
+  assert.equal(saysExceptions({}), "");
+  assert.equal(saysExceptions({ cover_embedded: true }), "Do not embed the cover here");
+  assert.equal(saysExceptions({ cover_embedded: true, names: true }),
+               "Keep this album's names · Do not embed the cover here");
 });

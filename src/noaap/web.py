@@ -63,6 +63,8 @@ from .timing import (
     release_when_idle,
     verifies_with,
 )
+from .treatment import EXCEPTIONS
+from .treatment import OPERATIONS as TREATMENT_KEYS
 from .trim import original_path
 
 log = logging.getLogger(__name__)
@@ -652,6 +654,9 @@ class App:
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
             "musicbrainz": self.cfg.musicbrainz,
+            # **what every album should have** (§9, slice 100): the state the library is in. A pass
+            # brings the albums it touches to these; an album can only be excepted from one.
+            "state": {key: bool(getattr(self.cfg, key)) for key in TREATMENT_KEYS},
             # what `noaap watch` is looking at, if anything (§9, slice 59). Named by the watch and
             # by its shape; the folder is shown as the user wrote it and never in a job's label.
             "watching": self.watching(),
@@ -711,6 +716,9 @@ class App:
             changes["cookies_from_browser"] = browser
         if "musicbrainz" in body:
             changes["musicbrainz"] = bool(body["musicbrainz"])
+        for key in TREATMENT_KEYS:
+            if key in body:
+                changes[key] = bool(body[key])
         if "pot_mode" in body:
             if body["pot_mode"] not in ("server", "script", "off"):
                 raise ValueError("token helper mode must be server, script or off")
@@ -923,6 +931,19 @@ class App:
                                         f"{what} {folder.name} would do ({mode})" if dry
                                         else f"{what} {folder.name} ({mode})",
                                         lambda s: s.take_in(folder, mode, dry_run=dry))
+            case "except":
+                # **the one thing kept per album** (§9, slice 100), and only the user writes it: the
+                # album view turning one of the library's operations off for this album alone.
+                source_id = str(body.get("id", ""))
+                key, on = str(body.get("key", "")), bool(body.get("on"))
+                if key not in EXCEPTIONS:
+                    raise ValueError(f"no such exception: {key}")
+                found = self.album(source_id)
+                if not found:
+                    raise ValueError("no such album")
+                return self.jobs.submit("except", f"{'Except' if on else 'Stop excepting'} "
+                                        f"{found[1].album} from {EXCEPTIONS[key].split(' ')[0]}",
+                                        lambda s: s.set_exception(source_id, key, on), target=source_id)
             case "prune":
                 source_id = str(body.get("id", ""))
                 found = self.album(source_id)

@@ -189,6 +189,7 @@ class Lrclib:
         self.retries = retries
         self._lock = threading.Lock()
         self._last = 0.0
+        self.requests = 0        # how many really went out, for a pass to report
         self._db: sqlite3.Connection | None = None
         if cache_path:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -379,7 +380,13 @@ class Lrclib:
         raise LyricsError("lrclib would not set a challenge")
 
     def _wait_turn(self) -> None:
+        """Held to one request every `min_interval`, and **counted** while we are here.
+
+        The count is of requests that really went out — a cached answer never reaches this — which is
+        what a report about somebody else's service has to be about (§9, slice 101).
+        """
         with self._lock:
+            self.requests += 1
             delay = self._last + self.min_interval - time.monotonic()
             if delay > 0:
                 time.sleep(delay)

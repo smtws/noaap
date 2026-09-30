@@ -247,6 +247,19 @@ two-step repair; taking a folder in; and the watched folders.
 *Apply* appears only after a check and does exactly what that check listed. A check taken before
 something else wrote to the library is stale, and says so rather than being applied.
 
+<a id="what-every-album-should-have"></a>
+**Settings › What every album should have is the state the library is in**: looked up at MusicBrainz
+and at LRCLIB, a cover beside each album and inside its files, the words inside them, and whether an
+album taken in where it stood is renamed into noaap's scheme or retagged at all (both off by default —
+a collection you took in keeps the names and the tags its owner gave it). **A pass brings the albums it
+touches to these**, so switching embedding on today means the next `repair --dry-run` lists every file
+without one and the apply embeds them; seven hundred albums are not visited by hand.
+
+The one thing kept per album is an **exception**, set in that album's own view and by nothing else —
+*keep this album's names*, *do not embed the cover here*. It can only leave something out: an album
+that could ask for *more* than the settings would be a second state for the library to be in. Update
+and repair honour exceptions and name them in the dry run.
+
 **The settings only ask for what your choices need.** A timing field appears when the provider of its
 slot uses it — the endpoint for `http`, where the model runs and whether it checks itself for `local`,
 one API key for a vendor you actually chose — and both slots are asked for together, so aligning locally
@@ -276,6 +289,46 @@ built from what the program actually has: a provider that needs a session appear
 editing the page, and a config you wrote by hand — flat keys and `[[watch]]` tables alike — shows up as
 rows. The keys are unchanged: `<provider>_cookies_from_browser`, `<provider>_cookies_file`, Patreon's
 two switches, and the `[[watch]]` tables below.
+
+### Taking a whole collection in
+
+`noaap take-in <root>` is for a collection that is already yours — a folder, a mounted share, twenty
+years of ripped CDs — and it leaves **every album in one state** rather than needing four passes:
+adopted (one plan per album), looked up at MusicBrainz and LRCLIB, a cover beside it and inside its
+files, the words beside it and inside them, the tags written, and the names either kept as they are or
+renamed into noaap's scheme.
+
+```sh
+noaap take-in /mnt/nas/Music                          # says what it would do, writes nothing
+noaap take-in /mnt/nas/Music --apply \
+      --keep-originals ~/noaap-originals              # …and does it
+noaap take-in /mnt/nas/Music --restore ~/noaap-snapshot.jsonl --apply   # the way back
+```
+
+Each operation can be switched off for that run — `--names keep`, `--no-mb`, `--no-lyrics`,
+`--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` — so eleven thousand tracks can be
+taken in quickly and looked up later. **Those switches are about tonight, not about the albums**: what
+an album should have is a [setting](#what-every-album-should-have), and the next check or repair brings
+every album to it.
+
+**Three precautions, because a collection like that is not replaceable:**
+
+| | what it is | what it costs |
+|---|---|---|
+| the snapshot | one line per file: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not — your `comment`, your replaygain, your cover — and a digest of the audio | a few hundred bytes a track, and a walk of the tree |
+| the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy and two digests per file written |
+| `--keep-originals DIR` | the first write to a file copies it there whole, **before** the rename | as much disk as the part of the collection that is touched |
+
+The third is the only one that can give a file back **byte for byte**: a tag round-trip is not
+byte-identical even when the same values go back (measured: same size, different bytes). Without it, a
+restore puts the names and the tags back and proves the audio is untouched — and names any field of
+yours that went missing on the way.
+
+**None of that is a backup.** It is a way back from what noaap did, not from a disk that fails, a share
+that goes away mid-pass, or a deleted snapshot.
+
+The pass expects to be interrupted: it writes down each album as it finishes, so running the same
+command again continues where it stood and repeats no album.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:
@@ -318,6 +371,7 @@ whether it has been here.
 | `noaap watch-service install\|uninstall\|status` | The watcher as a user service of its own — it is always on, where the web service starts on demand. `--port` names the app, `--from-checkout` makes the unit follow this tree instead of the release venv. |
 | `noaap migrate` | Report what a ytalbum installation left behind and, with `--apply`, move its settings over; `--uninstall-old` also removes its units and launcher. See **[Coming from ytalbum](#coming-from-ytalbum)**. |
 | `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
+| `noaap take-in <folder>` | Take a whole collection in and bring every album to one state: adopted, looked up, covered, worded, tagged, named. Dry by default; `--apply` does it. `--names keep\|scheme`, `--no-mb`, `--no-lyrics`, `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` switch off what this run should not do. `--keep-originals DIR` copies each file aside before its first write — the only way back byte for byte — `--snapshot FILE` says where the record of every file goes, `--no-resume` starts again instead of continuing, and `--restore SNAPSHOT` puts names and tags back. See **[taking a whole collection in](#taking-a-whole-collection-in)**. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap merge <folder>` | Compare another library with this one track by track and take the better copies. Dry by default; `--apply` acts, `--only` / `--album` narrow, `--new` also fetches the albums this library does not have, `--undecided` lists only the pairs nobody could rank, `--rejudge` settles the copies already listed here. See **[two copies of one song](#two-copies-of-one-song)**. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. `--find-moved` looks for a track's file again by what the file holds, `--strays` for copies an old version left in an adopted album's root, `--under FOLDER` also searches there; those two report only, and **`--apply` is what makes them act** — without it the whole run is a dry one. |
@@ -1212,6 +1266,11 @@ and two things can never rename the same album at once.
 | `patreon_audio_from_video` | `false` | Take the audio stream out of a video post — copied, never re-encoded; the video is deleted and never enters the library. Off, such a post is refused. |
 | `patreon_captions` | `false` | Keep a post's own captions as an `.lrc` beside the track: the creator's words, marked as theirs, never in the file's tag and never offered to anyone. |
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
+| `cover_beside` | `true` | `cover.jpg` in each album folder. |
+| `cover_embedded` | `true` | The picture inside every file. |
+| `lyrics_embedded` | `true` | The words in the file's tag, beside the `.lrc`. |
+| `rename_adopted` | `false` | Rename albums taken in where they stood into noaap's scheme. |
+| `retag_adopted` | `false` | Write noaap's tags into them — never removing a field noaap does not model. |
 | `lyrics` | `true` | Fetch lyrics from lrclib.net (`.lrc` beside the file + `LYRICS` tag). |
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |
 | `pot_mode` | `"server"` | Token helper: `server` (started on demand), `script`, `off`. |
