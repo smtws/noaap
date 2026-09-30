@@ -393,6 +393,14 @@ only while the untouched original is what is playing. Where no original is kept 
 file on disk is played as it is, because that is what the server can serve. And a jump to a point before
 the trim start is left where you put it; the head is only skipped when you play into it.
 
+**The first press of play is quick, even after a refresh.** Two things used to stand in its way, both
+in the server: every request that named an album read the plans until it found it (6 ms for the first
+album in a library, 155 ms for the last), and album covers were sent with `no-store`, so a refresh
+downloaded every one of them again — 52 MB on a 250-album library, with the audio request queued behind
+it for more than ten seconds. Albums are indexed now, covers are cached and revalidated (a revisit costs
+a few kilobytes), and a card's cover is only fetched when the card comes near the screen. A request that
+still takes longer than half a second writes one line saying what it was and where the time went.
+
 **A save never interrupts what you are hearing.** When a trim is saved, the page updates what it
 knows — which file to ask for next time, and what the saved marks are — and the sound carries on. The
 next time you start that track it plays the untouched original with the trim previewed, which is how a

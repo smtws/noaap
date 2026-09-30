@@ -5368,10 +5368,64 @@ to Cloudflare"* for the non-app path.
   the fields is left out whatever it calls itself; a row with no id is not a track; nothing to save is
   nothing rather than a throw; and every field a save needs can be read from what comes back.
 
+## CD. What the first press of play was waiting for (P71, DESIGN §9, slice 90)
+
+Measured on a generated library the size of the user's — **250 albums × 19 tracks**, real cover sizes
+(236 KB), one 2.9 MB opus behind every track name by hardlink, so disk throughput is not part of it.
+
+- [x] **CD1 · M** — the cost of naming an album, by where it sits in the library
+
+  | album | `/api/cover` | `/api/audio` |
+  |---|---|---|
+  | the first | 6 ms | 5 ms |
+  | the middle | 83 ms | 81 ms |
+  | **the last** | **155 ms** | **159 ms** |
+
+  `App.album` read the plans until the id matched. One page load fires a cover request per card, so a
+  refresh was about **eighteen seconds of JSON parsing** — and the audio request queued inside it.
+  After the index: **10 ms for any album**, the first lookup after a change paying 0.16 s for the walk.
+
+- [x] **CD2 · M** — the first press of play, Chrome in app mode, muted
+
+  | | before | after |
+  |---|---|---|
+  | pressed 3 s after a refresh | **no sound within 15 s** (audio TTFB **5557 ms**, `stalled` at 3.2 s) | **102 ms** |
+  | pressed 20 s after a refresh | 2408 ms | 101 ms |
+  | the same track again | — (never started) | 101 ms |
+  | cut, original kept · cut, no original · never trimmed | all over 6 s | **202 / 101 / 101 ms** |
+  | in a tab rather than the app window | — | 101–202 ms |
+
+- [x] **CD3 · M** — what a refresh fetched
+
+  | | before | after |
+  |---|---|---|
+  | requests in the first 3 s | 75 | **14** |
+  | cover requests | 72 (221 within 20 s) | **12** |
+  | cover bytes, cold | 17 MB (52 MB within 20 s) | **2.8 MB** |
+  | cover bytes, revisit | 18 MB | **3.6 KB** (304s) |
+
+  Covers were `Cache-Control: no-store` with no validator, so nothing could be reused; `loading="lazy"`
+  did not hold Chrome back either. They are cacheable now, revalidated with `Last-Modified`, and loaded
+  by an observer when their card comes near the screen.
+
+- [x] **CD4** — the rules on fixtures (14 cases): an album is found without reading the others, a new
+  album is found after the library changes, a folder that moved falls back to the walk; a cover is
+  `no-cache` with a `Last-Modified` and answers **304**, audio answers 304 too, a **Range** request never
+  does, a file that really changed is sent again, and an unparseable `If-Modified-Since` is ignored; a
+  slow request logs its path with the time and the time to its first byte, a quick one says nothing; and
+  a client that left is one line with **no traceback** for `ConnectionResetError`, `BrokenPipeError` and
+  `TimeoutError`, while our own errors still come with theirs.
+
+- [x] **CD5 · M** — the instrument, from my own server's log during the runs above:
+  *"slow request: /icon.svg took 4.93 s (4.93 s to the first byte)"* — the server was busy;
+  *"slow request: /api/cover took 5.29 s (0.00 s to the first byte)"* — the answer went out at once and
+  the client could not read it any faster. The two numbers together are what the next report needs.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the CD cases (P71: what the first press of play was waiting for) | 5 | 2 defects of the program's, both the server's | The user: *"initial play after refresh takes forever to start (like 10 seconds)."* On a generated library the size of theirs: every request that named an album read the plans until it matched — 6 ms for the first album, **155 ms for the last** — so a refresh, which fires a cover request per card, cost about **eighteen seconds of parsing** with the audio request queued inside it (its first byte at **5557 ms**, the element `stalled` after 3 s). And covers were `no-store` with no validator: **221 requests, 52 MB** per refresh. Now: an index makes any album **10 ms**, covers are cacheable and answered **304** (3.6 KB on a revisit), audio answers 304 too while a Range request never does, and a card's cover is fetched when it comes near the screen. The first press of play is **101–202 ms** in every state, app window and tab. Two instruments: a request slower than half a second logs its path with its total and its time-to-first-byte (which tells a busy server from a queued client), and a client that hangs up is one debug line instead of the traceback the journal has been full of since HTTP/1.1. 1654 pytest + 157 node. |
 | 2026-09-30 | the CC cases (P70c: a save with a panel open) | 3 | 1 defect, found by the reviewer while measuring the last package | With a lyrics panel open, *"Save changes"* threw `TypeError: … (reading 'value')` and saved **nothing, silently**: the page inserts its panels as extra rows carrying the track's `data-id` and none of its fields, and the save walked every row in the tbody. Measured before and after with one script on one copy: panel open, 1.19.2 → no job and the title unchanged; fixed → the job runs and the title changes. A row is a track row when it is not a panel **and** carries the fields a save needs, and the handler now catches: *"This album could not be saved: …"* appears in the page where a console line used to be. 1640 pytest + 157 node. |
 | 2026-09-30 | the CB cases (P70b: a jump is answered where it was asked) | 4 | 1 defect found while measuring; **the reported one not reproduced** | The user: *"every jumppoint completely restarts the track."* 21 clicks in 8 states in Chrome app mode — playing, paused, during a pending load, two clicks 80–120 ms apart — and every one landed where it was asked with no reload, so the restart needs state this copy does not have. Found on the way and fixed: **`o=1` falls back to the cut file when no untouched original is kept**, and the page then added the trim to every stamp and applied the window to a file that already carries it (measured: a line stamped 20.00 landed at 32.25, twelve seconds late; now 20.4). The payload says `original_kept`, and the offset and the window follow the file actually asked for. Three rules besides: a line seeks the element holding that track and never reloads it, `playIndex` moves the playhead only where a caller says (the reset to zero from slice 87 is gone), and the head-skip does not fire after a jump. 1640 pytest + 150 node. |
 | 2026-09-30 | the CA cases (P70: the window belongs to the loaded file) | 4 | **3 defects, one of them mine from P69** | The user on 1.19.0: *"after saving it starts as if the cut part was the original."* Walked their flow in Chrome in app mode: the album object is refreshed only on a busy → idle transition **seen by a poll**, and cutting one track takes about a second — so a short job leaves the page believing the file is uncut. It then asks for the plain file (which by now is the cut one) and applies the window to it: the double skip. Two more in the same rows: the marks just saved were gone from the player (▶ from start went to 1.90 instead of 8.6), and after a reload the window was **not** applied at all — my slice 86 flag, which I had measured in P69 as "no skip" without asking which file was playing. Now: the window is applied only to the file the player loaded, the audio URL carries the shape of the file (measured: the element kept reporting 194.85 s for a file that had become 186.23 s), and a write job of ours refreshes the panel from its own ending — teaching the queue without touching the source, so a save never interrupts the sound and the *"play() request was interrupted"* message cannot arise. Same seven steps after the fix: no load at the save, then the original with its window at 10.69 s on a mark of 8.6, across a reload and on a track cut before load, no errors. 1640 pytest + 145 node. |

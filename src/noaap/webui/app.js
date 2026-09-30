@@ -388,9 +388,37 @@ function lengthBadge(a) {
   return h("span", { class: `badge ${way === "long" ? "warn" : "bad"}`, title }, text);
 }
 
+// **Covers load when their card comes near the screen** (§9, slice 90). `loading="lazy"` was not
+// enough: Chrome fetched nearly all of them on a refresh — measured on a 250-album library, **221
+// requests and 52 MB**, and the first press of play waited behind that flood for more than ten
+// seconds. The margin is generous on purpose: scrolling should not wait for a request.
+const coverWatch = "IntersectionObserver" in window
+  ? new IntersectionObserver((entries, self) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        show(entry.target);
+        self.unobserve(entry.target);
+      }
+    }, { rootMargin: "400px" })
+  : null;
+
+function show(img) {
+  if (!img.dataset.cover) return img;
+  img.src = img.dataset.cover;
+  delete img.dataset.cover;
+  return img;
+}
+
+function watched(img) {
+  if (coverWatch) coverWatch.observe(img);
+  else show(img);   // no observer in this browser: the old behaviour, every cover at once
+  return img;
+}
+
 function card(a) {
   const cover = a.cover
-    ? h("img", { class: "cover", src: `/api/cover?id=${encodeURIComponent(a.id)}&t=${a.done}`, alt: "", loading: "lazy" })
+    ? watched(h("img", { class: "cover", alt: "", loading: "lazy",
+                         "data-cover": `/api/cover?id=${encodeURIComponent(a.id)}&t=${a.done}` }))
     : h("div", { class: "cover none" }, "♪");
   const status = a.needs_choice ? h("span", { class: "badge warn" }, `${a.needs_choice} need${a.needs_choice > 1 ? "" : "s"} a choice`)
     : a.failed ? h("span", { class: "badge bad" }, `${a.failed} failed`)

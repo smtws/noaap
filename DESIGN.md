@@ -2606,6 +2606,33 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    (before: no job, the title unchanged, the TypeError in the console; after: the job runs and the title
    changes, with a panel open or closed).
 
+90. ✅ **What the first press of play was waiting for** (2026-09-30, P71). The user: *"initial play
+   after refresh takes forever to start (like 10 seconds) on many tracks … afterwards everything's
+   fine."* Reproduced on a generated library the size of theirs — 250 albums, 19 tracks each, real
+   cover sizes — and the ten seconds were **two things, both the server's**.
+   **Every request that named an album read the library until it found it.** `App.album` walked the
+   plans: measured 6 ms for the first album, 83 ms for the middle one, **155 ms for the last**. A page
+   load fires one cover request per card, so a refresh cost about **eighteen seconds of JSON parsing**,
+   and the audio request queued in the middle of it — its time to the first byte measured at **5.5 s**,
+   with the element giving up (`stalled`) after three. An index of `source_id → folder`, rebuilt when
+   any plan file changes, makes any album **10 ms** wherever it sits.
+   **And a cover was `Cache-Control: no-store` with no validator**, so every refresh downloaded every
+   one again: **221 requests, 52 MB**, still arriving twenty seconds later. Covers are cacheable now,
+   `Last-Modified` is sent for them and for audio, and a conditional request is answered with **304** —
+   a revisit costs 3.6 KB instead of 52 MB. A **Range** request is never answered 304: a player asking
+   for a piece it does not have must be given the piece.
+   **The page helps too**: a card's cover is fetched when the card comes near the screen, by an
+   observer. `loading="lazy"` was not enough — Chrome fetched nearly all of them anyway.
+   **Measured after: the first press of play is 101–202 ms** in every state (cut with an original kept,
+   cut without one, never trimmed, and a second press), in the installed app window and in a tab alike.
+   **Two instruments came out of this.** A request slower than half a second logs its path, how long it
+   took and how long until its first byte — which tells the two causes apart: *"/icon.svg took 4.93 s
+   (4.93 s to the first byte)"* is a busy server, *"/api/cover took 5.29 s (0.00 s to the first byte)"*
+   is a client that could not read it any faster. And **a client that left is not an error**: a media
+   element abandons connections constantly and every one of them had been leaving a
+   `ConnectionResetError` traceback in the journal since the server started speaking HTTP/1.1 (R-304).
+   One debug line now; our own faults still come with their traceback.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2800,6 +2827,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (what the first play was waiting for, §9, slice 90)
+
+- **A lookup by id is an index, not a search.** Anything a page does per card will be done hundreds of
+  times at once.
+- **Anything served from a file may be cached**, and a server that sends `Last-Modified` must answer
+  `If-Modified-Since`. Sending it and ignoring it is worse than not sending it.
+- **Measure where the time goes, not that it is slow.** Time-to-first-byte against total time tells a
+  busy server from a queued client, which is why both are in the log line.
+- **A client that hangs up is normal traffic.** Reserve tracebacks for our own faults.
 
 ### Decisions of 2026-09-30 (a save reads the track rows, §9, slice 89)
 

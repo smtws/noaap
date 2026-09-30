@@ -11,6 +11,7 @@ by album id, never by a path from the request.
 
 from __future__ import annotations
 
+import email.utils
 import hashlib
 import itertools
 import json
@@ -18,11 +19,13 @@ import logging
 import os
 import queue
 import socket
+import sys
 import threading
 import time
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -35,7 +38,7 @@ import httpx
 from . import config as config_mod
 from . import sources, user_agent
 from .config import Config
-from .download import COVER_STEM, PLAN_FILE, iter_plans
+from .download import COVER_STEM, PLAN_FILE, iter_plans, load_plan, read_plan
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
 from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
@@ -316,6 +319,9 @@ class App:
         # is a sqlite connection and an album panel asks this per track.
         self._reader: Service | None = None
         self._reader_for: Path | None = None
+        # {source_id: album folder}, rebuilt when any plan file changes (§9, slice 90)
+        self._album_index: dict[str, Path] = {}
+        self._album_index_for: str | None = None
 
     # read side
 
@@ -390,7 +396,32 @@ class App:
         )
 
     def album(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
-        return next(((d, p) for d, p in iter_plans(self.library) if p.source_id == source_id), None) if self.library.exists() else None
+        """One album, by an index of folders rather than by reading the library until it matches.
+
+        **Every request that names an album used to walk the plans** (§9, slice 90): measured on a
+        library of 250 albums, 6 ms for the first album and **155 ms for the last**, and a page load
+        fires one cover request per card — about 18 seconds of JSON parsing for one refresh, which is
+        what the first press of play was waiting behind. The index is rebuilt when any plan file
+        changes, which `library_version` already answers cheaply.
+        """
+        if not self.library.exists():
+            return None
+        version = self.library_version()
+        if self._album_index_for != version:
+            self._album_index = {}
+            for path in sorted(self.library.glob(f"*/*/{PLAN_FILE}")):
+                try:
+                    self._album_index[read_plan(path, path.parent).source_id] = path.parent
+                except (ValueError, KeyError, TypeError) as e:
+                    log.warning("ignoring unreadable plan %s: %s", path, e)
+            self._album_index_for = version
+        album_dir = self._album_index.get(source_id)
+        if album_dir is None or not album_dir.is_dir():
+            return next(((d, p) for d, p in iter_plans(self.library) if p.source_id == source_id), None)
+        try:
+            return album_dir, load_plan(album_dir)
+        except (ValueError, KeyError, TypeError, OSError):
+            return None
 
     def with_links(self, plan: AlbumPlan) -> dict[str, Any]:
         """The plan as the page wants it: each candidate with a link, where its provider has one.
@@ -438,14 +469,15 @@ class App:
                              lambda s: s.sync_lyrics(source_id), target=source_id)
         return plan
 
-    def cover(self, source_id: str) -> tuple[bytes, str] | None:
+    def cover(self, source_id: str) -> tuple[bytes, str, float] | None:
+        """The album's cover, its type, and when the file was last written (§9, slice 90)."""
         found = self.album(source_id)
         if not found:
             return None
         for path in sorted(found[0].glob(f"{COVER_STEM}.*")):
             data = path.read_bytes()
             if mime := image_mime(data):
-                return data, mime
+                return data, mime, path.stat().st_mtime
         return None
 
     def lyrics(self, source_id: str, video_id: str) -> dict[str, Any] | None:
@@ -997,12 +1029,23 @@ class App:
 
         Handler.app = app
         if sock is None:
-            return ThreadingHTTPServer((self.host, self.port), Handler)
-        server = ThreadingHTTPServer(sock.getsockname()[:2], Handler, bind_and_activate=False)
+            return _Server((self.host, self.port), Handler)
+        server = _Server(sock.getsockname()[:2], Handler, bind_and_activate=False)
         server.socket.close()
         server.socket = sock
         server.server_address = sock.getsockname()[:2]
         return server
+
+
+class _Server(ThreadingHTTPServer):
+    """The same server, without a traceback for a client that hung up (§9, slice 90)."""
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        kind = sys.exc_info()[0]
+        if kind is not None and issubclass(kind, (ConnectionResetError, BrokenPipeError, TimeoutError)):
+            log.debug("the client went away: %s", kind.__name__)
+            return
+        log.exception("error while answering %s", client_address)
 
 
 def _asset(name: str) -> bytes:
@@ -1051,6 +1094,33 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         log.debug("%s " + fmt, self.address_string(), *args)
 
+    #: a request that takes longer than this is worth a line of its own, with where the time went
+    SLOW = 0.5
+
+    def end_headers(self) -> None:
+        """Stamp when the first byte of the answer went out, for the slow-request line."""
+        self._headers_at = time.monotonic()
+        super().end_headers()
+
+    def handle_one_request(self) -> None:
+        """One request, timed — and **a client that left is not an error** (§9, slice 90).
+
+        A media element opens, seeks and abandons connections constantly; every one of those used to
+        leave a `ConnectionResetError` traceback in the journal. It is one line at debug level now, and
+        a request slower than `SLOW` says so with the time it took to answer at all.
+        """
+        started = self._headers_at = time.monotonic()
+        try:
+            super().handle_one_request()
+        except (ConnectionResetError, BrokenPipeError, TimeoutError) as e:
+            log.debug("the client went away: %s", type(e).__name__)
+            self.close_connection = True
+            return
+        took = time.monotonic() - started
+        if took >= self.SLOW:
+            log.warning("slow request: %s took %.2f s (%.2f s to the first byte)",
+                        (self.path or "?").split("?")[0], took, max(0.0, self._headers_at - started))
+
     # routing
 
     def do_GET(self) -> None:
@@ -1092,7 +1162,11 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(self.app.with_links(plan)) if plan else self._error(HTTPStatus.NOT_FOUND, "no such album")
             case "/api/cover":
                 cover = self.app.cover(q.get("id", ""))
-                return self._send(HTTPStatus.OK, cover[0], cover[1]) if cover else self._error(HTTPStatus.NOT_FOUND, "no cover")
+                # **a cover is a file on disk and may be cached** (§9, slice 90): `no-store` made a
+                # refresh fetch every one of them again — 52 MB on the user's library, with the first
+                # press of play waiting behind it.
+                return (self._send(HTTPStatus.OK, cover[0], cover[1], modified=cover[2]) if cover
+                        else self._error(HTTPStatus.NOT_FOUND, "no cover"))
             case "/api/thumb":
                 thumb = self.app.thumbnail(q.get("u", ""))
                 return self._send(HTTPStatus.OK, thumb[0], thumb[1], cache=True) if thumb else self._error(HTTPStatus.NOT_FOUND, "no thumbnail")
@@ -1177,7 +1251,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _file(self, path: Path, ctype: str) -> None:
         """Stream a file, honouring a single `Range: bytes=a-b` so players can seek."""
-        size = path.stat().st_size
+        stat = path.stat()
+        size = stat.st_size
+        if not self.headers.get("Range") and self._unchanged_since(stat.st_mtime):
+            return self._not_modified(stat.st_mtime)
         start, end = 0, size - 1
         rng = self.headers.get("Range", "")
         partial = rng.startswith("bytes=") and "," not in rng
@@ -1205,6 +1282,7 @@ class _Handler(BaseHTTPRequestHandler):
         if partial:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Cache-Control", "no-cache")
+        # a range request is never answered with a 304: the client is asking for a piece it does not have
         # what a player needs to revalidate instead of fetching the whole thing again
         self.send_header("Last-Modified", self.date_time_string(int(path.stat().st_mtime)))
         self.end_headers()
@@ -1220,24 +1298,58 @@ class _Handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass  # the player skipped or seeked away
 
+    def _unchanged_since(self, modified: float) -> bool:
+        """Whether the client already has this version (§9, slice 90).
+
+        `Last-Modified` was sent and `If-Modified-Since` was **never read**, so a browser told to
+        revalidate got the whole file back every time: measured, one refresh of a 250-album library
+        re-downloaded **52 MB** of covers, and the first press of play waited behind it.
+        """
+        since = self.headers.get("If-Modified-Since")
+        if not since:
+            return False
+        try:
+            asked = email.utils.parsedate_to_datetime(since)
+        except (TypeError, ValueError):
+            return False
+        if asked.tzinfo is None:
+            asked = asked.replace(tzinfo=UTC)
+        # the header has a second's resolution, so compare at that resolution
+        return int(modified) <= int(asked.timestamp())
+
+    def _not_modified(self, modified: float) -> None:
+        self.send_response(HTTPStatus.NOT_MODIFIED)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Last-Modified", self.date_time_string(int(modified)))
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _json(self, data: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         self._send(status, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
     def _error(self, status: HTTPStatus, message: str) -> None:
         self._json({"error": message}, status)
 
-    def _send(self, status: HTTPStatus, body: bytes, ctype: str, cache: bool = False) -> None:
+    def _send(self, status: HTTPStatus, body: bytes, ctype: str, cache: bool = False,
+              modified: float | None = None) -> None:
         # a HEAD gets the headers a GET would send — **the length included** — and no body at all
         head_only = getattr(self, "_head_only", False)
+        if modified is not None and self._unchanged_since(modified):
+            return self._not_modified(modified)
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-cache" if cache else "no-store")  # static: always revalidate, so updates show up
+        self.send_header("Cache-Control", "no-cache" if cache or modified is not None else "no-store")
+        if modified is not None:
+            self.send_header("Last-Modified", self.date_time_string(int(modified)))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self'; script-src 'self'")
         self.end_headers()
         if not head_only:
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True   # the page navigated away mid-answer
 
 
 def systemd_socket() -> socket.socket | None:
