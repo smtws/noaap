@@ -2,7 +2,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         candidateLine, copyLabels, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
+         binLabel, candidateLine, copyLabels, repairState, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
          scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
          toFileClock, trimOffset, trimTarget, wordsAfterClaim }
   from "./logic.mjs";
@@ -136,6 +136,7 @@ async function poll() {
     renderLibrary();
     renderJobs();
     renderSettings();
+    renderBin();
     renderActivity();
     settleJobs();
     if (waitingFor) {
@@ -1508,13 +1509,13 @@ function markAlbumFields() {
 }
 
 function deleteTrack(plan, track, button) {
-  const message = `Delete “${track.artist} – ${track.title}”?\n\nThe file is moved to the recycle bin — nothing is deleted outright — and the\nremaining tracks are renumbered. Settings › Recycle bin puts it back.\nIf the video is still in the playlist, a later update fetches it again.`;
+  const message = `Delete “${track.artist} – ${track.title}”?\n\nThe file is moved to the recycle bin — nothing is deleted outright — and the\nremaining tracks are renumbered. The Recycle bin in the header puts it back.\nIf the video is still in the playlist, a later update fetches it again.`;
   if (confirm(message)) submit("delete_track", { id: plan.source_id, video_id: track.video_id }, button);
 }
 
 function deleteAlbum(plan, button) {
   const n = plan.tracks.length;
-  const message = `Delete the album “${plan.albumartist} — ${plan.album}”?\n\n${n} track(s) and the cover move to the recycle bin; the album data in\n${plan.folder}\nis removed.\n\nFiles you put there yourself are kept. Settings › Recycle bin puts the audio back.`;
+  const message = `Delete the album “${plan.albumartist} — ${plan.album}”?\n\n${n} track(s) and the cover move to the recycle bin; the album data in\n${plan.folder}\nis removed.\n\nFiles you put there yourself are kept. The Recycle bin in the header puts the audio back.`;
   if (confirm(message)) {
     submit("delete_album", { id: plan.source_id }, button).then(() => closeAlbum(null));
   }
@@ -1522,7 +1523,7 @@ function deleteAlbum(plan, button) {
 
 function pruneAlbum(p, gone, button) {
   const list = gone.map((t) => `  ${t.number}. ${t.artist} – ${t.title}`).join("\n");
-  if (confirm(`Move these to the recycle bin? They are no longer in the YouTube playlist:\n\n${list}\n\nNothing is deleted outright; Settings › Recycle bin puts them back.`)) submit("prune", { id: p.source_id }, button);
+  if (confirm(`Move these to the recycle bin? They are no longer in the YouTube playlist:\n\n${list}\n\nNothing is deleted outright; the Recycle bin in the header puts them back.`)) submit("prune", { id: p.source_id }, button);
 }
 
 // keeps tenths when there are any, so a value set on the player survives a save from the field
@@ -1802,6 +1803,86 @@ function renderLog(job) {
 // Files a plan names that are not there. Almost always one thing: the library was moved and noaap
 // has not been told. Deliberately **not** the same as "the folder this album came from is gone" —
 // those tracks are complete, and saying otherwise would call a working library broken.
+// **Repairing the library, from the settings view and in two steps** (§9, slice 91). The user:
+// *"repair library could go into settings, its function could be described better in there as
+// 'repairing' could mean a lot of stuff and could also be dangerous."* So it says what it does, in
+// full, and it is a check before it is an apply — the check writes nothing and lists every file it
+// would touch (§9, slice 85).
+let lastCheck = null;   // { version, lines } of the last check that was read
+
+// **Asking the sources what changed, from the settings view** (§9, slice 91). The user did not want
+// this in the header either, and there was nowhere in a header to say what it does.
+function updateSection() {
+  return h("div", { class: "setting update" },
+    h("strong", {}, "Check the sources for new tracks"),
+    h("div", { class: "muted" },
+      "Asks every album's source what it holds now. An album that has not changed costs one request. "
+      + "New tracks are downloaded, tracks that are gone from the source are marked ", h("em", {}, "gone"),
+      " and kept — nothing is deleted — and the albums it touched are looked up at MusicBrainz and "
+      + "LRCLIB unless you have switched that off. An album from a private source is never looked up."),
+    h("div", { class: "actions" },
+      h("button", { class: "quiet", type: "button",
+        onclick: (e) => submit("update", {}, e.currentTarget) }, "Run"),
+      h("button", { class: "quiet", type: "button",
+        title: "Read every album in full instead of asking whether it changed — slower, and more requests",
+        onclick: (e) => submit("update", { deep: true }, e.currentTarget) }, "Read every album in full")));
+}
+
+function repairSection() {
+  const box = h("div", { class: "setting repair" });
+  fillRepair(box);
+  return box;
+}
+
+function fillRepair(box) {
+  const said = repairState({ check: lastCheck, version: state.tracks_version,
+                             running: Boolean(state.busy_write) });
+  box.replaceChildren(
+    h("strong", {}, "Repair the library"),
+    h("div", { class: "muted" },
+      "Once through every album, offline. It renames files and folders to noaap's scheme, rewrites the "
+      + "tags from the plan, applies trim points that are not in the file yet, cuts a file again if its "
+      + "clock starts before zero, fills in the measured length of each track, tidies artist names "
+      + "(performer only, guests moved into the title, one spelling per artist, the album's own name "
+      + "removed from its track titles) and drops a track listed twice."),
+    h("div", { class: "muted" },
+      "It never downloads anything and never asks anybody about your music. Nothing is deleted: where a "
+      + "file is replaced, the one that was there goes to the recycle bin."),
+    h("div", { class: "muted" }, said.note),
+    h("div", { class: "actions" },
+      h("button", { class: "quiet", type: "button", disabled: !said.canCheck,
+        onclick: (e) => checkRepair(box, e.currentTarget) }, "Check"),
+      h("button", { class: "quiet", type: "button", disabled: !said.canApply,
+        onclick: (e) => applyRepair(box, e.currentTarget) }, "Apply")),
+    lastCheck ? h("pre", { class: "check" }, lastCheck.lines.join("\n") || "nothing to do") : null);
+}
+
+async function checkRepair(box, button) {
+  const version = state.tracks_version;
+  const id = await submit("repair", { dry_run: true }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 1200);
+  if (!job || job.state !== "done") return;          // submit() and the job log have said why
+  // the log is what it would do, line by line; the result is the albums it would touch, which is what
+  // says whether there is anything to apply at all
+  lastCheck = { version, albums: (job.result || []).length,
+                lines: (job.log || []).filter((line) => !line.startsWith("===")) };
+  fillRepair(box);
+}
+
+async function applyRepair(box, button) {
+  if (!lastCheck) return;
+  if (!confirm("Apply this repair?\n\n" + lastCheck.lines.slice(0, 12).join("\n")
+               + (lastCheck.lines.length > 12 ? `\n… and ${lastCheck.lines.length - 12} more lines` : "")
+               + "\n\nThis is what the check listed. Nothing is downloaded and nothing is deleted.")) return;
+  const id = await submit("repair", {}, button);
+  if (id == null) return;
+  await jobSettled(id, 4800);
+  lastCheck = null;                                   // the library has changed: check again
+  fillRepair(box);
+  await refreshAlbumPanel();
+}
+
 function missingSection(missing) {
   if (!missing || !missing.albums) return null;
   return h("div", { class: "setting" },
@@ -1837,10 +1918,27 @@ const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromiu
 
 // What noaap moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
 // way anything leaves is from here or `noaap recycle empty` — which is the point of having it.
-function recycleSection() {
-  const box = h("div", { class: "recycle" }, h("h3", {}, "Recycle bin"), h("div", { class: "muted" }, "loading…"));
+//
+// **Its own view, from the header** (§9, slice 91). It used to sit at the bottom of the settings panel,
+// where the user did not think it belonged: settings are what the program should do, and the bin is a
+// place with their audio in it.
+function openRecycle() {
+  const panel = $("#recycle");
+  const box = h("div", { class: "recycle" }, h("div", { class: "muted" }, "loading…"));
+  fill(panel, h("div", { class: "panel-head" }, h("h2", {}, "Recycle bin"),
+                h("button", { class: "quiet", type: "button", onclick: () => { panel.hidden = true; } }, "Close")),
+       box);
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
   loadRecycle(box);
-  return box;
+}
+
+function renderBin() {
+  const button = $("#bin");
+  const said = binLabel(state.recycled);
+  button.hidden = said.hidden && $("#recycle").hidden;   // stays reachable while the view is open
+  button.textContent = said.text;
+  button.title = said.title;
 }
 
 async function loadRecycle(box) {
@@ -1850,7 +1948,6 @@ async function loadRecycle(box) {
   } catch { /* the panel is still useful without it */ }
   const size = rows.reduce((n, r) => n + (r.bytes || 0), 0);
   box.replaceChildren(
-    h("h3", {}, "Recycle bin"),
     h("div", { class: "muted" }, rows.length
       ? `${rows.length} thing(s) noaap moved aside instead of deleting, ${(size / 1e6).toFixed(1)} MB. `
         + "Nothing here is ever removed on its own."
@@ -1945,11 +2042,13 @@ function openSettings() {
           : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
         h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
           placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
+      h("h3", {}, "Library"),
+      updateSection(),
+      repairSection(),
       missingSection(st.missing),
       watchingSection(st.watching),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
-      h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))),
-    recycleSection());
+      h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
   panel.hidden = false;
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -1984,6 +2083,7 @@ async function saveSettings(ev) {
 }
 
 $("#gear").addEventListener("click", openSettings);
+$("#bin").addEventListener("click", openRecycle);
 $("#artist-all").addEventListener("click", () => showArtist(null));
 $("#artist-update").addEventListener("click", (e) => submit("update", { artist: artistFilter, deep: e.shiftKey }, e.currentTarget));
 $("#artist-new").addEventListener("click", async (e) => {
@@ -2365,21 +2465,5 @@ let skipPreview = false;
 for (const event of ["click", "keydown"]) {
   $("#open").addEventListener(event, (e) => { skipPreview = e.shiftKey === true; }, true);
 }
-// plain click: cheap check (one request per album); with shift: read every album fully
-$("#update").addEventListener("click", (e) => submit("update", { deep: e.shiftKey }, e.currentTarget));
-$("#repair").addEventListener("click", (e) => {
-  // repair renames folders and files across the whole library, so it asks first. The wording is
-  // README's paragraph about it, because a user pressing this deserves to know it is offline and
-  // that nothing is downloaded.
-  const message = "Repair the library?\n\n"
-    + "Once through every album, offline: performer-only artist names, guest credits moved into "
-    + "the title, the album's own name removed from its track titles, one spelling per artist, "
-    + "duplicate tracks removed.\n\n"
-    + "Folders and files are renamed and tags rewritten. Nothing is downloaded, nothing is deleted, "
-    + "and values you edited yourself are kept.\n\n"
-    + "The log names every album it changes.";
-  if (confirm(message)) submit("repair", {}, e.currentTarget);
-});
-
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(() => {});
 poll();

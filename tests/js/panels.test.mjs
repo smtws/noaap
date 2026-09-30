@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { trackRows, lyricsPanelState, resetKind } from "../../src/noaap/webui/logic.mjs";
+import { HEADER, headerHas, repairState, binLabel, trackRows, lyricsPanelState, resetKind } from "../../src/noaap/webui/logic.mjs";
 
 test("lrclib's words can be looked up again or rejected", () => {
   const s = lyricsPanelState({ text: "[00:01.00] a", status: "synced", lrclib_id: 11, owner: null });
@@ -95,4 +95,93 @@ test("every field a save needs can be read from what comes back", () => {
   for (const name of ["number", "artist", "title", "trim_start", "trim_end", "disc"]) {
     assert.equal(tr.querySelector(`[name=${name}]`).value, `${name} of v1`);
   }
+});
+
+// -- the recycle bin's own place in the header (§9, slice 91) -----------------------------------------
+
+test("an empty bin is not offered at all", () => {
+  const said = binLabel(0);
+  assert.equal(said.hidden, true);
+  assert.equal(said.text, "Recycle bin");
+  assert.match(said.title, /moved aside instead of deleting/);
+});
+
+test("a bin with things in it says how many", () => {
+  const said = binLabel(4);
+  assert.equal(said.hidden, false);
+  assert.equal(said.text, "Recycle bin (4)");
+  assert.match(said.title, /^4 things noaap moved aside/);
+});
+
+test("one thing reads as one thing", () => {
+  assert.equal(binLabel(1).text, "Recycle bin (1)");
+  assert.match(binLabel(1).title, /^1 thing noaap/);
+});
+
+test("a server that says nothing about the bin is taken as empty", () => {
+  for (const nothing of [undefined, null, "", NaN]) assert.equal(binLabel(nothing).hidden, true);
+});
+
+test("and a count that arrives as a string still counts", () => {
+  assert.equal(binLabel("7").text, "Recycle bin (7)");
+});
+
+// -- repairing is a check and then an apply (§9, slice 91) --------------------------------------------
+
+test("with no check behind it, only the check is offered", () => {
+  const said = repairState({});
+  assert.equal(said.canCheck, true);
+  assert.equal(said.canApply, false);
+  assert.match(said.note, /Check first/);
+});
+
+test("a check that listed something may be applied", () => {
+  const said = repairState({ check: { version: "v1", albums: 2, lines: ["01 would be renamed", "…"] },
+                             version: "v1" });
+  assert.equal(said.canApply, true);
+  assert.equal(said.stale, false);
+  assert.match(said.note, /exactly what this check listed: 2 album/);
+});
+
+test("a check taken before the library changed is stale, not applied", () => {
+  const said = repairState({ check: { version: "v1", albums: 1, lines: ["01 would be renamed"] },
+                             version: "v2" });
+  assert.equal(said.canApply, false);
+  assert.equal(said.stale, true);
+  assert.match(said.note, /changed since this check/);
+});
+
+test("a check that found nothing offers nothing to apply", () => {
+  // the summary line is always in the log, so the albums it would touch is what counts
+  const said = repairState({ check: { version: "v1", albums: 0, lines: ["0 album(s) would be tidied up"] },
+                             version: "v1" });
+  assert.equal(said.canApply, false);
+  assert.match(said.note, /found nothing to do/);
+});
+
+test("while something is writing, neither step is offered", () => {
+  const said = repairState({ check: { version: "v1", albums: 1, lines: ["x"] }, version: "v1",
+                             running: true });
+  assert.equal(said.canCheck, false);
+  assert.equal(said.canApply, false);
+  assert.match(said.note, /waits until it is finished/);
+});
+
+// -- what belongs in the header (§9, slice 91) --------------------------------------------------------
+
+test("the header holds the search, the bin, the theme and the settings — and nothing else", () => {
+  assert.deepEqual(HEADER, ["open", "bin", "theme", "gear"]);
+  const said = headerHas(["open", "bin", "theme", "gear"]);
+  assert.deepEqual(said.extra, []);
+  assert.equal(said.complete, true);
+});
+
+test("a library action in the header is named as out of place", () => {
+  const said = headerHas(["open", "update", "repair", "bin", "theme", "gear"]);
+  assert.deepEqual(said.extra, ["update", "repair"]);
+});
+
+test("and one missing is noticed too", () => {
+  assert.equal(headerHas(["open", "theme", "gear"]).complete, false);
+  assert.equal(headerHas([]).complete, false);
 });

@@ -225,3 +225,32 @@ def test_a_real_error_still_shows_its_traceback(many, caplog):
 
     assert [r for r in caplog.records if r.exc_info], "our own bugs are still reported in full"
     server.server_close()
+
+
+# -- what the header is told about the bin (§9, slice 91) ---------------------------------------------
+
+
+def test_the_state_counts_the_bin_without_reading_it(serving, many, monkeypatch):
+    """The page polls this, so it may not read a file per entry (§9, slice 91)."""
+    from noaap.recycle import bin_track
+    from noaap.web import App
+
+    app, c = serving
+    assert c.get("/api/state").json()["recycled"] == 0
+
+    album_dir, plan = app.album("album-2")
+    track = plan.tracks[0]
+    bin_track(many, album_dir, plan, track, reason="tested", audio=album_dir / track.filename)
+
+    assert c.get("/api/state").json()["recycled"] == 1
+    assert len(c.get("/api/recycle").json()["entries"]) == 1
+
+    # and the count never opens an entry: the full listing is what does that
+    monkeypatch.setattr("noaap.recycle.resolved",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("read an entry")))
+    assert App(Config(musicbrainz=False), many, port=0).recycled() == 1
+
+
+def test_a_library_with_no_bin_counts_zero(serving):
+    _, c = serving
+    assert c.get("/api/state").json()["recycled"] == 0

@@ -124,7 +124,9 @@ class Job:
 class Jobs:
     # jobs that change the library run one at a time; reading jobs (search, preview,
     # channel listing) get their own lane so a search never waits for a download
-    READ_ONLY = ("search", "preview", "channel", "align", "draft")  # they only read: the answer goes to the page
+    # they only read: the answer goes to the page. `repair_check` is the dry run of slice 85 — it
+    # writes nothing, so it belongs here and may run beside a download (§9, slice 91).
+    READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check")
 
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
                  idle_seconds: float = CARD_IDLE, sleep: Callable[[float], None] = time.sleep,
@@ -511,15 +513,32 @@ class App:
                                    "draft": may_send_audio(self.cfg, plan, TRANSCRIBE),
                                    "listen": may_send_audio(self.cfg, plan, LISTEN)}}
 
+    def recycled(self) -> int:
+        """How many things are in the bin — counted, not listed (§9, slice 91).
+
+        The header shows this on every poll, so it may not read a file: one `iterdir` of the bin, where
+        the full listing reads a `bin.json` per entry and measures its files.
+        """
+        from .recycle import bin_root
+
+        root = bin_root(self.library)
+        try:
+            return sum(1 for path in root.iterdir() if path.is_dir())
+        except OSError:
+            return 0
+
     def recycle(self) -> list[dict[str, Any]]:
-        """The bin, for the page. Deliberately without any path: an entry is its id."""
+        """The bin, for the page. Deliberately without any path: an entry is its id.
+
+        **The library this server is serving**, not the one a config file happens to name: an app given
+        its library directly — a test, `noaap serve --library` — showed an empty bin for a bin that had
+        things in it.
+        """
         from .recycle import entries
 
-        if not self.cfg.library_root:
-            return []
         return [{"id": e.id, "when": e.when, "reason": e.reason, "artist": e.artist,
                  "title": e.title, "album": e.album, "bytes": e.bytes,
-                 "track": bool(e.data.get("track"))} for e in entries(self.cfg.library_root)]
+                 "track": bool(e.data.get("track"))} for e in entries(self.library)]
 
     def _publish_state(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack) -> dict[str, Any]:
         text = (read_sidecar(album_dir, track) or "").strip()
@@ -736,6 +755,8 @@ class App:
             "busy_write": self.jobs.busy("write"),
             "musicbrainz": self.cfg.musicbrainz,
             "tracks_version": self.library_version(),
+            # what the bin holds, so the header can offer it only when there is something in it
+            "recycled": self.recycled(),
         }
 
     # write side (each returns a queued job)
@@ -784,6 +805,12 @@ class App:
                 if running := self.jobs.writing():
                     # it renames folders all over the library, so it must not run beside a writer
                     raise ValueError(f"“{running.label}” is running — wait for it, then repair")
+                # **two steps, and the first one writes nothing** (§9, slice 91): the check is the dry
+                # run of slice 85, whose log names every file it would touch, and the page only offers
+                # the apply after one has been read.
+                if body.get("dry_run"):
+                    return self.jobs.submit("repair_check", "Check what a repair would do",
+                                            lambda s: s.repair(dry_run=True))
                 return self.jobs.submit("repair", "Repair the library", lambda s: s.repair())
             case "prune":
                 source_id = str(body.get("id", ""))

@@ -1354,3 +1354,52 @@ def test_head_is_answered_with_the_headers_of_the_get(server):
     assert head.headers["content-length"] == got.headers["content-length"] == str(len(got.content))
     assert head.headers["content-type"] == got.headers["content-type"]
     assert c.head("/api/state").status_code == 200
+
+
+# -- repairing is a check and then an apply (§9, slice 91) -------------------------------------------
+
+
+def test_the_check_writes_nothing_and_the_apply_does_what_it_listed(server, library):
+    """The check is the dry run of slice 85 and runs in the read lane; the apply is the same pass."""
+    import hashlib
+
+    from noaap.download import load_plan, save_plan
+    from noaap.models import Provenance
+
+    app, c = server
+    album_dir, plan = app.album(app.albums()[0]["id"])
+    for track in plan.tracks:                       # something for a repair to find
+        track.artist = track.auto["artist"] = "Feuerschwanz, Ben Metzner"
+        track.provenance["artist"] = Provenance.YT_MUSIC
+    plan.kind = "artist_playlist"
+    save_plan(plan, album_dir)
+
+    def fingerprint():
+        return {str(p.relative_to(library)): hashlib.sha1(p.read_bytes()).hexdigest()
+                for p in sorted(library.rglob("*")) if p.is_file()}
+
+    before = fingerprint()
+    check = wait(c, c.post("/api/repair", json={"dry_run": True}, headers=HDR).json()["job"]["id"])
+    assert check["state"] == "done" and check["lane"] == "read", check
+    listed = [line.strip() for line in check["log"] if line.strip()[:2].isdigit()]
+    assert listed, check["log"]
+    assert fingerprint() == before, "the check wrote something"
+
+    done = wait(c, c.post("/api/repair", json={}, headers=HDR).json()["job"]["id"])
+
+    assert done["state"] == "done"
+    assert fingerprint() != before, "the apply changed nothing"
+    # **what the check listed is what the apply did**: asked again, there is nothing left to do. The
+    # line-by-line comparison of the two passes lives where both can be watched
+    # (`tests/test_repair.py::test_the_dry_run_says_what_the_real_run_does`).
+    again = wait(c, c.post("/api/repair", json={"dry_run": True}, headers=HDR).json()["job"]["id"])
+    left = [line.strip() for line in again["log"] if line.strip()[:2].isdigit()]
+    assert not left, left
+    assert fingerprint() == fingerprint(), "and the second check wrote nothing either"
+
+
+def test_a_check_may_run_beside_a_write(server):
+    """It reads: an open album panel and a download are not a reason to refuse it."""
+    _, c = server
+    answer = c.post("/api/repair", json={"dry_run": True}, headers=HDR)
+    assert answer.status_code == 202 and answer.json()["job"]["lane"] == "read"

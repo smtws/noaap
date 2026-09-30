@@ -2633,6 +2633,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `ConnectionResetError` traceback in the journal since the server started speaking HTTP/1.1 (R-304).
    One debug line now; our own faults still come with their traceback.
 
+91. ✅ **The recycle bin has its own place** (2026-09-30, P72). The user: *"i dont think the recycle bin
+   should live in the settings view."* They are right: settings are what the program should do next
+   time, and the bin is a place with their audio in it — one is a form, the other is a drawer. It is a
+   button in the header now, beside the library's own two actions, **shown only when it holds
+   something** and with the count on it; pressing it opens the bin as its own view. Everything the view
+   does is what it did (list, put back, empty, sizes, reasons); only the place changed, and the three
+   confirmations that told people where to look for a deleted track now name the header. The count comes
+   from the state the page already polls, and it is **counted rather than listed**: one `iterdir` of the
+   bin, where a full listing reads a `bin.json` per entry and measures its files.
+   **And "Repair library" moves the other way, into the settings** — the user again: *"its function could
+   be described better in there as 'repairing' could mean a lot of stuff and could also be dangerous."*
+   It is described in full there (what it renames, retags, cuts, re-cuts and measures; that it downloads
+   nothing, asks nobody, deletes nothing, and that a replaced file goes to the bin), and it is **two
+   steps**: *Check* runs the dry pass of slice 85 — in the read lane, so it may run beside a download —
+   and shows its per-track lines in the page; *Apply* is offered only once a check has been read. A check
+   taken before something else wrote to the library is **stale** and says so instead of being applied,
+   and what decides whether there is anything to apply is the albums the pass would touch rather than
+   the number of lines it printed, because the summary line is always there.
+   **"Update library" left the header too**, on the same word from the user. The header now holds what a
+   person reaches for without reading — the search, the bin when it holds something, the theme, the
+   settings — and the settings view has a **Library** section where both actions can say what they do:
+   *"Check the sources for new tracks"* (with *Read every album in full* beside it, which used to be a
+   shift-click nobody could see) and the repair. The two library actions were a modifier key and a word
+   each; they are a paragraph each now.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2827,6 +2852,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (the bin's own place, §9, slice 91)
+
+- **A settings panel is for settings.** Anything that holds the user's own things is a place of its own.
+- **Offer it when there is something in it.** An empty bin is not news, and a button that is always
+  there teaches people to ignore it.
+- **A number in a header is polled**, so it must cost a directory listing and not a walk.
+- **A word like "repair" is a promise about somebody's files**: say what it does where there is room to
+  say it, and make it a check before it is an apply.
+- **A header is for what you reach for without reading.** Anything that needs a paragraph belongs where
+  there is room for the paragraph.
+- **A modifier key is not a feature.** Shift+click to read every album in full was invisible; it is a
+  button with a sentence now.
+- **A dry run's list is only good until the library changes.** After that it is a story about a library
+  that no longer exists, and offering to apply it is offering the wrong thing.
 
 ### Decisions of 2026-09-30 (what the first play was waiting for, §9, slice 90)
 

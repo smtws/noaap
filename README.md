@@ -412,6 +412,16 @@ holding the cut file instead — the seconds between a save and the page learnin
 already in the bytes and nothing is added to it. Getting this wrong is what made a cut track begin 4.9 s
 into itself and the track after it start at 4.948 instead of 0.
 
+**The header holds the search, the recycle bin and the settings — nothing else.** Checking the sources
+and repairing the library are in the settings view, under **Library**, where each of them says what it
+does: *Check the sources for new tracks* (with *Read every album in full* beside it, which used to be a
+shift-click) and the two-step repair below.
+
+**In the web UI a repair lives in the settings, in two steps.** *Check* runs the dry pass and shows
+its list in the page; *Apply* appears only after a check and does what that check listed. A check taken
+before something else wrote to the library is stale and says so rather than being applied. (It used to
+be a button in the header, where "repair" could have meant anything.)
+
 **Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
 prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*
 with the values that change, *would be cut to its trim points* — and ends with its own total:
@@ -1250,7 +1260,9 @@ noaap recycle restore <entry>      # put one back
 noaap recycle empty --older-than 90
 ```
 
-The web UI shows the same under **Settings › Recycle bin**, with a *Put it back* button.
+The web UI has its own **Recycle bin** button in the header, shown with a count when there is anything
+in it, and each entry there has a *Put it back* button. (It used to live at the bottom of the settings
+panel, which is not where anybody looked for it.)
 
 **It never empties itself.** There is no age cap and no size limit, because a bin that quietly
 empties is one you cannot rely on; `noaap config` and the settings panel report how big it has

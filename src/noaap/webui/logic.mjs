@@ -716,6 +716,63 @@ export function trackRows(rows, fields = "[name=number]") {
             && tr.querySelector(fields));
 }
 
+/** What the header's recycle-bin button says, and whether it is there at all (§9, slice 91).
+ *
+ * The bin used to live at the bottom of the settings panel, where the user did not think it belonged.
+ * It has its own place now, beside the library's own actions — and it is only offered when it holds
+ * something, because an empty bin is not news.
+ */
+/** What belongs in the header (§9, slice 91).
+ *
+ * The user, twice: the recycle bin does not belong in the settings, and *"Update library" / "Repair
+ * library"* do not belong in the header next to the search. What is left is what you reach for without
+ * reading: the search, the bin when it holds something, the theme and the settings.
+ */
+export const HEADER = ["open", "bin", "theme", "gear"];
+
+export function headerHas(ids) {
+  const seen = [...(ids || [])].filter((id) => HEADER.includes(id));
+  return { extra: [...(ids || [])].filter((id) => !HEADER.includes(id)), complete: seen.length === HEADER.length };
+}
+
+export function binLabel(count) {
+  const n = Number(count) || 0;
+  return n > 0
+    ? { hidden: false, text: `Recycle bin (${n})`,
+        title: `${n} thing${n > 1 ? "s" : ""} noaap moved aside instead of deleting. Nothing leaves the bin on its own.` }
+    : { hidden: true, text: "Recycle bin",
+        title: "What noaap moved aside instead of deleting. Nothing leaves it on its own." };
+}
+
+/** What the repair section offers, given the last check and the library as it is now (§9, slice 91).
+ *
+ * A repair renames files, rewrites tags and cuts audio, so it is two steps: a **check** that writes
+ * nothing and lists what it would do, and an **apply** that is only offered once a check has been read.
+ * A check taken before the library changed is stale — what it listed is no longer what would happen —
+ * and says so instead of being applied.
+ */
+export function repairState({ check = null, version = null, running = false } = {}) {
+  if (running) {
+    return { canCheck: false, canApply: false, stale: false,
+             note: "Something is writing to the library — a repair waits until it is finished." };
+  }
+  if (!check) {
+    return { canCheck: true, canApply: false, stale: false,
+             note: "Check first: it reads the library and writes nothing." };
+  }
+  if (check.version && version && check.version !== version) {
+    return { canCheck: true, canApply: false, stale: true,
+             note: "The library has changed since this check — run it again before applying it." };
+  }
+  // **what it found, not how much it said**: the summary line is always there, so the number of albums
+  // the pass would touch is what decides whether there is anything to apply
+  if (!(check.albums || 0)) {
+    return { canCheck: true, canApply: false, stale: false, note: "That check found nothing to do." };
+  }
+  return { canCheck: true, canApply: true, stale: false,
+           note: `Apply does exactly what this check listed: ${check.albums} album(s).` };
+}
+
 export const JUMP = 1.5;
 
 /** What the player must ask for to hear this track (§9, slice 87).
