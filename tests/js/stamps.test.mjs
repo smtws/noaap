@@ -194,7 +194,7 @@ test("after a save the entry learns the cut, and the marks come from the plan", 
 
   assert.deepEqual(syncEntry(entry, fresh),
                    { trimmed: "8.60-", file_length: 186.22, duration: 200, savedStart: 8.6,
-                     savedEnd: null, start: 8.6, end: null });
+                     savedEnd: null, start: 8.6, end: null, original_kept: true });
 });
 
 test("a page that never saw the save learns everything at once", () => {
@@ -232,4 +232,51 @@ test("a cleared trim takes the entry back to the plain file", () => {
   assert.equal(patched.trimmed, null);
   assert.equal(audioRequest(patched).original, false);
   assert.equal(audioRequest(patched).query, "&c=194.841");
+});
+
+// -- the file in hand decides everything (§9, slice 88) ----------------------------------------------
+
+test("the original is only asked for when one is really kept", () => {
+  const kept = { trimmed: "12.25-", file_length: 182.58, original_kept: true };
+  const gone = { trimmed: "12.25-", file_length: 182.58, original_kept: false };
+
+  assert.equal(audioRequest(kept).original, true);
+  assert.equal(audioRequest(gone).original, false, "o=1 would answer with the cut file anyway");
+  assert.equal(audioRequest(gone).query, "&c=12.25-");
+});
+
+test("an older server that does not say is taken at its word", () => {
+  assert.equal(audioRequest({ trimmed: "12.25-", file_length: 182.58 }).original, true);
+});
+
+test("the trim is added to a stamp only while the original is loaded", () => {
+  const onOriginal = { trimmed: "12.25-", savedStart: 12.25, playingOriginal: true };
+  const onTheCut = { trimmed: "12.25-", savedStart: 12.25, playingOriginal: false };
+
+  assert.equal(trimOffset(onOriginal), 12.25);
+  assert.equal(trimOffset(onTheCut), 0, "the cut file's own clock already starts at the trim");
+  assert.equal(trimOffset({ trimmed: null, savedStart: null }), 0);
+});
+
+test("a jump to before the trim start is not answered by moving it back", () => {
+  // the user: "every jumppoint completely restarts the track"
+  assert.deepEqual(trimGuard({ current: 2, start: 12.25, end: null, jumped: true }), {});
+  assert.deepEqual(trimGuard({ current: 2, start: 12.25, end: null, previous: 100 }), {},
+                   "a gap since the last tick is a jump too");
+  // but playing into the head from the very beginning still skips it
+  assert.deepEqual(trimGuard({ current: 2, start: 12.25, end: null, previous: 1.9 }),
+                   { seekTo: 12.25 });
+});
+
+test("a finished save also says whether an original is kept", () => {
+  const entry = { start: null, end: null, savedStart: null, savedEnd: null, trimmed: null,
+                  file_length: 194.841, original_kept: false };
+  const fresh = { trimmed: "6.50-", trim_start: 6.5, trim_end: null, file_length: 188.34,
+                  duration: 200, original_kept: true };
+
+  const patched = { ...entry, ...syncEntry(entry, fresh) };
+
+  assert.equal(patched.original_kept, true);
+  assert.equal(audioRequest(patched).original, true);
+  assert.equal(trimOffset({ ...patched, playingOriginal: true }), 6.5);
 });

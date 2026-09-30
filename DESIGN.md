@@ -2570,6 +2570,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    window (10.69 s on a mark at 8.6), across a reload, and on a track cut before the page was opened —
    with no error and no interrupted-play message anywhere.
 
+88. ✅ **A jump is answered where it was asked** (2026-09-30, P70b). The user on 1.19.1: *"every
+   jumppoint completely restarts the track now, while the indicator and textlines follow the selected
+   startpoint."* Walked in Chrome in app mode on a copy — a track cut before the page loaded and one cut
+   in the session, three lines each, playing and paused, plus a click during a pending load and two
+   clicks 80–120 ms apart: **21 clicks, every one landed where it was asked, none reloaded**. So the
+   restart needs something this copy does not have, and that is said rather than guessed at.
+   **What the measuring did find** is on the same theme as slice 87, one layer down: `/api/audio?o=1`
+   **falls back to the cut file** when no untouched original is kept. The page believed it was holding
+   the original, so it added the trim to every lyric stamp and applied the trim window — to a file that
+   already carries the cut. Every jump then landed `trim_start` seconds late, and a stamp near the end
+   of such a file lands past its end, where the element clamps and the queue moves on. The album payload
+   says `original_kept` now, the page asks for `o=1` only when one is really there, and the offset and
+   the window follow *that*. Measured on a copy with the kept original removed: a line stamped 20.00
+   lands at 20.4 (before: 32.25, twelve seconds late).
+   **Three rules the report asked for, each of which removes a way a jump could be lost.** A click on a
+   line seeks the element that is holding this track and never reloads it — only a *different* track is
+   started, and then the target is part of that start rather than a seek racing the load. `playIndex`
+   moves the playhead only where a caller says: the unconditional reset to zero that slice 87 added for
+   an already-loaded file is gone, because a lyric line asking for 1:30 must not be answered with a
+   silent jump to the beginning. And the head-skip does not fire **after a jump**: somebody who asks to
+   be before the trim start is asking for exactly that; playing into the head still skips it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2764,6 +2786,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (a jump is answered where it was asked, §9, slice 88)
+
+- **A fallback that changes which file is served must be visible to whoever is counting.** `o=1`
+  answering with the cut file is fine; the page believing otherwise is not.
+- **Nothing moves the playhead on its own.** Every seek has a caller who asked for it.
+- **A user's jump is not a mistake to be corrected.** The guard skips a head somebody plays into, not
+  a point somebody chose.
+- **Say "not reproduced" and show the attempts.** 21 clicks in 8 states, with what would tell the
+  difference next time.
 
 ### Decisions of 2026-09-30 (the window belongs to the loaded file, §9, slice 87)
 

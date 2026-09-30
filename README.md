@@ -388,6 +388,11 @@ older version are found by their own start time and **cut again from the untouch
 them: `noaap repair --dry-run` names each one (*"01 would be cut again: its clock starts at -0.900 s"*)
 and says so when no original is kept, in which case nothing is touched.
 
+**A click on a lyric line seeks — it never starts the track again**, and the trim is added to the stamp
+only while the untouched original is what is playing. Where no original is kept beside a cut track the
+file on disk is played as it is, because that is what the server can serve. And a jump to a point before
+the trim start is left where you put it; the head is only skipped when you play into it.
+
 **A save never interrupts what you are hearing.** When a trim is saved, the page updates what it
 knows — which file to ask for next time, and what the saved marks are — and the sound carries on. The
 next time you start that track it plays the untouched original with the trim previewed, which is how a

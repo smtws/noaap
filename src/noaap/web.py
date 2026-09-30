@@ -400,7 +400,14 @@ class App:
         wrong and a home directory in a link (§9, slices 51 and 54).
         """
         out = plan.to_dict()
+        album_dir = found[0] if (found := self.album(plan.source_id)) else None
         links: dict[str, str | None] = {}
+        for track, row in zip(plan.tracks, out["tracks"], strict=False):
+            # **whether the untouched original is really there** (§9, slice 88). `o=1` falls back to the
+            # cut file when it is not, so a page that assumes otherwise adds the trim to a file that
+            # already carries it — the offsets and the window then belong to a file nobody is holding.
+            row["original_kept"] = bool(album_dir is not None and track.trimmed
+                                        and original_path(album_dir, track).is_file())
         for track in out["tracks"]:
             for candidate in track.get("candidates") or []:
                 name = candidate.get("provider") or sources.DEFAULT

@@ -1277,20 +1277,31 @@ function lyricsLines(p, t, text) {
   return h("div", { class: "lines" }, lines);
 }
 
+/** Move the playhead to `at` seconds, now if the element can, else as soon as it knows the media. */
+function seekWhenReady(at) {
+  const go = () => { audio.currentTime = at; };
+  if (audio.readyState >= 1) go();
+  else audio.addEventListener("loadedmetadata", go, { once: true });
+}
+
 async function seekLyric(p, t, at) {
+  // **the track that is loaded is seeked, never reloaded** (§9, slice 88): the element is identified by
+  // the track it holds, and starting the album again over a click on a line is how a jump turns into a
+  // restart. Only a *different* track is started, and then the target goes into the start itself.
   if (!isPlaying(p.source_id, t.video_id)) {
     const i = p.tracks.filter((x) => x.state === "done").findIndex((x) => x.video_id === t.video_id);
     if (i < 0) return toast("This track has not been downloaded yet", "blocked");
-    await playAlbum(p.source_id, i);
+    await playAlbum(p.source_id, i, { at: at + trimOffset({ ...t, savedStart: t.trim_start,
+                                                            playingOriginal: t.original_kept !== false }) });
+    return;
   }
   const playing = queue[qi];
   // the lyrics were matched against the file as it is on disk; when that file was cut, the
   // player is holding the original, so the trim has to be added back to reach the same spot —
   // the trim the file was *cut* to, not a mark someone is still placing (§9, slice 35)
   const target = at + trimOffset(playing);
-  const go = () => { audio.currentTime = target; audio.play().catch(() => {}); };
-  if (audio.readyState >= 1) go();
-  else audio.addEventListener("loadedmetadata", go, { once: true });
+  seekWhenReady(target);
+  audio.play().catch(() => {});
 }
 
 function renderAlbum() {
@@ -1973,7 +1984,7 @@ let qi = -1;
 
 const isPlaying = (albumId, videoId) => qi >= 0 && queue[qi].album === albumId && queue[qi].video_id === videoId;
 
-async function playAlbum(albumId, start = 0) {
+async function playAlbum(albumId, start = 0, { at = null } = {}) {
   markAlbum(albumId);
   let plan;
   try {
@@ -1984,14 +1995,15 @@ async function playAlbum(albumId, start = 0) {
   queue = plan.tracks.filter((t) => t.state === "done").map((t) => ({
     album: albumId, video_id: t.video_id, title: t.title, artist: t.artist, albumName: plan.album,
     start: t.trim_start, end: t.trim_end, duration: t.duration, trimmed: t.trimmed,
+    original_kept: t.original_kept !== false,   // `o=1` answers with the cut file without one
     mb_length: t.mb_length, lyrics_length: t.lyrics_length, file_length: t.file_length,
     savedStart: t.trim_start, savedEnd: t.trim_end,  // what is on disk, to tell editing from listening
   }));
   if (!queue.length) return toast("Nothing downloaded yet in this album", "blocked");
-  playIndex(Math.max(0, start));
+  playIndex(Math.max(0, start), at);
 }
 
-function playIndex(i) {
+function playIndex(i, at = null) {
   if (i < 0 || i >= queue.length) return;
   qi = i;
   const t = queue[i];
@@ -2005,12 +2017,14 @@ function playIndex(i) {
   const src = `/api/audio?id=${encodeURIComponent(t.album)}&v=${encodeURIComponent(t.video_id)}${asked.query}`;
   // **not a second load of what is already loaded** (R-295): setting `src` again starts a new load and
   // aborts a play that has not settled, which is where "The play() request was interrupted by a new
-  // load request" comes from. The same file, asked for twice, is one load and a seek to its start.
-  if (audio.src !== new URL(src, location.href).href) {
-    audio.src = src;
-  } else if (audio.currentTime > 0) {
-    audio.currentTime = 0;
-  }
+  // load request" comes from. The same file, asked for twice, is one load.
+  const reloading = audio.src !== new URL(src, location.href).href;
+  if (reloading) audio.src = src;
+  // **where to start is the caller's to say** (§9, slice 88). Nothing here moves the playhead on its
+  // own: a lyric line that asks for 1:30 must not be answered with a silent jump to the beginning,
+  // which is what an unconditional reset did.
+  if (at != null) seekWhenReady(at);
+  else if (!reloading && audio.currentTime > 0 && !t.trimmed) audio.currentTime = 0;
   audio.play().catch((e) => toast(`Cannot play: ${e.message}`, "failed"));
   $("#player").hidden = false;
   document.body.classList.add("has-player");

@@ -5300,10 +5300,54 @@ to Cloudflare"* for the non-app path.
   never saw the save, a cleared trim, and marks the user moved but did not save; and the window applied
   on the original, not applied on the cut file, not even while marks are being moved.
 
+## CB. A jump is answered where it was asked (P70b, DESIGN §9, slice 88)
+
+- [x] **CB1 · M** — clicking timed lyric lines, Chrome in app mode, muted, on a copy: **not reproduced**
+
+  A track cut before the page loaded and one cut during the session; lines near the start, the middle
+  and the end; playing and paused; plus a click 200 ms into a pending load, two different lines 120 ms
+  apart, and the same line twice 80 ms apart. **21 clicks. Every one landed where it was asked
+  (±0.4 s of playing time), none produced a `loadstart`, none moved the queue.** For the cut track the
+  landing point is the stamp plus the trim, which is right for the original the player holds.
+
+  | state | line | asked | landed | reloaded |
+  |---|---|---|---|---|
+  | cut before the page loaded, playing | start / middle / end | 20 / 90 / 170 | 32.7 / 102.7 / 182.7 (+12.25) | no |
+  | the same, paused | start / middle / end | 20 / 90 / 170 | 32.7 / 102.7 / 182.6 | no |
+  | cut in the session, playing | middle / end | 90 / 170 | 96.9 / 176.9 (+6.5) | no |
+  | another track playing, click this one's line | start | 20 | 26.9 | yes, once — a different track |
+  | ▶ the row, then a line 200 ms later | middle | 90 | 102.7 | yes, once — the row's own start |
+  | two lines 120 ms apart | start then end | 20, 170 | 182.7 (the second) | no |
+  | the same line twice, 80 ms apart | middle | 90 | 102.7 | no |
+
+- [x] **CB2 · M** — what the measuring *did* find: `o=1` answers with the cut file when no original is kept
+
+  `audio_path(original=True)` falls back to the file on disk, so a page that asked for the original can
+  be holding the cut file — and it then adds the trim to every lyric stamp and applies the trim window
+  to a file that already carries it. Measured on a copy with `.originals/v2.opus` removed:
+
+  | | before | after |
+  |---|---|---|
+  | what the page asks for | `&o=1&c=12.25-` | `&c=12.25-` |
+  | a line stamped 20.00 lands at | **32.25** (12.25 s late) | **20.4** |
+
+  A stamp near the end of such a file lands past its end, where the element clamps and the queue moves
+  on — the shape of an older complaint. The payload says `original_kept` now, and the offset and the
+  window follow the file actually asked for.
+
+- [x] **CB3** — the three rules, on fixtures (node): the original is asked for only when one is kept and
+  an older server that does not say is taken at its word; the trim is added to a stamp only while the
+  original is loaded; a **jump** to before the trim start is left alone while playing into the head still
+  skips it; and a finished save carries `original_kept` into the player's entry.
+
+- [x] **CB4** — the same 12 clicks after the change: every one still lands where it was asked, and on the
+  copy whose kept original was removed they land on the stamp itself rather than a trim late.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the CB cases (P70b: a jump is answered where it was asked) | 4 | 1 defect found while measuring; **the reported one not reproduced** | The user: *"every jumppoint completely restarts the track."* 21 clicks in 8 states in Chrome app mode — playing, paused, during a pending load, two clicks 80–120 ms apart — and every one landed where it was asked with no reload, so the restart needs state this copy does not have. Found on the way and fixed: **`o=1` falls back to the cut file when no untouched original is kept**, and the page then added the trim to every stamp and applied the window to a file that already carries it (measured: a line stamped 20.00 landed at 32.25, twelve seconds late; now 20.4). The payload says `original_kept`, and the offset and the window follow the file actually asked for. Three rules besides: a line seeks the element holding that track and never reloads it, `playIndex` moves the playhead only where a caller says (the reset to zero from slice 87 is gone), and the head-skip does not fire after a jump. 1640 pytest + 150 node. |
 | 2026-09-30 | the CA cases (P70: the window belongs to the loaded file) | 4 | **3 defects, one of them mine from P69** | The user on 1.19.0: *"after saving it starts as if the cut part was the original."* Walked their flow in Chrome in app mode: the album object is refreshed only on a busy → idle transition **seen by a poll**, and cutting one track takes about a second — so a short job leaves the page believing the file is uncut. It then asks for the plain file (which by now is the cut one) and applies the window to it: the double skip. Two more in the same rows: the marks just saved were gone from the player (▶ from start went to 1.90 instead of 8.6), and after a reload the window was **not** applied at all — my slice 86 flag, which I had measured in P69 as "no skip" without asking which file was playing. Now: the window is applied only to the file the player loaded, the audio URL carries the shape of the file (measured: the element kept reporting 194.85 s for a file that had become 186.23 s), and a write job of ours refreshes the panel from its own ending — teaching the queue without touching the source, so a save never interrupts the sound and the *"play() request was interrupted"* message cannot arise. Same seven steps after the fix: no load at the save, then the original with its window at 10.69 s on a mark of 8.6, across a reload and on a track cut before load, no errors. 1640 pytest + 145 node. |
 | 2026-09-30 | the BZ cases (P69: a cut file starts at zero) | 5 | 0 — two defects of the program's, one of them mine from P63's measurement | The user's *"it jumps to the next one right from the middle"*, reproduced in Chrome **in app mode** on copies: a cut track began **4.9 s into itself** and the track after it began at **4.948**. The cause is the page — the trim guard measured an already-cut file's playhead against the *original's* trim points — and after the fix the same measurement reads no skip and **0.018** for the next track. Underneath it, the container: `-ss` before `-i` keeps the packets before the cut and marks them negative (`-0.900000` for a 4.9 s trim, every front-cut file in the library), so a player's clock runs past the duration it reports and `ended` came 2.8 s late. The cut now seeks on the output side with `make_zero`: first packet **0.000**, length within one 20 ms packet, 14 KB smaller, nothing re-encoded — and the obvious alternative (`make_zero` on the input seek) was measured and rejected because it keeps the pre-roll. Files already cut the old way are named in the dry run and cut again from the untouched original; where none is kept, nothing is touched and it says so. P63's fifteen clean clicks were measured on files that had never been cut, which is why they found nothing. 1640 pytest + 138 node. |
 | 2026-09-30 | the BY cases (P68: a dry run that names everything) | 6 | **1 defect of mine in the report itself, found by running it** | `repair --dry-run` said lengths and albums and nothing about tags; the real run rewrote **376** of the user's audio files, after the user had been told none would be. The report is built from the pass's own predicates now — one line per track for renames, trims and retags with the values that change — and a test compares the dry set with the real set. On copies of two real albums: 18 retags named, 0 of 61 files touched by the dry run, the two sets agreeing exactly, and **−1 byte** on each rewritten file. Why those files: LRCLIB ends a lyric whose singing stops early with a bare stamp and its **trailing space**, which was written into the tag while the reader strips it — 52 of 52 stale opus files differ in exactly that character, 864 tracks in the test library were stale for it. Stripped where it enters now. My own defect: the first report showed sixty characters of each side and printed the same text twice, which is how the trailing space stayed invisible; it names the character they stop agreeing at. Also: the *"1 leaked semaphore"* is **tqdm's** multiprocessing lock behind stable-ts's progress bar (traced to the frame; a plain lock settles it, and `verbose=None` takes the bars out of the log), and `http` can now listen. 1633 pytest + 135 node. |

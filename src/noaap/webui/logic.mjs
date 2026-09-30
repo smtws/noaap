@@ -238,7 +238,13 @@ export function timingNotice(d) {
 // off the front — and by the *saved* mark, not one being edited: the `.lrc` belongs to the file
 // that is there, not to the trim someone is still placing.
 
-export const trimOffset = (playing) => (playing && playing.trimmed ? playing.savedStart || 0 : 0);
+/** How much to add to a stamp made against the file on disk to reach the same spot in what is loaded.
+ *
+ * Zero unless the player is holding the **original** of a cut track: the stamps belong to the cut file,
+ * so the trim has to be added back to find them in the longer one (§9, slice 35). Keyed on what was
+ * loaded and not on the plan, because `o=1` can come back as the cut file (§9, slice 88). */
+export const trimOffset = (playing) =>
+  (playing && playing.trimmed && playing.playingOriginal !== false ? playing.savedStart || 0 : 0);
 export const tenth = (seconds) => Math.round(seconds * 10) / 10;
 export const toFileClock = (seconds, offset = 0) => Math.max(0, tenth(seconds - offset));
 export const toPlayerClock = (seconds, offset = 0) => Math.max(0, seconds + offset);
@@ -702,7 +708,10 @@ export const JUMP = 1.5;
  * media cache: measured, the element went on reporting 194.85 s for a file that had become 186.23 s.
  */
 export function audioRequest(entry) {
-  const original = Boolean(entry.trimmed);
+  // **only where the original is really kept** (§9, slice 88). The server answers `o=1` with the cut
+  // file when `.originals/` holds nothing, so asking for one that is not there leaves the page adding
+  // the trim to a file that already carries it — every lyric stamp then lands `trim_start` too late.
+  const original = Boolean(entry.trimmed) && entry.original_kept !== false;
   const shape = entry.trimmed || (entry.file_length == null ? "" : String(entry.file_length));
   return { original, token: shape,
            query: (original ? "&o=1" : "") + (shape ? `&c=${encodeURIComponent(shape)}` : "") };
@@ -719,7 +728,9 @@ export function syncEntry(entry, fresh) {
   const editing = entry.start !== entry.savedStart || entry.end !== entry.savedEnd;
   const patch = { trimmed: fresh.trimmed ?? null, file_length: fresh.file_length,
                   duration: fresh.duration, savedStart: fresh.trim_start ?? null,
-                  savedEnd: fresh.trim_end ?? null };
+                  savedEnd: fresh.trim_end ?? null,
+                  // whether an untouched original is kept decides which file the next start asks for
+                  original_kept: fresh.original_kept !== false };
   return editing ? patch : { ...patch, start: fresh.trim_start ?? null, end: fresh.trim_end ?? null };
 }
 
@@ -729,7 +740,10 @@ export function trimGuard({ current, start, end, previous = null, jumped = null,
   // the player knows when it has just seeked; everyone else can tell from the gap since the last tick
   const moved = jumped !== null ? jumped
     : previous !== null && Math.abs(current - previous) > JUMP;
-  if (start && current < start - 0.4 && !dragging) return { seekTo: start };
+  // **not after a jump**: somebody who asks to be before the trim start is asking for exactly that,
+  // and answering it by moving them to the mark is the "every jump point restarts the track" the user
+  // reported (§9, slice 88). Playing into the head still skips it, which is what the preview is for.
+  if (start && current < start - 0.4 && !dragging && !moved) return { seekTo: start };
   if (end && current > end) {
     if (moved || unsaved || dragging) return { seekTo: Math.max(end - 0.05, start || 0), pause: true };
     return { next: true };
