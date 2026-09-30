@@ -261,9 +261,13 @@ def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tup
     candidates may be ranked by anything at all; what it costs is one ffmpeg per candidate asked, and
     with no ranking that is a digest of the whole collection per missing file. Measured: a pass that
     renamed *and* retagged all 2000 files (so the size guess never fired) left the restore digesting
-    8 GB in four minutes and nowhere near done — hours for this copy, days for the collection. Asked
-    in this order — the folder the last file of this album turned up in, then the words the two names
-    share, then the size — the first candidate is almost always the right one.
+    8 GB in four minutes and nowhere near done — hours for this copy, days for the collection.
+
+    **The words the two names share come first**, because on the user's own collection they pick the
+    right file out of 231 candidates *uniquely*, every time, for all 211 that had been renamed: a
+    rename keeps the title, and the title is what the albums do not share. The folder the last file of
+    this album turned up in is only a tiebreaker — putting it first was measurably worse, because a
+    file that is *not* in that folder is then looked for behind every file that is.
 
     **A file that the snapshot records under its own name is never taken for another one.** Two files
     can hold the same recording (the same track on an album and on a best-of), and claiming one for
@@ -277,8 +281,8 @@ def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tup
 
     def likeliest(pair: tuple[str, Path]) -> tuple[Any, ...]:
         name, path = pair
-        return (near is not None and path.parent != near,
-                -len(wanted & _words(name)),
+        return (-len(wanted & _words(name)),
+                near is not None and path.parent != near,
                 here[path][0] != was.size,
                 name)
 

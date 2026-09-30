@@ -93,19 +93,37 @@ small retag, so a fixture has to write a *big* tag to change the size at all. Th
 
 ### What the real pass costs, and three ways to cut it
 
+First, what the careful write actually costs, measured on 24 files drawn at random from
+`~/Music/legacy` (read, copied to the scratchpad, retagged there — the collection is never written):
+
+| | files | each | packets still match after a retag | two packet digests | two decodes |
+|---|---|---|---|---|---|
+| flac | 12 | 49.1 MB | 12/12 | 0.21 s | 0.34 s |
+| mp3 | 10 | 8.4 MB | 10/10 | 0.14 s | 0.58 s |
+| opus | 2 | 3.3 MB | 2/2 | 0.13 s | 0.89 s |
+
+**24 of 24: the cheap check answers, and the decoded fallback never fires.** So the verification is
+two packet digests per written file — two full reads — and not the three-times-dearer decode it could
+have been. That settles which of the three cuts is worth anything:
+
 Three ways to cut the 8.9 hours, each giving something up — **for the reviewer and the user to
 choose**:
 
-1. **Reuse the snapshot's digest in the careful write.** The pass has just computed the source's
-   packet digest; `safely(..., expect=<digest>)` would digest only the temporary file. Halves the
-   verification, gives up nothing. *(My recommendation; not implemented yet.)*
-2. **Verify cheaply where the original is kept.** With `--keep-originals` a bad write is already
-   recoverable byte for byte, so the write could check that the file opens and its length and stream
-   parameters are unchanged (header reads) instead of digesting. Removes most of the remaining
-   verification I/O; gives up "the packets are provably identical" at the moment of writing.
-3. **A snapshot without digests** (`--fast-snapshot`). Records path, size, mtime and tags only:
-   reading ~1.6 GB instead of 43.8. The restore can still put names and tags back; it can no longer
-   *prove* the audio is the audio that was written down.
+1. **Reuse the snapshot's digest in the careful write** — `safely(..., expect=<the recorded digest>)`
+   digests only the temporary copy and falls back to the full comparison if it disagrees. One read of
+   the collection instead of two: **~2.1 h of the 8.9**, and it gives up nothing, because the digest
+   it trusts is one this pass wrote down itself minutes earlier. *(My recommendation. Not
+   implemented: it threads a new argument from the pass through `run` into `safely`, and it would
+   change the numbers above, so it is the reviewer's call whether it belongs in P81 or after it.)*
+2. **Verify cheaply where the original is kept** — **not worth doing.** It was proposed to avoid the
+   decoded comparison; the table above says that comparison never happens. What is left is one cheap
+   digest, and cut 1 removes it for less.
+3. **A snapshot without digests** (`--fast-snapshot`): path, size, mtime and tags only, reading
+   ~1.6 GB instead of 43.8 — another **~2.1 h**. The restore can still put names and tags back, and
+   can still restore byte for byte from the kept originals; what it loses is the ability to *find* a
+   renamed file at all (the search is the digest) and to prove that a recording is the one that was
+   written down. With `--keep-originals` that is a smaller loss than it sounds, and without it the
+   restore is left with nothing but the paths.
 
 ## Done since the last checkpoint
 
