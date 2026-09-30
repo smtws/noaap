@@ -32,7 +32,7 @@ from .lyrics import (
 )
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import refresh_derived, wanted_filename, wanted_folder
-from .precautions import safely
+from .precautions import put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
     KEEP_IF_PRESENT,
@@ -654,6 +654,10 @@ def run(
     # beside them, proved to hold the same recording, then an atomic replace. It costs a copy and a
     # digest per write, which is why noaap's own downloads do not pay it.
     careful: bool = False,
+    # where the untouched originals are kept, and what they are kept relative to (§9, slice 99).
+    # Only a take-in of somebody's own collection asks for this; it costs a copy of every file.
+    keep: Path | None = None,
+    keep_root: Path | None = None,
     # A track's audio comes from its chosen candidate, which carries its own provider: one album can
     # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
     # — the cover — and this answers for a track.
@@ -688,6 +692,13 @@ def run(
         cover = None          # the picture stays beside the album, not inside every file
     for track in plan.tracks:
         check()
+        # **the original goes aside before anything happens to the file** (§9, slice 99), under the
+        # name it has now — which is the name the snapshot wrote down. Putting it aside after the
+        # rename filed it under noaap's name instead, and a restore then could not find it.
+        if keep is not None and track.state == "done":
+            here_now = album_dir / track.filename
+            if here_now.exists():
+                put_aside(here_now, keep_root or album_dir, keep)
         wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted

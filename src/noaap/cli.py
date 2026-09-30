@@ -175,6 +175,25 @@ def main(argv: list[str] | None = None) -> int:
     mr.add_argument("--album", metavar="NAME",
                     help="one album in the library being changed (the other side keeps its own names)")
 
+    ti = sub.add_parser("take-in", help="take a whole collection in and bring every album to one state")
+    ti.add_argument("root", help="the folder to take in — a collection of somebody's own")
+    ti.add_argument("--apply", action="store_true", help="do it (without this it says what it would do)")
+    ti.add_argument("--names", choices=("keep", "scheme"), default="scheme",
+                    help="keep the collection's own filenames, or rename into noaap's scheme")
+    ti.add_argument("--no-mb", action="store_true", help="skip the MusicBrainz lookup")
+    ti.add_argument("--no-lyrics", action="store_true", help="skip the LRCLIB lookup")
+    ti.add_argument("--no-cover", action="store_true", help="do not put a cover beside each album")
+    ti.add_argument("--no-embed-cover", action="store_true", help="do not embed the cover in the files")
+    ti.add_argument("--no-embed-lyrics", action="store_true", help="do not embed the words in the files")
+    ti.add_argument("--no-tags", action="store_true", help="write no tags into the files at all")
+    ti.add_argument("--snapshot", type=Path, metavar="FILE",
+                    help="where to write down every file before anything is written (default: beside the root)")
+    ti.add_argument("--keep-originals", type=Path, metavar="DIR",
+                    help="copy each file there before its first write — the only way back byte for byte")
+    ti.add_argument("--no-resume", action="store_true", help="start again rather than continue an interrupted run")
+    ti.add_argument("--restore", type=Path, metavar="SNAPSHOT",
+                    help="put names and tags back from a snapshot (dry unless --apply)")
+
     ad = sub.add_parser("adopt", help="take a collection in where it stands: one plan per album, nothing else")
     ad.add_argument("root", nargs="?", help="the folder to adopt — the library root by default")
     ad.add_argument("--library", type=Path, help="the library this becomes (defaults to the config's)")
@@ -298,6 +317,8 @@ def main(argv: list[str] | None = None) -> int:
                         got = merge_pass.take_new(found, lambda url: service.fetch(url), log=print)
                         print(f"{got['taken']} album(s) fetched, {got['held']} already here and left alone")
                 return 0
+            case "take-in":
+                return _take_in(args, cfg)
             case "adopt":
                 library = _library(args, cfg, required=True)
                 if library is None:
@@ -764,6 +785,43 @@ def _watch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         if args.once:
             return 0
         time.sleep(interval)
+
+
+def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
+    """`noaap take-in`: a whole collection to one state, or a snapshot put back."""
+    from . import intake, precautions
+
+    root = Path(args.root).expanduser()
+    if not root.is_dir():
+        raise config_mod.Refused(f"there is no folder at {root}")
+    library = _library(args, cfg, required=True)
+    if library is None:
+        return 2
+    service = _service(cfg, library)
+
+    if args.restore:
+        snap = precautions.read(Path(args.restore).expanduser())
+        kept = Path(args.keep_originals).expanduser() if args.keep_originals else None
+        done = precautions.restore(snap, root, apply=args.apply, kept=kept, log=print)
+        for name in done.missing:
+            print(f"  not there: {name}")
+        for line in done.lost:
+            print(f"  lost a field of yours: {line}")
+        if done.changed:
+            print(f"  ⚠ {len(done.changed)} file(s) do not hold the recording they held")
+        return 1 if (done.changed or done.lost) else 0
+
+    choices = intake.Choices(names=args.names, musicbrainz=not args.no_mb, lyrics=not args.no_lyrics,
+                             cover_beside=not args.no_cover, cover_embedded=not args.no_embed_cover,
+                             lyrics_embedded=not args.no_embed_lyrics, tags=not args.no_tags)
+    keep = Path(args.keep_originals).expanduser() if args.keep_originals else None
+    done = intake.take_in(service, root, choices, dry_run=not args.apply,
+                          snapshot=Path(args.snapshot).expanduser() if args.snapshot else None,
+                          keep=keep, resume=not args.no_resume, log=print)
+    if done.musicbrainz_requests or done.lrclib_requests:
+        print(f"{done.musicbrainz_requests} request(s) to MusicBrainz, "
+              f"{done.lrclib_requests} to LRCLIB")
+    return 0
 
 
 def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace) -> int:

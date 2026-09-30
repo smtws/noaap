@@ -2809,6 +2809,58 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    twice writes the same file, and that appending a third leaves the first two tables alone.
 
 
+99. ✅ **Precautions, before a collection that is somebody's own** (2026-10-01, P81). The user, of
+   twenty years of music on a NAS: *"i wont let it to my collection of 20 years without precautions
+   prepared (no, i do not have a full backup of the nas)"*. Three layers, cheapest first.
+   **A snapshot**: one line per audio file — where it is, how big, when it was last written, the tags
+   a pass here could overwrite (verbatim, so they go back), a fingerprint of every key it could not
+   (their `comment`, their replaygain, their cover: nothing here writes those, so a restore has
+   nothing to undo about them, but a pass that *lost* one is found out and named), and a digest of
+   the audio packets. A few hundred bytes a track; eleven thousand of them are a couple of megabytes.
+   **A safe write**: nothing is written *into* an audio file. A copy beside it is written, the
+   recording is proved unchanged — the packets first, which is cheap and conclusive where it says
+   yes, then the decoded identity where it says no, because a tag block at the end of an mp3 is
+   handed over as audio — and an atomic replace puts it in place. An interruption leaves the file
+   that was there.
+   **The originals kept**: with a folder named, the first write to a file copies it there whole, and
+   **before the rename**, under the name the snapshot wrote down — filing it under noaap's name
+   instead was the first thing that broke the restore. That is the only layer that can give a file
+   back byte for byte, because a tag round-trip through mutagen is **not** byte-identical even when
+   it writes the same values back: measured here, same size, different bytes. What none of it covers
+   is said out loud — a disk that fails, a NAS that goes away, somebody deleting the snapshot. It is
+   a way back from what noaap did, not a backup.
+
+100. ✅ **The settings are the state; an album may only be excepted** (2026-10-01, P81). The user
+   asked twice, and the second time settled it: *"we had consistent state and now we got persisted
+   state per album that has to be manually overridden?"* and *"if i do an intake with deliberately
+   few options checked to speed things up and decide that i now want to have the image embedded
+   everywhere i am not going to hop through 700 albums manually."*
+   So: the settings say what every album should have — a cover beside it, a cover in the files, the
+   words in the files, looked up at MusicBrainz and LRCLIB, and whether an adopted album is renamed
+   into noaap's scheme or retagged at all. A take-in's switches mean *do this now* and are recorded
+   as nothing; what the plan records is what was done, as it always did. Every later pass brings the
+   albums it touches to the settings, through one `Service._run`, so none can forget. The only thing
+   kept per album is an **exception** the user sets in the album view — *keep this album's names*,
+   *do not embed here* — which can only take something away, because an album that could ask for
+   *more* would be a second state for the library to be in.
+   The first case that turned retagging on for an adopted album found a real fault: `run` wrote tags
+   with `keep_unknown=False`, which deletes every field the plan does not assert, so a `comment` that
+   had been in the file since 2006 went. Until then it could not happen — `keep_tags` meant nothing
+   was written at all. An album that came from somebody's folder is retagged the careful way now.
+
+101. ✅ **A whole collection taken in, in one pass** (2026-10-01, P81). `noaap take-in <root>` walks a
+   collection artist by artist and leaves every album in the state that was asked for: adopted,
+   looked up at MusicBrainz and LRCLIB, a cover beside it and in it, the words beside it and in it,
+   the tags written, the names kept or noaap's. Dry by default, and the dry run says **per track**
+   what would be renamed and which tag values would change, then the totals per kind — because "two
+   albums would be taken in" is not an answer to "how many of my files does this rewrite?".
+   **Everything about it is arranged around being interrupted**: the snapshot before the first write,
+   the careful write per file, and a state file beside the snapshot that records each album as it is
+   finished — so a pass that stops is resumed by the same command and repeats no album. Measured on a
+   fixture: stopped after two albums, resumed, the third taken in and the first two untouched.
+   `--restore <snapshot>` is the way back, and with the kept originals it is byte for byte.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -3018,6 +3070,22 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A user's word about their own editor settles it.** Two packages had reasoned their way to the
   caret advancing — it is what stamping downwards needs — and the person doing the stamping wants the
   line they just set, because that is the one they are still listening to.
+
+### Decisions of 2026-10-01 (a collection that cannot be replaced, §9, slices 99–101)
+
+- **Prepare the way back before the way in.** The snapshot, the careful write and the kept originals
+  were built and tested before the pass that needs them existed.
+- **Prove the recording survived, not that the file did.** A tag write changes the file by design; what
+  must never change is the audio, and that is what the digests are for.
+- **Byte-identical is a promise only a copy can make.** A tag round-trip is not byte-identical, so the
+  documentation says which layer promises what instead of promising the strongest thing everywhere.
+- **Put the original aside before the first change**, under the name it had — not after the rename,
+  where the restore cannot find it.
+- **A quick decision tonight is not a policy for ever.** The take-in's switches do not follow the album
+  around; the settings do.
+- **An exception may only subtract.** Anything that could add would give the library a second state.
+- **A pass over eleven thousand tracks will be interrupted.** Write down what is finished, album by
+  album, and resume from it.
 
 ### Decisions of 2026-09-30 (a watched folder is a source, §9, slice 98)
 
