@@ -119,6 +119,10 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     want = choices.as_treatment()
     cfg = service.cfg
     source = sources.get("folder", cfg)
+    # **an adoption does not rank copies, so it does not digest every file** (§9, slice 101). Measured
+    # on the user's own collection: with the digests, reading 2000 files to say what would happen cost
+    # 43.8 GB from the device and 172 s — the whole collection, for a dry run.
+    source.digests = False
     done = Progress()
     folders = albums_under(root, source)
     log(f"{len(folders)} album folder(s) under {root}")

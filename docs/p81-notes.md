@@ -51,7 +51,24 @@ R-338 (the settings are the state; an album may only be excepted), R-339 (measur
 - Open question I decided to settle with data: all switches on means ~2000 MusicBrainz + ~2000 LRCLIB
   requests for a *training* run. Plan: price one album with lookups on, then decide whether to run the
   whole copy with them or to extrapolate; **say which was done in I-221**.
-- Numbers so far: none yet.
+### Numbers so far (local copy, 132 albums / 2000 tracks / 41 GB)
+
+| phase | seconds | read from device | written |
+|---|---|---|---|
+| dry run, as first built | 171.9 | 43.77 GB | 0 |
+| dry run, after the fix below | **8.8** | **1.63 GB** | 0 |
+
+Both said the same thing: 132 albums, 2000 tracks, 440 files would be renamed, 1896 retagged.
+
+**The fix, found by the measurement**: reading a folder measured a *packet digest* per file — an
+ffmpeg remux, so it read every byte of the collection. That number is what `merge` needs to rank two
+copies of one recording; an adoption never asks it. `sources_folder.measure(path, digest=False)` and
+`FolderSource.digests` now leave it out, and `intake` turns it off. 19.5× faster, 27× less read.
+
+At 30 MB/s (R-340), for the user's 11,000 tracks: the dry run is **~4.5 minutes** instead of
+**~2.2 hours**.
+
+Still to measure: the real pass (with `--keep-originals`), the restore, and the price of the lookups.
 
 ## Next steps, in order
 

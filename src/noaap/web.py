@@ -919,14 +919,31 @@ class App:
                 # merge compares and takes the better copies, adopt takes it in where it stands.
                 folder = Path(str(body.get("folder", "")).strip()).expanduser()
                 mode = str(body.get("mode") or "merge")
-                if mode not in ("merge", "adopt"):
+                if mode not in ("merge", "adopt", "take-in"):
                     raise ValueError(f"unknown way of taking a folder in: {mode}")
-                if why := refuse_folder(folder, self.library):
+                # **`take-in` may be the library itself** (§9, slice 101): a collection that is already
+                # where it belongs is taken in where it stands, which is the whole point of the pass.
+                if why := refuse_folder(folder, self.library, itself=mode == "take-in"):
                     raise ValueError(why)
                 dry = bool(body.get("dry_run"))
                 if not dry and (running := self.jobs.writing()):
                     raise ValueError(f"“{running.label}” is running — wait for it, then take the folder in")
                 what = "Check what taking in" if dry else "Take in"
+                if mode == "take-in":
+                    # the switches are this run's, not the library's state (§9, slice 100)
+                    choices = {key: bool(body.get(key, True)) for key in
+                               ("musicbrainz", "lyrics", "cover_beside", "cover_embedded",
+                                "lyrics_embedded", "tags")}
+                    names = "keep" if str(body.get("names")) == "keep" else "scheme"
+                    keep = str(body.get("keep_originals") or "").strip()
+                    kept = Path(keep).expanduser() if keep else None
+                    if kept is not None and not kept.is_absolute():
+                        raise ValueError("the folder for the originals must be named in full")
+                    return self.jobs.submit("take_in_check" if dry else "take_in",
+                                            f"{'Check what taking in' if dry else 'Take in'} "
+                                            f"{folder.name} would do" if dry else f"Take in {folder.name}",
+                                            lambda s: s.take_in_all(folder, names=names, keep=kept,
+                                                                    dry_run=dry, **choices))
                 return self.jobs.submit("take_in_check" if dry else "take_in",
                                         f"{what} {folder.name} would do ({mode})" if dry
                                         else f"{what} {folder.name} ({mode})",

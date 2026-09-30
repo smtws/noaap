@@ -153,7 +153,7 @@ def may_look_up(cfg: Config, plan: AlbumPlan) -> bool:
     return not sources.private_album(plan, cfg)
 
 
-def refuse_folder(folder: Path, library: Path) -> str:
+def refuse_folder(folder: Path, library: Path, itself: bool = False) -> str:
     """Why this folder cannot be taken into that library — or "" when it can (§9, slice 92).
 
     Module-level so the page, the door and the pass answer the same question: a folder that is the
@@ -170,8 +170,12 @@ def refuse_folder(folder: Path, library: Path) -> str:
         return f"{folder} is a file, not a folder"
     here, there = library.resolve(), folder.resolve()
     if there == here:
-        return "that is the library itself"
+        # `take-in` is the one pass that may be pointed at the library: it takes a collection in
+        # **where it stands**, and for somebody whose library *is* their collection that is the case
+        return "" if itself else "that is the library itself"
     if here in there.parents:
+        if itself:
+            return ""
         return f"{folder} is inside the library — a folder is taken in from somewhere else"
     if there in here.parents:
         return f"{folder} holds the library, so taking it in would take the library into itself"
@@ -1859,6 +1863,21 @@ class Service:
         done = adopt_pass.carry_out(found, log=self.log)
         self.log(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
         return Outcome("ok", message=f"{done['adopted']} album(s) adopted")
+
+    def take_in_all(self, folder: Path, *, names: str = "scheme", keep: Path | None = None,
+                    dry_run: bool = True, **switches: bool) -> Outcome:
+        """`noaap take-in` from the page: a whole collection to one state (§9, slice 101)."""
+        from . import intake
+
+        if self.library is None:
+            return Outcome("failed", message="no library is configured")
+        if why := refuse_folder(folder, self.library, itself=True):
+            return Outcome("failed", message=why)
+        choices = intake.Choices(names=names, **{k: bool(v) for k, v in switches.items()})
+        done = intake.take_in(self, folder, choices, dry_run=dry_run, keep=keep, log=self.log)
+        what = (f"{done.adopted} album(s), {done.tracks} track(s)"
+                + (" would be taken in" if dry_run else " taken in"))
+        return Outcome("ok", message=what)
 
     def set_exception(self, source_id: str, key: str, on: bool) -> Outcome:
         """Except this album from one of the library's operations, or stop excepting it.

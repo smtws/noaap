@@ -234,13 +234,20 @@ def stream_sha(path: Path) -> str | None:
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
-def measure(path: Path) -> Candidate:
-    """Everything about this file that ranking will ever want, read from the file itself."""
+def measure(path: Path, digest: bool = True) -> Candidate:
+    """Everything about this file that ranking will ever want, read from the file itself.
+
+    **`digest=False` leaves out the one expensive part** (§9, slice 101). The packet digest is an
+    ffmpeg remux, so measuring it reads the whole file: over the user's own collection — 2000 files,
+    41 GB — a pass that only wants to *adopt* them read **43.8 GB from the device and took 172 s**
+    for what is otherwise a walk of the tags. It is what ranking two copies of one recording needs,
+    so `merge` asks for it and an adoption does not; a later pass measures what it needs, once.
+    """
     length, how = audio_length(path), None
     if length is None and (length := decoded_length(path)) is not None:
         how = "decoded"
     return Candidate(ref=str(path), provider=NAME, length=length, length_by=how,
-                     bytes=path.stat().st_size, stream_sha=stream_sha(path),
+                     bytes=path.stat().st_size, stream_sha=stream_sha(path) if digest else None,
                      added_by="source", why=UNRANKED,
                      when=dt.date.today().isoformat(), **audio_quality(path))
 
@@ -265,6 +272,9 @@ class FolderSource:
     def __init__(self, cfg: Config | None = None, cancel: Any = None) -> None:
         self.cfg = cfg
         self.cancel = cancel
+        # whether every file's packets are digested while reading a folder (§9, slice 101). On for
+        # `merge`, which ranks copies against each other; a take-in turns it off and reads tags only.
+        self.digests = True
 
     def handles(self, address: str) -> bool:
         if address.startswith(("http://", "https://")):
@@ -313,7 +323,7 @@ class FolderSource:
             disc, path, tags, named = row
             known = {**named, **tags}
             name = (disc, known.get("tracknumber"), text_key(known.get("title") or path.stem))
-            tracks.setdefault(name, []).append((row, measure(path)))
+            tracks.setdefault(name, []).append((row, measure(path, digest=self.digests)))
 
         entries = []
         for n, group in enumerate(tracks.values(), 1):
