@@ -170,17 +170,27 @@ def test_a_slow_request_is_logged_with_its_path(serving, monkeypatch, caplog):
     _, c = serving
     monkeypatch.setattr(_Handler, "SLOW", 0.0)
 
+    def said() -> bool:
+        return any("slow request" in r.getMessage() and "/api/state" in r.getMessage()
+                   for r in caplog.records)
+
     with caplog.at_level("WARNING"):
         c.get("/api/state")
+        # the line is written by the thread that served the request, after the answer went out: the
+        # client is back before the server has finished, so this waits rather than races it
+        for _ in range(100):
+            if said():
+                break
+            time.sleep(0.02)
 
-    assert any("slow request" in r.getMessage() and "/api/state" in r.getMessage()
-               for r in caplog.records), caplog.text
+    assert said(), caplog.text
 
 
 def test_a_quick_request_says_nothing(serving, caplog):
     _, c = serving
     with caplog.at_level("WARNING"):
         c.get("/api/cover?id=album-1")
+        time.sleep(0.2)   # long enough for a line to appear if there were one
     assert not [r for r in caplog.records if "slow request" in r.getMessage()]
 
 
