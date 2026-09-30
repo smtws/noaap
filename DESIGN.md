@@ -2459,6 +2459,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    which question it was asked. The words stay whose they were: listening writes nothing and claims
    nothing (§9, slice 21).
 
+84. ✅ **A job holds only what it uses, and asks nobody anything it need not** (2026-09-30, P67b).
+   Two defects the reviewer found by *using* the previous package, both measured.
+   **Held for the next job is not held for this one.** A `listen` leaves 3.6 GB of the big model on
+   the card. Slice 82's gate counted what the provider was holding as room — right for the next
+   `listen`, which reuses it, and wrong for an alignment, which does not touch a word of it: the gate
+   said "the card", the run started with 3355 MiB free where it peaks at 3460, and it died half way
+   through with the out-of-memory sentence. Pressing the two buttons in turn is an ordinary thing for
+   a person to do. So a job now lets go of what it will not use **before** the card is asked, and says
+   so in its first line — *letting go of the big model: this job does not use it*. What each kind of
+   job touches is one table (`USES`); the room that is counted is only what this job will reuse.
+   Measured on a real server with the second opinion on, `listen → align → listen`: all three
+   succeed, 29.9 s / 21.5 s / 29.8 s, peaks 4560 / 4448 / 4580 MiB, and the process holds
+   3856 / 568 / 3940 MiB after each.
+   **A local provider that needs no network must not use one.** With every weight already on the disk,
+   the user's server log still carried *"You are sending unauthenticated requests to the HF Hub"*
+   through jobs. Measured which load does it: not the aligner (torch's own cache asks nothing) and not
+   the big model, but the **separator**, whose construction calls `hf_hub_download` for metadata on a
+   file it already has. Every model load now happens with the hub switched off — the environment
+   variable *and* the module attribute, because the library reads it both ways — and only a load that
+   fails that way reaches for the network, saying once that it is downloading. Verified: 0 hub lines
+   in a server log over the same three jobs that produced 2 before, and an opt-in test that loads all
+   three models with `socket.socket` replaced by a raising stub.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2653,6 +2676,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (what a job holds and what it asks for, §9, slice 84)
+
+- **A held model is room for the job that reuses it and an obstacle to the job that does not.** The
+  gate has to know which, and the job has to let go before it asks.
+- **The first line of a job says what it just did to the machine**, not only what it is about to do.
+- **Cached means offline.** A local provider that reaches for the network with the file on the disk is
+  not local; a first download is fine and says so.
+- **Measure which component does it.** The hub greeting was blamed on the big model for a whole
+  package; it was the separator.
 
 ### Decisions of 2026-09-30 (placing words by listening, §9, slice 83)
 

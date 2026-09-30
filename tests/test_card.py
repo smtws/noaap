@@ -357,11 +357,50 @@ def test_what_this_provider_already_holds_counts_as_room(card):
     assert card(free=900, held=3000).device_now(ALIGN) == "cuda"
 
 
-def test_the_second_opinion_it_is_already_holding_counts_too(card):
+def test_the_big_model_counts_as_room_for_the_job_that_reuses_it(card):
+    """A `listen` after a `listen` finds its own model loaded: that is room, not an obstacle."""
+    from noaap.timing import LISTEN
+
     engine = card(free=200, held=0)
     engine._whisper, engine._whisper_device = object(), "cuda"
 
-    assert engine.device_now(ALIGN) == "cuda", "3616 MiB of it is loaded already"
+    assert engine.device_now(LISTEN) == "cuda", "3616 MiB of it is loaded already"
+    assert engine._whisper is not None, "and it is still loaded afterwards"
+
+
+def test_a_job_lets_go_of_what_it_will_not_use_before_asking(card):
+    """R-284: after a `listen` the process held 3856 MiB of a model an alignment never touches; the
+    gate counted it as room and the alignment died half way through. It goes first now."""
+    engine = card(free=200, held=0)
+    engine._whisper, engine._whisper_device = object(), "cuda"
+
+    where = engine.device_now(ALIGN)
+
+    assert engine._whisper is None, "the big model was let go before the card was asked"
+    assert any("letting go of the big model" in said for said in engine.said), engine.said
+    # and with only 200 MiB free once it is gone, this alignment honestly belongs on the processor
+    assert where == "cpu"
+
+
+def test_listening_lets_go_of_the_aligner_and_the_separator(card):
+    from noaap.timing import LISTEN
+
+    engine = card(free=4000)
+    engine._models[("de", "cuda")] = object()
+    engine._separator, engine._separator_device = object(), "cuda"
+
+    assert engine.device_now(LISTEN) == "cuda"
+    assert engine._models == {} and engine._separator is None
+    assert any("the aligner and the separator" in said for said in engine.said), engine.said
+
+
+def test_a_job_that_finds_only_what_it_uses_says_nothing(card):
+    engine = card(free=4000)
+    engine._models[("de", "cuda")] = object()
+
+    assert engine.device_now(ALIGN) == "cuda"
+    assert engine._models, "the aligner is what an alignment uses: it stays"
+    assert engine.said == []
 
 
 def test_drafting_words_needs_more_room_than_placing_them(card):

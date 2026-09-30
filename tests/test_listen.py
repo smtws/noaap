@@ -385,3 +385,195 @@ def test_the_reported_case_is_not_heard(tmp_path):
     stamps = [line.start for line in timed.lines if line.start is not None]
     assert stamps == sorted(stamps)
     assert timed.parameters["not_heard"].startswith("line 1: not heard (0 of")
+
+
+# -- nothing is asked of anybody when the model is on the disk (§9, slice 84) -----------------------
+
+
+def a_stub_loader(monkeypatch, fail_offline: bool = False):
+    """Stands in for stable_whisper, recording how it was called."""
+    import sys
+    import types
+
+    calls: list[dict] = []
+
+    def load_faster_whisper(name, **kw):
+        calls.append({"name": name, **kw})
+        if fail_offline and kw.get("local_files_only"):
+            raise OSError("not found in the local cache")
+        return object()
+
+    monkeypatch.setitem(sys.modules, "stable_whisper",
+                        types.SimpleNamespace(load_faster_whisper=load_faster_whisper))
+    return calls
+
+
+def test_the_model_is_loaded_from_the_disk_without_greeting_the_hub(monkeypatch):
+    """The user's server log carried *'unauthenticated requests to the HF Hub'* through jobs that
+    used a model sitting on the disk. A local provider that needs no network must not use one."""
+    from noaap.timing_local import LocalTiming
+
+    calls = a_stub_loader(monkeypatch)
+    engine = LocalTiming(device="cpu")
+    said: list[str] = []
+    engine.log = said.append
+
+    assert engine._whisper_model() is not None
+
+    assert len(calls) == 1 and calls[0]["local_files_only"] is True
+    assert not any("downloading" in line for line in said), said
+
+
+def test_a_model_that_is_not_there_yet_is_downloaded_and_said(monkeypatch):
+    from noaap.timing_local import WHISPER, LocalTiming
+
+    calls = a_stub_loader(monkeypatch, fail_offline=True)
+    engine = LocalTiming(device="cpu")
+    said: list[str] = []
+    engine.log = said.append
+
+    assert engine._whisper_model() is not None
+
+    assert [c.get("local_files_only") for c in calls] == [True, None]
+    assert any(f"{WHISPER} is not in the model cache yet" in line and "downloading" in line
+               for line in said), said
+
+
+def test_a_card_problem_is_not_mistaken_for_a_missing_file(monkeypatch):
+    """`local_files_only` failing because of the CUDA library trap must not start a download."""
+    import sys
+    import types
+
+    from noaap.timing_local import LocalTiming
+
+    calls: list[dict] = []
+
+    def load_faster_whisper(name, **kw):
+        calls.append(kw)
+        raise RuntimeError("libcublas.so.12 is not found")
+
+    monkeypatch.setitem(sys.modules, "stable_whisper",
+                        types.SimpleNamespace(load_faster_whisper=load_faster_whisper))
+    engine = LocalTiming(device="cuda")
+    engine.log = lambda s: None
+    monkeypatch.setattr(LocalTiming, "resolved_device", lambda self: "cuda")
+
+    with pytest.raises(Exception):
+        engine._whisper_model()
+    assert all(c.get("local_files_only") for c in calls), "nothing was downloaded over a library error"
+
+
+def test_the_hub_is_switched_off_for_a_load_and_switched_back(monkeypatch):
+    """Both ways the library reads it: the environment at import time, the attribute at request time."""
+    import os
+    import sys
+    import types
+
+    from noaap.timing_local import hub_offline
+
+    constants = types.SimpleNamespace(HF_HUB_OFFLINE=False)
+    monkeypatch.setitem(sys.modules, "huggingface_hub.constants", constants)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+    with hub_offline():
+        assert os.environ["HF_HUB_OFFLINE"] == "1"
+        assert constants.HF_HUB_OFFLINE is True
+
+    assert "HF_HUB_OFFLINE" not in os.environ
+    assert constants.HF_HUB_OFFLINE is False, "and somebody else's setting is not trampled on"
+
+
+def test_a_load_that_fails_offline_is_retried_and_said(monkeypatch):
+    """The separator is what greeted the hub with its weights already on the disk (R-284)."""
+    from noaap.timing_local import LocalTiming
+
+    engine = LocalTiming(device="cpu")
+    said: list[str] = []
+    engine.log = said.append
+    tries: list[bool] = []
+
+    def load(offline):
+        tries.append(offline)
+        if len(tries) == 1:
+            raise OSError("no such file in the cache")
+        return "the model"
+
+    assert engine._off_the_disk("htdemucs", "81 MB", load) == "the model"
+
+    assert tries == [True, False]
+    assert said == ["htdemucs is not in the model cache yet — downloading it (81 MB)"]
+
+
+def test_a_load_that_works_offline_says_nothing_and_asks_nobody(monkeypatch):
+    import os
+
+    from noaap.timing_local import LocalTiming
+
+    engine = LocalTiming(device="cpu")
+    said: list[str] = []
+    engine.log = said.append
+    seen: list[str] = []
+
+    def load(offline):
+        seen.append(os.environ.get("HF_HUB_OFFLINE", ""))
+        return "the model"
+
+    assert engine._off_the_disk("htdemucs", "81 MB", load) == "the model"
+    assert seen == ["1"] and said == []
+
+
+def test_a_card_error_during_a_load_is_not_a_missing_file(monkeypatch):
+    from noaap.timing_local import LocalTiming
+
+    engine = LocalTiming(device="cuda")
+    engine.log = lambda s: None
+    tries = []
+
+    def load(offline):
+        tries.append(offline)
+        raise RuntimeError("CUDA out of memory. Tried to allocate 1.34 GiB")
+
+    with pytest.raises(RuntimeError, match="out of memory"):
+        engine._off_the_disk("htdemucs", "81 MB", load)
+    assert tries == [True], "nothing is downloaded because the card is full"
+
+
+@pytest.mark.skipif(not __import__("noaap.config", fromlist=["env"]).env("MODEL_CACHE"),
+                    reason="set NOAAP_MODEL_CACHE=<a cache directory that already holds the models> "
+                           "to prove that loading them opens no connection at all")
+def test_the_real_models_open_no_connection(monkeypatch):
+    """Both models, off the disk, with the network taken away.
+
+    The cache directory is named by an environment variable because every test here runs with a fresh
+    one (`conftest.isolated`), where of course there is nothing to load and everything is downloaded —
+    which is how the first version of this test proved nothing.
+    """
+    import socket
+
+    from noaap import config
+
+    cache = config.env("MODEL_CACHE")
+    monkeypatch.setenv("XDG_CACHE_HOME", cache)
+    monkeypatch.setenv("HF_HOME", f"{cache}/huggingface")
+    monkeypatch.setenv("TORCH_HOME", f"{cache}/torch")
+
+    import torchaudio
+
+    from noaap.timing_local import BUNDLES, LocalTiming
+
+    def refuse(*a, **kw):
+        raise AssertionError("a job opened a connection although the models are on the disk")
+
+    monkeypatch.setattr(socket, "socket", refuse)
+    monkeypatch.setattr(socket, "create_connection", refuse)
+
+    engine = LocalTiming(device="cpu")
+    engine.log = lambda s: None
+    assert engine._aligner(getattr(torchaudio.pipelines, BUNDLES["en"]), "en", "cpu") is not None
+    assert engine._whisper_model() is not None
+    # and the separator, which is the one that was asking the hub for metadata on every job
+    from demucs.api import Separator
+
+    made = engine._off_the_disk("htdemucs", "81 MB",
+                                lambda _offline: Separator(model="htdemucs", device="cpu", progress=False))
+    assert made is not None

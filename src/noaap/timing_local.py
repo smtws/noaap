@@ -22,12 +22,16 @@ a median of 12 seconds, because CTC has nothing to hold on to during an instrume
 from __future__ import annotations
 
 import logging
+import os
 import re
 import statistics
+import sys
 import unicodedata
 import warnings
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from .timing import (
     ALIGN,
@@ -65,7 +69,13 @@ NO_CHECK = ('the second opinion needs the other extra: uv pip install "noaap[tim
 # second opinion's own model holds 3616 MiB of its own — outside torch's pool, which is why nothing
 # but dropping it gives that back. A card with less room than this gets the job on the processor
 # instead: measured at 11.4× the time for the same track, which is slow but is an answer (§9, slice 82).
-CARD_NEEDS = {ALIGN: 3500, TRANSCRIBE: 3800}
+CARD_NEEDS = {ALIGN: 3500, TRANSCRIBE: 3800, LISTEN: 3800}
+#: which of this provider's models each kind of job actually touches (§9, slice 84). What a job will
+#: not touch is let go **before** the card is asked for room: a held model is room for the job that
+#: reuses it and an obstacle to the job that does not. Measured the hard way — after a `listen` the
+#: process held 3856 MiB of large-v3, the gate counted it as room, and the alignment that followed
+#: ran out of memory half way through (R-284).
+USES = {ALIGN: ("aligner", "separator"), LISTEN: ("listener",), TRANSCRIBE: ("listener",)}
 CARD_SLOWER = 11        # times as long on the processor, measured on the same track
 WHISPER_CARD = 3616     # MiB the second opinion holds once loaded, if this provider is holding it
 CARD_RAN_OUT = ("the graphics card ran out of memory part way through, so this job has no answer and "
@@ -126,6 +136,29 @@ class LocalTiming:
             return self.device
         return "cuda" if torch.cuda.is_available() else "cpu"
 
+    def keep_only_what_it_uses(self, what: str) -> bool:
+        """Let go of the models this job will not touch (§9, slice 84). True when anything went.
+
+        **Held for the next job is not the same as held for this one.** A `listen` leaves 3.6 GB of
+        the big model on the card; an alignment does not use a word of it, so counting it as room —
+        which is right for the next `listen` — sent an alignment to the card with 3355 MiB free for a
+        run that peaks at 3460 and killed it half way through (R-284). Two buttons pressed in turn is
+        an ordinary thing for a person to do, so the room is made before the card is asked.
+        """
+        keep, freed = USES.get(what, ()), []
+        if "listener" not in keep and self._whisper is not None:
+            self._whisper = None
+            freed.append("the big model")
+        if "aligner" not in keep and (self._models or self._separator):
+            self._models, self._separator, self._separator_device = {}, None, None
+            freed.append("the aligner and the separator")
+        if not freed:
+            return False
+        self.log(f"letting go of {' and '.join(freed)}: this job does not use "
+                 + ("them" if len(freed) > 1 or "aligner" in freed[0] else "it"))
+        release_gpu_memory()
+        return True
+
     def device_now(self, what: str = ALIGN) -> str:
         """Where *this* job runs, asked now rather than when the settings were written (§9, slice 82).
 
@@ -133,8 +166,9 @@ class LocalTiming:
         game, a second noaap. Then the processor, and the job says so in its first line, because the
         same track takes about eleven times as long there and somebody is waiting for it.
 
-        What this provider is already holding counts as room: its models are on the card and the next
-        job reuses them, so they are not an obstacle to itself.
+        **Asking makes room first** (§9, slice 84): whatever this job will not touch is let go before
+        the question, so that what is left holding the card is only what this job reuses — and that
+        much really is room rather than an obstacle.
         """
         try:
             device = self.resolved_device()
@@ -142,12 +176,14 @@ class LocalTiming:
             return "cpu"   # no torch on this machine at all; the job itself says so in a moment
         if device != "cuda":
             return device
+        self.keep_only_what_it_uses(what)
         needs = CARD_NEEDS.get(what, CARD_NEEDS[ALIGN])
         try:
             free, total = card_room()
             room = free + pool_held()
-            if self._whisper is not None and self._whisper_device == "cuda":
-                room += WHISPER_CARD
+            if "listener" in USES.get(what, ()) and self._whisper is not None \
+                    and self._whisper_device == "cuda":
+                room += WHISPER_CARD   # loaded, and this job is the kind that reuses it
         except Exception:  # a torch too old to ask, or a driver that will not say: try the card
             log.debug("could not ask the card how much room it has", exc_info=True)
             return device
@@ -457,34 +493,62 @@ class LocalTiming:
             self._free_vram()   # held on the card and this run is on the processor, or the other way
         if self._whisper is not None:
             return self._whisper
-        try:
-            import stable_whisper
-        except ImportError as e:
-            raise TimingUnavailable(NO_CHECK) from e
         device = wanted
         # not "for the second opinion": the same model checks an alignment, drafts words and listens
         # for given ones, and the line above this one has already said which of the three it is
-        self.log(f"loading {WHISPER} ({WHISPER_SIZE})")
+        self.log(f"loading {WHISPER}")
         try:
-            self._whisper = stable_whisper.load_faster_whisper(
-                WHISPER, device=device, compute_type="float16" if device == "cuda" else "int8")
+            self._whisper = self._load_whisper(device)
             self._whisper_device = device
         except (RuntimeError, OSError) as e:
             if device == "cuda" and _is_cuda_library_trap(e):
                 # the spike hit exactly this: torch shipped CUDA 13, ctranslate2 wanted 12
                 self.log(f"{CUDA_TRAP}")
-                self._whisper = stable_whisper.load_faster_whisper(WHISPER, device="cpu", compute_type="int8")
+                self._whisper = self._load_whisper("cpu")
                 self._whisper_device = "cpu"
             else:
                 raise TimingUnavailable(f"{WHISPER} could not be loaded: {e}") from e
         return self._whisper
 
+    def _off_the_disk(self, what: str, size: str, load: Callable[[bool], Any]):
+        """Load a model without asking anybody anything, and reach out only if it is not here yet.
+
+        **A local provider that needs no network must not use one** (§9, slice 84). Tried offline
+        first, always; the download on first use is unchanged and now says so in the log, once.
+        `load` is given `offline` because the two libraries take it differently: the big model has its
+        own `local_files_only`, and the separator goes through the hub, which `hub_offline` switches.
+        """
+        try:
+            with hub_offline():
+                return load(True)
+        except Exception as e:
+            # a card that will not have it, or a library mismatch, has nothing to do with the files
+            if _is_cuda_library_trap(e) or _is_out_of_memory(e):
+                raise
+            log.debug("%s is not in the model cache", what, exc_info=True)
+            self.log(f"{what} is not in the model cache yet — downloading it ({size})")
+            return load(False)
+
+    def _load_whisper(self, device: str):
+        """The big model, off the disk where it can be."""
+        try:
+            import stable_whisper
+        except ImportError as e:
+            raise TimingUnavailable(NO_CHECK) from e
+        kind = "float16" if device == "cuda" else "int8"
+        return self._off_the_disk(WHISPER, WHISPER_SIZE, lambda offline: stable_whisper.load_faster_whisper(
+            WHISPER, device=device, compute_type=kind, **({"local_files_only": True} if offline else {})))
+
     # -- the two models ------------------------------------------------------------------
 
     def _aligner(self, bundle: object, lang: str, device: str):
         if (lang, device) not in self._models:
-            self.log(f"loading the {lang} aligner ({BUNDLES[lang]}, 361 MB on first use)")
-            self._models[(lang, device)] = bundle.get_model().to(device).eval()  # type: ignore[attr-defined]
+            self.log(f"loading the {lang} aligner ({BUNDLES[lang]})")
+            # torch's own cache, which asks nothing of anybody when the file is there — measured, and
+            # unlike the separator (§9, slice 84)
+            self._models[(lang, device)] = self._off_the_disk(
+                BUNDLES[lang], "361 MB",
+                lambda _offline: bundle.get_model().to(device).eval())  # type: ignore[attr-defined]
         return self._models[(lang, device)]
 
     def _vocals(self, audio: Path, device: str, check: Callable[[], None] | None):
@@ -500,8 +564,9 @@ class LocalTiming:
         # section AB)
         separator = self._separator if self._separator_device == device else None
         if separator is None:
-            self.log(f"loading the separator ({SEPARATOR}, 81 MB on first use)")
-            separator = self._separator = Separator(model=SEPARATOR, device=device, progress=False)
+            self.log(f"loading the separator ({SEPARATOR})")
+            separator = self._separator = self._off_the_disk(
+                SEPARATOR, "81 MB", lambda _offline: Separator(model=SEPARATOR, device=device, progress=False))
             self._separator_device = device
         if check:
             check()
@@ -509,6 +574,36 @@ class LocalTiming:
         _, stems = separator.separate_audio_file(audio)  # type: ignore[attr-defined]
         vocals = stems["vocals"].mean(0, keepdim=True).cpu()
         return vocals, int(separator.samplerate)  # type: ignore[attr-defined]
+
+
+@contextmanager
+def hub_offline():
+    """Switch the model hub off for the length of one load (§9, slice 84).
+
+    **A file that is already on the disk needs no request.** Measured on the user's own server: with
+    the weights in the cache, building the separator still asked the hub for metadata and the log
+    carried *"You are sending unauthenticated requests to the HF Hub"* through every job (R-284).
+    The aligner does not (it is torch's own cache) and the big model takes `local_files_only`; this is
+    for everything that goes through `huggingface_hub`, which reads the flag two ways — the
+    environment at import time, and the module attribute at request time — so both are set.
+    """
+    was = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    constants = sys.modules.get("huggingface_hub.constants")
+    before = getattr(constants, "HF_HUB_OFFLINE", None) if constants is not None else None
+    if constants is not None:
+        constants.HF_HUB_OFFLINE = True
+    try:
+        yield
+    finally:
+        if was is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = was
+        # the module may only have been imported inside the block, so it is looked up again
+        constants = sys.modules.get("huggingface_hub.constants")
+        if constants is not None:
+            constants.HF_HUB_OFFLINE = bool(before) if before is not None else False
 
 
 def card_room() -> tuple[int, int]:

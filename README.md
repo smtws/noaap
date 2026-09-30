@@ -803,13 +803,20 @@ So a minute: it covers working track by track — align, read the placement, fix
 — and where it does run out in the middle of that, it costs those two seconds once. A job **keeps** the
 models while it runs and while another is queued; nothing is ever taken out from under work in hand.
 
+**A job lets go of what it will not use** before it asks the card for room, and says so in its first
+line (*letting go of the big model: this job does not use it*). That is not tidiness: after listening
+to a track the big model is 3.6 GB of the card, an alignment does not touch it, and counting it as
+room is what made the second of two buttons fail with an out-of-memory.
+
 **If the card is already full**, a job says so in its first line and runs on the processor instead —
 the same track took **11.4×** as long there, which is slow but is an answer. If the card runs out half
 way through, the job stops with one sentence saying so; there is nothing in a stack trace that the
 person waiting can use.
 
 **What it does.** Given the words that are already in the editor, it places each line on the file's
-own clock. It downloads two models on first use, into torch's usual cache: a wav2vec2 aligner for
+own clock. **Nothing is asked of the network once the models are on the disk** — a download happens on
+first use, says so in the log, and never again. It downloads two models on first use, into torch's
+usual cache: a wav2vec2 aligner for
 the language (361 MB, English and German for now, chosen from the words themselves) and Demucs
 (81 MB), which separates the voice first — that separation is what makes the alignment work at all.
 
