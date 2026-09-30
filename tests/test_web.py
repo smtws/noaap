@@ -337,6 +337,44 @@ def test_watched_folders_are_edited_here_and_written_to_the_config(server, monke
     assert "[[watch]]" not in (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
 
 
+def test_the_tables_are_the_same_whoever_wrote_them(server, monkeypatch, tmp_path):
+    """A watched folder became a row in Sources (§9, slice 98) — and **the file did not change.**
+
+    The page sends the whole list, as it did when the rows lived under Library, so the thing worth
+    holding is that the `[[watch]]` tables a dialog's Save writes are byte for byte the ones the old
+    section wrote, and that a config written by hand comes back as the same list.
+    """
+    app, c = server
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    first, second = tmp_path.parent / "watch-a", tmp_path.parent / "watch-b"
+    for folder in (first, second):
+        folder.mkdir(exist_ok=True)
+    config = tmp_path / "cfg" / "noaap" / "config.toml"
+
+    rows = [{"name": "drop", "folder": str(first), "shape": "intake"},
+            {"name": "itself", "folder": str(app.library), "shape": "library"}]
+    assert c.post("/api/settings", json={"watches": rows}, headers=HDR).status_code == 200
+    written = config.read_text()
+
+    # the same list again — one dialog's Save sends the whole set, so this is an ordinary edit
+    assert c.post("/api/settings", json={"watches": rows}, headers=HDR).status_code == 200
+    assert config.read_text() == written, "writing the same watches twice writes the same file"
+
+    # a third folder appended, as the add dialog does: the first two tables are untouched
+    rows.append({"name": "second", "folder": str(second), "shape": "intake"})
+    assert c.post("/api/settings", json={"watches": rows}, headers=HDR).status_code == 200
+    after = config.read_text()
+    assert after.startswith(written.rstrip("\n").rsplit("[[watch]]", 1)[0].rstrip("\n").split("[[watch]]")[0])
+    assert after.count("[[watch]]") == 3
+    assert f'folder = "{second}"' in after and 'shape = "library"' in after
+
+    # and what the page reads back is the list in the order the file holds it
+    watching = c.get("/api/state").json()["settings"]["watching"]
+    assert [w["name"] for w in watching] == ["drop", "itself", "second"]
+    assert [w["shape"] for w in watching] == ["intake", "library", "intake"]
+    assert all(w["there"] for w in watching)
+
+
 def test_thumbnails_are_proxied_only_from_allowed_hosts(server, monkeypatch):
     app, c = server
     calls = []

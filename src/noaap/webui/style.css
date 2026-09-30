@@ -241,7 +241,8 @@ pre.check { margin: .6rem 0 0; padding: .5rem .6rem; max-height: 18rem; overflow
 .setting.sources { display: block; }
 .setting.sources > .muted { margin-top: .3rem; max-width: 60ch; }
 .source-rows { display: grid; gap: .35rem; margin: .6rem 0; }
-.source-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr) auto; gap: .6rem; align-items: center; }
+.source-row { display: grid; grid-template-columns: 9rem minmax(0, 1fr) auto; gap: .6rem; align-items: center; }
+.source-row > .muted { overflow-wrap: anywhere; }
 .source-row .row-actions { display: flex; gap: .4rem; }
 .add-row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 /* `button.small` carries `margin-left: auto` so a lone small button sits at the end of its row —

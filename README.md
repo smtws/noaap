@@ -254,19 +254,28 @@ and drafting with Deepgram shows three fields and no endpoint. Switching a provi
 at once, and a field that hides **keeps what you typed**: it is not sent while it is hidden, so what the
 config holds for it stays as it was.
 
-**Settings › Sources is a list of the sources you have set up**, one row each: the provider, one line
-saying what it has (*session from Firefox · audio taken out of video posts*), an **Edit** and a
-**Remove**. *Add a source* offers the ones that can be set up and are not yet. A row's fields live in
-**that source's own dialog** — a session from a browser you are already logged in with, or the **path**
-of a cookies file (the path is all noaap keeps; the file is read on this machine while a download runs
-and its contents never reach the page), and for Patreon *take the audio out of a video post* and *keep
-the post's captions as lyrics*. Nothing of another source is in that dialog, and **Remove** clears that
-one provider after saying what it clears — no file of yours is touched, and the source still works for
-anything that needs no login.
+**Settings › Sources is a list of where music comes from**, one row each, with an **Edit** and a
+**Remove**. Two kinds of row share it, because both are sources:
 
-The list is built from what the program actually has: a provider that needs a session appears there
-without anybody editing the page, and a config you wrote by hand shows up as a row. The config keys are
-unchanged — `<provider>_cookies_from_browser`, `<provider>_cookies_file`, and Patreon's two switches.
+- **a provider that keeps something behind a login** — one row, saying what it has (*session from
+  Firefox · audio taken out of video posts*). Its fields live in that provider's own dialog: a session
+  from a browser you are already logged in with, or the **path** of a cookies file (the path is all
+  noaap keeps; the file is read on this machine while a download runs and its contents never reach the
+  page), and for Patreon *take the audio out of a video post* and *keep the post's captions as lyrics*.
+  Nothing of another provider is in that dialog, and **Remove** clears that one after saying what it
+  clears — no file of yours is touched, and it still works for anything that needs no login.
+- **a watched folder** — a row each, and there may be as many as you like. It says which shape it is,
+  where it is, and what the watcher knows: *last looked at …*, *not looked at yet*, *the folder is not
+  there*, or how many arrivals it could not hand over. Its dialog holds the name, the folder and the
+  shape, and refuses in the dialog what the config would refuse: a relative path, a name another folder
+  has, an intake folder that is the library or sits inside it, one watch nested in another.
+  **Remove** stops watching it — the folder and everything in it is left exactly as it is.
+
+*Add a source* offers the providers that are not set up, and **a watched folder**, always. The list is
+built from what the program actually has: a provider that needs a session appears there without anybody
+editing the page, and a config you wrote by hand — flat keys and `[[watch]]` tables alike — shows up as
+rows. The keys are unchanged: `<provider>_cookies_from_browser`, `<provider>_cookies_file`, Patreon's
+two switches, and the `[[watch]]` tables below.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:
@@ -282,9 +291,9 @@ ones the command prints; **Apply** does exactly what that check listed, and is o
 folder and the mode are still the ones you checked. A path that is not a folder, or that is the library,
 inside it, or holds it, is refused with a sentence.
 
-**Watched folders are editable in the settings**, in the same two shapes the config allows, and are
-written back as `[[watch]]` tables. The page says what it always said: the watcher is a separate service
-you start yourself, and whether it has been here.
+Watched folders are edited **under Sources**, not here: they are places music comes from, not actions
+you run. The page says what it always said — the watcher is a separate service you start yourself, and
+whether it has been here.
 
 **The recycle bin has its own place**, in the header, and only when it holds something — see
 [Removing it](#the-recycle-bin) for what goes in and how it comes back out.
@@ -584,8 +593,9 @@ noaap adopt ~/Music/my-collection --undo --apply   # give it all back
 `noaap watch` looks at the folders you name in the config file and hands what arrives in them to
 the app. **It never does the work itself**: it notices, waits until the arrival has stopped moving,
 and asks for an ordinary job — the same one `noaap fetch <folder>` would run. Nothing is watched
-unless you configure it, and the settings panel and `noaap config` both say what is being watched —
-the panel can also add, change and remove a watch, writing the tables below for you.
+unless you configure it, and the settings panel and `noaap config` both say what is being watched. The
+panel lists each watched folder as a **source**, and can add, change and remove one, writing the tables
+below for you.
 
 Two shapes, and they may not be nested:
 

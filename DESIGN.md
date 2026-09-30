@@ -2791,6 +2791,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    same line" is a silent fault, and the answer was to stop moving at all.
 
 
+98. ✅ **A watched folder is a source** (2026-09-30, P80). The user, of the list slice 95 built:
+   *"intake and watch folders are sources as well, and there might even be multiple of those."* They
+   are, and they were in a section of their own under **Library** — among the *actions* — because that
+   is where the watcher's status had always been shown. A folder somebody drops music into is where
+   music comes from, exactly as a Patreon account is.
+   Sources now lists both kinds: a provider is at most one row, a watched folder is **a row each**, in
+   the order the config holds them, saying which shape it is, where it is, and what the watcher knows —
+   *last looked at …*, *not looked at yet*, *the folder is not there*, or how many arrivals it could not
+   hand over. *Add a source* offers a folder **always**, because there may be any number, and the
+   providers only while they are unset. A folder's dialog holds its name, its folder and its shape, and
+   applies `watchTrouble` to the **whole set** as it is typed, so a name another folder has or a nesting
+   is refused in the dialog rather than by the door.
+   **Take in a folder stays under Library**: taking a collection in once is an act, not a place music
+   comes from. And nothing about the config changed — the same `[[watch]]` tables, written by the same
+   writer, with a hand-written config coming back as rows; a case holds that writing the same watches
+   twice writes the same file, and that appending a third leaves the first two tables alone.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -3000,6 +3018,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **A user's word about their own editor settles it.** Two packages had reasoned their way to the
   caret advancing — it is what stamping downwards needs — and the person doing the stamping wants the
   line they just set, because that is the one they are still listening to.
+
+### Decisions of 2026-09-30 (a watched folder is a source, §9, slice 98)
+
+- **Sort by what a thing *is*, not by where its status came from.** The watcher's rows lived under
+  Library because that is where its status was reported; what they *are* is places music arrives.
+- **One row per thing, and "one" is not the only number.** A provider is at most one; a folder is a
+  row each, and the add-list offers another for ever.
+- **Validate the whole set where the one is edited.** A folder's dialog judges the list it would make,
+  not the folder alone — a clashing name or a nesting is somebody else's row's business.
+- **An action is not a source.** Taking a folder in once stays under Library, beside the update and the
+  repair.
 
 ### Decisions of 2026-09-30 (sources as a list, §9, slice 95)
 

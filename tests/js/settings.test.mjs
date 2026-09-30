@@ -2,8 +2,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TIMING_FIELDS, clearedSource, dialogFields, removeConfirm, sourceRows, sourceSummary,
-         takeInState, timingFields, watchTrouble } from "../../src/noaap/webui/logic.mjs";
+import { TIMING_FIELDS, clearedSource, dialogFields, folderSummary, removeConfirm, sourceRows,
+         sourceSummary, takeInState, timingFields, watchTrouble, watchesAfter, watchesWithout }
+  from "../../src/noaap/webui/logic.mjs";
 
 // -- 1. a field is shown only when the selected provider uses it ---------------------------------
 
@@ -211,4 +212,83 @@ test("a removal says what it clears, and what still works afterwards", () => {
   assert.match(said, /taking the audio out of video posts/);
   assert.match(said, /still works for anything that needs no login/);
   assert.doesNotMatch(said, /cookies file/, "there is none set, so it is not mentioned");
+});
+
+
+// -- 7. a watched folder is a source too (§9, slice 98) -----------------------------------------
+//
+// The user: *"intake and watch folders are sources as well, and there might even be multiple of
+// those."* A provider is at most one row; a folder is a row each.
+
+const DROP = { name: "drop", folder: "/mnt/nas/incoming", shape: "intake", there: true,
+               looked: "2026-09-30 21:04", waiting: 0 };
+const ITSELF = { name: "itself", folder: "/home/u/Music", shape: "library", there: true,
+                 looked: null, waiting: 0 };
+const GONE = { name: "old", folder: "/mnt/usb/in", shape: "intake", there: false, looked: null, waiting: 3 };
+
+test("no watched folder is no row, and a provider is still one", () => {
+  const said = sourceRows({ patreon: PATREON_SET }, []);
+  assert.deepEqual(said.rows.map((r) => r.kind), ["provider"]);
+  assert.equal(said.folders, 0);
+});
+
+test("one watched folder is one row beside the provider", () => {
+  const said = sourceRows({ patreon: PATREON_SET }, [DROP]);
+  assert.deepEqual(said.rows.map((r) => [r.kind, r.label]), [["provider", "Patreon"], ["folder", "drop"]]);
+  assert.equal(said.rows[1].summary,
+               "what is dropped here is taken in · /mnt/nas/incoming · last looked at 2026-09-30 21:04");
+  assert.equal(said.rows[1].index, 0, "and it knows which watch it is");
+});
+
+test("three watched folders are three rows, in the config's order", () => {
+  const said = sourceRows({ patreon: PATREON_SET }, [DROP, ITSELF, GONE]);
+  assert.equal(said.folders, 3);
+  assert.deepEqual(said.rows.map((r) => r.label), ["Patreon", "drop", "itself", "old"]);
+  assert.deepEqual(said.rows.filter((r) => r.kind === "folder").map((r) => r.index), [0, 1, 2]);
+});
+
+test("a row says what the watcher knows about its folder", () => {
+  assert.match(folderSummary(ITSELF), /^this library, watching itself/);
+  assert.match(folderSummary(ITSELF), /not looked at yet/);
+  assert.match(folderSummary(GONE), /the folder is not there/);
+  assert.match(folderSummary(GONE), /3 arrival\(s\) it could not hand over/);
+  assert.doesNotMatch(folderSummary(GONE), /not looked at yet/, "a folder that is gone says that first");
+});
+
+test("editing one folder touches no other", () => {
+  const after = watchesAfter([DROP, ITSELF], 0, { name: "drop", folder: "/mnt/nas/in2", shape: "intake" });
+  assert.deepEqual(after[0], { name: "drop", folder: "/mnt/nas/in2", shape: "intake" });
+  assert.deepEqual(after[1], { name: "itself", folder: "/home/u/Music", shape: "library" });
+  assert.equal(after.length, 2);
+});
+
+test("a folder can always be added, however many there are", () => {
+  let watches = [];
+  for (const n of [1, 2, 3]) {
+    watches = watchesAfter(watches, null, { name: `n${n}`, folder: `/m/${n}` });
+    assert.equal(watches.length, n);
+  }
+  assert.deepEqual(watches.map((w) => w.shape), ["intake", "intake", "intake"], "intake unless said otherwise");
+});
+
+test("removing one folder removes that one", () => {
+  assert.deepEqual(watchesWithout([DROP, ITSELF, GONE], 1).map((w) => w.name), ["drop", "old"]);
+  assert.deepEqual(watchesWithout([DROP], 0), []);
+  assert.deepEqual(watchesWithout([DROP], 5).map((w) => w.name), ["drop"], "an index that is not there changes nothing");
+});
+
+test("the dialog's rules are the config's rules, over the whole set", () => {
+  const library = "/home/u/Music";
+  // a new folder inside the library, added as intake
+  const bad = watchesAfter([DROP], null, { name: "in", folder: `${library}/incoming` });
+  assert.match(watchTrouble(bad, library)[0], /may not hold the library/);
+  // …and as the library shape it is exactly what that shape is for
+  const good = watchesAfter([DROP], null, { name: "in", folder: library, shape: "library" });
+  assert.deepEqual(watchTrouble(good, library), []);
+  // a name another folder already has
+  const twice = watchesAfter([DROP], null, { name: "drop", folder: "/mnt/other" });
+  assert.match(watchTrouble(twice, library)[0], /share that name/);
+  // and one nested in another
+  const nested = watchesAfter([DROP], null, { name: "inner", folder: "/mnt/nas/incoming/more" });
+  assert.match(watchTrouble(nested, library)[0], /may not be nested/);
 });

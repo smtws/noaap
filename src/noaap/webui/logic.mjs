@@ -836,18 +836,60 @@ export function sourceSummary(fields = {}) {
   return parts.join(" · ");
 }
 
-export function sourceRows(sources = {}) {
-  const names = Object.keys(sources).sort();
+/** One watched folder, as a row says it (§9, slice 98). */
+export function folderSummary(watch = {}) {
+  const parts = [watch.shape === "library" ? "this library, watching itself" : "what is dropped here is taken in"];
+  if (watch.folder) parts.push(watch.folder);
+  if (watch.folder && watch.there === false) parts.push("the folder is not there");
+  else if (watch.looked) parts.push(`last looked at ${watch.looked}`);
+  else parts.push("not looked at yet");
+  if (watch.waiting) parts.push(`${watch.waiting} arrival(s) it could not hand over`);
+  return parts.join(" · ");
+}
+
+/** The sources, as rows: the providers that are set up, and **every watched folder** (§9, slice 98).
+ *
+ * The user: *"intake and watch folders are sources as well, and there might even be multiple of
+ * those."* They are: a folder somebody drops music into is where music comes from, exactly as a
+ * Patreon account is, and it belongs in the one list rather than in a section of its own under
+ * Library. A provider is at most one row; a watched folder is a row each, however many there are.
+ */
+export function sourceRows(sources = {}, watches = []) {
   const rows = [];
   const unset = [];
-  for (const name of names) {
+  for (const name of Object.keys(sources).sort()) {
     const fields = sources[name] || {};
     const set = fieldsSet(fields);
-    if (set.length) rows.push({ name, label: sourceLabel(name), set, summary: sourceSummary(fields), fields });
-    else unset.push(name);
+    if (set.length) {
+      rows.push({ kind: "provider", name, label: sourceLabel(name), set,
+                  summary: sourceSummary(fields), fields });
+    } else {
+      unset.push(name);
+    }
   }
-  return { rows, unset, none: rows.length === 0 };
+  (watches || []).forEach((watch, index) => {
+    rows.push({ kind: "folder", index, name: watch.name, label: watch.name || "a watched folder",
+                summary: folderSummary(watch), watch });
+  });
+  // a folder can always be added, and another after that — which is the point of the user's "multiple"
+  return { rows, unset, folders: rows.filter((r) => r.kind === "folder").length,
+           none: rows.length === 0 };
 }
+
+/** The watches after one row is edited or added: that row and no other (§9, slice 98). */
+export function watchesAfter(watches = [], index, next) {
+  const out = (watches || []).map((w) => ({ name: w.name, folder: w.folder, shape: w.shape || "intake" }));
+  const one = { name: String(next?.name || "").trim(), folder: String(next?.folder || "").trim(),
+                shape: next?.shape === "library" ? "library" : "intake" };
+  if (index == null || index < 0 || index >= out.length) out.push(one);
+  else out[index] = one;
+  return out;
+}
+
+/** The watches without one row. */
+export const watchesWithout = (watches = [], index) =>
+  (watches || []).filter((_, i) => i !== index)
+    .map((w) => ({ name: w.name, folder: w.folder, shape: w.shape || "intake" }));
 
 /** Which fields a provider's dialog shows: its own, and nothing of anybody else's. */
 export const dialogFields = (name, sources = {}) =>

@@ -3,7 +3,8 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          binLabel, browserLabel, candidateLine, clearedSource, copyLabels, dialogFields, removeConfirm,
-         repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
+         repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
+         resetKind, roundMark, watchesAfter, watchesWithout,
          scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
          timingFields, timingNotice,
@@ -1994,70 +1995,14 @@ async function applyTakeIn(button, update) {
   await refreshAlbumPanel();
 }
 
-// What `noaap watch` is looking at. **This app does not watch anything** — a separate process
-// does, so that this one can keep stopping itself when idle — and everything a row *reports* is read
-// from what that process wrote down, which is the only way this page can be honest about it.
-//
-// **Editable here since §9, slice 92**: the `[[watch]]` tables were config-file-only, so the page
-// could describe a watch and not offer to make one. Both shapes the config allows are offered, the
-// same rules are applied before anything is sent, and saving writes the tables back.
+// The two shapes a watched folder can have, which are the config's own (§9, slice 92). **This app does
+// not watch anything** — a separate process does, so that this one can keep stopping itself when idle —
+// and what a row *reports* is read from what that process wrote down, which is the only way this page
+// can be honest about it.
 const WATCH_SHAPES = [
   ["intake", "things dropped here are taken in"],
   ["library", "this library, watching itself"],
 ];
-
-function watchingSection(watching) {
-  const list = h("div", { class: "watches" });
-  const trouble = h("div", { class: "bad watch-trouble" });
-  const said = () => {
-    const rows = watchesIn(list);
-    trouble.replaceChildren(...watchTrouble(rows, state.settings?.library || "")
-      .map((line) => h("div", {}, line)));
-    trouble.hidden = !trouble.childElementCount;
-  };
-  for (const w of watching || []) list.append(watchRow(w, said));
-  const add = h("button", { class: "quiet small", type: "button",
-    onclick: () => { list.append(watchRow({}, said)); said(); } }, "Watch another folder");
-  const looked = (watching || []).some((w) => w.looked);
-  said();
-  return h("div", { class: "setting watching" },
-    h("strong", {}, "Watched folders"),
-    h("div", { class: "muted" },
-      "A watched folder is taken in without anyone typing a command. ",
-      h("strong", {}, "The watcher is a separate service"), " \u2014 `noaap watch`, which you start yourself; "
-      + "this page only writes down what it should look at. ",
-      (watching || []).length
-        ? (looked ? "It has been here \u2014 each row says when." : "No row has been looked at yet, so it is probably not running.")
-        : "Nothing is watched yet."),
-    list, add, trouble);
-}
-
-function watchRow(w, said) {
-  const row = h("div", { class: "watch-row" },
-    h("input", { type: "text", class: "watch-name", value: w.name || "", placeholder: "a name",
-                 autocomplete: "off", "aria-label": "the name of this watched folder" }),
-    h("input", { type: "text", class: "watch-folder", value: w.folder || "", placeholder: "/mnt/nas/incoming",
-                 autocomplete: "off", spellcheck: "false", "aria-label": "the folder to watch" }),
-    h("select", { class: "watch-shape" }, WATCH_SHAPES.map(([value, text]) =>
-      h("option", { value, selected: value === (w.shape || "intake") }, text))),
-    h("span", { class: "muted" },
-      w.folder && !w.there ? h("span", { class: "bad" }, "the folder is not there \u00b7 ") : "",
-      w.looked ? `last looked at ${w.looked}` : "",
-      w.waiting ? ` \u00b7 ${w.waiting} arrival(s) it could not hand over` : ""),
-    h("button", { class: "quiet small", type: "button", title: "stop watching it",
-      onclick: () => { row.remove(); said(); } }, "Remove"));
-  for (const el of row.querySelectorAll("input, select")) {
-    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", said);
-  }
-  return row;
-}
-
-// what the page would save: a row with no folder at all is one that was added and not filled in
-const watchesIn = (list) => [...list.querySelectorAll(".watch-row")].map((row) => ({
-  name: row.querySelector(".watch-name").value.trim(),
-  folder: row.querySelector(".watch-folder").value.trim(),
-  shape: row.querySelector(".watch-shape").value,
-})).filter((w) => w.folder || w.name);
 
 // What noaap moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
 // way anything leaves is from here or `noaap recycle empty` — which is the point of having it.
@@ -2224,17 +2169,29 @@ function sourcesSection() {
   return box;
 }
 
+const FOLDER = "a watched folder";   // what the add-list calls one, and there may be any number
+
 function fillSources(box) {
   const st = state.settings || {};
-  const said = sourceRows(st.sources || {});
+  const said = sourceRows(st.sources || {}, st.watching || []);
+  // a folder is always on offer; a provider only while it is not set up
+  const offers = [...said.unset.map((name) => [name, sourceLabel(name)]), ["folder", FOLDER]];
   const chosen = h("select", { class: "add-source", "aria-label": "a source to set up" },
-    said.unset.map((name) => h("option", { value: name }, sourceLabel(name))));
+    offers.map(([value, label]) => h("option", { value }, label)));
+  const watcher = (st.watching || []).length
+    ? ((st.watching || []).some((w) => w.looked)
+        ? "The watcher is a separate service \u2014 `noaap watch`, which you start yourself; it has been "
+          + "here, and each folder says when."
+        : "The watcher is a separate service \u2014 `noaap watch`, which you start yourself. No folder has "
+          + "been looked at yet, so it is probably not running.")
+    : "";
   fill(box,
     // the "Sources" heading is the section's own; this box says what a source is
     h("div", { class: "muted" },
-      "Where music comes from besides YouTube. A source needs setting up only where it keeps something "
-      + "behind a login \u2014 what is public needs nothing, and a folder you already have is taken in "
-      + "under Library below."),
+      "Where music comes from besides YouTube: a provider that keeps something behind a login, and "
+      + "every folder that is watched \u2014 what is dropped into one is taken in without anyone typing "
+      + "a command. ", watcher,
+      " Taking a folder in once, rather than watching it, is under Library below."),
     said.none
       ? h("div", { class: "muted" }, "None is set up yet.")
       : h("div", { class: "source-rows" }, said.rows.map((row) => h("div", { class: "source-row" },
@@ -2242,14 +2199,97 @@ function fillSources(box) {
           h("span", { class: "muted" }, row.summary),
           h("span", { class: "row-actions" },
             h("button", { class: "quiet small", type: "button",
-              onclick: () => openSourceDialog(row.name, box) }, "Edit"),
+              onclick: () => (row.kind === "folder"
+                ? openFolderDialog(row.index, box) : openSourceDialog(row.name, box)) }, "Edit"),
             h("button", { class: "quiet small danger-text", type: "button",
-              onclick: (e) => removeSource(row.name, box, e.currentTarget) }, "Remove"))))),
-    said.unset.length
-      ? h("div", { class: "add-row" }, chosen,
-          h("button", { class: "quiet small", type: "button",
-            onclick: () => openSourceDialog(chosen.value, box) }, "Add a source"))
-      : h("div", { class: "muted" }, "Every source that can be set up is."));
+              onclick: (e) => (row.kind === "folder"
+                ? removeFolder(row.index, box, e.currentTarget)
+                : removeSource(row.name, box, e.currentTarget)) }, "Remove"))))),
+    h("div", { class: "add-row" }, chosen,
+      h("button", { class: "quiet small", type: "button",
+        onclick: () => (chosen.value === "folder"
+          ? openFolderDialog(null, box) : openSourceDialog(chosen.value, box)) }, "Add a source")));
+}
+
+// **A watched folder is a source** (§9, slice 98), so it is set up the way the others are: one dialog
+// holding one folder, with the rules the config applies — both shapes, an absolute path, its own name,
+// and never the library or a folder nested with another watch.
+function openFolderDialog(index, box) {
+  const st = state.settings || {};
+  const watches = st.watching || [];
+  const now = index == null ? { name: "", folder: "", shape: "intake" } : watches[index] || {};
+  const name = h("input", { type: "text", value: now.name || "", autocomplete: "off",
+                            placeholder: "a name" });
+  const folder = h("input", { type: "text", value: now.folder || "", autocomplete: "off",
+                              spellcheck: "false", placeholder: "/mnt/nas/incoming" });
+  const shape = h("select", {}, WATCH_SHAPES.map(([value, text]) =>
+    h("option", { value, selected: value === (now.shape || "intake") }, text)));
+  const note = h("div", { class: "muted dialog-note" });
+  const row = (title, help, input) => h("label", { class: "setting" },
+    h("span", {}, h("strong", {}, title), h("small", { class: "muted" }, help)), input);
+  const said = () => {
+    const trouble = watchTrouble(watchesAfter(watches, index, { name: name.value, folder: folder.value,
+                                                               shape: shape.value }), st.library || "");
+    note.textContent = trouble[0] || "";
+    return trouble;
+  };
+  for (const el of [name, folder]) el.addEventListener("input", said);
+  shape.addEventListener("change", said);
+  const dialog = h("dialog", { class: "source-dialog" },
+    h("div", { class: "panel-head" }, h("h3", {}, index == null ? "A watched folder" : (now.name || "A watched folder"))),
+    h("div", { class: "muted" },
+      "What arrives in this folder is taken in without anyone typing a command. The watcher is a "
+      + "separate service \u2014 `noaap watch` \u2014 which you start yourself; this only writes down what "
+      + "it should look at."),
+    row("Name", "the watcher writes down what it did under it", name),
+    row("Folder", "in full, and not the library or a folder inside it", folder),
+    row("What it is", "the two shapes the config allows", shape),
+    note,
+    h("div", { class: "actions" },
+      h("button", { type: "button",
+        onclick: (e) => saveFolder(index, { name, folder, shape }, dialog, box, note, e.currentTarget) }, "Save"),
+      h("button", { class: "quiet", type: "button", onclick: () => dialog.close() }, "Cancel")));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+  name.focus();
+}
+
+async function saveFolder(index, fields, dialog, box, note, button) {
+  const st = state.settings || {};
+  const watches = watchesAfter(st.watching || [], index,
+    { name: fields.name.value, folder: fields.folder.value, shape: fields.shape.value });
+  const trouble = watchTrouble(watches, st.library || "");
+  if (trouble.length) { note.textContent = trouble[0]; return; }
+  setWorking(button, true);
+  try {
+    state.settings = await api("/api/settings", { watches });
+    toast("\u2713 Watched folders saved", "done");
+    dialog.close();
+    fillSources(box);
+  } catch (e) {
+    note.textContent = e.message;
+  } finally {
+    setWorking(button, false);
+  }
+}
+
+async function removeFolder(index, box, button) {
+  const st = state.settings || {};
+  const gone = (st.watching || [])[index] || {};
+  if (!confirm(`Stop watching ${gone.name || gone.folder}?\n\n`
+               + `${gone.folder}\n\nThe folder and everything in it is left exactly as it is — noaap `
+               + "only stops looking at it. You can add it again at any time.")) return;
+  setWorking(button, true);
+  try {
+    state.settings = await api("/api/settings", { watches: watchesWithout(st.watching || [], index) });
+    toast("\u2713 Not watched any more", "done");
+    fillSources(box);
+  } catch (e) {
+    toast(e.message, "failed");
+  } finally {
+    setWorking(button, false);
+  }
 }
 
 // One provider's fields, in a dialog of its own: the sentences are slice 92's, the fields are this
@@ -2371,7 +2411,6 @@ function openSettings() {
       repairSection(),
       takeInSection(),
       missingSection(st.missing),
-      watchingSection(st.watching),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
   showTimingFields($("#settingsform"));
@@ -2400,10 +2439,6 @@ async function saveSettings(ev) {
   ev.preventDefault();
   const f = ev.target;
   const button = ev.submitter;
-  // the watched folders are answered here, before anything is sent, by the same rules the config applies
-  const watches = watchesIn(f.querySelector(".watches"));
-  const trouble = watchTrouble(watches, f.library.value.trim());
-  if (trouble.length) { toast(trouble[0], "failed"); return; }
   setWorking(button, true);
   try {
     state.settings = await api("/api/settings", {
@@ -2420,7 +2455,6 @@ async function saveSettings(ev) {
       ...Object.fromEntries((state.settings.timing?.vendors || [])
         .filter((v) => shows(f, `key:${v}`) && f[`timing_${v}_key`]?.value)
         .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
-      watches,
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;
