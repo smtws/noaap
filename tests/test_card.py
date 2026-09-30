@@ -310,6 +310,45 @@ def test_no_release_at_all_where_nobody_asked_for_one(watcher):
     assert watcher == []
 
 
+def test_the_app_starts_one_watcher_for_the_card(watcher, tmp_path):
+    from noaap.config import Config
+    from noaap.web import App
+
+    App(Config(), tmp_path)
+
+    assert len(watcher) == 1, "one server, one timer"
+
+
+def test_and_none_at_all_when_the_window_is_zero(watcher, tmp_path):
+    from noaap.config import Config
+    from noaap.web import App
+
+    cfg = Config()
+    cfg.timing_card_idle_seconds = 0
+    App(cfg, tmp_path)
+
+    assert watcher == [], "0 = hold the models for ever, and no thread to do nothing with"
+
+
+def test_no_test_leaves_a_watcher_running(tmp_path):
+    """The canary for a real defect (§9, slice 84, catalog BX).
+
+    An `App`'s watcher outlives the test that made it, and when its window passes it calls
+    `release_gpu_memory()` — inside whichever *later* test has stubbed `sys.modules` with a fake
+    torch. That is how `test_releasing_empties_the_pool_when_torch_is_here` came to count three calls
+    instead of one on CI, with 59 of these threads alive after three test files. `conftest.isolated`
+    makes the line that starts them do nothing; this is what says so out loud.
+    """
+    import threading
+
+    from noaap.config import Config
+    from noaap.web import App
+
+    App(Config(), tmp_path)
+
+    assert [t.name for t in threading.enumerate() if t.name == "noaap-card-idle"] == []
+
+
 # -- a full card, and a card that fills up half way through (item 2) -------------------------------
 
 

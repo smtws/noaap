@@ -29,6 +29,15 @@ def isolated(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(noaap.pot, "ensure_server", lambda *a, **k: started.append(a) or False)
     # a Service builds its lyrics client itself; tests that want one pass a fake explicitly
     monkeypatch.setattr(noaap.service, "Lrclib", lambda *a, **k: NoLyrics())
+    # **no test leaves a timer running that tidies up the graphics card** (§9, slice 84). Every `App`
+    # starts one watcher thread; it outlives the test that made it, and when its window passes it
+    # calls `release_gpu_memory()` — which reached into whichever *later* test had stubbed
+    # `sys.modules` with a fake torch and made `test_releasing_empties_the_pool_when_torch_is_here`
+    # count three calls instead of one on CI. Measured before this line: **59** live `noaap-card-idle`
+    # threads after three test files. So the one line that starts such a thread does nothing here; a
+    # test that is *about* the watcher replaces the same hook with its own collector and drives the
+    # loop by hand.
+    monkeypatch.setattr("noaap.timing._in_the_background", lambda watch: None)
     return started
 
 @pytest.fixture(scope="session")

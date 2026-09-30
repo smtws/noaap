@@ -5091,10 +5091,50 @@ to Cloudflare"* for the non-app path.
   an `align`; the aligner and separator are let go before a `listen`; a job that finds only what it
   uses says nothing and keeps it.
 
+## BX. The test that counted three releases (P67c, DESIGN §9, slice 84)
+
+- [x] **BX1 · R** — the symptom, and how often
+
+  `tests/test_timing.py::test_releasing_empties_the_pool_when_torch_is_here` asserts that one call to
+  `release_gpu_memory()` empties the pool once (`emptied == [1]`). On CI it saw **`[1, 1, 1]`** on the
+  release commit and on 083465a, and passed on a rerun of the same commit and everywhere locally.
+  Order-dependent, and nothing in that test or its neighbours had changed.
+
+- [x] **BX2 · M** — the cause, counted rather than guessed
+
+  Every `App` starts one `noaap-card-idle` watcher (§9, slice 82). It is a daemon thread with no
+  lifecycle, so it outlives the test that built the `App`; when its window passes it calls
+  `Engines.let_go()` → `release_gpu_memory()`, which reads `sys.modules["torch"]` — **whatever the test
+  running at that moment has put there**. The test above stubs a fake torch whose `empty_cache`
+  appends to a list, so a watcher firing inside its two assertions adds to that list. Three appends
+  were three other tests' watchers.
+
+  A plugin counting live threads at the end of the session, over three test files:
+
+  | | before | after |
+  |---|---|---|
+  | `noaap-card-idle` | **59** | **0** |
+  | `noaap-jobs-*` (per `Jobs`, two per App) | 128 | 128 |
+  | `noaap-details` | 118 | 118 |
+
+  The job workers and the details thread predate this and touch nothing global; they are left alone.
+
+- [x] **BX3** — the fix, at the root rather than at the assertion: `conftest.isolated` makes
+  `noaap.timing._in_the_background` — the one line that starts such a thread — do nothing, so no test
+  leaves a timer that tidies up the card. A test that is *about* the watcher replaces the same hook
+  with its own collector and drives the loop by hand, as those tests already did. The flaky assertion
+  is left exactly as it was, because it is the contract; three new cases say the rest out loud: an
+  `App` starts one watcher, a window of 0 starts none, and no test leaves one running.
+
+- [x] **BX4 · M** — the whole suite three times in a shuffled order (a seeded
+  `pytest_collection_modifyitems`, no new dependency): seeds 1, 2 and 3, **1624 passed, 11 skipped**
+  each time, 0 `noaap-card-idle` threads alive at the end of each run.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BX cases (P67c: the test that counted three releases) | 4 | 0 — the flaky test is the canary and keeps its assertion | CI saw `emptied == [1, 1, 1]` where one call was made, on two commits, passing on a rerun of the same commit. Cause, counted: every `App` starts a card-idle watcher with no lifecycle, **59** of them were alive after three test files, and when a window passes such a thread calls `release_gpu_memory()` — which reads `sys.modules["torch"]`, i.e. whatever the test running at that moment has stubbed there. Fixed at the root: the one line that starts the thread does nothing in tests, so 59 → **0**; three cases now say an `App` starts one, a window of 0 starts none, and no test leaves one running. The suite in shuffled order, seeds 1–3: 1624 passed each time. |
 | 2026-09-30 | the BW cases (P67b: a job holds only what it uses) | 5 | **2 defects of mine, both found by the reviewer using P67** | `listen` leaves 3.6 GB of the big model on the card; slice 82's gate counted it as room and sent the *alignment* that followed to a card with 3355 MiB free for a run that peaks at 3460 — it died half way through, which is two buttons pressed in turn. A job now lets go of what it will not use before it asks for room, and says so in its first line. Measured on a real server, second opinion on: `listen → align → listen` all succeed (29.9 / 21.5 / 29.8 s, peaks 4560 / 4448 / 4580 MiB, held after each 3856 / 568 / 3940 MiB), and four in a row from a held state too. Second defect: with every weight on the disk the log still greeted the model hub — measured to the component, it is the **separator** asking `hf_hub_download` for metadata about a file it has, not the aligner and not the big model. Every load now runs with the hub switched off both ways the library reads it, retrying once with a download that says so: **0** hub lines against 2 over the same jobs, and an opt-in test loads all three models with sockets forbidden. **And one of my own, unforced:** a `pkill` pattern of mine matched the user's own socket-activated service and stopped it; the socket brought it back in three seconds, but I had been told twice not to touch it. 1621 pytest + 135 node. |
 | 2026-09-30 | the BV cases (P67: words placed by listening first) | 7 | 0 | Forced alignment cannot know that a line is not in the recording; a transcript can. `listen`, asked of the drafting slot, with the matching in the core: `difflib` over normalised words, a chorus matched to its three occurrences in order, and a line placed when **half** of its own words are found in one run. Measured over fifteen tracks (725 lines) and the reported case: the aligner places **96%** at a median 0.27 s and refuses 3 of the 4 absent lines; listening places **57%** at 0.49 s and refuses **4 of 4** — so it is a second action, not a replacement. Two measurements changed the design mid-build: a model left to detect the language wrote **27 words of Russian boilerplate** over a German song (the words name their language now, when two stopword lists are sure), and a speech vendor over a band returned an **empty transcript on five of six tracks** (a vendor is sent the isolated voice, the local model the track — 412 lines against 399, and 36 against 0 on the case). Report only: the aligner vetoed by the transcript is the most accurate thing measured (92% within a second) and costs 330 right stamps, with no setting that refuses the fourth absent line for free. Deepgram: 13 calls, 47.55 of 60 minutes. 1611 pytest + 135 node. |
 | 2026-09-30 | the BU cases (P66: the app gives the graphics memory back) + BT6 | 5 | 0 | The installed service held **4320 MiB of 8188** while idle and a second program failed with an out-of-memory. Measured first: one alignment holds **3608 MiB**, and `release_gpu_memory()` while the provider is alive frees **nothing** — the weights are still referenced and the second opinion's **3776 MiB** is not torch's memory at all. Dropping the models takes it to **160 MiB** (the CUDA context), and loading every model again off a warm disk costs about **2 s**. So the provider is now held between jobs and let go after **60 s** of quiet (`timing_card_idle_seconds`), the check and the release are one step under the lock a job must pass, and a queued job counts as work in hand. A job that finds the card full runs on the processor and says so in its first line (**11.4×** the time, measured: 13.3 s → 152.1 s); one that runs out half way through fails with one sentence and no traceback. Report only: Sabaton — *Smoking Snakes* loses ten stamps to the **cross-check**, not to the aligner or to slice 81 — all ten within **0.3 s** of LRCLIB's own stamps, seven of them piled by the second opinion into a 37-second instrumental break. 1586 pytest + 132 node. |

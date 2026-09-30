@@ -2679,6 +2679,10 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 
 ### Decisions of 2026-09-30 (what a job holds and what it asks for, §9, slice 84)
 
+- **A background thread with no lifecycle is global state.** One `App` per process is right; 59 of
+  them in a test session reached into whichever test had stubbed `sys.modules`, and the symptom was a
+  release counter reading three (`docs/qa-catalog.md`, BX). Fix the thread, not the assertion.
+
 - **A held model is room for the job that reuses it and an obstacle to the job that does not.** The
   gate has to know which, and the job has to let go before it asks.
 - **The first line of a job says what it just did to the machine**, not only what it is about to do.
