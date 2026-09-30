@@ -684,19 +684,48 @@ export function claimOffer(d) {
  *
  * `previous` is the position at the last tick; a gap larger than `JUMP` means somebody moved it.
  *
- * **A window already in the file is not a window any more** (§9, slice 86). `applied` says the file on
- * disk has been cut to these points: its own clock then starts at the cut, and measuring the playhead
- * against the *original's* numbers skipped `trim_start` seconds of an already-cut song — measured in
- * Chrome in app mode, where a track that followed one of these began 4.9 s into itself, which is the
- * user's "it jumps to the next one right from the middle". While the points are being changed
- * (`unsaved`) the preview is exactly what is wanted, so then it still runs — and a handle being
- * dragged sets `unsaved` the moment it moves a number, which is what makes that work.
+ * **The window belongs to whatever the player actually loaded** (§9, slice 87). A cut track is played
+ * from its untouched original, and *that* is the file the window applies to. Where the player is
+ * holding the cut file instead — which happens for the seconds between a save and the page learning
+ * that the file has changed — the window is already in the bytes, and applying it again skipped the
+ * head twice: the user's "after saving it starts as if the cut part was the original, starting the
+ * front trim into the trimmed part". So `onTheOriginal` decides, and it is set from the URL the player
+ * asked for, not from the plan's fields, which can be half a save old.
  */
 export const JUMP = 1.5;
 
+/** What the player must ask for to hear this track (§9, slice 87).
+ *
+ * A cut track is played from its untouched original, so that the marks and what is heard share one
+ * clock. The `c=` token is the shape of the file being asked for — the trim it is cut to, or its
+ * length when it is not cut — so that a file which has just been *replaced* is never reused from the
+ * media cache: measured, the element went on reporting 194.85 s for a file that had become 186.23 s.
+ */
+export function audioRequest(entry) {
+  const original = Boolean(entry.trimmed);
+  const shape = entry.trimmed || (entry.file_length == null ? "" : String(entry.file_length));
+  return { original, token: shape,
+           query: (original ? "&o=1" : "") + (shape ? `&c=${encodeURIComponent(shape)}` : "") };
+}
+
+/** What a finished write job changes about a queue entry (§9, slice 87).
+ *
+ * Returns the fields to take from the fresh plan. **Never the file being played**: the element is in
+ * the middle of something the user started, and a save is not a request to restart it — the page
+ * updates what it knows and the next start of that track uses it. Marks the user has moved and not
+ * saved are kept, because they are the user's work and the server does not know about them yet.
+ */
+export function syncEntry(entry, fresh) {
+  const editing = entry.start !== entry.savedStart || entry.end !== entry.savedEnd;
+  const patch = { trimmed: fresh.trimmed ?? null, file_length: fresh.file_length,
+                  duration: fresh.duration, savedStart: fresh.trim_start ?? null,
+                  savedEnd: fresh.trim_end ?? null };
+  return editing ? patch : { ...patch, start: fresh.trim_start ?? null, end: fresh.trim_end ?? null };
+}
+
 export function trimGuard({ current, start, end, previous = null, jumped = null,
-                            dragging = false, unsaved = false, applied = false }) {
-  if (applied && !unsaved) return {};   // the file *is* the window
+                            dragging = false, unsaved = false, onTheOriginal = true }) {
+  if (!onTheOriginal) return {};   // the file the player is holding already carries the cut
   // the player knows when it has just seeked; everyone else can tell from the gap since the last tick
   const moved = jumped !== null ? jumped
     : previous !== null && Math.abs(current - previous) > JUMP;

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lineAt, lineStart, nudged, shifted, stampOf, stampText, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
+import { audioRequest, lineAt, lineStart, nudged, shifted, stampOf, stampText, syncEntry, tapped, tenth, toFileClock, toPlayerClock, trimGuard, trimOffset, withStamp }
   from "../../src/noaap/webui/logic.mjs";
 
 test("an untrimmed track has one clock", () => {
@@ -147,24 +147,89 @@ test("an unsaved trim always stops rather than carrying itself into the next son
   assert.equal(said.next, undefined);
 });
 
-// -- a window already in the file is not a window any more (§9, slice 86) ----------------------------
+// -- the window belongs to the file the player loaded (§9, slice 86, slice 87) ------------------------
 
-test("a track whose file is already cut is played as it is", () => {
-  // the file's clock starts at the cut, so the plan's numbers belong to the original, not to this file
-  assert.deepEqual(trimGuard({ current: 0.5, start: 48.1, end: 259.8, applied: true }), {});
-  assert.deepEqual(trimGuard({ current: 300, start: 48.1, end: 259.8, applied: true }), {});
-});
-
-test("without the cut in the file the window is previewed as before", () => {
+test("the window is previewed on the original, which is what a cut track is played from", () => {
   assert.deepEqual(trimGuard({ current: 0.5, start: 48.1, end: 259.8 }), { seekTo: 48.1 });
   assert.deepEqual(trimGuard({ current: 300, start: 48.1, end: 259.8, previous: 299.9 }), { next: true });
+  assert.deepEqual(trimGuard({ current: 0.5, start: 48.1, end: 259.8, onTheOriginal: true }),
+                   { seekTo: 48.1 });
 });
 
-test("and while the points are being changed the preview runs even on a cut file", () => {
-  assert.deepEqual(trimGuard({ current: 0.5, start: 5, end: 100, applied: true, unsaved: true }),
-                   { seekTo: 5 });
-  assert.deepEqual(trimGuard({ current: 120, start: 5, end: 100, applied: true, unsaved: true }),
-                   { seekTo: 99.95, pause: true });
-  // a handle held without moving a number changes nothing, so the file is still the window
-  assert.deepEqual(trimGuard({ current: 0.5, start: 5, end: 100, applied: true, dragging: true }), {});
+test("a player holding the cut file applies nothing: the bytes already carry it", () => {
+  // the seconds between a save and the page learning that the file changed — the user's double skip
+  assert.deepEqual(trimGuard({ current: 0.5, start: 8.6, end: null, onTheOriginal: false }), {});
+  assert.deepEqual(trimGuard({ current: 300, start: 48.1, end: 259.8, onTheOriginal: false }), {});
+  assert.deepEqual(trimGuard({ current: 0.5, start: 8.6, end: 100, onTheOriginal: false,
+                              unsaved: true }), {}, "not even while the marks are being moved");
+});
+
+// -- what the player asks for, and what a save teaches it (§9, slice 87) ------------------------------
+
+test("an untrimmed track is asked for as it is, with its length as the token", () => {
+  assert.deepEqual(audioRequest({ trimmed: null, file_length: 194.841 }),
+                   { original: false, token: "194.841", query: "&c=194.841" });
+});
+
+test("a cut track is asked for as the original, with the cut as the token", () => {
+  assert.deepEqual(audioRequest({ trimmed: "8.60-", file_length: 186.22 }),
+                   { original: true, token: "8.60-", query: "&o=1&c=8.60-" });
+});
+
+test("the token changes when the file does, so a replaced file is never reused", () => {
+  const before = audioRequest({ trimmed: null, file_length: 194.841 });
+  const after = audioRequest({ trimmed: "8.60-", file_length: 186.22 });
+  assert.notEqual(before.query, after.query);
+});
+
+test("a track with no length yet is asked for without a token", () => {
+  assert.deepEqual(audioRequest({ trimmed: null, file_length: null }),
+                   { original: false, token: "", query: "" });
+});
+
+test("after a save the entry learns the cut, and the marks come from the plan", () => {
+  const entry = { start: 8.6, end: null, savedStart: 8.6, savedEnd: null, trimmed: null,
+                  file_length: 194.841 };
+  const fresh = { trimmed: "8.60-", trim_start: 8.6, trim_end: null, file_length: 186.22, duration: 200 };
+
+  assert.deepEqual(syncEntry(entry, fresh),
+                   { trimmed: "8.60-", file_length: 186.22, duration: 200, savedStart: 8.6,
+                     savedEnd: null, start: 8.6, end: null });
+});
+
+test("a page that never saw the save learns everything at once", () => {
+  // the flow the user hit: the page's entry still says "not cut" while the file on disk is cut
+  const entry = { start: null, end: null, savedStart: null, savedEnd: null, trimmed: null,
+                  file_length: 194.841 };
+  const fresh = { trimmed: "12.25-", trim_start: 12.25, trim_end: null, file_length: 182.58, duration: 200 };
+
+  const patched = { ...entry, ...syncEntry(entry, fresh) };
+
+  assert.equal(patched.trimmed, "12.25-");
+  assert.equal(patched.start, 12.25);
+  assert.equal(audioRequest(patched).original, true, "and the next play asks for the original");
+});
+
+test("marks the user has moved but not saved are kept", () => {
+  const entry = { start: 30, end: 90, savedStart: 8.6, savedEnd: null, trimmed: "8.60-",
+                  file_length: 186.22 };
+  const fresh = { trimmed: "8.60-", trim_start: 8.6, trim_end: null, file_length: 186.22, duration: 200 };
+
+  const patched = { ...entry, ...syncEntry(entry, fresh) };
+
+  assert.equal(patched.start, 30, "their unsaved mark survives a refresh");
+  assert.equal(patched.end, 90);
+  assert.equal(patched.savedStart, 8.6, "and what is on disk is remembered as such");
+});
+
+test("a cleared trim takes the entry back to the plain file", () => {
+  const entry = { start: null, end: null, savedStart: 8.6, savedEnd: null, trimmed: "8.60-",
+                  file_length: 186.22 };
+  const fresh = { trimmed: null, trim_start: null, trim_end: null, file_length: 194.841, duration: 200 };
+
+  const patched = { ...entry, ...syncEntry(entry, fresh) };
+
+  assert.equal(patched.trimmed, null);
+  assert.equal(audioRequest(patched).original, false);
+  assert.equal(audioRequest(patched).query, "&c=194.841");
 });

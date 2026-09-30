@@ -5243,10 +5243,68 @@ to Cloudflare"* for the non-app path.
   (no skip, no early advance), the same track without the cut in the file is previewed as before, and
   while the points are being changed the preview runs on a cut file too.
 
+## CA. The window belongs to the file the player loaded (P70, DESIGN §9, slice 87)
+
+- [x] **CA1 · M** — the user's own flow, walked in Chrome **in app mode**, muted, on a copy: open the
+  album, play the untrimmed track, set a front mark at 8 s in the player, save, play again from the row
+  and with ▶ from start, reload, then a track that was already cut when the page loaded.
+
+  | step | asks for the original | starts at | loads | error |
+  |---|---|---|---|---|
+  | played once, untrimmed | no | 2.07 | 1 | — |
+  | front mark set at 8 s | no | 8.91 | 1 | — |
+  | just after the save | no | 17.92 | 1 | — |
+  | **played again from the row** | **no** | **2.12** | 2 | — |
+  | **▶ from start** | **no** | **1.90** | 2 | — |
+  | after a reload, played again | yes | 2.09 | 1 | — |
+  | cut before the page loaded | yes | 2.07 | 2 | — |
+
+  Three separate things are wrong in those two rows. The page asks for the **plain** file, which by then
+  *is* the cut one, and applies the trim window to it — the user's double skip. The marks they had just
+  saved are **gone** from the player (▶ from start went to 1.90, not to 8.6). And after a reload the
+  window was not applied at all (2.09 on a mark at 8.6) — that is slice 86's flag doing the wrong thing
+  on a *correct* page, which I had measured in P69 as "no skip" without asking which file was playing:
+  it was the original, and those seconds were audio the user had cut away.
+
+- [x] **CA2 · M** — the cause, found by asking the page and the server at each step
+
+  The album object is refreshed only on a **busy → idle transition observed by a poll**
+  (`prevBusy && !state.busy`), and cutting one track takes about a second: a job submitted and finished
+  between two polls never produces that transition, so nothing refreshes. Measured directly — the
+  server said `trimmed = 8.60-` and `file_length = 186.22` while the page's own row still showed no trim.
+  Not a caching problem: a fresh element asked for the same URL got **186.23 s** (the cut file) and the
+  service worker never touches `/api/*`. But the *player's* element, told to load the same URL string it
+  already had, went on reporting **194.85 s** — the media it already held — which is why the URL now
+  carries the shape of the file (`c=` = the trim, or the length).
+
+- [x] **CA3 · M** — the same seven steps after the fix
+
+  | step | asks for the original | starts at | loads | error |
+  |---|---|---|---|---|
+  | played once, untrimmed | no | 2.08 | 1 | — |
+  | front mark set at 8 s | no | 8.92 | 1 | — |
+  | **just after the save** | no | 17.93 | **1** | — |
+  | played again from the row | **yes** | **10.69** | 2 | — |
+  | ▶ from start | yes | 10.49 | 2 | — |
+  | after a reload, played again | yes | 10.42 | 1 | — |
+  | cut before the page loaded | yes | 14.31 | 2 | — |
+
+  **No load at the save** — the sound carries on, which is the answer to R-295: the page updates what it
+  knows and the next start of that track loads the right file. The element's own log shows exactly one
+  clean swap, at the moment the user pressed play: `emptied` → `loadstart` on `…&o=1&c=8.60-`. No
+  `error` event and no *"The play() request was interrupted by a new load request"* in any step; asking
+  for a file that is already loaded is now a seek, not a second load.
+
+- [x] **CA4** — the rules on fixtures (node): what the player asks for, untrimmed and cut, and that the
+  token changes when the file does; what a finished write job teaches an entry, including a page that
+  never saw the save, a cleared trim, and marks the user moved but did not save; and the window applied
+  on the original, not applied on the cut file, not even while marks are being moved.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the CA cases (P70: the window belongs to the loaded file) | 4 | **3 defects, one of them mine from P69** | The user on 1.19.0: *"after saving it starts as if the cut part was the original."* Walked their flow in Chrome in app mode: the album object is refreshed only on a busy → idle transition **seen by a poll**, and cutting one track takes about a second — so a short job leaves the page believing the file is uncut. It then asks for the plain file (which by now is the cut one) and applies the window to it: the double skip. Two more in the same rows: the marks just saved were gone from the player (▶ from start went to 1.90 instead of 8.6), and after a reload the window was **not** applied at all — my slice 86 flag, which I had measured in P69 as "no skip" without asking which file was playing. Now: the window is applied only to the file the player loaded, the audio URL carries the shape of the file (measured: the element kept reporting 194.85 s for a file that had become 186.23 s), and a write job of ours refreshes the panel from its own ending — teaching the queue without touching the source, so a save never interrupts the sound and the *"play() request was interrupted"* message cannot arise. Same seven steps after the fix: no load at the save, then the original with its window at 10.69 s on a mark of 8.6, across a reload and on a track cut before load, no errors. 1640 pytest + 145 node. |
 | 2026-09-30 | the BZ cases (P69: a cut file starts at zero) | 5 | 0 — two defects of the program's, one of them mine from P63's measurement | The user's *"it jumps to the next one right from the middle"*, reproduced in Chrome **in app mode** on copies: a cut track began **4.9 s into itself** and the track after it began at **4.948**. The cause is the page — the trim guard measured an already-cut file's playhead against the *original's* trim points — and after the fix the same measurement reads no skip and **0.018** for the next track. Underneath it, the container: `-ss` before `-i` keeps the packets before the cut and marks them negative (`-0.900000` for a 4.9 s trim, every front-cut file in the library), so a player's clock runs past the duration it reports and `ended` came 2.8 s late. The cut now seeks on the output side with `make_zero`: first packet **0.000**, length within one 20 ms packet, 14 KB smaller, nothing re-encoded — and the obvious alternative (`make_zero` on the input seek) was measured and rejected because it keeps the pre-roll. Files already cut the old way are named in the dry run and cut again from the untouched original; where none is kept, nothing is touched and it says so. P63's fifteen clean clicks were measured on files that had never been cut, which is why they found nothing. 1640 pytest + 138 node. |
 | 2026-09-30 | the BY cases (P68: a dry run that names everything) | 6 | **1 defect of mine in the report itself, found by running it** | `repair --dry-run` said lengths and albums and nothing about tags; the real run rewrote **376** of the user's audio files, after the user had been told none would be. The report is built from the pass's own predicates now — one line per track for renames, trims and retags with the values that change — and a test compares the dry set with the real set. On copies of two real albums: 18 retags named, 0 of 61 files touched by the dry run, the two sets agreeing exactly, and **−1 byte** on each rewritten file. Why those files: LRCLIB ends a lyric whose singing stops early with a bare stamp and its **trailing space**, which was written into the tag while the reader strips it — 52 of 52 stale opus files differ in exactly that character, 864 tracks in the test library were stale for it. Stripped where it enters now. My own defect: the first report showed sixty characters of each side and printed the same text twice, which is how the trailing space stayed invisible; it names the character they stop agreeing at. Also: the *"1 leaked semaphore"* is **tqdm's** multiprocessing lock behind stable-ts's progress bar (traced to the frame; a plain lock settles it, and `verbose=None` takes the bars out of the log), and `http` can now listen. 1633 pytest + 135 node. |
 | 2026-09-30 | the BX cases (P67c: the test that counted three releases) | 4 | 0 — the flaky test is the canary and keeps its assertion | CI saw `emptied == [1, 1, 1]` where one call was made, on two commits, passing on a rerun of the same commit. Cause, counted: every `App` starts a card-idle watcher with no lifecycle, **59** of them were alive after three test files, and when a window passes such a thread calls `release_gpu_memory()` — which reads `sys.modules["torch"]`, i.e. whatever the test running at that moment has stubbed there. Fixed at the root: the one line that starts the thread does nothing in tests, so 59 → **0**; three cases now say an `App` starts one, a window of 0 starts none, and no test leaves one running. The suite in shuffled order, seeds 1–3: 1624 passed each time. |

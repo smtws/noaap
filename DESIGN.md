@@ -2544,6 +2544,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    *plan* is perfectly tidy, so the pass had to be taught not to skip it: that is one `ffprobe` per cut
    track, and most tracks are not cut.
 
+87. ✅ **The window belongs to the file the player loaded** (2026-09-30, P70). The user on 1.19.0:
+   *"trim process is nice but after saving it starts as if the cut part was the original, starting the
+   front trim into the trimmed part not into the original."* Measured, in Chrome in app mode on a copy,
+   by walking their flow: the page's album object is **not refreshed after a short job**. The panel was
+   rebuilt only on a busy → idle transition seen by a poll, and cutting one track takes about a second,
+   so a job submitted at *t* and finished before the first poll never produces that transition. The page
+   then still believes the file is uncut: it asks for the plain file — which by now *is* the cut one —
+   and applies the trim window to it. Head skipped twice, which is the sentence above.
+   **Three things follow, and the first is the invariant.** The window is applied only to the file the
+   player actually loaded (`onTheOriginal`, set from the URL asked for, not from plan fields that can be
+   half a save old). My slice 86 flag was the wrong shape: it asked whether the *plan* said the file was
+   cut, and with a fresh page that meant the window was dropped for a track played from its original —
+   the one case where it must run. I measured that as "no skip" without checking which file was playing.
+   **Second, the audio URL carries the shape of the file** (`c=` — the trim it is cut to, or its length):
+   a file that was just replaced is never reused from the media cache. Measured: after a cut the element
+   went on reporting 194.85 s for a file that had become 186.23 s.
+   **Third, a job of ours that changed the library refreshes the panel**, whether or not a poll saw it
+   running — and the queue entries are taught what the fresh plan says, *without touching the source*.
+   The element is in the middle of something the user started; a save is not a request to restart it,
+   and replacing the source under a pending `play()` is what produced *"The play() request was
+   interrupted by a new load request"* (R-295). So the sound carries on, the page learns, and the next
+   start of that track loads the right file. Marks the user has moved and not saved are kept.
+   Measured after the fix, the same seven steps: no load at all at the save, then the original with its
+   window (10.69 s on a mark at 8.6), across a reload, and on a track cut before the page was opened —
+   with no error and no interrupted-play message anywhere.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2738,6 +2764,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (the window belongs to the loaded file, §9, slice 87)
+
+- **A rule about a file must be keyed to the file in hand**, not to what a record says about it. The
+  player knows which URL it asked for; that is the only trustworthy answer.
+- **A URL must change when the bytes do.** Otherwise the media cache is free to serve what it has.
+- **Do not swap a playing source to tell the page something.** Update what the page knows; let the
+  sound finish.
+- **A refresh that depends on seeing a job run will miss the short jobs.** Refresh from the job's own
+  ending.
+- **Measuring the number is not measuring the thing.** I read "playback starts at 2.48 s" as correct in
+  P69 without asking which file was playing; it was the original, and those 2.48 s included audio the
+  user had cut away.
 
 ### Decisions of 2026-09-30 (a cut file starts at zero, §9, slice 86)
 

@@ -388,11 +388,16 @@ older version are found by their own start time and **cut again from the untouch
 them: `noaap repair --dry-run` names each one (*"01 would be cut again: its clock starts at -0.900 s"*)
 and says so when no original is kept, in which case nothing is touched.
 
-**And a track whose file is already cut is played as it is.** The trim points in the plan belong to the
-*original*; the file on disk has already been cut to them. Measuring the playhead against them skipped
-the head a second time — measured in the installed app: a cut track began 4.9 s into itself, and the
-track after it started at 4.948 instead of 0. While you are moving the handles the preview still skips
-and stops, which is what it is for.
+**A save never interrupts what you are hearing.** When a trim is saved, the page updates what it
+knows — which file to ask for next time, and what the saved marks are — and the sound carries on. The
+next time you start that track it plays the untouched original with the trim previewed, which is how a
+cut track is always played. Marks you have moved but not saved are kept when the page refreshes.
+
+**And the trim window is only ever applied to the file the player actually loaded.** A cut track is
+played from its untouched original, so the marks and what you hear share one clock; where the player is
+holding the cut file instead — the seconds between a save and the page learning of it — the cut is
+already in the bytes and nothing is added to it. Getting this wrong is what made a cut track begin 4.9 s
+into itself and the track after it start at 4.948 instead of 0.
 
 **Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
 prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*

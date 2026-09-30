@@ -1,8 +1,8 @@
-import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, canSeed, claimOffer, draftNotice, draftText,
+import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         candidateLine, copyLabels, trimGuard, awaitingChoice, resetKind, roundMark,
+         candidateLine, copyLabels, syncEntry, trimGuard, awaitingChoice, resetKind, roundMark,
          scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
          toFileClock, trimOffset, trimTarget, wordsAfterClaim }
   from "./logic.mjs";
@@ -79,15 +79,23 @@ function setWorking(button, on) {
 
 // when a job of ours finishes: free its button, say how it went
 function settleJobs() {
+  let wrote = false;
   for (const [id, info] of mine) {
     const job = state.jobs.find((j) => j.id === id);
     if (!job || ["queued", "running"].includes(job.state)) continue;
     mine.delete(id);
     if (info.button?.isConnected) setWorking(info.button, false);
+    if (job.lane !== "read") wrote = true;
     const last = (job.log || []).filter((l) => !l.startsWith("  ")).at(-1) || "";
     const text = { done: "✓", failed: "✗", blocked: "⏸", cancelled: "⏹" }[job.state] + ` ${info.label}` + (last ? ` — ${last}` : "");
     toast(text, job.state);
   }
+  // **a job of ours that changed the library is a refresh, whether or not a poll saw it running**
+  // (§9, slice 87). The panel used to be rebuilt only on a busy → idle transition, and a short job —
+  // cutting one track takes about a second — can finish before the first poll after the submit, so the
+  // transition never happens: measured, the page then kept the marks and the file of *before* the save,
+  // played the cut file with the window applied, and that is the user's double skip.
+  if (wrote) refreshAlbumPanel();
 }
 
 function toast(text, kind = "done") {
@@ -524,11 +532,34 @@ async function refreshAlbumPanel() {
   try {
     currentAlbum = await api(`/api/album?id=${encodeURIComponent(currentAlbum.source_id)}`);
   } catch { return; /* album moved or gone */ }
+  syncQueueWith(currentAlbum);
   renderAlbum();
   for (const tr of document.querySelectorAll("#album tbody tr")) {
     const t = currentAlbum.tracks.find((x) => x.video_id === tr.dataset.id);
     if (t && before.get(t.video_id) !== rowKey(t)) tr.classList.add("changed");
   }
+}
+
+/** Teach the player what a write job just did to these files (§9, slice 87).
+ *
+ * **What it does not do is touch `audio.src`.** The element is in the middle of something the user
+ * started; a save is not a request to restart it, and replacing the source under a pending `play()` is
+ * where *"The play() request was interrupted by a new load request"* comes from (R-295). So the page
+ * updates what it *knows* — which file to ask for next time, and what the saved marks are — and the
+ * sound carries on. The next start of that track loads the right file, and the trim window is applied
+ * only to the file actually loaded, so what is playing now stays coherent either way.
+ *
+ * A track whose marks the user has moved but not saved keeps them: their work is not overwritten by
+ * what the server currently holds.
+ */
+function syncQueueWith(plan) {
+  for (const entry of queue) {
+    if (entry.album !== plan.source_id) continue;
+    const fresh = plan.tracks.find((t) => t.video_id === entry.video_id);
+    if (!fresh) continue;
+    Object.assign(entry, syncEntry(entry, fresh));
+  }
+  renderTrim();
 }
 
 // -- offering things to MusicBrainz (\u00a79.43) -------------------------------------------------
@@ -1967,8 +1998,19 @@ function playIndex(i) {
   // A cut file no longer contains what trim_start counts from, so the player would skip the
   // head twice (measured: 8s of a trimmed track were unreachable). It plays the untouched
   // original instead and previews the trim itself, which keeps every number on one clock.
-  const uncut = t.trimmed ? "&o=1" : "";
-  audio.src = `/api/audio?id=${encodeURIComponent(t.album)}&v=${encodeURIComponent(t.video_id)}${uncut}`;
+  const asked = audioRequest(t);
+  // **the queue entry remembers what was loaded** (§9, slice 87): the trim window may only be applied
+  // to the original, and after a save this page can still be holding the older answer about the file.
+  t.playingOriginal = asked.original;
+  const src = `/api/audio?id=${encodeURIComponent(t.album)}&v=${encodeURIComponent(t.video_id)}${asked.query}`;
+  // **not a second load of what is already loaded** (R-295): setting `src` again starts a new load and
+  // aborts a play that has not settled, which is where "The play() request was interrupted by a new
+  // load request" comes from. The same file, asked for twice, is one load and a seek to its start.
+  if (audio.src !== new URL(src, location.href).href) {
+    audio.src = src;
+  } else if (audio.currentTime > 0) {
+    audio.currentTime = 0;
+  }
   audio.play().catch((e) => toast(`Cannot play: ${e.message}`, "failed"));
   $("#player").hidden = false;
   document.body.classList.add("has-player");
@@ -2006,7 +2048,9 @@ audio.addEventListener("timeupdate", () => {
                              previous: lastTick, jumped: justSought || null, dragging, unsaved,
                              // the file on disk is already cut to these points, so its own clock is
                              // the window and the plan's numbers belong to the original (§9, slice 86)
-                             applied: Boolean(t.trimmed) });
+                             // the window belongs to the original, which is what the player loads for
+                             // a cut track; a cut file already carries it (§9, slice 86, slice 87)
+                             onTheOriginal: t.playingOriginal !== false });
     justSought = false;
     if (said.seekTo !== undefined) audio.currentTime = said.seekTo;
     if (said.pause) audio.pause();
