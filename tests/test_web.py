@@ -170,6 +170,98 @@ def test_settings_validate_then_apply(server, monkeypatch, tmp_path):
     assert "concurrency = 1" in text and "musicbrainz = false" in text and f'library_root = "{new_lib}"' in text
 
 
+def test_the_other_sources_are_saved_like_every_other_setting(server, monkeypatch, tmp_path):
+    """Settings > Sources (§9, slice 92): a session from a browser, or the *path* of a cookies file."""
+    app, c = server
+    monkeypatch.setattr("noaap.config.detect_browsers", lambda: ["firefox", "chrome"])
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    st = c.get("/api/state").json()["settings"]
+    assert set(st["sources"]["patreon"]) >= {"cookies_from_browser", "cookies_file", "audio_from_video",
+                                             "captions"}
+
+    assert c.post("/api/settings", json={"patreon_cookies_from_browser": "netscape"},
+                  headers=HDR).status_code == 400
+    # a cookies file is a path, and a path that is not there is not a setting
+    assert c.post("/api/settings", json={"patreon_cookies_file": "cookies.txt"},
+                  headers=HDR).status_code == 400
+    assert c.post("/api/settings", json={"patreon_cookies_file": str(tmp_path / "nope.txt")},
+                  headers=HDR).status_code == 400
+
+    cookies = tmp_path / "patreon-cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File\n")
+    r = c.post("/api/settings", json={"patreon_cookies_from_browser": "firefox",
+                                      "patreon_cookies_file": str(cookies),
+                                      "patreon_audio_from_video": False, "patreon_captions": True},
+               headers=HDR)
+    assert r.status_code == 200
+    patreon = r.json()["sources"]["patreon"]
+    assert patreon == {"cookies_from_browser": "firefox", "cookies_file": str(cookies),
+                       "audio_from_video": False, "captions": True,
+                       "post_cap": app.cfg.patreon_post_cap}
+    text = (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
+    assert f'patreon_cookies_file = "{cookies}"' in text
+    assert 'patreon_cookies_from_browser = "firefox"' in text and "patreon_captions = true" in text
+    # the file's *contents* are never part of any answer
+    assert "Netscape HTTP Cookie File" not in c.get("/api/state").text
+
+    assert c.post("/api/settings", json={"patreon_cookies_file": ""}, headers=HDR).status_code == 200
+    assert app.cfg.patreon_cookies_file is None
+
+
+def test_what_the_local_timing_uses_is_saved_and_answered(server, monkeypatch, tmp_path):
+    app, c = server
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    assert c.get("/api/state").json()["settings"]["timing"]["device"] == "auto"
+    assert c.post("/api/settings", json={"timing_device": "quantum"}, headers=HDR).status_code == 400
+    r = c.post("/api/settings", json={"timing_device": "cpu", "timing_verify": False}, headers=HDR)
+    assert r.status_code == 200
+    assert (app.cfg.timing_device, app.cfg.timing_verify) == ("cpu", False)
+    assert r.json()["timing"] == {**r.json()["timing"], "device": "cpu", "verify": False}
+    # "auto" is the third state and is what the config holds as nothing at all
+    r = c.post("/api/settings", json={"timing_verify": "auto"}, headers=HDR)
+    assert app.cfg.timing_verify is None and r.json()["timing"]["verify"] == "auto"
+    assert 'timing_device = "cpu"' in (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
+
+
+def test_watched_folders_are_edited_here_and_written_to_the_config(server, monkeypatch, tmp_path):
+    """Settings > Watched folders (§9, slice 92): the `[[watch]]` tables, saved as tables."""
+    app, c = server
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    # outside the library, which in this fixture is `tmp_path` itself — an intake folder inside it is
+    # refused, and that refusal is one of the cases below
+    incoming = tmp_path.parent / "watched-incoming"
+    incoming.mkdir(exist_ok=True)
+
+    # the same rules the config applies: a folder that is not a folder, and the two shapes nested
+    assert c.post("/api/settings", json={"watches": [{"name": "in", "folder": "incoming"}]},
+                  headers=HDR).status_code == 400
+    assert c.post("/api/settings", json={"watches": [{"name": "in", "folder": str(tmp_path / "nope")}]},
+                  headers=HDR).status_code == 400
+    bad = c.post("/api/settings", json={"watches": [{"name": "in", "folder": str(app.library),
+                                                     "shape": "intake"}]}, headers=HDR)
+    assert bad.status_code == 400 and "library" in bad.json()["error"]
+    assert c.post("/api/settings", json={"watches": [{"name": "in", "folder": str(incoming),
+                                                      "shape": "sideways"}]},
+                  headers=HDR).status_code == 400
+
+    r = c.post("/api/settings", json={"watches": [
+        {"name": "incoming", "folder": str(incoming), "shape": "intake"},
+        {"name": "itself", "folder": str(app.library), "shape": "library"}]}, headers=HDR)
+    assert r.status_code == 200
+    assert [(w.name, str(w.folder), w.shape) for w in app.cfg.watches] == [
+        ("incoming", str(incoming), "intake"), ("itself", str(app.library), "library")]
+    assert [(w["name"], w["shape"], w["there"]) for w in r.json()["watching"]] == [
+        ("incoming", "intake", True), ("itself", "library", True)]
+    text = (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
+    assert text.count("[[watch]]") == 2
+    assert f'folder = "{incoming}"' in text and 'shape = "library"' in text
+
+    # and taking one away takes its table with it
+    assert c.post("/api/settings", json={"watches": []}, headers=HDR).status_code == 200
+    assert app.cfg.watches == []
+    assert "[[watch]]" not in (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
+
+
 def test_thumbnails_are_proxied_only_from_allowed_hosts(server, monkeypatch):
     app, c = server
     calls = []

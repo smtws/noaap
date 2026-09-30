@@ -3,8 +3,9 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
          binLabel, candidateLine, copyLabels, repairState, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
-         scrollForActive, seedConfirm, shifted, sourceChange, stampOf, tapped, tenth, timingNotice,
-         toFileClock, trimOffset, trimTarget, wordsAfterClaim }
+         scrollForActive, seedConfirm, shifted, sourceChange, stampOf, takeInState, tapped, tenth,
+         timingFields, timingNotice,
+         toFileClock, trimOffset, trimTarget, watchTrouble, wordsAfterClaim }
   from "./logic.mjs";
 
 // noaap web UI. No framework, no build step. All server text goes in via textContent.
@@ -1837,7 +1838,7 @@ function repairSection() {
 function fillRepair(box) {
   const said = repairState({ check: lastCheck, version: state.tracks_version,
                              running: Boolean(state.busy_write) });
-  box.replaceChildren(
+  fill(box,
     h("strong", {}, "Repair the library"),
     h("div", { class: "muted" },
       "Once through every album, offline. It renames files and folders to noaap's scheme, rewrites the "
@@ -1879,6 +1880,7 @@ async function applyRepair(box, button) {
   if (id == null) return;
   await jobSettled(id, 4800);
   lastCheck = null;                                   // the library has changed: check again
+  await poll();                                       // …and it is no longer the writer, which the note says
   fillRepair(box);
   await refreshAlbumPanel();
 }
@@ -1894,25 +1896,155 @@ function missingSection(missing) {
       "If you moved the library, point noaap at it \u2014 the folder above, or `noaap config --library PATH`."));
 }
 
-// What `noaap watch` is looking at. **This app does not watch anything** — a separate process
-// does, so that this one can keep stopping itself when idle — and everything here is read from
-// what that process wrote down, which is the only way this page can be honest about it.
-function watchingSection(watching) {
-  const rows = watching || [];
-  if (!rows.length) {
-    return h("p", { class: "muted setting" },
-      "Nothing is watched. A folder can be watched so that what arrives in it is taken in without "
-      + "anyone typing a command \u2014 `noaap watch --help`, and it is a separate service you start yourself.");
-  }
-  return h("div", { class: "setting" },
-    h("strong", {}, "Watched folders"),
-    ...rows.map((w) => h("div", { class: "muted" },
-      h("strong", {}, w.name), ` \u00b7 ${w.shape === "library" ? "this library, watching itself" : "things dropped here are taken in"}`,
-      h("br"), w.folder,
-      h("br"), w.there ? "" : h("span", { class: "bad" }, "the folder is not there \u00b7 "),
-      w.looked ? `last looked at ${w.looked}` : "not looked at yet \u2014 is `noaap watch` running?",
-      w.waiting ? ` \u00b7 ${w.waiting} arrival(s) it could not hand over` : "")));
+// **Another folder taken into the library** (§9, slice 92). The user asked how to configure
+// *"another local or nas folder for merge"*, and the answer was a command line. It runs the way the
+// repair does: Check writes nothing and lists every line the pass would print, Apply does exactly
+// what that check listed. The folder named here is read; the library is what changes.
+let lastTakeIn = null;   // { folder, mode, lines } of the last check that was read
+
+const TAKE_IN_MODES = [
+  ["merge", "merge \u2014 compare it with this library, keep the better copy"],
+  ["adopt", "adopt \u2014 take it in where it stands, one plan per album"],
+];
+
+function takeInSection() {
+  const folder = h("input", { type: "text", class: "take-in-folder", autocomplete: "off", spellcheck: "false",
+                              placeholder: "/mnt/nas/Music", "aria-label": "the folder to take in" });
+  const mode = h("select", { class: "take-in-mode" },
+    TAKE_IN_MODES.map(([value, text]) => h("option", { value }, text)));
+  const note = h("div", { class: "muted take-in-note" });
+  const check = h("button", { class: "quiet", type: "button" }, "Check");
+  const apply = h("button", { class: "quiet", type: "button" }, "Apply");
+  const listing = h("pre", { class: "check" });
+  const update = () => {
+    const said = takeInState({ folder: folder.value, mode: mode.value, check: lastTakeIn,
+                               running: Boolean(state.busy_write) });
+    note.textContent = said.note;
+    check.disabled = !said.canCheck;
+    apply.disabled = !said.canApply;
+    // the lines belong to the folder they were read for: another folder in the field is another question
+    listing.hidden = !said.matches;
+    listing.textContent = said.matches ? (lastTakeIn.lines.join("\n") || "nothing to do") : "";
+  };
+  folder.addEventListener("input", update);
+  mode.addEventListener("change", update);
+  // Enter in a path field would submit the settings form, which is not what anybody means by it
+  folder.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); check.click(); } });
+  check.addEventListener("click", () => checkTakeIn(folder.value.trim(), mode.value, check, update));
+  apply.addEventListener("click", () => applyTakeIn(apply, update));
+  update();
+  return h("div", { class: "setting take-in" },
+    h("strong", {}, "Take in a folder"),
+    h("div", { class: "muted" },
+      "A folder somewhere else on this machine, or a share you have mounted \u2014 name it in full. "
+      + "What happens to it depends on which of the two ways you choose:"),
+    h("div", { class: "muted" },
+      h("em", {}, "merge"), " compares that folder with this library track by track and copies in only what "
+      + "is better; a file it replaces goes to the recycle bin, so nothing is deleted. ",
+      h("em", {}, "adopt"), " writes one plan file per album in that folder and nothing else \u2014 no file is "
+      + "renamed, moved or retagged. That makes the collection readable where it stands, as its own root: "
+      + "point the library at it afterwards, watch it, or merge from it."),
+    h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, "Folder"), h("small", { class: "muted" }, "a local path, or a mounted share")),
+      folder),
+    h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, "How"), h("small", { class: "muted" }, "the same two ways the command line offers")),
+      mode),
+    note,
+    h("div", { class: "actions" }, check, apply),
+    listing);
 }
+
+async function checkTakeIn(folder, mode, button, update) {
+  const id = await submit("take_in", { folder, mode, dry_run: true }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 2400);
+  if (!job || job.state !== "done") return;          // submit() and the job log have said why
+  lastTakeIn = { folder, mode, lines: (job.log || []).filter((line) => !line.startsWith("===")) };
+  update();
+}
+
+async function applyTakeIn(button, update) {
+  if (!lastTakeIn) return;
+  const { folder, mode, lines } = lastTakeIn;
+  if (!confirm(`Take ${folder} into the library (${mode})?\n\n`
+               + lines.slice(0, 12).join("\n")
+               + (lines.length > 12 ? `\n\u2026 and ${lines.length - 12} more lines` : "")
+               + "\n\nThis is what the check listed. Nothing is deleted"
+               + (mode === "merge" ? " and that folder is not written to." : "."))) return;
+  const id = await submit("take_in", { folder, mode }, button);
+  if (id == null) return;
+  await jobSettled(id, 4800);
+  lastTakeIn = null;                                  // the library has changed: check again
+  await poll();                                       // …and it is no longer the writer, which the note says
+  update();
+  await refreshAlbumPanel();
+}
+
+// What `noaap watch` is looking at. **This app does not watch anything** — a separate process
+// does, so that this one can keep stopping itself when idle — and everything a row *reports* is read
+// from what that process wrote down, which is the only way this page can be honest about it.
+//
+// **Editable here since §9, slice 92**: the `[[watch]]` tables were config-file-only, so the page
+// could describe a watch and not offer to make one. Both shapes the config allows are offered, the
+// same rules are applied before anything is sent, and saving writes the tables back.
+const WATCH_SHAPES = [
+  ["intake", "things dropped here are taken in"],
+  ["library", "this library, watching itself"],
+];
+
+function watchingSection(watching) {
+  const list = h("div", { class: "watches" });
+  const trouble = h("div", { class: "bad watch-trouble" });
+  const said = () => {
+    const rows = watchesIn(list);
+    trouble.replaceChildren(...watchTrouble(rows, state.settings?.library || "")
+      .map((line) => h("div", {}, line)));
+    trouble.hidden = !trouble.childElementCount;
+  };
+  for (const w of watching || []) list.append(watchRow(w, said));
+  const add = h("button", { class: "quiet small", type: "button",
+    onclick: () => { list.append(watchRow({}, said)); said(); } }, "Watch another folder");
+  const looked = (watching || []).some((w) => w.looked);
+  said();
+  return h("div", { class: "setting watching" },
+    h("strong", {}, "Watched folders"),
+    h("div", { class: "muted" },
+      "A watched folder is taken in without anyone typing a command. ",
+      h("strong", {}, "The watcher is a separate service"), " \u2014 `noaap watch`, which you start yourself; "
+      + "this page only writes down what it should look at. ",
+      (watching || []).length
+        ? (looked ? "It has been here \u2014 each row says when." : "No row has been looked at yet, so it is probably not running.")
+        : "Nothing is watched yet."),
+    list, add, trouble);
+}
+
+function watchRow(w, said) {
+  const row = h("div", { class: "watch-row" },
+    h("input", { type: "text", class: "watch-name", value: w.name || "", placeholder: "a name",
+                 autocomplete: "off", "aria-label": "the name of this watched folder" }),
+    h("input", { type: "text", class: "watch-folder", value: w.folder || "", placeholder: "/mnt/nas/incoming",
+                 autocomplete: "off", spellcheck: "false", "aria-label": "the folder to watch" }),
+    h("select", { class: "watch-shape" }, WATCH_SHAPES.map(([value, text]) =>
+      h("option", { value, selected: value === (w.shape || "intake") }, text))),
+    h("span", { class: "muted" },
+      w.folder && !w.there ? h("span", { class: "bad" }, "the folder is not there \u00b7 ") : "",
+      w.looked ? `last looked at ${w.looked}` : "",
+      w.waiting ? ` \u00b7 ${w.waiting} arrival(s) it could not hand over` : ""),
+    h("button", { class: "quiet small", type: "button", title: "stop watching it",
+      onclick: () => { row.remove(); said(); } }, "Remove"));
+  for (const el of row.querySelectorAll("input, select")) {
+    el.addEventListener(el.tagName === "SELECT" ? "change" : "input", said);
+  }
+  return row;
+}
+
+// what the page would save: a row with no folder at all is one that was added and not filled in
+const watchesIn = (list) => [...list.querySelectorAll(".watch-row")].map((row) => ({
+  name: row.querySelector(".watch-name").value.trim(),
+  folder: row.querySelector(".watch-folder").value.trim(),
+  shape: row.querySelector(".watch-shape").value,
+})).filter((w) => w.folder || w.name);
 
 const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium", brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
 
@@ -1947,7 +2079,7 @@ async function loadRecycle(box) {
     rows = (await (await fetch("/api/recycle")).json()).entries || [];
   } catch { /* the panel is still useful without it */ }
   const size = rows.reduce((n, r) => n + (r.bytes || 0), 0);
-  box.replaceChildren(
+  fill(box,
     h("div", { class: "muted" }, rows.length
       ? `${rows.length} thing(s) noaap moved aside instead of deleting, ${(size / 1e6).toFixed(1)} MB. `
         + "Nothing here is ever removed on its own."
@@ -2006,6 +2138,120 @@ const providersFor = (st, what) =>
   ["none", "local", "http", ...(st.timing?.vendors || [])]
     .filter((kind) => kind === "none" || (st.timing?.offers?.[kind] || []).includes(what));
 
+// A row of the settings that belongs to one timing field, marked with the field it is, so that
+// showTimingFields can show exactly the ones the chosen providers use.
+function detailRow(field, label, help, input) {
+  return h("label", { class: "setting", "data-timing": field },
+    h("span", {}, h("strong", {}, label), h("small", { class: "muted" }, help)), input);
+}
+
+// **Only the fields the chosen providers use** (§9, slice 92). The user: *"timing provider details only
+// need to be visible when they are needed (provider selected)"* — the panel asked for an endpoint with
+// `local` chosen and for two API keys on a machine with no account anywhere. The rows are hidden, never
+// removed: what was typed is still there when the provider comes back, and a hidden row is not sent, so
+// what the config already holds is left alone.
+function timingDetails(st) {
+  const keySet = (v) => st.timing?.keys?.[v];
+  return h("div", { class: "timing-detail" },
+    detailRow("endpoint", "Timing endpoint",
+      "the machine running `noaap timing-serve` \u2014 the audio never leaves your network",
+      h("input", { type: "text", name: "timing_endpoint", value: st.timing?.endpoint || "",
+                   placeholder: "http://host:8770" })),
+    detailRow("device", "Where the local model runs",
+      "`auto` uses the graphics card when there is one with room; `cpu` never does, and is slower",
+      h("select", { name: "timing_device" }, ["auto", "cpu", "cuda"].map((d) =>
+        h("option", { value: d, selected: d === (st.timing?.device || "auto") }, d)))),
+    detailRow("verify", "Check every alignment twice",
+      "a second method here confirms each line: about half again as long, and lines the two disagree "
+      + "about come back without a stamp",
+      h("select", { name: "timing_verify" }, [["auto", "auto \u2014 when both methods are installed"],
+                                              ["true", "always"], ["false", "never"]].map(([v, text]) =>
+        h("option", { value: v, selected: v === String(st.timing?.verify ?? "auto") }, text)))),
+    ...(st.timing?.vendors || []).map((v) => detailRow(`key:${v}`, `${v} API key`,
+      keySet(v) ? "a key is set; type a new one to replace it, or a single space to remove it"
+        : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
+      h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
+                   placeholder: keySet(v) ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (set)" : "" }))));
+}
+
+function showTimingFields(form) {
+  const said = timingFields({ align: form.timing_align_provider?.value,
+                              draft: form.timing_draft_provider?.value });
+  for (const el of form.querySelectorAll("[data-timing]")) {
+    const field = el.getAttribute("data-timing");
+    el.hidden = field.startsWith("key:") ? !said.showsKey(field.slice(4)) : !said.shows(field);
+  }
+  const box = form.querySelector(".timing-detail");
+  if (box) box.hidden = !(said.fields.length || said.keys.length);
+}
+
+// **Where else music comes from** (§9, slice 92). The user: *"how do i configure alternative sources,
+// like another local or nas folder for merge, patreon, others?"* A folder is taken in below, under
+// Library. A provider that needs an account of its own is configured here, and what it needs is a
+// session — from a browser you are already logged in with, or a cookies file. Both stay on this machine.
+//
+// One section per such provider, from what the server answered: the page does not know which sources
+// exist, and a second one that needs a session appears here without an edit.
+const SOURCE_FIELD = {
+  cookies_from_browser: (name) => [`${name} session from a browser`,
+    `the browser you are logged in to ${name} with. Its cookies are read on this machine while a `
+    + "download runs, and are never written down or sent anywhere."],
+  cookies_file: () => ["\u2026 or a cookies file",
+    "the full path of a cookies.txt you exported. The path is all that is kept here \u2014 the file is read "
+    + "only while a download runs, and its contents never reach this page."],
+  audio_from_video: () => ["Take the audio out of a video post",
+    "a post whose audio is only in a video: the audio stream is taken as it is, never re-encoded"],
+  captions: () => ["Keep the post's captions as lyrics",
+    "when a post carries captions, they are kept as the track's words instead of asking LRCLIB"],
+};
+
+// how a provider writes its own name, where a capital in the middle of it would be lost otherwise
+const SOURCE_NAMES = { youtube: "YouTube", soundcloud: "SoundCloud", bandcamp: "Bandcamp" };
+const sourceName = (name) => SOURCE_NAMES[name] || name.charAt(0).toUpperCase() + name.slice(1);
+
+function sourcesSections(st, browsers, row) {
+  const out = [];
+  for (const [name, fields] of Object.entries(st.sources || {})) {
+    const called = sourceName(name);
+    out.push(h("p", { class: "muted setting" },
+      `A ${called} album is opened like any other source \u2014 paste its URL in the search box. What `
+      + `${called} keeps behind a login needs your own session, which noaap reads on this machine and `
+      + "sends to nobody."));
+    for (const [field, text] of Object.entries(SOURCE_FIELD)) {
+      if (!(field in fields)) continue;
+      const [label, help] = text(called);
+      out.push(row(label, help, sourceInput(name, field, fields[field], browsers)));
+    }
+  }
+  return out.length ? out : h("p", { class: "muted setting" }, "Nothing else needs an account of its own.");
+}
+
+function sourceInput(name, field, value, browsers) {
+  if (field === "cookies_from_browser") {
+    const known = browsers.includes(value) ? browsers : [...browsers, value];
+    return h("select", { name: `${name}_${field}` }, known.map((b) =>
+      h("option", { value: b, selected: b === value }, b ? BROWSER_NAMES[b.split(":")[0]] || b : "none")));
+  }
+  if (field === "cookies_file") {
+    return h("input", { type: "text", name: `${name}_${field}`, value: value || "", autocomplete: "off",
+                        spellcheck: "false", placeholder: `/home/you/${name}-cookies.txt` });
+  }
+  return h("input", { type: "checkbox", name: `${name}_${field}`, checked: Boolean(value) });
+}
+
+// what the Sources section would save: every field the server offered for every provider it named
+function sourcesFrom(f, st) {
+  const out = {};
+  for (const [name, fields] of Object.entries(st.sources || {})) {
+    for (const field of Object.keys(SOURCE_FIELD)) {
+      const el = f[`${name}_${field}`];
+      if (!el || !(field in fields)) continue;
+      out[`${name}_${field}`] = el.type === "checkbox" ? el.checked : el.value.trim();
+    }
+  }
+  return out;
+}
+
 function openSettings() {
   const panel = $("#settings");
   if (!panel.hidden) { panel.hidden = true; return; }
@@ -2029,34 +2275,56 @@ function openSettings() {
         h("input", { type: "number", name: "pot_idle_minutes", min: 1, max: 120, value: st.pot_idle_minutes })),
       row("Parallel YouTube requests", "1–4; more is faster but trips YouTube's bot check sooner",
         h("input", { type: "number", name: "concurrency", min: 1, max: 4, value: st.concurrency })),
+      h("h3", {}, "Timing"),
       row("Placing words on the clock", timingHelp(st, "align"),
-        h("select", { name: "timing_align_provider" }, providersFor(st, "align").map((m) =>
-          h("option", { value: m, selected: m === providerFor("align") }, m)))),
+        h("select", { name: "timing_align_provider", onchange: (e) => showTimingFields(e.currentTarget.form) },
+          providersFor(st, "align").map((m) =>
+            h("option", { value: m, selected: m === providerFor("align") }, m)))),
       row("Drafting words for a track that has none", timingHelp(st, "transcribe"),
-        h("select", { name: "timing_draft_provider" }, providersFor(st, "transcribe").map((m) =>
-          h("option", { value: m, selected: m === providerFor("transcribe") }, m)))),
-      row("Timing endpoint", "for `http`: http://thatmachine:8770 — the audio never leaves your network",
-        h("input", { type: "text", name: "timing_endpoint", value: st.timing?.endpoint || "", placeholder: "http://host:8770" })),
-      ...(st.timing?.vendors || []).map((v) => row(`${v} API key`,
-        st.timing.keys?.[v] ? "a key is set; type a new one to replace it, or a single space to remove it"
-          : `needed for the ${v} provider. It stays on this machine and is never shown again.`,
-        h("input", { type: "password", name: `timing_${v}_key`, value: "", autocomplete: "off",
-          placeholder: st.timing.keys?.[v] ? "•••••••• (set)" : "" }))),
+        h("select", { name: "timing_draft_provider", onchange: (e) => showTimingFields(e.currentTarget.form) },
+          providersFor(st, "transcribe").map((m) =>
+            h("option", { value: m, selected: m === providerFor("transcribe") }, m)))),
+      timingDetails(st),
+      h("h3", {}, "Sources"),
+      sourcesSections(st, browsers, row),
       h("h3", {}, "Library"),
       updateSection(),
       repairSection(),
+      takeInSection(),
       missingSection(st.missing),
       watchingSection(st.watching),
       h("dl", { class: "info" }, Object.entries(st.info).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
       h("div", { class: "actions" }, h("button", { type: "submit" }, "Save settings"))));
+  showTimingFields($("#settingsform"));
   panel.hidden = false;
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// a row is sent only while it is shown, so the selected providers decide what this save is about
+const shows = (form, field) => {
+  const el = form.querySelector(`[data-timing="${field}"]`);
+  return Boolean(el) && !el.hidden;
+};
+
+function shownTiming(f) {
+  const out = {};
+  if (shows(f, "endpoint")) out.timing_endpoint = f.timing_endpoint.value.trim();
+  if (shows(f, "device")) out.timing_device = f.timing_device.value;
+  // the config keeps three states here, and "false" is a string: send the boolean, or "auto" for none
+  if (shows(f, "verify")) {
+    out.timing_verify = f.timing_verify.value === "auto" ? "auto" : f.timing_verify.value === "true";
+  }
+  return out;
 }
 
 async function saveSettings(ev) {
   ev.preventDefault();
   const f = ev.target;
   const button = ev.submitter;
+  // the watched folders are answered here, before anything is sent, by the same rules the config applies
+  const watches = watchesIn(f.querySelector(".watches"));
+  const trouble = watchTrouble(watches, f.library.value.trim());
+  if (trouble.length) { toast(trouble[0], "failed"); return; }
   setWorking(button, true);
   try {
     state.settings = await api("/api/settings", {
@@ -2066,11 +2334,15 @@ async function saveSettings(ev) {
       // fallback for whatever was there before, and is not touched from here (§9, slice 40)
       timing_align_provider: f.timing_align_provider.value,
       timing_draft_provider: f.timing_draft_provider.value,
-      timing_endpoint: f.timing_endpoint.value.trim(),
+      // a field the chosen providers do not use is not shown and not sent, which leaves whatever the
+      // config holds for it alone (§9, slice 92)
+      ...shownTiming(f),
       // only sent when something was typed: an empty field means "leave the key as it is"
       ...Object.fromEntries((state.settings.timing?.vendors || [])
-        .filter((v) => f[`timing_${v}_key`]?.value)
+        .filter((v) => shows(f, `key:${v}`) && f[`timing_${v}_key`]?.value)
         .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
+      ...sourcesFrom(f, state.settings),
+      watches,
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;

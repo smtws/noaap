@@ -224,6 +224,19 @@ code { font-size: .85em; padding: .05rem .3rem; border-radius: 4px; background: 
 .setting input[type=checkbox] { justify-self: start; width: 1.2rem; height: 1.2rem; accent-color: var(--accent); }
 .setting input[type=number] { max-width: 7rem; }
 .setting select { justify-self: start; min-width: 10rem; }
+/* A block that is one subject with sentences and buttons under it — the update, the repair, taking a
+   folder in, the watched folders — is not a label/field pair, so it does not take the two columns. */
+.setting.update, .setting.repair, .setting.take-in, .setting.watching { display: block; }
+.setting.update > .muted, .setting.repair > .muted, .setting.take-in > .muted { margin-top: .3rem; max-width: 60ch; }
+.setting.take-in > .setting, .setting.watching > .setting { border-bottom: 0; padding: .4rem 0; }
+pre.check { margin: .6rem 0 0; padding: .5rem .6rem; max-height: 18rem; overflow: auto; font-size: .78rem;
+            background: var(--line); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.watches { margin: .5rem 0; display: grid; gap: .35rem; }
+.watch-row { display: grid; grid-template-columns: 9rem minmax(10rem, 1fr) 13rem minmax(0, 1fr) auto;
+             gap: .5rem; align-items: center; }
+.watch-row select { min-width: 0; }
+.watch-trouble { margin-top: .4rem; font-size: .82rem; }
+@media (max-width: 60rem) { .watch-row { grid-template-columns: 1fr; } }
 dl.info { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 1rem 0 0; font-size: .82rem; color: var(--muted); }
 dl.info dt { font-weight: 600; }
 dl.info dd { margin: 0; overflow-wrap: anywhere; }

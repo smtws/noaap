@@ -744,6 +744,96 @@ export function binLabel(count) {
         title: "What noaap moved aside instead of deleting. Nothing leaves it on its own." };
 }
 
+/** Which timing fields a slot's provider actually uses (§9, slice 92).
+ *
+ * The settings showed every one of them whatever was selected — an endpoint for `local`, two API keys
+ * for a machine with no account anywhere. A field is shown when the provider of that slot uses it, and
+ * nothing is lost by hiding one: what is not shown is not sent, and what is not sent is left alone.
+ */
+export const TIMING_FIELDS = {
+  none: [],
+  local: ["device", "verify"],
+  http: ["endpoint"],
+  elevenlabs: ["key"],
+  deepgram: ["key"],
+};
+
+export function timingFields({ align = "none", draft = "none" } = {}) {
+  const wanted = new Set();
+  const keys = [];
+  for (const provider of [align || "none", draft || "none"]) {
+    for (const field of TIMING_FIELDS[provider] || []) {
+      if (field === "key") keys.push(provider);
+      else wanted.add(field);
+    }
+  }
+  return { fields: [...wanted], keys: [...new Set(keys)],
+           shows: (name) => wanted.has(name), showsKey: (vendor) => keys.includes(vendor) };
+}
+
+/** Why a set of watched folders cannot stand (§9, slice 92) — the same rules `config.watch_trouble`
+ * applies, said in the page before anything is sent, so a typo is answered where it was typed.
+ */
+const _norm = (p) => String(p || "").trim().replace(/\/+$/, "");
+const _inside = (folder, other) => Boolean(other) && (folder === other || folder.startsWith(`${other}/`));
+
+export function watchTrouble(watches = [], library = "") {
+  const out = [];
+  const seen = new Set();
+  const lib = _norm(library);
+  for (const w of watches) {
+    const folder = _norm(w.folder);
+    const name = String(w.name || "").trim();
+    const called = name || folder || "a watched folder";
+    if (!folder) { out.push(`${called}: name the folder it should look at`); continue; }
+    if (!folder.startsWith("/")) out.push(`${called}: ${folder} is not an absolute path`);
+    if (!name) out.push(`${folder}: give it a name — the watcher writes down what it did under it`);
+    else if (seen.has(name)) out.push(`${name}: two watched folders share that name`);
+    seen.add(name);
+    if (lib && (w.shape || "intake") === "intake" && (_inside(lib, folder) || _inside(folder, lib))) {
+      out.push(`${called}: an intake folder may not hold the library, and the library may not hold it`
+               + " — a library that watches itself is the `library` shape");
+    }
+  }
+  for (const a of watches) {
+    for (const b of watches) {
+      if (a !== b && _norm(b.folder) && _inside(_norm(b.folder), _norm(a.folder))) {
+        out.push(`${String(b.name || "").trim() || _norm(b.folder)}: lies inside `
+                 + `${String(a.name || "").trim() || _norm(a.folder)}; watched folders may not be nested`);
+      }
+    }
+  }
+  return out;
+}
+
+/** What a folder about to be taken in offers, and why not (§9, slice 92). */
+export function takeInState({ folder = "", mode = "merge", check = null, running = false } = {}) {
+  const named = String(folder || "").trim();
+  // a check belongs to the folder and the way of taking it in that it was asked about, and to nothing
+  // else: its lines stop being shown the moment either changes
+  const matches = Boolean(check && check.folder === named && check.mode === mode);
+  if (!named) {
+    return { matches, canCheck: false, canApply: false, note: "Name a folder — a local path, or a mounted share." };
+  }
+  if (!named.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(named)) {
+    return { matches, canCheck: false, canApply: false, note: "Name the folder in full, from the root." };
+  }
+  if (running) {
+    return { matches, canCheck: false, canApply: false,
+             note: "Something is writing to the library — taking a folder in waits for it." };
+  }
+  if (!matches) {
+    return { matches, canCheck: true, canApply: false,
+             note: mode === "merge"
+               ? "Check first: it compares both sides and writes nothing. The other folder is never written to."
+               : "Check first: it reads the folder and writes nothing." };
+  }
+  return { matches, canCheck: true, canApply: Boolean(check.lines?.length),
+           note: check.lines?.length
+             ? `Apply does exactly what this check listed: ${check.lines.length} line(s).`
+             : "That check found nothing to do." };
+}
+
 /** What the repair section offers, given the last check and the library as it is now (§9, slice 91).
  *
  * A repair renames files, rewrites tags and cuts audio, so it is two steps: a **check** that writes

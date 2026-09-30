@@ -237,7 +237,8 @@ you already pay a creator for: their own releases, stems, alternate takes. yt-dl
 with a logged-in session cookie, and without one even a *public* post answers `403` (measured, not
 assumed), so noaap reads the cookies of **your** browser and otherwise refuses and says which setting to
 set. **Nothing of that session is stored** — not the cookie, not a copy, not a token; only the setting
-saying which browser or file to read, and Patreon's settings are its own, never SoundCloud's.
+saying which browser or file to read, and Patreon's settings are its own, never SoundCloud's. Both can
+be set in the web UI under **Settings › Sources**, where the cookies file is a path and stays one.
 
 `noaap fetch https://www.patreon.com/posts/<id>` takes one **post**, which is this provider's album:
 nothing on Patreon is a release, so a post holding three files is three tracks in the order the post
@@ -422,6 +423,38 @@ its list in the page; *Apply* appears only after a check and does what that chec
 before something else wrote to the library is stale and says so rather than being applied. (It used to
 be a button in the header, where "repair" could have meant anything.)
 
+**The settings only ask for what your choices need.** A timing field appears when the provider of its
+slot uses it — the endpoint for `http`, where the model runs and whether it checks itself for `local`,
+one API key for a vendor you actually chose — and both slots are asked for together, so aligning locally
+and drafting with Deepgram shows three fields and no endpoint. Switching a provider shows and hides them
+at once, and a field that hides **keeps what you typed**: it is not sent while it is hidden, so what the
+config holds for it stays as it was.
+
+**Settings › Sources is where a provider with an account of its own is configured.** A session from a
+browser you are already logged in with, or the **path** of a cookies file — the path is all noaap keeps;
+the file is read on this machine while a download runs and its contents never reach the page. Patreon
+also offers *take the audio out of a video post* and *keep the post's captions as lyrics*. The section is
+built from what the program actually has: a provider that needs a session appears there without anybody
+editing the page.
+
+**Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
+in full — somewhere else on this machine, or a share you have mounted — and choose how:
+
+- **merge** compares it with this library track by track and copies in only what is better. The other
+  folder is never written to, and a file that is replaced goes to the recycle bin.
+- **adopt** writes one plan per album in that folder and nothing else: no file renamed, moved or
+  retagged. That makes the collection readable where it stands, as its own root — point the library at
+  it afterwards, watch it, or merge from it.
+
+It runs like the repair: **Check** is a read that writes nothing and shows the pass's own lines, the same
+ones the command prints; **Apply** does exactly what that check listed, and is offered only while the
+folder and the mode are still the ones you checked. A path that is not a folder, or that is the library,
+inside it, or holds it, is refused with a sentence.
+
+**Watched folders are editable in the settings**, in the same two shapes the config allows, and are
+written back as `[[watch]]` tables. The page says what it always said: the watcher is a separate service
+you start yourself, and whether it has been here.
+
 **Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
 prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*
 with the values that change, *would be cut to its trim points* — and ends with its own total:
@@ -491,7 +524,8 @@ noaap adopt ~/Music/my-collection --undo --apply   # give it all back
 `noaap watch` looks at the folders you name in the config file and hands what arrives in them to
 the app. **It never does the work itself**: it notices, waits until the arrival has stopped moving,
 and asks for an ordinary job — the same one `noaap fetch <folder>` would run. Nothing is watched
-unless you configure it, and the settings panel and `noaap config` both say what is being watched.
+unless you configure it, and the settings panel and `noaap config` both say what is being watched —
+the panel can also add, change and remove a watch, writing the tables below for you.
 
 Two shapes, and they may not be nested:
 
@@ -788,7 +822,8 @@ network.
 | `/api/delete_album` | `{id}` | Delete an album (files noaap owns; anything else is kept). |
 | `/api/details` | `{refs: [{id, url}]}` | Ask for track counts and covers of search hits; a background runner fills them in. |
 | `/api/cancel` | `{id}` | Cancel a job; it stops at the next point where nothing is half-done. |
-| `/api/settings` | see below | Change settings at runtime. |
+| `/api/take_in` | `{folder, mode, dry_run?}` | Take another folder into the library: `mode` is `merge` (compare and copy in what is better) or `adopt` (one plan per album, where it stands). With `dry_run` it is a **read** and writes nothing, and its log is the pass's own lines. A folder that is not a directory, or is the library, inside it, or holds it, is refused. |
+| `/api/settings` | see below | Change settings at runtime, including the other sources (`<provider>_cookies_from_browser`, `<provider>_cookies_file` as a path, and Patreon's two switches) and the watched folders (`watches: [{name, folder, shape}]`, which rewrites the `[[watch]]` tables). |
 
 ### The two lanes
 

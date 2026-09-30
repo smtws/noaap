@@ -152,6 +152,31 @@ def may_look_up(cfg: Config, plan: AlbumPlan) -> bool:
     return not sources.private_album(plan, cfg)
 
 
+def refuse_folder(folder: Path, library: Path) -> str:
+    """Why this folder cannot be taken into that library — or "" when it can (§9, slice 92).
+
+    Module-level so the page, the door and the pass answer the same question: a folder that is the
+    library, inside it, or holds it would have the library compared with or adopted into itself.
+    """
+    folder = folder.expanduser()
+    if str(folder) in ("", "."):        # an empty field, which is what `Path("")` comes to
+        return "name a folder to take in"
+    if not folder.is_absolute():
+        return f"{folder} is not an absolute path — name the folder in full"
+    if not folder.exists():
+        return f"there is nothing at {folder}"
+    if not folder.is_dir():
+        return f"{folder} is a file, not a folder"
+    here, there = library.resolve(), folder.resolve()
+    if there == here:
+        return "that is the library itself"
+    if here in there.parents:
+        return f"{folder} is inside the library — a folder is taken in from somewhere else"
+    if there in here.parents:
+        return f"{folder} holds the library, so taking it in would take the library into itself"
+    return ""
+
+
 def may_send_audio(cfg: Config, plan: AlbumPlan, capability: str = "") -> bool:
     """…and whether this album's **audio** may be handed to a timing provider (§9, slice 75).
 
@@ -1774,6 +1799,54 @@ class Service:
                      "rewritten (their tags)")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
         return outcomes
+
+    # -- taking a folder in (§9, slice 92) -----------------------------------------------
+
+    def take_in(self, folder: Path, mode: str = "merge", dry_run: bool = True) -> Outcome:
+        """Take another folder into the library: the same two passes the command line runs.
+
+        `merge` compares it with what is here and takes the better copies (the other side is never
+        written to); `adopt` takes it in where it stands, one plan per album and nothing else, with
+        that folder as its own root. **The
+        lines are the command's own** — `report()` from either pass — so what the page shows is what
+        `noaap merge`/`noaap adopt` print, and a check followed by an apply does what the check listed.
+        """
+        if self.library is None:
+            return Outcome("failed", message="no library is configured")
+        if why := refuse_folder(folder, self.library):
+            return Outcome("failed", message=why)
+        if mode not in ("merge", "adopt"):
+            return Outcome("failed", message=f"unknown way of taking a folder in: {mode!r}")
+        if mode == "merge":
+            from . import merge as merge_pass
+
+            found = merge_pass.survey(folder, self.library, log=self.log)
+            for line in merge_pass.report(found, applying=not dry_run):
+                self.log(line)
+            if dry_run:
+                return Outcome("ok", message="nothing was written")
+            self.check()
+            done = merge_pass.carry_out(found, self.library, log=self.log)
+            self.log(f"{done['replaced']} replaced, {done['filled']} filled, "
+                     f"{done['offered']} listed for you to decide"
+                     + (f", {done['failed']} could not be taken" if done["failed"] else ""))
+            return Outcome("ok", message=f"{done['replaced']} replaced, {done['filled']} filled")
+        from . import adopt as adopt_pass
+
+        # **adopt takes the folder in as its own root** (§9, slice 92): the plan a folder gets says
+        # where its album is *relative to the library it belongs to*, and this folder is not inside
+        # this library — a folder inside it is refused above. So the folder is its own root, which is
+        # what `noaap adopt PATH` prints when PATH is what the library points at: one plan per album,
+        # beside the audio, and the folder can then be pointed at, watched, or merged from.
+        found = adopt_pass.survey(folder, folder, sources.get("folder", self.cfg), log=self.log)
+        for line in adopt_pass.report(found, applying=not dry_run):
+            self.log(line)
+        if dry_run:
+            return Outcome("ok", message="nothing was written")
+        self.check()
+        done = adopt_pass.carry_out(found, log=self.log)
+        self.log(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
+        return Outcome("ok", message=f"{done['adopted']} album(s) adopted")
 
     # -- deleting (always asked for explicitly) -------------------------------------------
 

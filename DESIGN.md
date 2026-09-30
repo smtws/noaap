@@ -2658,6 +2658,40 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    shift-click nobody could see) and the repair. The two library actions were a modifier key and a word
    each; they are a paragraph each now.
 
+92. ✅ **Only what is needed, and the sources you can name** (2026-09-30, P73). The user, of the
+   settings: *"timing provider details only need to be visible when they are needed (provider selected)
+   and how do i configure alternative sources, like another local or nas folder for merge, patreon,
+   others?"* Both halves are the same complaint: the panel asked for things nobody had chosen to need,
+   and did not ask for the things somebody did.
+   **A timing field is shown when the provider of its slot uses it** — the endpoint for `http`, the
+   device and the second-method check for `local`, one API key per vendor actually chosen — and the two
+   slots are asked for together, so a machine aligning locally and drafting with Deepgram sees three
+   fields and no endpoint. Switching a provider shows and hides them at once. A hidden field is **kept,
+   not cleared**: the text stays for when it comes back, and what is not shown is not sent, so what the
+   config holds for it is left alone.
+   **Sources.** A provider that needs an account of its own is configured in the page: a session from a
+   browser you are already logged in with, or the **path** of a cookies file — the path is all that is
+   kept, the file is read on this machine while a download runs, and its contents never reach the page.
+   The section is built from what the server answers, and the server builds that from the registry and
+   the provider's own field names, so nothing in the core names a provider (the grep of §9, slice 73
+   still passes) and the second such source appears the day it registers itself. Patreon also offers
+   *take the audio out of a video post* and *keep the post's captions as lyrics*.
+   **Take in a folder** answers the other half: a path — local or a mounted share — and the two ways the
+   command line already offers. *merge* compares that folder with this library track by track and copies
+   in what is better, writing nothing on the other side; *adopt* writes one plan per album beside the
+   audio and nothing else, with that folder as its own root, because a plan says where its album is
+   relative to the library it belongs to and this folder is not in this one. It runs **as the repair
+   does**: *Check* is a read and shows the pass's own `report()` lines — the same lines `noaap merge` and
+   `noaap adopt` print — and *Apply* does exactly what that check listed, offered only while the folder
+   and the way of taking it in are still the ones that were checked. A path that is not a directory, or
+   is the library, inside it or holds it, is refused with a sentence from the same rule the door and the
+   pass use.
+   **Watched folders are editable here**, both shapes the config allows, judged by the same rules before
+   anything is sent and written back as `[[watch]]` tables with every other line of the config kept. The
+   page keeps saying what it always said: the watcher is **a separate service** you start yourself, and
+   whether it has been here.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2852,6 +2886,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (only what is needed, §9, slice 92)
+
+- **A field that cannot matter is worse than a missing one.** It asks the user to decide something the
+  program will never read, and it teaches them that the panel is noise.
+- **Hide it, do not clear it.** What is not shown is not sent; what is not sent is left alone. Anything
+  else loses an endpoint to a moment's curiosity about another provider.
+- **The page must not know which sources exist.** It renders what the server answers, and the server
+  reads the registry and the provider's own field names — which is also what keeps a provider's name out
+  of the core.
+- **A cookies file is a path.** The program reads it where it runs; nothing about its contents belongs in
+  an answer to a browser.
+- **A check and an apply belong to the same question.** The lines of a check are about one folder in one
+  mode; change either and they are a story about something else.
+- **Say what a pass writes on the other side.** "Never written to" is a promise only `merge` can make,
+  so only `merge` makes it.
+- **A refusal lives in one place.** The page, the door and the pass all ask `refuse_folder`, so no button
+  offers what the server will decline.
+- **Editing what a separate service reads is fine; pretending to be it is not.** The page writes the
+  tables and keeps saying who does the watching.
 
 ### Decisions of 2026-09-30 (the bin's own place, §9, slice 91)
 

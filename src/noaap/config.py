@@ -351,5 +351,35 @@ def save_setting(name: str, value: str | bool | int | None, path: Path | None = 
     return path
 
 
+def save_watches(watches: list[Watch], path: Path | None = None) -> Path:
+    """Write the `[[watch]]` tables, keeping every other line of the file (§9, slice 92).
+
+    The settings view can edit these now, and this is the one writer: the tables are replaced whole,
+    because they are a list and a half-replaced list is not one. Everything that is not a `[[watch]]`
+    table — including comments the user put there — is kept in its order.
+    """
+    path = path or config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kept: list[str] = []
+    inside = False
+    for line in path.read_text().splitlines() if path.exists() else []:
+        stripped = line.strip()
+        if stripped.startswith("[["):
+            inside = stripped.replace(" ", "") == "[[watch]]"
+        elif stripped.startswith("[") and stripped.endswith("]"):
+            inside = False
+        if not inside:
+            kept.append(line)
+    while kept and not kept[-1].strip():
+        kept.pop()
+    for watch in watches:
+        folder = str(watch.folder).replace("\\", "\\\\").replace('"', '\\"')
+        name = str(watch.name).replace("\\", "\\\\").replace('"', '\\"')
+        kept += ["", "[[watch]]", f'name = "{name}"', f'folder = "{folder}"',
+                 f'shape = "{watch.shape if watch.shape in ("intake", "library") else "intake"}"']
+    path.write_text("\n".join(kept).lstrip("\n") + "\n")
+    return path
+
+
 def save_library_root(root: Path, path: Path | None = None) -> Path:
     return save_setting("library_root", str(root), path)

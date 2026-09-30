@@ -44,7 +44,7 @@ from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
 from .models import AlbumPlan, PlanTrack
 from .plan import album_length_flag
-from .service import Outcome, Service, _inside, collection_address, may_send_audio
+from .service import Outcome, Service, _inside, collection_address, may_send_audio, refuse_folder
 from .sources import Cancelled
 from .tag import image_mime
 from .text import natural_key
@@ -126,7 +126,7 @@ class Jobs:
     # channel listing) get their own lane so a search never waits for a download
     # they only read: the answer goes to the page. `repair_check` is the dry run of slice 85 — it
     # writes nothing, so it belongs here and may run beside a download (§9, slice 91).
-    READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check")
+    READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check", "take_in_check")
 
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
                  idle_seconds: float = CARD_IDLE, sleep: Callable[[float], None] = time.sleep,
@@ -620,6 +620,25 @@ class App:
                         "waiting": len(kept.get("waiting") or {})})
         return out
 
+    # what a provider that needs an account of its own is configured with. The field names are the
+    # provider's own (`<name>_cookies_file`), so this asks the registry and the config rather than
+    # naming anybody: a second such source is configurable here the day it registers itself.
+    SOURCE_FIELDS = ("cookies_from_browser", "cookies_file", "audio_from_video", "captions", "post_cap")
+    AS_TEXT = ("cookies_from_browser", "cookies_file")
+
+    def source_settings(self) -> dict[str, dict[str, Any]]:
+        """Each such provider's own settings (§9, slice 92) — a cookies file as a *path*, never its
+        contents, which this server does not read and this answer therefore cannot carry."""
+        out: dict[str, dict[str, Any]] = {}
+        for name in sources.known():
+            fields = {short: getattr(self.cfg, f"{name}_{short}")
+                      for short in self.SOURCE_FIELDS if hasattr(self.cfg, f"{name}_{short}")}
+            if not fields:
+                continue
+            out[name] = {short: ("" if value is None else str(value)) if short in self.AS_TEXT else value
+                         for short, value in fields.items()}
+        return out
+
     def settings(self) -> dict[str, Any]:
         runtime = self.cfg.resolved_js_runtime()
         pot = self.cfg.resolved_pot_provider()
@@ -656,9 +675,14 @@ class App:
                                        for what in (ALIGN, TRANSCRIBE, LISTEN)},
                        # whether every alignment is checked against a second method (§9, slice 38): it is
                        # the provider's answer, and it costs the user time, so the panel says so
-                       "verifies": verifies_with(self.cfg)},
+                       "verifies": verifies_with(self.cfg),
+                       # what `local` is told to use, and whether it checks itself (§9, slice 92)
+                       "device": self.cfg.timing_device,
+                       "verify": "auto" if self.cfg.timing_verify is None else bool(self.cfg.timing_verify)},
             # where MusicBrainz lives, so the page can link to a recording it cannot seed (§9, slice 43)
             "musicbrainz_web": MB_WEB,
+            # where else music comes from (§9, slice 92). A path, never the contents of the file.
+            "sources": self.source_settings(),
             "pot_mode": self.cfg.pot_mode,
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,
@@ -702,6 +726,42 @@ class App:
             if chosen not in PROVIDERS and not (chosen == "" and slot != "timing_provider"):
                 raise ValueError(f"the timing provider must be one of {', '.join(PROVIDERS)}")
             changes[slot] = chosen
+        # **Sources** (§9, slice 92): where else music comes from. Written per provider, by the field
+        # names the provider gave its own settings, so nothing here decides which sources exist. A
+        # cookies file is a *path*; its contents are never read by the page and never sent back to it.
+        for name in sources.known():
+            for short in self.SOURCE_FIELDS:
+                field = f"{name}_{short}"
+                if field not in body or not hasattr(self.cfg, field):
+                    continue
+                if short == "cookies_from_browser":
+                    browser = str(body[field] or "").strip() or None
+                    if browser not in (None, *config_mod.detect_browsers()):
+                        raise ValueError(f"unknown browser {browser!r}")
+                    changes[field] = browser
+                elif short == "cookies_file":
+                    given = str(body[field] or "").strip()
+                    if not given:
+                        changes[field] = None      # the path is cleared; the file is left alone
+                        continue
+                    path = Path(given).expanduser()
+                    if not path.is_absolute():
+                        raise ValueError("the cookies file must be named in full (an absolute path)")
+                    if not path.is_file():
+                        raise ValueError(f"there is no file at {path}")
+                    changes[field] = str(path)
+                elif short == "post_cap":
+                    changes[field] = max(1, int(body[field]))
+                else:
+                    changes[field] = bool(body[field])
+        if "timing_device" in body:
+            device = str(body["timing_device"] or "auto")
+            if device not in ("auto", "cpu", "cuda"):
+                raise ValueError("the device must be auto, cpu or cuda")
+            changes["timing_device"] = device
+        if "timing_verify" in body:
+            given = body["timing_verify"]
+            changes["timing_verify"] = None if given in ("", None, "auto") else bool(given)
         for vendor in VENDORS:
             field = f"timing_{vendor}_key"
             if field in body:
@@ -722,6 +782,30 @@ class App:
                                           or getattr(self.cfg, f"timing_{chosen}_key", "")):
                 raise ValueError(f"{chosen} needs an API key — it is sent to them with the audio, "
                                  "and stays on this machine otherwise")
+        # **the watched folders, editable** (§9, slice 92). The watcher is a separate service and this
+        # only writes what it reads: the same two shapes, refused as a set by the rules that already
+        # judge them, so the page cannot save a nesting the watcher would then refuse to start on.
+        watches: list[config_mod.Watch] | None = None
+        if "watches" in body:
+            rows = body["watches"] if isinstance(body["watches"], list) else []
+            watches = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                folder = str(row.get("folder") or "").strip()
+                if not folder:
+                    continue
+                shape = str(row.get("shape") or "intake")
+                if shape not in ("intake", "library"):
+                    raise ValueError(f"a watched folder is either intake or library, not {shape!r}")
+                path = Path(folder).expanduser()
+                if not path.is_dir():
+                    raise ValueError(f"there is no folder at {path}")
+                watches.append(config_mod.Watch(name=str(row.get("name") or path.name),
+                                                folder=path, shape=shape))
+            if trouble := config_mod.watch_trouble(watches, self.library):
+                raise ValueError(trouble[0])
+
         library = None
         if "library" in body and str(body["library"]).strip() != str(self.library):
             library = Path(str(body["library"]).strip()).expanduser()
@@ -740,6 +824,9 @@ class App:
         # idle window comes round — this is also how "stop using the card" takes effect at once
         if any(name.startswith("timing_") for name in changes) and not self.jobs.busy():
             self.engines.let_go()
+        if watches is not None:
+            config_mod.save_watches(watches)
+            self.cfg.watches = watches
         if library is not None:
             self.library = library
             self._reader = None  # it holds the old library, and its lyrics cache with it
@@ -812,6 +899,23 @@ class App:
                     return self.jobs.submit("repair_check", "Check what a repair would do",
                                             lambda s: s.repair(dry_run=True))
                 return self.jobs.submit("repair", "Repair the library", lambda s: s.repair())
+            case "take_in":
+                # **a folder taken in is a check and then an apply** (§9, slice 92), like the repair:
+                # merge compares and takes the better copies, adopt takes it in where it stands.
+                folder = Path(str(body.get("folder", "")).strip()).expanduser()
+                mode = str(body.get("mode") or "merge")
+                if mode not in ("merge", "adopt"):
+                    raise ValueError(f"unknown way of taking a folder in: {mode}")
+                if why := refuse_folder(folder, self.library):
+                    raise ValueError(why)
+                dry = bool(body.get("dry_run"))
+                if not dry and (running := self.jobs.writing()):
+                    raise ValueError(f"“{running.label}” is running — wait for it, then take the folder in")
+                what = "Check what taking in" if dry else "Take in"
+                return self.jobs.submit("take_in_check" if dry else "take_in",
+                                        f"{what} {folder.name} would do ({mode})" if dry
+                                        else f"{what} {folder.name} ({mode})",
+                                        lambda s: s.take_in(folder, mode, dry_run=dry))
             case "prune":
                 source_id = str(body.get("id", ""))
                 found = self.album(source_id)
