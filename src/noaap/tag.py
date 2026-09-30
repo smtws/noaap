@@ -566,6 +566,29 @@ def _shaped(value: Any) -> Any:
     return value
 
 
+def tags_outside_ours(path: Path) -> dict[str, str]:
+    """Every key this program never writes, by a digest of what it holds (§9, slice 99).
+
+    For a snapshot of somebody's own collection: their `comment`, their replaygain, their cover. A
+    restore has nothing to undo about these — nothing here writes them — but a fingerprint of each
+    means a pass that *lost* one is found out and can be named. The values themselves are not kept:
+    a cover is a hundred kilobytes, and eleven thousand of them are not a snapshot.
+    """
+    ours = {str(k).lower() for k in WRITES.get(kind(path), ())}
+    out: dict[str, str] = {}
+    try:
+        audio = _open(path)
+        items = list((audio.tags or {}).items()) if audio.tags is not None else []
+    except (MutagenError, OSError, AttributeError):
+        return out
+    for key, value in items:
+        name = str(key)
+        if name.lower() in ours or name.split(":")[0].lower() in ours:
+            continue
+        out[name] = hashlib.sha256(repr(value).encode("utf-8", "replace")).hexdigest()[:16]
+    return out
+
+
 def restore_tags(path: Path, values: dict[str, Any]) -> bool:
     """Make this file say exactly what it said, in every key a writer could have touched.
 
