@@ -159,7 +159,7 @@ def test_a_restore_puts_names_and_tags_back(collection, tmp_path):
 
     dry = precautions.restore(snap, collection)
     assert dry.files == 3 and dry.renamed == 3
-    assert [p.name for p in precautions.audio_under(collection)][0].startswith("Aphelion - "), \
+    assert next(precautions.audio_under(collection)).name.startswith("Aphelion - "), \
         "a dry restore changes nothing"
 
     done = precautions.restore(snap, collection, apply=True)

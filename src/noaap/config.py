@@ -134,6 +134,14 @@ class Config:
     concurrency: int = 2  # parallel YouTube requests; more trips YouTube's bot check sooner
     musicbrainz: bool = True
     lyrics: bool = True  # look lyrics up at lrclib.net and keep them as .lrc + LYRICS tag
+    # **the state the library is in** (§9, slice 100): what every album should have. A later pass
+    # brings the albums it touches to these; an album can only be *excepted* from one, in its own
+    # view, and nothing but the user ever writes an exception.
+    cover_beside: bool = True        # cover.jpg in the album folder
+    cover_embedded: bool = True      # and the picture inside each file
+    lyrics_embedded: bool = True     # the words in the file's tag, beside the .lrc
+    rename_adopted: bool = False     # rename an adopted album's files into noaap's scheme
+    retag_adopted: bool = False      # and write noaap's tags into them
     # opt-in, only needed for age-restricted videos (DESIGN.md §7). yt-dlp writes
     # refreshed cookies back into cookies_file.
     cookies_file: Path | None = None
@@ -246,6 +254,12 @@ def load(path: Path | None = None) -> Config:
         concurrency=int(data.get("concurrency", 2)),
         musicbrainz=bool(data.get("musicbrainz", True)),
         lyrics=bool(data.get("lyrics", True)),
+        # the state the library is in: what every album should have (§9, slice 100)
+        cover_beside=bool(data.get("cover_beside", True)),
+        cover_embedded=bool(data.get("cover_embedded", True)),
+        lyrics_embedded=bool(data.get("lyrics_embedded", True)),
+        rename_adopted=bool(data.get("rename_adopted", False)),
+        retag_adopted=bool(data.get("retag_adopted", False)),
     )
     if root := data.get("library_root"):
         cfg.library_root = Path(root).expanduser()

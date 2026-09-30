@@ -416,6 +416,11 @@ class AlbumPlan:
     # Both default to false, which is every album noaap fetched itself.
     keep_names: bool = False   # do not rename its files and do not move its folder
     keep_tags: bool = False    # write nothing into its audio files, by any pass
+    # **what this album is excepted from** (§9, slice 100). The settings say what every album should
+    # have and every pass brings an album to them; this is the one thing kept per album, it can only
+    # take something away, and **nothing but the user ever writes it** — from the album view. Absent
+    # for every album that is not an exception, which is nearly all of them.
+    exceptions: dict[str, bool] | None = None
     # **whether anything about this album may be asked of lrclib or MusicBrainz** (§9, slice 72).
     # `None` leaves the decision to the provider, which is what every album has said until now; a
     # private source means no, and only the owner of the album can say otherwise, by setting this to
