@@ -620,3 +620,66 @@ def test_the_dry_run_writes_nothing_at_all(tmp_path, opus_template):
     service(tmp_path, opus_template).repair(dry_run=True)
 
     assert fingerprint() == before
+
+
+# -- a file cut with a clock that starts before zero (§9, slice 86) -----------------------------------
+
+
+def test_the_dry_run_names_a_file_whose_clock_starts_before_zero(tmp_path, opus_template):
+    """R-291: every front-cut file in the user's library reads `start_time = -0.900000` for a 4.9 s
+    trim, because `-ss` before `-i` keeps the packets before the cut point and marks them negative."""
+    import shutil
+    import subprocess
+
+    from noaap.download import would_do
+    from noaap.trim import ORIGINALS, signature, starts_before_zero
+
+    tmp_path, plan = library_with(tmp_path, opus_template, lambda plan: None)
+    album_dir = tmp_path / plan.folder
+    saved = load_plan(album_dir)
+    track = saved.tracks[0]
+    here = album_dir / track.filename
+    # the old recipe, and the original kept beside it as a real cut would
+    (album_dir / ORIGINALS).mkdir(exist_ok=True)
+    shutil.copy(here, album_dir / ORIGINALS / f"{track.video_id}.opus")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "0.300", "-i",
+                    str(album_dir / ORIGINALS / f"{track.video_id}.opus"), "-c", "copy",
+                    str(album_dir / "cut.opus")], check=True)
+    shutil.move(album_dir / "cut.opus", here)
+    track.trim_start = 0.3
+    track.trimmed = signature(track)
+    save_plan(saved, album_dir)
+    if starts_before_zero(here) is None:
+        pytest.skip("this ffmpeg does not leave a negative start, so there is nothing to report")
+
+    said = would_do(saved, album_dir)
+
+    assert any("would be cut again" in line and "starts at -0.3" in line for line in said), said
+
+
+def test_and_says_when_it_cannot(tmp_path, opus_template):
+    import shutil
+    import subprocess
+
+    from noaap.download import would_do
+    from noaap.trim import signature, starts_before_zero
+
+    tmp_path, plan = library_with(tmp_path, opus_template, lambda plan: None)
+    album_dir = tmp_path / plan.folder
+    saved = load_plan(album_dir)
+    track = saved.tracks[0]
+    here = album_dir / track.filename
+    shutil.copy(here, album_dir / "keep.opus")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "0.300", "-i", str(album_dir / "keep.opus"),
+                    "-c", "copy", str(album_dir / "cut.opus")], check=True)
+    shutil.move(album_dir / "cut.opus", here)
+    (album_dir / "keep.opus").unlink()
+    track.trim_start = 0.3
+    track.trimmed = signature(track)
+    save_plan(saved, album_dir)
+    if starts_before_zero(here) is None:
+        pytest.skip("this ffmpeg does not leave a negative start")
+
+    said = would_do(saved, album_dir)
+
+    assert any("cannot be cut again" in line and "no untouched original" in line for line in said), said

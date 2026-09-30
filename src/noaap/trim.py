@@ -31,6 +31,32 @@ ORIGINALS = ".originals"
 RETAKE = "switch the track's audio source to take it again"
 
 
+#: how long to wait for ffprobe to answer one question about one file
+ASKING = 30.0
+
+
+def starts_before_zero(path: Path) -> float | None:
+    """The file's own start time when it is **negative**, else None (§9, slice 86).
+
+    `ffmpeg -ss … -i … -c copy` keeps the packets before the cut point and marks them with negative
+    stamps instead of starting the file at zero: every front-cut file in the user's library reads
+    `start_time = -0.900000` for a 4.9 s trim, minus the fraction of the trim point. A player then has
+    a clock that runs past the duration it was told, and the track that follows one of these starts
+    in its own middle (`docs/qa-catalog.md`, BZ). This is how such a file is recognised again.
+    """
+    try:
+        done = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=start_time",
+                               "-of", "default=nw=1:nk=1", str(path)],
+                              capture_output=True, text=True, errors="replace", timeout=ASKING)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        start = float((done.stdout or "").strip())
+    except ValueError:
+        return None
+    return start if start < 0 else None
+
+
 def signature(track: PlanTrack) -> str:
     """What the file should be cut to; '' means untouched."""
     if track.trim_start is None and track.trim_end is None:
@@ -87,7 +113,15 @@ def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
     """Bring `path` in line with the track's trim points. True if the file changed."""
     wanted = signature(track)
     if wanted == (track.trimmed or ""):
-        return False
+        if not wanted or starts_before_zero(path) is None:
+            return False
+        # cut to the right points by an older version, and left with a clock that starts before zero
+        original = original_path(album_dir, track)
+        if not original.exists() or not holds(original, track.ext):
+            log.warning("%s: its clock starts before zero and no untouched original is kept, so it "
+                        "cannot be cut again: %s", path.name, RETAKE)
+            return False
+        track.trimmed = None   # so the cut below runs: the file on disk is not what it should be
     original = original_path(album_dir, track)
     if original.exists() and not holds(original, track.ext):
         # a copy that is not what its name says — a leftover from another format
@@ -118,10 +152,19 @@ def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
         return True
 
     cut = path.with_suffix(f".trim{path.suffix}")  # the cut keeps the track's own container
-    command = ["ffmpeg", "-v", "error", "-y", "-ss", f"{track.trim_start or 0:.3f}"]
+    # **`-ss` after `-i`, and a clock that starts at zero** (§9, slice 86). Before `-i` it is a fast
+    # input seek: ffmpeg keeps the packets before the cut point and marks them negative, so the file
+    # holds audio the user cut away and every player's clock is offset by the fraction of the trim
+    # point — measured at `start_time = -0.900000` for a 4.9 s trim, on every front-cut file in the
+    # user's library. After `-i` the packets before the point are dropped, and `make_zero` puts the
+    # first remaining stamp at 0.000. The cost is the one packet the point falls inside: 20 ms of
+    # Opus, kept rather than lost, which is the same accuracy `-c copy` always had.
+    command = ["ffmpeg", "-v", "error", "-y", "-i", str(original),
+               "-ss", f"{track.trim_start or 0:.3f}"]
     if track.trim_end is not None:
+        # still the original's own timeline: `-to` is absolute even when `-ss` is an output option
         command += ["-to", f"{track.trim_end:.3f}"]
-    command += ["-i", str(original), "-c", "copy", str(cut)]
+    command += ["-c", "copy", "-avoid_negative_ts", "make_zero", str(cut)]
     try:
         subprocess.run(command, check=True, capture_output=True, text=True, errors="replace")
     except (subprocess.CalledProcessError, FileNotFoundError) as e:

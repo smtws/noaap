@@ -379,6 +379,21 @@ those plans recorded only the bare name of a file in a sub-folder, and the first
 copied it into the album's root. `repair` looks each file up where your collection says it is, and a
 finished track of an adopted album is never fetched again in any case.
 
+**A cut file starts at zero.** Until 1.18.0 the cut kept the packets before the trim point and marked
+them with negative timestamps (`start_time = -0.900000` for a 4.9 s trim), which left a player with a
+clock running past the length it was told and — with the bug below — made the *next* track in the queue
+begin a few seconds into itself. The cut drops those packets now and the first stamp is `0.000`; the
+cost is the one 20 ms packet the trim point falls inside, and nothing is re-encoded. Files cut by an
+older version are found by their own start time and **cut again from the untouched original** beside
+them: `noaap repair --dry-run` names each one (*"01 would be cut again: its clock starts at -0.900 s"*)
+and says so when no original is kept, in which case nothing is touched.
+
+**And a track whose file is already cut is played as it is.** The trim points in the plan belong to the
+*original*; the file on disk has already been cut to them. Measuring the playhead against them skipped
+the head a second time — measured in the installed app: a cut track began 4.9 s into itself, and the
+track after it started at 4.948 instead of 0. While you are moving the handles the preview still skips
+and stops, which is what it is for.
+
 **Read the dry run before the real one, and it will tell you about the audio files.** `--dry-run`
 prints one line per track for everything the pass would do — *would be renamed*, *would be retagged*
 with the values that change, *would be cut to its trim points* — and ends with its own total:

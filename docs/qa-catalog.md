@@ -5191,10 +5191,63 @@ to Cloudflare"* for the non-app path.
   far end's model and version, the language goes with the request, a far end that cannot listen says so
   before anything is sent, and one that refuses mid-request answers 400 with its own sentence.
 
+## BZ. A cut file starts at zero (P69, DESIGN §9, slice 86)
+
+- [x] **BZ1 · M** — the four ways to cut the same file (a copy of one of the user's tracks, 194.85 s,
+  trim 4.9 s)
+
+  | recipe | `start_time` | first packet | duration | bytes |
+  |---|---|---|---|---|
+  | the original | 0.0075 | 0.001 | 194.8475 | 3 104 878 |
+  | **1.18.0 and before**: `-ss 4.9 -i in -c copy` | **−0.900000** | **−0.9065** | 189.94 | 2 917 642 |
+  | input seek + `-avoid_negative_ts make_zero` | 0.0065 | 0.000 | **190.8465** | 2 917 642 |
+  | output seek: `-i in -ss 4.9 -c copy` | 0.020 | 0.0135 | 189.94 | 2 903 812 |
+  | **output seek + `make_zero`** (now) | 0.0065 | **0.000000** | 189.9265 | 2 903 812 |
+
+  The old recipe reproduces the user's files exactly. `make_zero` on the *input* seek shifts the clock
+  but **keeps the pre-roll** — nearly a second of what the user cut away is still in the file — which is
+  why it was rejected. The output seek drops those packets (14 KB smaller) and `make_zero` puts the
+  first stamp at zero. `-to` stays absolute either way, checked separately (`-ss 4.9 -to 60` → 55.1 s).
+
+- [x] **BZ2 · M** — Chrome in app mode (`--app=`), muted, on copies: what a cut file does
+
+  Two front-cut copies of the same original, one each way, and a third track to advance into. Seeks to
+  30 / 90 / 150 / 185 / 189 / 189.8 s, read from the element's own clock.
+
+  | | **before the fix** | **after** |
+  |---|---|---|
+  | a cut track starts at | **7.13 s** (the guard skipped to 4.9 and it played on) | 2.48 s (only the playing) |
+  | the next track, after one ends | **4.948 s** — its own middle | **0.018 s** |
+  | plain seeks | landed where asked, in both files | the same |
+  | the negative-start file at its end | clock ran to **189.948** past a duration of 189.94, `ended` about 2.8 s late | — |
+
+  So the visible defect was the **page**, not the container: the trim guard measured the playhead of an
+  already-cut file against the original's trim points. *"It jumps to the next one right from the
+  middle"* is that, measured. The negative start is the second defect — a clock that runs past the
+  duration it reports — and it is what made these files different from the fifteen clicks of catalog BP
+  that found nothing.
+
+- [x] **BZ3 · M** — `repair` on a copy, dry then real
+
+  Dry: *"01 would be cut again: its clock starts at -0.900 s"*, and the file is byte-identical
+  afterwards. Real: `01 trimmed`, and the file now reads `start_time = 0.006500` — the same shape as one
+  cut the new way. An album like this has a perfectly tidy *plan*, so the pass is told not to skip it
+  (one `ffprobe` per cut track).
+
+- [x] **BZ4** — on fixtures: a cut file's first packet is 0.000 and its length is the trim span within
+  one packet, front-and-back and front-only; a file cut by the old recipe is cut again from the kept
+  original; one with no original kept is **left alone** and says so; a file that already starts at zero
+  is not touched twice; the dry run names both cases.
+
+- [x] **BZ5** — the page's rule, on fixtures: a track whose file carries the cut is played as it is
+  (no skip, no early advance), the same track without the cut in the file is previewed as before, and
+  while the points are being changed the preview runs on a cut file too.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BZ cases (P69: a cut file starts at zero) | 5 | 0 — two defects of the program's, one of them mine from P63's measurement | The user's *"it jumps to the next one right from the middle"*, reproduced in Chrome **in app mode** on copies: a cut track began **4.9 s into itself** and the track after it began at **4.948**. The cause is the page — the trim guard measured an already-cut file's playhead against the *original's* trim points — and after the fix the same measurement reads no skip and **0.018** for the next track. Underneath it, the container: `-ss` before `-i` keeps the packets before the cut and marks them negative (`-0.900000` for a 4.9 s trim, every front-cut file in the library), so a player's clock runs past the duration it reports and `ended` came 2.8 s late. The cut now seeks on the output side with `make_zero`: first packet **0.000**, length within one 20 ms packet, 14 KB smaller, nothing re-encoded — and the obvious alternative (`make_zero` on the input seek) was measured and rejected because it keeps the pre-roll. Files already cut the old way are named in the dry run and cut again from the untouched original; where none is kept, nothing is touched and it says so. P63's fifteen clean clicks were measured on files that had never been cut, which is why they found nothing. 1640 pytest + 138 node. |
 | 2026-09-30 | the BY cases (P68: a dry run that names everything) | 6 | **1 defect of mine in the report itself, found by running it** | `repair --dry-run` said lengths and albums and nothing about tags; the real run rewrote **376** of the user's audio files, after the user had been told none would be. The report is built from the pass's own predicates now — one line per track for renames, trims and retags with the values that change — and a test compares the dry set with the real set. On copies of two real albums: 18 retags named, 0 of 61 files touched by the dry run, the two sets agreeing exactly, and **−1 byte** on each rewritten file. Why those files: LRCLIB ends a lyric whose singing stops early with a bare stamp and its **trailing space**, which was written into the tag while the reader strips it — 52 of 52 stale opus files differ in exactly that character, 864 tracks in the test library were stale for it. Stripped where it enters now. My own defect: the first report showed sixty characters of each side and printed the same text twice, which is how the trailing space stayed invisible; it names the character they stop agreeing at. Also: the *"1 leaked semaphore"* is **tqdm's** multiprocessing lock behind stable-ts's progress bar (traced to the frame; a plain lock settles it, and `verbose=None` takes the bars out of the log), and `http` can now listen. 1633 pytest + 135 node. |
 | 2026-09-30 | the BX cases (P67c: the test that counted three releases) | 4 | 0 — the flaky test is the canary and keeps its assertion | CI saw `emptied == [1, 1, 1]` where one call was made, on two commits, passing on a rerun of the same commit. Cause, counted: every `App` starts a card-idle watcher with no lifecycle, **59** of them were alive after three test files, and when a window passes such a thread calls `release_gpu_memory()` — which reads `sys.modules["torch"]`, i.e. whatever the test running at that moment has stubbed there. Fixed at the root: the one line that starts the thread does nothing in tests, so 59 → **0**; three cases now say an `App` starts one, a window of 0 starts none, and no test leaves one running. The suite in shuffled order, seeds 1–3: 1624 passed each time. |
 | 2026-09-30 | the BW cases (P67b: a job holds only what it uses) | 5 | **2 defects of mine, both found by the reviewer using P67** | `listen` leaves 3.6 GB of the big model on the card; slice 82's gate counted it as room and sent the *alignment* that followed to a card with 3355 MiB free for a run that peaks at 3460 — it died half way through, which is two buttons pressed in turn. A job now lets go of what it will not use before it asks for room, and says so in its first line. Measured on a real server, second opinion on: `listen → align → listen` all succeed (29.9 / 21.5 / 29.8 s, peaks 4560 / 4448 / 4580 MiB, held after each 3856 / 568 / 3940 MiB), and four in a row from a held state too. Second defect: with every weight on the disk the log still greeted the model hub — measured to the component, it is the **separator** asking `hf_hub_download` for metadata about a file it has, not the aligner and not the big model. Every load now runs with the hub switched off both ways the library reads it, retrying once with a download that says so: **0** hub lines against 2 over the same jobs, and an opt-in test loads all three models with sockets forbidden. **And one of my own, unforced:** a `pkill` pattern of mine matched the user's own socket-activated service and stopped it; the socket brought it back in three seconds, but I had been told twice not to touch it. 1621 pytest + 135 node. |

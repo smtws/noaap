@@ -44,6 +44,7 @@ from .tag import (
     tags_in,
 )
 from .trim import apply as apply_trim
+from .trim import original_path, starts_before_zero
 from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
@@ -546,6 +547,13 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         if trim_signature(track) != (track.trimmed or ""):
             said.append(f"{track.number:02d} would be cut to its trim points"
                         if trim_signature(track) else f"{track.number:02d} would be put back untrimmed")
+        elif trim_signature(track) and (before := starts_before_zero(final if final.exists() else here)) is not None:
+            # cut to the right points by a version that left the clock before zero (§9, slice 86)
+            kept = original_path(album_dir, track)
+            said.append(f"{track.number:02d} would be cut again: its clock starts at {before:.3f} s"
+                        if kept.exists() else
+                        f"{track.number:02d} starts at {before:.3f} s and cannot be cut again: "
+                        "no untouched original is kept beside it")
         if plan.keep_tags:
             continue   # nothing is ever written into this file (§9, slice 58)
         text = read_sidecar(album_dir, track)
@@ -570,6 +578,24 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
             said.append(f"{track.number:02d} would be rewritten with the same tag values "
                         f"(the plan's record of them is out of date)")
     return said
+
+
+def needs_a_recut(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
+    """The tracks whose file is cut to the right points but whose clock starts before zero.
+
+    Cheap enough to ask about every album (one ffprobe per *cut* track, and most tracks are not cut),
+    and it has to be asked before the pass decides to skip an album: the plan of such an album is
+    perfectly tidy, so nothing else would ever look at its files again (§9, slice 86).
+    """
+    out = []
+    for track in plan.tracks:
+        if track.state != "done" or not trim_signature(track) \
+                or trim_signature(track) != (track.trimmed or ""):
+            continue
+        path = album_dir / track.filename
+        if path.exists() and starts_before_zero(path) is not None:
+            out.append(track)
+    return out
 
 
 def _change(key: str, old: object, new: object) -> str:

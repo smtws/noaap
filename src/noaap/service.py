@@ -29,6 +29,7 @@ from .download import (
     iter_plans,
     load_plan,
     lost_files,
+    needs_a_recut,
     relocate,
     rewritten,
     run,
@@ -1729,9 +1730,13 @@ class Service:
             # why a tidy library kept hundreds of tracks with no length at all (§9, slice 56).
             filled = self.measure_lengths(plan, album_dir, dry_run=dry_run)
             lengths += filled
+            # **asked before the skip** (§9, slice 86): the plan of an album whose files were cut with a
+            # clock starting before zero is perfectly tidy, so without this nothing would ever look at
+            # those files again — and they are the ones a player begins in their own middle.
+            recut = needs_a_recut(plan, album_dir)
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
-                    and not elsewhere.get("sources") \
+                    and not elsewhere.get("sources") and not recut \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"

@@ -146,3 +146,25 @@ test("an unsaved trim always stops rather than carrying itself into the next son
   assert.equal(said.pause, true);
   assert.equal(said.next, undefined);
 });
+
+// -- a window already in the file is not a window any more (§9, slice 86) ----------------------------
+
+test("a track whose file is already cut is played as it is", () => {
+  // the file's clock starts at the cut, so the plan's numbers belong to the original, not to this file
+  assert.deepEqual(trimGuard({ current: 0.5, start: 48.1, end: 259.8, applied: true }), {});
+  assert.deepEqual(trimGuard({ current: 300, start: 48.1, end: 259.8, applied: true }), {});
+});
+
+test("without the cut in the file the window is previewed as before", () => {
+  assert.deepEqual(trimGuard({ current: 0.5, start: 48.1, end: 259.8 }), { seekTo: 48.1 });
+  assert.deepEqual(trimGuard({ current: 300, start: 48.1, end: 259.8, previous: 299.9 }), { next: true });
+});
+
+test("and while the points are being changed the preview runs even on a cut file", () => {
+  assert.deepEqual(trimGuard({ current: 0.5, start: 5, end: 100, applied: true, unsaved: true }),
+                   { seekTo: 5 });
+  assert.deepEqual(trimGuard({ current: 120, start: 5, end: 100, applied: true, unsaved: true }),
+                   { seekTo: 99.95, pause: true });
+  // a handle held without moving a number changes nothing, so the file is still the window
+  assert.deepEqual(trimGuard({ current: 0.5, start: 5, end: 100, applied: true, dragging: true }), {});
+});

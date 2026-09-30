@@ -683,11 +683,20 @@ export function claimOffer(d) {
  * beyond it by a jump stops there, where the audio ends.
  *
  * `previous` is the position at the last tick; a gap larger than `JUMP` means somebody moved it.
+ *
+ * **A window already in the file is not a window any more** (§9, slice 86). `applied` says the file on
+ * disk has been cut to these points: its own clock then starts at the cut, and measuring the playhead
+ * against the *original's* numbers skipped `trim_start` seconds of an already-cut song — measured in
+ * Chrome in app mode, where a track that followed one of these began 4.9 s into itself, which is the
+ * user's "it jumps to the next one right from the middle". While the points are being changed
+ * (`unsaved`) the preview is exactly what is wanted, so then it still runs — and a handle being
+ * dragged sets `unsaved` the moment it moves a number, which is what makes that work.
  */
 export const JUMP = 1.5;
 
 export function trimGuard({ current, start, end, previous = null, jumped = null,
-                            dragging = false, unsaved = false }) {
+                            dragging = false, unsaved = false, applied = false }) {
+  if (applied && !unsaved) return {};   // the file *is* the window
   // the player knows when it has just seeked; everyone else can tell from the gap since the last tick
   const moved = jumped !== null ? jumped
     : previous !== null && Math.abs(current - previous) > JUMP;

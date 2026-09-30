@@ -2003,7 +2003,10 @@ audio.addEventListener("timeupdate", () => {
   if (t) {  // preview the trim while listening: skip the head, stop at the end
     const unsaved = t.end !== t.savedEnd || t.start !== t.savedStart;
     const said = trimGuard({ current: audio.currentTime, start: t.start, end: t.end,
-                             previous: lastTick, jumped: justSought || null, dragging, unsaved });
+                             previous: lastTick, jumped: justSought || null, dragging, unsaved,
+                             // the file on disk is already cut to these points, so its own clock is
+                             // the window and the plan's numbers belong to the original (§9, slice 86)
+                             applied: Boolean(t.trimmed) });
     justSought = false;
     if (said.seekTo !== undefined) audio.currentTime = said.seekTo;
     if (said.pause) audio.pause();

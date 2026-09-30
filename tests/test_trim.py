@@ -317,3 +317,101 @@ def test_a_re_downloaded_track_does_not_inherit_the_old_trim_state(tmp_path, opu
 
     run(plan, album_dir, yt, download=False)  # the following pass applies it
     assert load_plan(album_dir).tracks[0].trimmed == "0.20-"
+
+
+# -- a cut file starts at zero (§9, slice 86) ---------------------------------------------------------
+
+
+def start_time(path: Path) -> float:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=start_time",
+                          "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout
+    return float(out)
+
+
+def first_packet(path: Path) -> float:
+    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                          "packet=pts_time", "-read_intervals", "%+#1", "-of", "csv=p=0", str(path)],
+                         capture_output=True, text=True, check=True).stdout
+    return float(out.strip().split("\n")[0].rstrip(","))
+
+
+def test_a_cut_file_starts_at_zero(tmp_path, tone):
+    """R-291: `-ss` before `-i` keeps the packets before the cut point and marks them negative, so
+    every front-cut file in the user's library read `start_time = -0.900000` for a 4.9 s trim."""
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    shutil.copy(tone, tmp_path / "t.opus")
+
+    track.trim_start, track.trim_end = 2.9, 8.0
+    assert apply(tmp_path, track, tmp_path / "t.opus") is True
+
+    assert first_packet(tmp_path / "t.opus") == 0.0, "the first audio stamp is zero"
+    assert start_time(tmp_path / "t.opus") >= 0.0, "and the file's clock does not start before it"
+    span = 8.0 - 2.9
+    assert abs(duration(tmp_path / "t.opus") - span) <= 0.02, "the length is the trim span, within a packet"
+
+
+def test_a_front_only_cut_starts_at_zero_too(tmp_path, tone):
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    shutil.copy(tone, tmp_path / "t.opus")
+
+    track.trim_start = 4.9
+    apply(tmp_path, track, tmp_path / "t.opus")
+
+    assert first_packet(tmp_path / "t.opus") == 0.0
+    assert abs(duration(tmp_path / "t.opus") - (duration(tone) - 4.9)) <= 0.02
+
+
+def test_a_file_cut_by_an_older_version_is_cut_again(tmp_path, tone):
+    """Item 3: cut to the right points, but with a clock that starts before zero."""
+    from noaap.trim import starts_before_zero
+
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    here = tmp_path / "t.opus"
+    (tmp_path / ORIGINALS).mkdir()
+    shutil.copy(tone, tmp_path / ORIGINALS / f"{track.video_id}.opus")
+    # the old recipe, as 1.18.0 and everything before it cut
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "4.900", "-i", str(tone), "-c", "copy", str(here)],
+                   check=True)
+    assert starts_before_zero(here) is not None, "the fixture is the shape this is about"
+    track.trim_start, track.trim_end = 4.9, None
+    track.trimmed = signature(track)
+
+    assert apply(tmp_path, track, here) is True, "the same points, and still worth cutting again"
+
+    assert starts_before_zero(here) is None and first_packet(here) == 0.0
+    assert track.trimmed == signature(track)
+
+
+def test_one_that_cannot_be_cut_again_says_so_and_changes_nothing(tmp_path, tone, caplog):
+    from noaap.trim import starts_before_zero
+
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    here = tmp_path / "t.opus"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "4.900", "-i", str(tone), "-c", "copy", str(here)],
+                   check=True)
+    track.trim_start = 4.9
+    track.trimmed = signature(track)   # in this order: the signature is of the points just set
+    before = here.read_bytes()
+
+    with caplog.at_level("WARNING"):
+        assert apply(tmp_path, track, here) is False
+
+    assert here.read_bytes() == before
+    assert starts_before_zero(here) is not None, "still the old shape, and honest about it"
+    assert "cannot be cut again" in caplog.text
+
+
+def test_a_file_that_starts_at_zero_is_left_alone(tmp_path, tone):
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    shutil.copy(tone, tmp_path / "t.opus")
+    track.trim_start = 2.0
+    apply(tmp_path, track, tmp_path / "t.opus")
+    digest = (tmp_path / "t.opus").read_bytes()
+
+    assert apply(tmp_path, track, tmp_path / "t.opus") is False, "nothing to do twice"
+    assert (tmp_path / "t.opus").read_bytes() == digest

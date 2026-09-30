@@ -2516,6 +2516,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    across the server log because stable-ts reads `verbose=False` as *"draw the bar, print no text"* and
    only `None` as *"say nothing"*.
 
+86. ✅ **A cut file starts at zero** (2026-09-30, P69). The user, twice: *"when i jump around in the
+   file after cutting the front 4 seconds it jumps to the next one right from the middle at times."*
+   Fifteen measured clicks in P63 found no stall, because they were measured on files that were never
+   cut. The reviewer found the difference: **every front-cut file in the library reads a negative start
+   time** — `-0.900000` for a 4.9 s trim, minus the fraction of the trim point — because `-ss` before
+   `-i` with `-c copy` keeps the packets before the cut point and marks them negative instead of
+   dropping them.
+   **Two defects, and the visible one is the page's.** Measured in Chrome in app mode, muted, on copies:
+   a cut track began at **4.9 s into itself**, and when a track ended the *next* one began at 4.948 —
+   which is exactly "it jumps to the next one right from the middle". The cause is not the negative
+   start but the trim guard: the plan's trim points belong to the **original**, and the file on disk has
+   already been cut to them, so measuring the playhead against them skips the head twice. A window
+   already in the file is not a window: the guard now does nothing for a track whose file carries the
+   cut, and still previews while the points are being changed. After the fix the same measurement reads
+   *started at 2.475* (no skip) and the next track begins at **0.018**.
+   **And the file itself.** `-ss` after `-i` drops the packets before the point and
+   `-avoid_negative_ts make_zero` puts the first remaining stamp at 0.000 — measured: first packet
+   `0.000000`, length within one packet of the trim span, no re-encode, and 14 KB smaller than the old
+   recipe because the pre-roll is really gone. The cost is the 20 ms packet the cut point falls inside,
+   which is the accuracy `-c copy` always had. The other candidate, `make_zero` with the old input seek,
+   was **measured and rejected**: it shifts the clock but keeps the pre-roll, so the file still holds
+   nearly a second of what the user cut away (190.85 s against 189.94).
+   **The files already cut this way** are found by their own start time and cut again from the untouched
+   original beside them. `repair` names each one in the dry run — *"01 would be cut again: its clock
+   starts at -0.900 s"* — and says when it cannot, which is when no original is kept. Such an album's
+   *plan* is perfectly tidy, so the pass had to be taught not to skip it: that is one `ffprobe` per cut
+   track, and most tracks are not cut.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2710,6 +2738,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (a cut file starts at zero, §9, slice 86)
+
+- **Measure on the files the user has, not on the files the tests make.** Fifteen clean playback
+  measurements meant nothing because none of them was a cut file.
+- **A window already applied to a file is not a window.** Whoever holds a rule about a recording must
+  know whether the recording has already been changed by it.
+- **`-ss` belongs after `-i` for a cut**, and a cut file's clock starts at zero. A player's clock that
+  runs past the duration it was given is a bug wherever it shows up.
+- **Reject a candidate fix out loud.** `make_zero` on an input seek looks right and keeps a second of
+  the audio the user cut away.
+- **An album whose plan is tidy can still have work in its files.** The skip has to know that.
 
 ### Decisions of 2026-09-30 (a dry run that says everything, §9, slice 85)
 
