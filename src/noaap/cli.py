@@ -32,9 +32,23 @@ PROV_MARK = {"mb": "MB", "yt_music": "YTM", "yt_title": "title", "playlist": "pl
 BLOCKED = 3  # exit code: YouTube is refusing requests right now; stop asking
 
 
+class _Version(argparse.Action):
+    """`noaap --version`: asked lazily, because a checkout's answer costs a `git describe`."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        from . import running_from
+
+        print("noaap {} — {}".format(*running_from()))
+        parser.exit()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="noaap", description="Turn YouTube playlists into tagged albums.")
     p.add_argument("-v", "--verbose", action="store_true")
+    # **which code is answering** (§9, slice 93), the same answer the page gives: a release install
+    # says its version, a checkout says which commit it is.
+    p.add_argument("--version", nargs=0, action=_Version,
+                   help="the version, and whether this is a release install or a checkout")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     f = sub.add_parser("fetch", help="plan and download a playlist, video or channel URL")
@@ -116,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     wu = sub.add_parser("watch-service", help="the watcher as its own systemd user service")
     wu.add_argument("action", choices=["install", "uninstall", "status"])
     wu.add_argument("--port", type=int, default=None, help="the port the app listens on")
+    wu.add_argument("--from-checkout", action="store_true",
+                    help="run this checkout instead of the release venv (for development)")
 
     tm = sub.add_parser("timing-serve", help="run the local aligner as a small HTTP service for another machine")
     tm.add_argument("--host", default="0.0.0.0", help="0.0.0.0 by default: the point is to be reached from the LAN")
@@ -128,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     sd.add_argument("--port", type=int, default=None, help="install: the port to listen on (default 8765)")
     sd.add_argument("--idle-exit", type=int, default=None, metavar="SECONDS",
                     help="install: stop the service after this long without requests or jobs (default 900)")
+    sd.add_argument("--from-checkout", action="store_true",
+                    help="install: run this checkout instead of the release venv at ~/.local/noaap-release "
+                         "(for development — the user's service should run a release)")
 
     ap = sub.add_parser("app", help="desktop launcher with its own window, not another browser window")
     ap.add_argument("action", choices=("install", "uninstall", "status"))
@@ -312,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.action == "status":
                     print(f"watcher: {systemd.watching()}")
                     return 0
-                doing = systemd.install_watch(cfg, args.port) if args.action == "install" \
+                doing = systemd.install_watch(cfg, args.port, args.from_checkout) if args.action == "install" \
                     else systemd.uninstall_watch()
                 for line in doing:
                     print(line)
@@ -935,6 +954,8 @@ def _systemd(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     from . import systemd
 
     given = [flag for flag, value in (("--port", args.port), ("--idle-exit", args.idle_exit)) if value is not None]
+    if args.action != "install" and args.from_checkout:
+        given.append("--from-checkout")
     if args.action != "install" and given:
         # they describe the units, which only `install` writes — silently doing nothing with them
         # is how you come to believe the service moved to another port
@@ -944,7 +965,7 @@ def _systemd(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     port, idle_exit = args.port or 8765, args.idle_exit or 900
     try:
         if args.action == "install":
-            for line in systemd.install(cfg, port, idle_exit):
+            for line in systemd.install(cfg, port, idle_exit, args.from_checkout):
                 print(line)
             print(f"ready: open http://localhost:{port}/ — the web UI starts on demand and stops after {idle_exit}s idle")
         elif args.action == "uninstall":

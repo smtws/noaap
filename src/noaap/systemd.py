@@ -20,14 +20,42 @@ UNIT = "noaap"
 LEGACY_UNIT = "ytalbum"          # ytalbum's units are left alone; `noaap migrate` offers to remove them
 DEFAULT_IDLE_EXIT = 900
 
+# **The service runs a released snapshot, not the working tree** (§9, slice 93). An editable install
+# points at a checkout, and this service restarts itself: `--idle-exit` plus socket activation means the
+# next request after an idle window starts a *new* process from whatever the tree holds at that second —
+# half-edited, possibly not importable. The user saw the milder half of it on 2026-09-30: the page files
+# are read per request, so a page from a newer commit met an older process and the settings view was
+# mixed. A unit that names a venv holding the released wheel cannot do either.
+# `NOAAP_RELEASE_VENV` is honoured so that this and `scripts/release-install.sh` cannot disagree about
+# where the release lives; the script warns when the installed unit names a different one.
+RELEASE_VENV = Path(os.environ.get("NOAAP_RELEASE_VENV") or Path.home() / ".local" / "noaap-release")
+
+
+def release_exe(venv: Path | None = None) -> Path | None:
+    """The release venv's `noaap`, if that venv is there. None means "there is no release install"."""
+    exe = (venv or RELEASE_VENV) / "bin" / "noaap"
+    return exe if exe.is_file() else None
+
+
+def unit_exe(venv: Path | None = None, from_checkout: bool = False) -> Path:
+    """Which `noaap` a unit should start: the release venv's when it exists, else this one's.
+
+    `from_checkout` is the deliberate way back for development — a unit that follows the tree again,
+    which is what my own verification wants and what the user's service must not be.
+    """
+    if not from_checkout and (exe := release_exe(venv)):
+        return exe
+    return Path(sys.prefix) / "bin" / "noaap"
+
 
 def unit_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
     return Path(base) / "systemd" / "user"
 
 
-def render_units(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> dict[str, str]:
-    exe = Path(sys.prefix) / "bin" / "noaap"
+def render_units(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT,
+                 from_checkout: bool = False) -> dict[str, str]:
+    exe = unit_exe(from_checkout=from_checkout)
     path = ["/usr/local/bin", "/usr/bin", "/bin"]
     if node := cfg.resolved_node():  # systemd does not see nvm's PATH; yt-dlp and the token server need node
         path.insert(0, str(Path(node).parent))
@@ -57,14 +85,17 @@ Environment=PYTHONUNBUFFERED=1
 WATCH_UNIT = f"{UNIT}-watch"
 
 
-def render_watch_unit(cfg: Config, port: int = 8765) -> dict[str, str]:
+def render_watch_unit(cfg: Config, port: int = 8765, from_checkout: bool = False) -> dict[str, str]:
     """The watcher's own unit. **Not installed with the web service** (R-200, ruling 4).
 
     It is always on, where the web service is started on demand and stops itself again — so it is a
     thing a person turns on deliberately, and turns off by stopping this one unit. `Restart=always`
     because a watcher that has quietly died looks exactly like a folder where nothing arrives.
+
+    It runs the release venv's `noaap` on the same reasoning as the web service (§9, slice 93): a
+    watcher that restarts every 30 s would otherwise pick the working tree up faster than anything.
     """
-    exe = Path(sys.prefix) / "bin" / "noaap"
+    exe = unit_exe(from_checkout=from_checkout)
     path = ["/usr/local/bin", "/usr/bin", "/bin"]
     if node := cfg.resolved_node():
         path.insert(0, str(Path(node).parent))
@@ -86,7 +117,7 @@ WantedBy=default.target
     }
 
 
-def install_watch(cfg: Config, port: int | None = None) -> list[str]:
+def install_watch(cfg: Config, port: int | None = None, from_checkout: bool = False) -> list[str]:
     """Write and start the watcher's unit. Refuses a configuration that cannot stand."""
     if not cfg.watches:
         raise Refused("nothing is watched yet — put a [[watch]] table in the config file "
@@ -95,7 +126,7 @@ def install_watch(cfg: Config, port: int | None = None) -> list[str]:
         raise Refused("; ".join(trouble))
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
-    for name, text in render_watch_unit(cfg, port or installed_port()).items():
+    for name, text in render_watch_unit(cfg, port or installed_port(), from_checkout).items():
         (unit_dir() / name).write_text(text)
         done.append(f"wrote {unit_dir() / name}")
     for args in (("daemon-reload",), ("enable", "--now", f"{WATCH_UNIT}.service")):
@@ -156,17 +187,25 @@ def clash(port: int) -> str | None:
             f"--uninstall-old`). Nothing was changed.")
 
 
-def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT) -> list[str]:
-    """Write the units, enable and start the socket. Returns what was done, for the user."""
+def install(cfg: Config, port: int = 8765, idle_exit: int = DEFAULT_IDLE_EXIT,
+            from_checkout: bool = False) -> list[str]:
+    """Write the units, enable and start the socket. Returns what was done, for the user.
+
+    Rewriting an installed unit is how a unit is *moved* to the release venv: the same command, once
+    the venv is there (§9, slice 93).
+    """
     if not cfg.library_root:
         raise Refused("set the library first: noaap config --library PATH")
     if message := clash(port):
         raise Refused(message)
     done = []
     unit_dir().mkdir(parents=True, exist_ok=True)
-    for name, text in render_units(cfg, port, idle_exit).items():
+    for name, text in render_units(cfg, port, idle_exit, from_checkout).items():
         (unit_dir() / name).write_text(text)
         done.append(f"wrote {unit_dir() / name}")
+    done.append(f"the service will run {unit_exe(from_checkout=from_checkout)}"
+                + ("" if release_exe() and not from_checkout
+                   else f" — no release install at {RELEASE_VENV}, so it follows this checkout"))
     for args in (("daemon-reload",), ("enable", "--now", f"{UNIT}.socket")):
         r = systemctl(*args)
         if r.returncode:

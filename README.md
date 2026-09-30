@@ -124,6 +124,38 @@ uv run noaap config                               # shows what it found: ffmpeg,
 **ffmpeg is reported, not required:** a library can be browsed, tagged, searched and have its lyrics
 fetched without it — downloading and trimming are what stop, and they stop at the moment of use.
 
+### Two ways to have it installed, and which one your service should run
+
+The checkout above is the **development** install: `uv sync` makes an editable venv, so the code the
+program runs is the code in `src/`. That is what you want while changing it — and it is not what a
+service should run, because the web UI reads its page files per request and starts itself on demand:
+an editable install means the next start after an idle window runs whatever the working tree holds at
+that second, half-saved edits included.
+
+So the service runs a **release install**: a venv of its own holding the built wheel, which is a
+snapshot and cannot change under it.
+
+```sh
+scripts/release-install.sh v1.22.0      # build that tag, install it into ~/.local/noaap-release, restart
+noaap service install                   # once: points the unit at that venv (it names it when it exists)
+noaap --version                         # 1.22.0 — release install     (a checkout says which commit it is)
+```
+
+`release-install.sh` builds from the **tag**, extracted into a temporary directory, so a dirty checkout
+cannot leak into a release; it refuses a dirty tree or an untagged commit unless you say otherwise, it
+refuses a venv outside your home or in a temporary filesystem (uv copies instead of hardlinking across
+filesystems — that is the whole of torch, some 7 GB), and it prints the version the running service
+reports afterwards. `--no-restart` installs without touching the running service. `--venv PATH` or
+`NOAAP_RELEASE_VENV` puts the release somewhere else — `noaap service install` reads the same variable,
+so both sides agree about where it lives, and the script says so when the installed unit names another.
+
+Everything else keeps running from a checkout: `uv run noaap …` is always this tree, and
+`noaap service install --from-checkout` writes a unit that deliberately follows it — for development,
+not for the machine you use.
+
+The settings view names which of the two is answering (**noaap version**: `1.22.0 — release install`,
+or `1.22.0 — checkout v1.22.0-3-gabc1234`), and so does `noaap --version`.
+
 ## First run
 
 ```sh
@@ -719,7 +751,8 @@ the next pass. The web UI's "you ↺" badge simply restores the `auto` value.
 | `noaap prune <album-folder>` | Move tracks that are no longer in the source playlist to the recycle bin (asks first, `--yes` skips). |
 | `noaap delete <album-folder>` | Delete an album, or one track with `--track <video-id>` (asks first, `--yes` skips). The audio goes to the recycle bin. |
 | `noaap serve` | Web UI. `--host 0.0.0.0` exposes it to the network (**no login!**), `--port`, `--idle-exit SECONDS` (0 = never, which is the default for `serve`). |
-| `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900). `restart` refuses while a job runs unless given `--force`. |
+| `noaap service install\|status\|restart\|uninstall` | Run the web UI on demand via a systemd **user** socket: the first request starts it, it stops itself when idle. `install` takes `--port` (default 8765) and `--idle-exit SECONDS` (default 900), and points the unit at the release venv `~/.local/noaap-release` when there is one — `--from-checkout` makes it follow this tree instead. `restart` refuses while a job runs unless given `--force`. |
+| `noaap --version` | The version, and whether this is a release install or a checkout (with its `git describe`). |
 | `noaap app install\|status\|uninstall` | Desktop launcher (Linux) that opens the UI in a window of its own instead of another browser window. `--browser` picks which Chromium-based browser to use, `--port` which port to open; `--remove-profile` on uninstall also drops the app's browser profile. |
 | `noaap watch` | Look at the configured folders and hand what arrives to the app. `--once` for a single look; `noaap watch-service install` runs it as a user service. |
 | `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser`, `--lyrics` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
@@ -789,7 +822,7 @@ network.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/state` | Library (albums with progress), recent jobs, settings, whether something is running. |
+| `GET /api/state` | Library (albums with progress), recent jobs, settings, whether something is running. `settings.version` and `settings.running_from` say which code is answering — a release install, or a checkout with its `git describe`. |
 | `GET /api/album?id=<source-id>` | The full plan of one album. |
 | `GET /api/tracks` | Every track by album as compact rows (video id, artist, title, downloaded, trim points), with a version that changes when any plan does — what the library filter searches and plays. |
 | `GET /api/cover?id=<source-id>` | The album's cover image. |

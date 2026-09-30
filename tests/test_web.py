@@ -170,6 +170,39 @@ def test_settings_validate_then_apply(server, monkeypatch, tmp_path):
     assert "concurrency = 1" in text and "musicbrainz = false" in text and f'library_root = "{new_lib}"' in text
 
 
+def test_the_state_says_which_code_is_answering(server):
+    """The version, and whether it is a release install or a checkout (§9, slice 93).
+
+    The user asked for the version in the settings, and the honest answer has two halves: a release
+    install is a snapshot and says only its version; a checkout is a directory somebody may be editing
+    and says which commit it is.
+    """
+    st = server[1].get("/api/state").json()["settings"]
+    from noaap import version
+
+    assert st["version"] == version()
+    assert st["running_from"] in ("release install",) or st["running_from"].startswith("checkout ")
+    # and it is in the block the settings view already prints, as one line
+    assert st["info"]["noaap version"] == f"{st['version']} — {st['running_from']}"
+
+
+def test_a_release_install_says_nothing_about_a_checkout(monkeypatch, tmp_path):
+    """`running_from` decides by where the package sits: in a checkout's `src/` next to a `.git`, or
+    anywhere else, which is what an installed wheel is."""
+    import noaap
+
+    monkeypatch.setattr(noaap, "version", lambda: "9.9.9")
+    monkeypatch.setattr(noaap, "__file__", str(tmp_path / "site-packages" / "noaap" / "__init__.py"))
+    assert noaap.running_from() == ("9.9.9", "release install")
+
+    checkout = tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    (checkout / "src" / "noaap").mkdir(parents=True)
+    monkeypatch.setattr(noaap, "__file__", str(checkout / "src" / "noaap" / "__init__.py"))
+    monkeypatch.setattr(noaap, "_described", lambda where: "v9.9.9-3-gabc1234")
+    assert noaap.running_from() == ("9.9.9", "checkout v9.9.9-3-gabc1234")
+
+
 def test_the_other_sources_are_saved_like_every_other_setting(server, monkeypatch, tmp_path):
     """Settings > Sources (§9, slice 92): a session from a browser, or the *path* of a cookies file."""
     app, c = server

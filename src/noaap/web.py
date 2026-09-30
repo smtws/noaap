@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 
 from . import config as config_mod
-from . import sources, user_agent
+from . import running_from, sources, user_agent
 from .config import Config
 from .download import COVER_STEM, PLAN_FILE, iter_plans, load_plan, read_plan
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
@@ -644,6 +644,10 @@ class App:
         pot = self.cfg.resolved_pot_provider()
         return {
             "library": str(self.library),
+            # the version this process is, and where its code comes from — a release install or a
+            # checkout (§9, slice 93). Its own field because the release script reads it back.
+            "version": running_from()[0],
+            "running_from": running_from()[1],
             "cookies_from_browser": self.cfg.cookies_from_browser,
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
@@ -687,6 +691,9 @@ class App:
             "pot_idle_minutes": round(self.cfg.pot_idle / 60),
             "concurrency": self.cfg.concurrency,
             "info": {
+                # **which code is answering** (§9, slice 93): the released version, and whether this
+                # process is that release or a checkout somebody may be editing
+                "noaap version": " — ".join(running_from()),
                 "config file": str(config_mod.read_path()),
                 "JavaScript runtime": " ".join(filter(None, runtime)) if runtime else "none found",
                 "token generator": str(pot) if pot else "not set up (see README)",

@@ -2692,6 +2692,35 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    whether it has been here.
 
 
+93. ✅ **The service runs a release, not the working tree** (2026-09-30, P74). Found by the user on the
+   day slice 92 shipped: their settings view was *mixed* — a page from the new commit against an API
+   from the old process. The installed service ran an **editable** install (`noaap.pth` →
+   `~/noaap/src`) and the unit started `~/noaap/.venv/bin/noaap`, so the page files, which are read per
+   request, changed the instant a file was saved, while the running process kept the code it started
+   with. The milder half is that mixing; the dangerous half is that this service **restarts itself** —
+   `--idle-exit 900` behind socket activation means the next request after an idle window starts a new
+   process from whatever the tree holds at that second, half-edited and possibly not importable. The
+   user's app was one idle window away from running a scratch state.
+   **The unit names a venv holding the released wheel.** `~/.local/noaap-release`, and
+   `noaap service install` points at it whenever it exists — the same command moves an existing unit
+   there — while `--from-checkout` is the deliberate way back for development. The watcher's unit
+   follows the same rule, because `Restart=always` would otherwise pick a tree up faster than anything.
+   **`scripts/release-install.sh` is a script and not a subcommand**, because the thing being replaced
+   is the venv a subcommand would ship inside — a process overwriting the files it executes from — and
+   because it must be able to install a tag whose own code predates the procedure. It builds from the
+   **tag**, extracted with `git archive` into a temporary directory, so a dirty checkout cannot leak
+   into a release; it refuses a dirty tree, an untagged commit, and a venv outside `$HOME` or in a
+   temporary filesystem; and it prints the version the restarted service reports. That last part is
+   possible because **the state now says which code is answering**: `settings.version` and
+   `settings.running_from`, shown in the settings view as one line and by `noaap --version` as the same
+   sentence — a release install says only its version, a checkout says which commit it is. The user
+   asked for the version in the settings; the honest answer had to include which of the two it is.
+   Measured while designing it (I-211): the wheel carries all seven page files; a lean install takes
+   0.18 s into 51 MB; and a release venv costs tens of megabytes of real blocks under `$HOME`, where
+   uv hardlinks from its cache, against ~7 GB on another filesystem, where it copies — which is why
+   the script refuses `/tmp`.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2886,6 +2915,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (a released snapshot, §9, slice 93)
+
+- **A service must not run a working tree.** Not because it is untidy, but because a service that
+  restarts on demand will eventually start mid-edit, and nothing about that failure looks like a cause.
+- **A program may not replace the venv it is running from.** That is why the release tool is a script in
+  the repository and not a subcommand of the thing being replaced.
+- **Build the tag, not the tree.** `git archive <tag>` into a temporary directory makes "what was
+  released" a fact rather than a hope about the checkout's state.
+- **Refuse the cheapest mistake first.** The state of the tree is what a person gets wrong; a message
+  about a venv path they never chose reads like a bug in the script.
+- **A version is only half an answer.** "1.22.0" from an editable install is a claim about a directory
+  somebody may be editing. Say which of the two it is, in the page and on the command line.
+- **Ask `git describe` when somebody asks.** A lazy argparse action, not a string built on every
+  invocation.
+- **Measure the disk before claiming it is free.** uv hardlinks within one filesystem and copies across
+  two: the same venv is tens of megabytes or seven gigabytes depending on where it is put.
 
 ### Decisions of 2026-09-30 (only what is needed, §9, slice 92)
 

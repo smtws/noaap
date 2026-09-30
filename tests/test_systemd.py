@@ -86,14 +86,24 @@ def test_install_still_takes_both_flags(monkeypatch, capsys, tmp_path):
     import noaap.systemd as sd
 
     seen = {}
-    monkeypatch.setattr(sd, "install", lambda cfg, port, idle: seen.update(port=port, idle=idle) or [])
+    monkeypatch.setattr(sd, "install",
+                        lambda cfg, port, idle, checkout=False: seen.update(port=port, idle=idle,
+                                                                            checkout=checkout) or [])
     monkeypatch.setattr(sd, "status", lambda: "")
     assert cli.main(["service", "install", "--port", "9000", "--idle-exit", "60"]) == 0
-    assert seen == {"port": 9000, "idle": 60}
+    assert seen == {"port": 9000, "idle": 60, "checkout": False}
 
     seen.clear()
     assert cli.main(["service", "install"]) == 0
-    assert seen == {"port": 8765, "idle": 900}  # the documented defaults, unchanged
+    # the documented defaults, unchanged — and a unit that follows the tree is asked for, never assumed
+    assert seen == {"port": 8765, "idle": 900, "checkout": False}
+
+    seen.clear()
+    assert cli.main(["service", "install", "--from-checkout"]) == 0
+    assert seen["checkout"] is True
+
+    # and it means nothing for the other actions, which do not write the units
+    assert cli.main(["service", "restart", "--from-checkout"]) == 2
 
 
 # -- and what ytalbum left on the machine (§9, slice 52) -----------------------------------
@@ -161,3 +171,64 @@ def test_ytalbums_units_are_reported_and_never_removed(units, monkeypatch):
     sd.uninstall()
 
     assert sd.legacy_units(), "install and uninstall leave ytalbum's alone"
+
+
+# -- the unit runs a release, not the working tree (§9, slice 93) -----------------------------------
+
+
+def test_the_unit_names_the_release_venv_when_there_is_one(tmp_path, monkeypatch):
+    """An editable install points at a checkout, and this service restarts itself on demand — so the
+    unit has to name a venv holding a released wheel, or an idle window is enough to run a half-edited
+    tree as the user's app."""
+    from noaap import systemd
+
+    release = tmp_path / "noaap-release"
+    (release / "bin").mkdir(parents=True)
+    (release / "bin" / "noaap").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(systemd, "RELEASE_VENV", release)
+
+    unit = render_units(Config(library_root=tmp_path))["noaap.service"]
+    assert f"ExecStart={release / 'bin' / 'noaap'} serve --idle-exit 900" in unit
+    # the watcher restarts every 30 s, so it must not follow the tree either
+    watch = systemd.render_watch_unit(Config(library_root=tmp_path))["noaap-watch.service"]
+    assert f"ExecStart={release / 'bin' / 'noaap'} watch" in watch
+
+
+def test_without_a_release_venv_the_unit_runs_this_one(tmp_path, monkeypatch):
+    import sys
+
+    from noaap import systemd
+
+    monkeypatch.setattr(systemd, "RELEASE_VENV", tmp_path / "not-installed")
+    unit = render_units(Config(library_root=tmp_path))["noaap.service"]
+    assert f"ExecStart={Path(sys.prefix) / 'bin' / 'noaap'} serve" in unit
+
+
+def test_a_checkout_unit_is_asked_for_deliberately(tmp_path, monkeypatch):
+    """`--from-checkout` is the way back for development: my own verification wants a unit that
+    follows the tree, and the user's service must never be one by accident."""
+    import sys
+
+    from noaap import systemd
+
+    release = tmp_path / "noaap-release"
+    (release / "bin").mkdir(parents=True)
+    (release / "bin" / "noaap").write_text("#!/bin/sh\n")
+    monkeypatch.setattr(systemd, "RELEASE_VENV", release)
+
+    unit = render_units(Config(library_root=tmp_path), from_checkout=True)["noaap.service"]
+    assert f"ExecStart={Path(sys.prefix) / 'bin' / 'noaap'} serve" in unit
+    assert str(release) not in unit
+
+
+def test_install_says_which_noaap_the_service_will_run(tmp_path, monkeypatch):
+    from noaap import systemd
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setattr(systemd, "RELEASE_VENV", tmp_path / "not-installed")
+    monkeypatch.setattr(systemd, "systemctl",
+                        lambda *a: __import__("subprocess").CompletedProcess(a, 0, "", ""))
+
+    said = "\n".join(systemd.install(Config(library_root=tmp_path)))
+
+    assert "no release install at" in said and "follows this checkout" in said
