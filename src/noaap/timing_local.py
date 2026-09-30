@@ -57,6 +57,17 @@ WHISPER = "large-v3"
 WHISPER_SIZE = "3.09 GB on first use"
 NO_CHECK = ('the second opinion needs the other extra: uv pip install "noaap[timing-check]" '
             f"(faster-whisper and stable-ts; {WHISPER_SIZE})")
+# What one job needs on the card, in MiB, measured on this laptop's 8 GB card (the numbers and how
+# they were taken are in `timing.py`): a four-minute alignment peaked at 3460 MiB reserved, and the
+# second opinion's own model holds 3616 MiB of its own — outside torch's pool, which is why nothing
+# but dropping it gives that back. A card with less room than this gets the job on the processor
+# instead: measured at 11.4× the time for the same track, which is slow but is an answer (§9, slice 82).
+CARD_NEEDS = {ALIGN: 3500, TRANSCRIBE: 3800}
+CARD_SLOWER = 11        # times as long on the processor, measured on the same track
+WHISPER_CARD = 3616     # MiB the second opinion holds once loaded, if this provider is holding it
+CARD_RAN_OUT = ("the graphics card ran out of memory part way through, so this job has no answer and "
+                "nothing was written. Try again when whatever else is using the card has finished, or "
+                'set timing_device = "cpu" to stop using it altogether')
 CUDA_FULL = ("the graphics card has no room left for the second opinion beside the aligner and the "
              "separator; checking on the processor instead, which is slower but gives the same answer")
 CUDA_TRAP = ("ctranslate2 wants CUDA 12's libcublas and the installed torch brought a different one; "
@@ -78,9 +89,13 @@ class LocalTiming:
         self.verify = verify
         self.threshold = threshold
         self.lost = lost
-        self._models: dict[str, object] = {}
+        # keyed by device as well as language: a run that had to move to the processor may not be
+        # handed a model that lives on the card (§9, slice 82)
+        self._models: dict[tuple[str, str], object] = {}
         self._separator: object | None = None
+        self._separator_device: str | None = None
         self._whisper: object | None = None
+        self._whisper_where: str | None = None   # where the next load should go, if not the default
 
     # -- what it can do ----------------------------------------------------------------
 
@@ -104,10 +119,61 @@ class LocalTiming:
             return self.device
         return "cuda" if torch.cuda.is_available() else "cpu"
 
+    def device_now(self, what: str = ALIGN) -> str:
+        """Where *this* job runs, asked now rather than when the settings were written (§9, slice 82).
+
+        The card, unless there is not enough room on it at this moment — another program's window, a
+        game, a second noaap. Then the processor, and the job says so in its first line, because the
+        same track takes about eleven times as long there and somebody is waiting for it.
+
+        What this provider is already holding counts as room: its models are on the card and the next
+        job reuses them, so they are not an obstacle to itself.
+        """
+        try:
+            device = self.resolved_device()
+        except ImportError:
+            return "cpu"   # no torch on this machine at all; the job itself says so in a moment
+        if device != "cuda":
+            return device
+        needs = CARD_NEEDS.get(what, CARD_NEEDS[ALIGN])
+        try:
+            free, total = card_room()
+            room = free + pool_held()
+            if self._whisper is not None and self._whisper_device == "cuda":
+                room += WHISPER_CARD
+        except Exception:  # a torch too old to ask, or a driver that will not say: try the card
+            log.debug("could not ask the card how much room it has", exc_info=True)
+            return device
+        if room >= needs:
+            return device
+        self.log(f"the graphics card has {free} MiB free of {total} and this needs about {needs} — "
+                 f"running on the processor instead, which takes about {CARD_SLOWER}× as long")
+        return "cpu"
+
     # -- the work ----------------------------------------------------------------------
 
     def align(self, audio: Path, lines: list[str], *, language: str | None = None,
-              check: Callable[[], None] | None = None) -> Timed:
+              check: Callable[[], None] | None = None, device: str | None = None) -> Timed:
+        """Place these words on this recording's clock.
+
+        `device` is here so the caller can decide once, before it writes its own first line about the
+        job (§9, slice 82); left out, this asks `device_now` itself, which is what the CLI and the
+        timing server want.
+        """
+        device = device or self.device_now(ALIGN)
+        try:
+            return self._align(audio, lines, language=language, check=check, device=device)
+        except Exception as e:
+            # **one sentence, not a traceback** (§9, slice 82). Running out of memory half way
+            # through is not a bug in either model and there is nothing in a stack trace for the
+            # person reading the page; what this run held goes back, so the next attempt has room.
+            if device == "cuda" and _is_out_of_memory(e):
+                self.release()
+                raise TimingUnavailable(CARD_RAN_OUT) from e
+            raise
+
+    def _align(self, audio: Path, lines: list[str], *, language: str | None,
+               check: Callable[[], None] | None, device: str) -> Timed:
         try:
             import torch
             import torchaudio
@@ -115,13 +181,15 @@ class LocalTiming:
         except ImportError as e:
             raise TimingUnavailable(MISSING) from e
 
+        # the second opinion goes where the alignment went: a card with no room for one has none
+        # for the other, and the check is not worth pushing the real work off it
+        self._whisper_where = device
         words = [line for line in lines if line.strip()]
         if not words:
             raise TimingUnavailable("there are no words to place")
         lang = language or language_of(lines)
         if lang not in BUNDLES:
             raise TimingUnavailable(f"no aligner for {lang!r} — this provider has {', '.join(BUNDLES)}")
-        device = self.resolved_device()
 
         if check:
             check()
@@ -233,7 +301,7 @@ class LocalTiming:
         return verified(timed, second, self.threshold, self.lost, evidence=evidence)
 
     def transcribe(self, audio: Path, *, language: str | None = None,
-                   check: Callable[[], None] | None = None) -> Timed:
+                   check: Callable[[], None] | None = None, device: str | None = None) -> Timed:
         """What this machine hears, with the second extra installed. A draft, and labelled as one.
 
         The spike measured this as the weaker half of the job — three quarters of a clean song's
@@ -252,6 +320,8 @@ class LocalTiming:
             import torch
 
             torch.cuda.empty_cache()
+        # asked after that tidy-up, so a full card is a full card and not last job's leftovers
+        self._whisper_where = device or self.device_now(TRANSCRIBE)
         self.log(f"listening to {audio.name} with {WHISPER} …")
         result = self._whisper_run(
             lambda model: model.transcribe(str(audio), language=language, temperature=0, verbose=None))
@@ -265,15 +335,18 @@ class LocalTiming:
                                  "temperature": "0"})
 
     def release(self) -> bool:
-        """Let go of every model this provider has loaded (§9, slice 41, backlog 18).
+        """Let go of every model this provider has loaded (§9, slice 41, slice 82).
 
-        For the web service this is barely needed — a provider is built per job and dropped with it —
-        but `noaap timing-serve` keeps one for the life of the process, and a machine that is asked
-        to align one track an hour should not hold 3 GB of a graphics card for the other fifty-nine
-        minutes. The next request loads them again, in seconds off a warm disk, and says so in its log.
+        **The only thing that really frees the card.** Measured, holding one provider after one
+        alignment: `release_gpu_memory()` on its own gave back nothing at all, because the weights
+        are still referenced and the second opinion's 3.6 GB is not torch's memory in the first
+        place; dropping the models took the process from 3608 MiB to the 160 MiB of CUDA context that
+        belongs to it until it exits. Both servers hold a provider between jobs now, so this is what
+        the idle window calls. Loading them again costs about two seconds off a warm disk.
         """
         held = bool(self._models or self._separator or self._whisper)
         self._models, self._separator, self._whisper = {}, None, None
+        self._separator_device, self._whisper_where = None, None
         if held:
             self.log("let go of the models; the next request loads them again")
         release_gpu_memory()
@@ -348,13 +421,16 @@ class LocalTiming:
 
     def _whisper_model(self):
         """Loaded once, and it comes down the wire the first time: 3.09 GB."""
+        wanted = "cpu" if self._whisper_cpu_only else (self._whisper_where or self.resolved_device())
+        if self._whisper is not None and self._whisper_device != wanted:
+            self._free_vram()   # held on the card and this run is on the processor, or the other way
         if self._whisper is not None:
             return self._whisper
         try:
             import stable_whisper
         except ImportError as e:
             raise TimingUnavailable(NO_CHECK) from e
-        device = "cpu" if self._whisper_cpu_only else self.resolved_device()
+        device = wanted
         self.log(f"loading {WHISPER} for the second opinion ({WHISPER_SIZE})")
         try:
             self._whisper = stable_whisper.load_faster_whisper(
@@ -373,10 +449,10 @@ class LocalTiming:
     # -- the two models ------------------------------------------------------------------
 
     def _aligner(self, bundle: object, lang: str, device: str):
-        if lang not in self._models:
+        if (lang, device) not in self._models:
             self.log(f"loading the {lang} aligner ({BUNDLES[lang]}, 361 MB on first use)")
-            self._models[lang] = bundle.get_model().to(device).eval()  # type: ignore[attr-defined]
-        return self._models[lang]
+            self._models[(lang, device)] = bundle.get_model().to(device).eval()  # type: ignore[attr-defined]
+        return self._models[(lang, device)]
 
     def _vocals(self, audio: Path, device: str, check: Callable[[], None] | None):
         """The voice alone, as one mono waveform. This is what makes the alignment work."""
@@ -389,16 +465,33 @@ class LocalTiming:
         # thread between these lines, and a separation that loses its separator half way through is
         # the kind of failure that looks like a bug in the model (it happened, `docs/qa-catalog.md`
         # section AB)
-        separator = self._separator
+        separator = self._separator if self._separator_device == device else None
         if separator is None:
             self.log(f"loading the separator ({SEPARATOR}, 81 MB on first use)")
             separator = self._separator = Separator(model=SEPARATOR, device=device, progress=False)
+            self._separator_device = device
         if check:
             check()
         self.log(f"separating the voice from {audio.name} …")
         _, stems = separator.separate_audio_file(audio)  # type: ignore[attr-defined]
         vocals = stems["vocals"].mean(0, keepdim=True).cpu()
         return vocals, int(separator.samplerate)  # type: ignore[attr-defined]
+
+
+def card_room() -> tuple[int, int]:
+    """Free and total MiB on the graphics card, as the driver reports it through torch."""
+    import torch
+
+    free, total = torch.cuda.mem_get_info()
+    return int(free / 2**20), int(total / 2**20)
+
+
+def pool_held() -> int:
+    """MiB torch has reserved in this process: already this program's, and reused rather than asked
+    for a second time — which is why it counts as room for its own next job (§9, slice 82)."""
+    import torch
+
+    return int(torch.cuda.memory_reserved() / 2**20)
 
 
 def separated_voice(audio: Path, into: Path, log: Callable[[str], None] | None = None,

@@ -153,7 +153,7 @@ class FakeAligner:
 
 
 def service_for(tmp_path, yt, api, aligner, monkeypatch):
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": aligner)
+    monkeypatch.setattr("noaap.timing.provider", lambda _cfg, _what="": aligner)
     service = Service(Config(), tmp_path, yt=yt, log=lambda s: None)
     service._lrclib = api
     return service
@@ -332,7 +332,8 @@ def test_the_summary_counts_by_verdict(album, tmp_path, monkeypatch):
 def test_the_pass_gives_the_card_back_even_when_a_track_fails(album, tmp_path, monkeypatch):
     album_dir, plan, yt = album
     released = []
-    monkeypatch.setattr(service_mod, "release_gpu_memory", lambda: released.append(True))
+    # the pass owns its provider here (no app is holding one), so it lets go itself
+    monkeypatch.setattr("noaap.timing.release_gpu_memory", lambda: released.append(True))
 
     class Exploding(FakeAligner):
         def align(self, audio, lines, **kw):

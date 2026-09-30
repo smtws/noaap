@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
-import threading
 import time
 from collections.abc import Callable
 from email.parser import BytesParser
@@ -25,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import load
-from .timing import ALIGN, TimingUnavailable
+from .timing import ALIGN, Idle, TimingUnavailable, let_engine_go, release_when_idle
 from .timing_local import LocalTiming
 
 log = logging.getLogger(__name__)
@@ -106,63 +105,16 @@ def _multipart(content_type: str, body: bytes) -> dict[str, tuple[bytes, str]]:
     return out
 
 
-class Idle:
-    """Knows whether anything is being served, and how long ago the last thing was (§9, slice 41).
-
-    A request enters it while it works, because a tidy-up on a timer that does not know the thing is
-    in use will take the models out of a running alignment — which is exactly what happened the first
-    time this was tried against a real server (`docs/qa-catalog.md`, section AB): a six-second idle
-    window and a ten-second alignment, and the separator vanished mid-separation.
-    """
-
-    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
-        self._now = now
-        self._lock = threading.Lock()
-        self.working = 0
-        self.since = now()
-
-    def __enter__(self) -> Idle:
-        with self._lock:
-            self.working += 1
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        with self._lock:
-            self.working -= 1
-            self.since = self._now()
-
-    def quiet_for(self, seconds: float) -> bool:
-        with self._lock:
-            return self.working == 0 and self._now() - self.since >= seconds
-
-    def wait_again(self) -> None:
-        """Start the quiet period over, so a release is not attempted on every look."""
-        with self._lock:
-            self.since = self._now()
-
-
 def idle_release(engine: Any, minutes: float, sleep: Callable[[float], None] = time.sleep,
                  now: Callable[[], float] = time.monotonic) -> Idle:
     """Let the models go when nothing has been asked for a while (§9, slice 41, backlog 18).
 
-    Returns the `Idle` a request holds while it works. `minutes = 0` turns the whole thing off, which
-    is what a machine that exists to serve this wants; the default is five, which is what a laptop
-    that also has a desktop on the same card wants. The clock and the sleep are arguments so that a
-    test can run an hour of it in a millisecond.
+    `minutes` rather than seconds because this is the serving machine's setting and a box that exists
+    to do this wants minutes or nothing at all (`0` = keep them for ever). The app's own server holds
+    the same watch in seconds, for the opposite reason — see `timing_card_idle_seconds`. The watch
+    itself, and the `Idle` a request holds while it works, live in `timing.py`.
     """
-    idle = Idle(now)
-    if minutes <= 0:
-        return idle
-
-    def watch() -> None:
-        while True:
-            sleep(max(1.0, minutes * 60 / 4))
-            if idle.quiet_for(minutes * 60):
-                engine.release()
-                idle.wait_again()
-
-    threading.Thread(target=watch, name="noaap-timing-idle", daemon=True).start()
-    return idle
+    return release_when_idle(minutes * 60, lambda: let_engine_go(engine), sleep=sleep, now=now)
 
 
 def serve(host: str = "0.0.0.0", port: int = 8770, device: str = "auto") -> int:

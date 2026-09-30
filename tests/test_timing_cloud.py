@@ -229,7 +229,7 @@ def album(tmp_path, opus_template):
 def service_with(tmp_path, yt, engine, monkeypatch, cfg=None):
     import noaap.service as service_mod
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": engine)
+    monkeypatch.setattr("noaap.timing.provider", lambda _cfg, _what="": engine)
     lines: list[str] = []
     service = Service(cfg or Config(), tmp_path, yt=yt, log=lines.append)
     return service, lines

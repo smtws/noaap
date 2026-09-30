@@ -147,7 +147,7 @@ def test_a_draft_listens_to_the_separated_voice_when_there_is_one(album, tmp_pat
         into.write_bytes(b"a voice")
         return into
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": Ears())
+    monkeypatch.setattr("noaap.timing.provider", lambda _cfg, _what="": Ears())
     monkeypatch.setattr("noaap.timing_local.separated_voice", separate)
     service = Service(Config(), tmp_path, yt=yt, log=lambda s: None)
     track = plan.tracks[0]
@@ -173,7 +173,7 @@ def test_and_falls_back_to_the_mixed_track_when_there_is_no_separator(album, tmp
             heard.append(audio.name)
             return Timed(lines=[TimedLine("a line", 1.0, 3.0)], provider="fake", model="ears")
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": Ears())
+    monkeypatch.setattr("noaap.timing.provider", lambda _cfg, _what="": Ears())
     monkeypatch.setattr("noaap.timing_local.separated_voice", lambda *a, **k: None)
     service = Service(Config(), tmp_path, yt=yt, log=lambda s: None)
     track = plan.tracks[0]

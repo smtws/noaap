@@ -127,7 +127,7 @@ def album(tmp_path, opus_template):
 def service_with(cfg, tmp_path, yt, fake, monkeypatch):
     import noaap.service as service_mod
 
-    monkeypatch.setattr(service_mod, "timing_provider", lambda _cfg, _what="": fake)
+    monkeypatch.setattr("noaap.timing.provider", lambda _cfg, _what="": fake)
     return Service(cfg, tmp_path, yt=yt, log=lambda s: None)
 
 
@@ -245,13 +245,13 @@ def test_the_far_end_refuses_nonsense(served, tmp_path, opus_template):
 
 @pytest.mark.skipif(not config.env("TIMING_LIVE"),
                     reason="set NOAAP_TIMING_LIVE=1 (and install noaap[timing]) to run the models")
-def test_the_local_provider_aligns_for_real(tmp_path, opus_template):
+def test_the_local_provider_aligns_for_real(tmp_path, one_second_of_sound):
     from noaap.timing_local import LocalTiming
 
     engine = LocalTiming(device="cpu")
     assert ALIGN in engine.capabilities()
     audio = tmp_path / "t.opus"
-    shutil.copy(opus_template, audio)
+    shutil.copy(one_second_of_sound, audio)
     timed = engine.align(audio, ["hello"], language="en")
     assert len(timed.lines) == 1 and timed.provider == "local"
 
@@ -517,9 +517,7 @@ class Loadable:
 def captured_watcher(monkeypatch) -> list:
     """The helper starts a daemon thread; a test wants to drive it by hand, on a fake clock."""
     watcher: list = []
-    monkeypatch.setattr("noaap.timing_serve.threading.Thread",
-                        lambda target, name=None, daemon=None:
-                        types.SimpleNamespace(start=lambda: watcher.append(target)))
+    monkeypatch.setattr("noaap.timing._in_the_background", watcher.append)
     return watcher
 
 
@@ -535,7 +533,9 @@ def test_the_idle_timer_lets_go_after_the_configured_quiet(monkeypatch):
         if len(sleeps) > 20:
             raise SystemExit  # the watcher runs for ever; this is how a test gets off
 
-    idle_release(engine, minutes=1, sleep=sleep, now=lambda: clock[0])
+    idle = idle_release(engine, minutes=1, sleep=sleep, now=lambda: clock[0])
+    with idle:            # one request, so there is something loaded to let go of
+        pass
     with pytest.raises(SystemExit):
         watcher[0]()
     assert engine.released >= 1

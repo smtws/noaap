@@ -187,9 +187,15 @@ class Config:
     timing_verify_threshold: float = 2.0  # seconds two methods may differ by and still agree
     timing_verify_lost: float = 5.0  # seconds past which one of them has lost the song, not drifted
     # how long `noaap timing-serve` keeps its models loaded with nothing to do (§9, slice 41). 0 = for
-    # ever, which is what a machine dedicated to this wants; the app's own service needs no timer,
-    # because it builds a provider per job.
+    # ever, which is what a machine dedicated to this wants.
     timing_idle_minutes: float = 5.0
+    # the same idea for the app's own server, in seconds, because a laptop shares its card with the
+    # desktop in front of it (§9, slice 82). The default comes from measurements on this one: one
+    # alignment holds **3608 MiB** of an 8 GB card while the provider lives, and loading every model
+    # again off a warm disk costs about **two seconds**. A minute covers working track by track —
+    # align, read the placement, fix a line, align the next — and where the window does expire in the
+    # middle of that, it costs those two seconds once. 0 = hold them for ever.
+    timing_card_idle_seconds: float = 60.0
     # folders `noaap watch` looks at (§9, slice 59). Empty is the default and nothing is watched;
     # ruling 4 of R-200 is why it is a separate unit and not a thread in the web service.
     watches: list[Watch] = field(default_factory=list)
@@ -278,6 +284,8 @@ def load(path: Path | None = None) -> Config:
                                    or timing.get("verify_lost") or 5.0)
     idle = data.get("timing_idle_minutes", timing.get("idle_minutes"))
     cfg.timing_idle_minutes = 5.0 if idle is None else float(idle)
+    card = data.get("timing_card_idle_seconds", timing.get("card_idle_seconds"))
+    cfg.timing_card_idle_seconds = 60.0 if card is None else float(card)
     cfg.watches = _watches(data)
     return cfg
 

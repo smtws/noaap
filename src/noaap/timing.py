@@ -18,6 +18,8 @@ import itertools
 import logging
 import re
 import sys
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -734,6 +736,177 @@ def release_gpu_memory() -> bool:
     return True
 
 
+# -- the process's hold on the graphics card (§9, slice 82) ------------------------------------------
+#
+# Measured on this laptop's card (RTX 4060, 8188 MiB) before any of this was written, because the
+# numbers are what the shape follows:
+#
+#   one alignment of a 4-minute track    3608 MiB held while the provider lives
+#   the aligner alone                     494 MiB   (400 of it torch's pool)
+#   the separator, having separated        854 MiB   (726 of it work, given back by `empty_cache`)
+#   the second opinion alone             3776 MiB   **none of it in torch's pool**
+#   loading them again off a warm disk    ~2 s      (aligner 0.7 s, second opinion 1.2 s)
+#
+# Two things follow. First, `release_gpu_memory()` alone frees **nothing** while a provider is alive:
+# the weights are still referenced, and faster-whisper's 3.6 GB is not torch's memory at all, so only
+# dropping the object gives it back. Second, keeping a provider between jobs is cheap to undo — two
+# seconds — which is why the card is given back after a short quiet period rather than held for the
+# session or dropped after every single track.
+
+
+def _fingerprint(cfg: Any, what: str) -> tuple:
+    """What makes a provider *that* provider: change any of it and the held one is the wrong one."""
+    return (kind_for(cfg, what),
+            str(getattr(cfg, "timing_device", "auto") or "auto"),
+            getattr(cfg, "timing_verify", None),
+            float(getattr(cfg, "timing_verify_threshold", VERIFY_THRESHOLD)),
+            float(getattr(cfg, "timing_verify_lost", VERIFY_LOST)),
+            (getattr(cfg, "timing_endpoint", "") or "").strip())
+
+
+class Engines:
+    """The providers a program is holding, so that the models stay loaded between jobs (§9, slice 82).
+
+    Built per job and dropped with it, `local` reloaded every model for every track — measured at
+    about two seconds a track off a warm disk, and a good deal more off a cold one. Held, the models
+    stay on the card between tracks and the card goes back when the work stops: `let_go` is what the
+    idle window calls, and it is the only thing that really frees a second opinion.
+
+    Not a module-level cache on purpose. The hold belongs to whoever runs the jobs — one per app,
+    one per pass in the CLI — so nothing leaks between two programs, or between two tests.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._held: dict[tuple, Timing] = {}
+
+    def provider(self, cfg: Any, what: str = "") -> Timing:
+        """The provider for this capability, the same object as last time where the settings agree."""
+        mine = _fingerprint(cfg, what)
+        wanted = {mine} | {_fingerprint(cfg, w) for w in (ALIGN, TRANSCRIBE)}
+        with self._lock:
+            # a settings change leaves a provider nobody can ask for any more: its models go now,
+            # not when the idle window happens to come round
+            for key in [k for k in self._held if k not in wanted]:
+                let_engine_go(self._held.pop(key))
+            if mine not in self._held:
+                self._held[mine] = provider(cfg, what)
+            return self._held[mine]
+
+    def holding(self) -> int:
+        with self._lock:
+            return len(self._held)
+
+    def let_go(self) -> bool:
+        """Drop every held provider and give the card back. True when anything was actually freed."""
+        with self._lock:
+            held = list(self._held.values())
+            self._held.clear()
+        freed = [let_engine_go(engine) for engine in held]
+        return bool(release_gpu_memory() or any(freed))
+
+
+def let_engine_go(engine: Any) -> bool:
+    """Ask a provider to drop its models. A provider without models has nothing to do here."""
+    release = getattr(engine, "release", None)
+    if release is None:
+        return False
+    try:
+        return bool(release())
+    except Exception:  # a tidy-up may never take a job's result with it
+        log.debug("could not let go of %s", getattr(engine, "name", engine), exc_info=True)
+        return False
+
+
+class Idle:
+    """Knows whether anything is being served, and how long ago the last thing was (§9, slice 41).
+
+    A request enters it while it works, because a tidy-up on a timer that does not know the thing is
+    in use will take the models out of a running alignment — which is exactly what happened the first
+    time this was tried against a real server (`docs/qa-catalog.md`, section AB): a six-second idle
+    window and a ten-second alignment, and the separator vanished mid-separation.
+    """
+
+    def __init__(self, now: Callable[[], float] = time.monotonic) -> None:
+        self._now = now
+        self._lock = threading.Lock()
+        self.working = 0
+        self.since = now()
+        self.worked = False   # something has been done since the last release: there is a point to one
+
+    def __enter__(self) -> Idle:
+        with self._lock:
+            self.working += 1
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        with self._lock:
+            self.working -= 1
+            self.since = self._now()
+            self.worked = True
+
+    def quiet_for(self, seconds: float) -> bool:
+        with self._lock:
+            return self.working == 0 and self._now() - self.since >= seconds
+
+    def wait_again(self) -> None:
+        """Start the quiet period over, so a release is not attempted on every look."""
+        with self._lock:
+            self.since = self._now()
+
+    def release_if_quiet(self, seconds: float, release: Callable[[], Any],
+                         busy: Callable[[], bool] = lambda: False) -> bool:
+        """Release, but only from inside the lock a request has to pass to start (§9, slice 82).
+
+        The check and the release are one step here. Doing them in two — ask whether it is quiet,
+        then release — leaves exactly the window the comment above is about: a job that starts in
+        between has its models taken away while it runs. `busy` is asked in the same breath, because
+        a job that is queued but not started yet is work that is coming.
+        """
+        with self._lock:
+            # `worked` is what stops an idle program collecting garbage once a minute for ever: with
+            # nothing done since the last release there is nothing to give back a second time
+            if not self.worked or self.working or self._now() - self.since < seconds or busy():
+                return False
+            try:
+                release()
+            finally:
+                self.since, self.worked = self._now(), False
+            return True
+
+
+def release_when_idle(seconds: float, release: Callable[[], Any], *,
+                      busy: Callable[[], bool] = lambda: False,
+                      sleep: Callable[[float], None] = time.sleep,
+                      now: Callable[[], float] = time.monotonic) -> Idle:
+    """Watch for a quiet period and give the card back when one comes (§9, slice 41, slice 82).
+
+    Returns the `Idle` a job holds while it works. `seconds = 0` turns the whole thing off, which is
+    what a machine that exists to serve this wants. The clock and the sleep are arguments so that a
+    test can run an hour of it in a millisecond.
+    """
+    idle = Idle(now)
+    if seconds <= 0:
+        return idle
+
+    def watch() -> None:
+        while True:
+            sleep(max(1.0, seconds / 4))
+            idle.release_if_quiet(seconds, release, busy)
+
+    _in_the_background(watch)
+    return idle
+
+
+def _in_the_background(watch: Callable[[], None]) -> None:
+    """The one line that starts the watch, so a test can take the loop and run it by hand.
+
+    A test that replaced `threading.Thread` itself would replace it for every other thread in the
+    program as well — which is how the job workers stopped starting the first time this was tested.
+    """
+    threading.Thread(target=watch, name="noaap-card-idle", daemon=True).start()
+
+
 def verifies_with(cfg: Any) -> bool:
     """Whether an alignment from this provider is checked against a second method (§9, slice 38).
 
@@ -748,9 +921,10 @@ def verifies_with(cfg: Any) -> bool:
 
 
 __all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD",
-           "HttpTiming", "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of",
-           "kind_for", "language_of", "line_starts", "lines_from_words", "plain_lines", "provider",
-           "release_gpu_memory", "stamped", "verified", "verifies_with"]
+           "Engines", "HttpTiming", "Idle", "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable",
+           "can", "capabilities_of", "kind_for", "language_of", "let_engine_go", "line_starts", "lines_from_words",
+           "plain_lines", "provider", "release_gpu_memory", "release_when_idle", "stamped", "verified",
+           "verifies_with"]
 
 
 # -- a line is placed when something supports it (§9, slice 81) --------------------------------------

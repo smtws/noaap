@@ -52,14 +52,20 @@ from .timing import (
     PROVIDERS,
     TRANSCRIBE,
     VENDORS,
+    Engines,
+    TimingUnavailable,
     capabilities_of,
     kind_for,
-    release_gpu_memory,
+    release_when_idle,
     verifies_with,
 )
 from .trim import original_path
 
 log = logging.getLogger(__name__)
+
+#: how long the queues stay quiet before the graphics card goes back — the config's default, so the
+#: number lives in one place (§9, slice 82)
+CARD_IDLE = Config.timing_card_idle_seconds
 
 # A write must say it came from our own page rather than from a form on someone else's
 # (§9, slice 24). ytalbum's spelling is still accepted — see the check itself for why.
@@ -116,12 +122,19 @@ class Jobs:
     # channel listing) get their own lane so a search never waits for a download
     READ_ONLY = ("search", "preview", "channel", "align", "draft")  # they only read: the answer goes to the page
 
-    def __init__(self, make_service: Callable[[Job], Service]) -> None:
+    def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
+                 idle_seconds: float = CARD_IDLE, sleep: Callable[[float], None] = time.sleep,
+                 now: Callable[[], float] = time.monotonic) -> None:
         self.make_service = make_service
         self._jobs: dict[int, Job] = {}
         self._ids = itertools.count(1)
         self._queues: dict[str, queue.Queue[tuple[Job, Callable[[Service], Any]]]] = {"write": queue.Queue(), "read": queue.Queue()}
         self._lock = threading.Lock()
+        # the graphics card goes back when the queues have been quiet this long (§9, slice 82). A job
+        # holds `self.idle` while it runs, and `busy` covers the one that is queued but has not
+        # started, so nothing is ever taken out from under work that is coming.
+        self.idle = release_when_idle(idle_seconds if release else 0.0, release or (lambda: None),
+                                     busy=self.busy, sleep=sleep, now=now)
         for lane in self._queues:
             threading.Thread(target=self._work, args=(lane,), name=f"noaap-jobs-{lane}", daemon=True).start()
 
@@ -172,7 +185,8 @@ class Jobs:
                 continue  # cancelled while queued
             job.state = "running"
             try:
-                result = action(self.make_service(job))
+                with self.idle:   # nothing lets go of the card while this runs (§9, slice 82)
+                    result = action(self.make_service(job))
                 job.result = _jsonable(result)
                 outcomes = result if isinstance(result, list) else [result]
                 if any(isinstance(o, Outcome) and o.blocked for o in outcomes):
@@ -184,6 +198,12 @@ class Jobs:
             except Cancelled:
                 job.log.append("cancelled — everything finished so far is kept")
                 job.state = "cancelled"
+            except TimingUnavailable as e:
+                # **a sentence, not a traceback** (§9, slice 82): every one of these is written for the
+                # person reading the job's log — no provider, no room on the card, the card gone half
+                # way through — and a stack trace under it says nothing they can act on.
+                job.log.append(str(e))
+                job.state = "failed"
             except Exception as e:  # a job must never kill the worker
                 log.debug("job %s failed", job.id, exc_info=True)
                 job.log.append(f"error: {e}")
@@ -191,11 +211,6 @@ class Jobs:
                 job.state = "failed"
             finally:
                 job.finished = time.time()
-                # nothing left to do in any lane: give the graphics card back (§9, slice 41). It costs a
-                # dictionary lookup where no model was ever loaded, and the next job reloads from a
-                # warm disk in seconds — which is the right trade for a machine somebody else is using.
-                if not self.busy():
-                    release_gpu_memory()
 
 
 # what to call each container when a player asks for it. The suffix is the file's own claim and the
@@ -287,8 +302,12 @@ class App:
         self.last_request = time.monotonic()
         self.http = httpx.Client(timeout=10, follow_redirects=True, headers={"User-Agent": user_agent()})
         self._thumbs: dict[str, tuple[bytes, str]] = {}
-        self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel))
-        self.jobs = Jobs(self._service_factory)
+        # one hold on the graphics card for the whole server, so the models stay loaded from one
+        # track to the next and the idle window is the one thing that gives them back (§9, slice 82)
+        self.engines = Engines()
+        self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel, engines=self.engines))
+        self.jobs = Jobs(self._service_factory, release=self.engines.let_go,
+                         idle_seconds=cfg.timing_card_idle_seconds)
         self.details = Details(lambda: sources.get(None, self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running
@@ -657,6 +676,10 @@ class App:
             if name != "library_root":
                 setattr(self.cfg, name, value)  # job services share this Config: effective from the next job
             config_mod.save_setting(name, value)
+        # a provider that nobody can ask for any more should not go on holding the card until the
+        # idle window comes round — this is also how "stop using the card" takes effect at once
+        if any(name.startswith("timing_") for name in changes) and not self.jobs.busy():
+            self.engines.let_go()
         if library is not None:
             self.library = library
             self._reader = None  # it holds the old library, and its lyrics cache with it

@@ -76,6 +76,7 @@ from .text import move_feat, strip_self_feat
 from .timing import (
     ALIGN,
     TRANSCRIBE,
+    Engines,
     TimingUnavailable,
     capabilities_of,
     coverage,
@@ -86,7 +87,6 @@ from .timing import (
     with_gaps,
 )
 from .timing import kind_for as timing_kind
-from .timing import provider as timing_provider
 from .trim import ORIGINALS, kept_originals, originals_of
 from .trim import key as trim_key
 
@@ -175,6 +175,7 @@ class Service:
         mb: MusicBrainz | None = None,
         cancel: threading.Event | None = None,
         lrclib: LyricsAPI | None = None,
+        engines: Engines | None = None,
     ) -> None:
         self.cfg = cfg
         self.library = library.expanduser() if library else None
@@ -186,6 +187,11 @@ class Service:
         self._cancel = cancel
         self._mb = mb
         self._lrclib = lrclib
+        # Who is holding the graphics card (§9, slice 82). The app's server passes its own holder, so
+        # the models stay loaded from one job to the next and its idle window decides when they go; a
+        # CLI run gets one of its own and gives it back when the pass ends.
+        self.engines = engines or Engines()
+        self._owns_engines = engines is None
 
     def may_look_up(self, plan: AlbumPlan) -> bool:
         """Whether anything about this album may be asked of lrclib or MusicBrainz (§9, slice 72)."""
@@ -935,9 +941,12 @@ class Service:
         self._audio_may_be_sent(plan, ALIGN, "align words")
         engine = self._timing(ALIGN, "align words")
         audio = album_dir / track.filename
+        # asked before anything else is said, so that "this is running on the processor" is the job's
+        # first line and not a footnote under a minute of waiting (§9, slice 82)
+        where = self._where_it_runs(engine, ALIGN)
         self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
                  f"· {_minutes(audio)} of audio")
-        timed = engine.align(audio, lines, check=self.check)
+        timed = engine.align(audio, lines, check=self.check, **where)
         placed = len(lines) - len(timed.unplaced)
         self.log(f"placed {placed}/{len(lines)} lines · {timed.by}"
                  + (f" · {len(timed.unplaced)} left unplaced" if timed.unplaced else ""))
@@ -966,6 +975,7 @@ class Service:
 
         self._audio_may_be_sent(plan, TRANSCRIBE, "derive words")
         engine = self._timing(TRANSCRIBE, "derive words")
+        where = self._where_it_runs(engine, TRANSCRIBE)
         audio = album_dir / track.filename
         # A transcriber hears far more of a song with the band taken off it — measured, and by a
         # lot (§9, slice 45) — and where the transcriber is somebody else's computer, the isolated voice
@@ -980,7 +990,7 @@ class Service:
             heard = "the separated voice" if voice else "the mixed track"
             self.log(f"asking {engine.name} to draft the words of {track.title} · "
                      f"{_minutes(audio)} of audio · listening to {heard}")
-            timed = engine.transcribe(voice or audio, check=self.check)
+            timed = engine.transcribe(voice or audio, check=self.check, **where)
         timed.parameters["heard"] = heard
         # where the machine heard nothing for a long stretch, the draft says so rather than letting
         # the next line jump a minute — and the notice counts what it actually covered (§9, slice 45)
@@ -1080,13 +1090,26 @@ class Service:
             "here (`local`, or `http` on this machine), or set \"lookups\": true in this album's plan")
 
     def _timing(self, capability: str, what: str):
-        """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40)."""
-        engine = timing_provider(self.cfg, capability)
+        """The provider configured for *this* capability, if it can do the thing being asked (§9, slice 40).
+
+        Held, not built: the same provider comes back for the next track, with its models still on the
+        card (§9, slice 82). Reloading them was measured at about two seconds a track off a warm disk.
+        """
+        engine = self.engines.provider(self.cfg, capability)
         if capability not in engine.capabilities():
             raise TimingUnavailable(f"the {engine.name} timing provider cannot {what}")
         if hasattr(engine, "log"):
             engine.log = self.log
         return engine
+
+    def _where_it_runs(self, engine: Any, capability: str) -> dict[str, str]:
+        """Ask a provider that runs here where it will run, before the job says anything else.
+
+        A provider somewhere else has no answer to this and is not asked: `{}` then, and the call
+        below is the one it always was (§9, slice 82).
+        """
+        decide = getattr(engine, "device_now", None)
+        return {"device": decide(capability)} if decide else {}
 
     def sync_lyrics(self, source_id: str) -> Outcome:
         """Make the plan agree with the `.lrc` files beside the tracks, and the tags with the plan.
@@ -1160,9 +1183,10 @@ class Service:
         if not words:
             return Outcome("ok", plan, album_dir)
         engine = self._timing(ALIGN, "align words")
+        where = self._where_it_runs(engine, ALIGN)
         self.log(f"{track.title}: lrclib's entry is {apart:.0f} s from this file — asking the aligner "
                  f"whether its {len(words)} lines belong to it")
-        timed = engine.align(album_dir / track.filename, words, check=self.check)
+        timed = engine.align(album_dir / track.filename, words, check=self.check, **where)
         span = self._fit_number(timed.parameters.get("own_span"))
         unplaced = len(timed.unplaced) / max(1, len(words))
         say = fit_verdict(span, unplaced)
@@ -1260,8 +1284,13 @@ class Service:
                 counts[(after.lyrics_fit or {}).get("decided") if after and after.lyrics_fit
                        else "no candidate"] += 1
         finally:
-            # the card goes back whether the pass finished, was cancelled or failed (§9, slice 41)
-            release_gpu_memory()
+            # the card goes back whether the pass finished, was cancelled or failed (§9, slice 41).
+            # Where the app is holding the provider, its idle window decides that instead — a pass is
+            # not the last thing that will be asked of it (§9, slice 82).
+            if self._owns_engines:
+                self.engines.let_go()
+            else:
+                release_gpu_memory()
         self.log("near misses: " + (", ".join(f"{n} {what}" for what, n in counts.most_common())
                                     or "nothing decided"))
         return outcomes
