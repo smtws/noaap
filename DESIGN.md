@@ -2750,6 +2750,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    could not be seen.
 
 
+95. ✅ **Sources are a list, and each one's fields are its own** (2026-09-30, P75). The user, looking at
+   what slice 92 built: *"sources as cards or rows that can be added and removed and have their own
+   config dialog once you add or edit them, so you have all sources together visible and do not have
+   each source's settings mess exposed right away."* Slice 92 had answered "how do I configure another
+   source" by putting **every field of every provider** on the page at once — a paragraph and four
+   controls per source, before knowing whether the user has that source at all.
+   Now the section is a **list of what is set up**: one row per provider, with a line saying what it has
+   (*session from Firefox · audio taken out of video posts*), an Edit and a Remove; *Add a source* offers
+   the ones that can be set up and are not. A provider is a row when something about it is set — a
+   session or one of its switches — and `post_cap`, which is 200 out of the box because nobody chose it,
+   is not evidence. Edit and Add open **one dialog for one provider**, with its fields, the sentences
+   slice 92 wrote, and nothing of anybody else's; Remove clears that provider's keys after a confirmation
+   that names what goes, and says what still works without a login.
+   **Nothing about the config changed**: the same flat keys, the same file, and a config written by hand
+   shows up as a row — verified on a hand-written `config.toml` and by a case that posts every
+   `<provider>_<field>` one at a time, as a dialog's Save does, and checks that clearing one provider
+   leaves the other exactly as it was.
+
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2944,6 +2963,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (sources as a list, §9, slice 95)
+
+- **Show what somebody has, not what they could have.** A settings page is a list of decisions already
+  taken; the fields behind each one are a second question.
+- **A dialog is a boundary.** One provider's session, one provider's switches — a page that can reach
+  another provider's key from here is a page that can send it by accident.
+- **A default is not a setting.** `post_cap = 200` was chosen by nobody, so it cannot make a source look
+  configured.
+- **Say what a removal costs before it happens**, and what still works afterwards: a source without a
+  session is not a source that stopped working.
+- **The page still does not know which sources exist.** Rows, dialogs and the add-list are all built from
+  what the server answers, which it builds from the registry.
 
 ### Decisions of 2026-09-30 (the line stays in sight, §9, slice 94)
 

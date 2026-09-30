@@ -225,7 +225,7 @@ Set the key to an absolute path if you keep it elsewhere.
 | ![Album view](docs/screenshots/album.jpg) | ![The lyrics editor](docs/screenshots/editor.jpg) |
 | **Album view:** the cover, every field editable, and where each value came from — `playlist` here, `you` where you have overruled it, and the badge hands the derived value back. Drag a row by its grip to reorder it; the ⏱ column says how far the file is from the length MusicBrainz and LRCLIB know; **⇄** takes a track's audio from another video; ♪ opens the lyrics. Open, they read as timed lines you can click, and the panel says what may be done with them — here, that these are LRCLIB's words and so not yours to give back. The head says why this album is not one to offer MusicBrainz: it is a compilation. | **The lyrics editor:** the same panel, writing. The words are the text in the box, and the list below it is drawn from that text as you type — click a line to hear it, and the line being sung is marked as the song plays, so a proposal can be judged before it is saved. **⏱ stamp this line** writes the moment you are hearing and moves on to the next line — scrolling it into view, so a long lyric can be stamped line after line from the keyboard (Ctrl+Enter) — the nudges move one stamp by a tenth or a half, **shift all** moves every stamp at once, and **⚖ align these words** asks the configured provider to place them all. Nothing is written until Save. |
 | ![Settings](docs/screenshots/settings.jpg) | ![Channel listing](docs/screenshots/search.jpg) |
-| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. A key that is set reads `•••••••• (set)` and is never shown again. Below: what noaap found — config file, JS runtime, token generator. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
+| **Settings:** the two timing providers are chosen separately — who may place your words on the clock, and who may write down the words of a track that has none — and each says where the audio goes: `local` never leaves the machine, a vendor takes the audio and its list price is shown with the date it was read. **Only the fields those two choices need are shown**, so a machine that aligns locally is not asked for an endpoint; a key that is set reads `•••••••• (set)` and is never shown again. Under **Sources**, one row per source that is set up, with what it has and an Edit and a Remove; the fields live in that source's own dialog. Below (not shown): **Library** — check the sources, repair, take in a folder, watched folders — and what noaap found. | **A URL or an artist name:** a URL is previewed first — what a fetch would write, and whether the album is already here — and nothing is downloaded until you say so. A name searches instead: here a curator's channel, every playlist it publishes, "in library" markers, tick what you want. |
 | ![Library](docs/screenshots/library.jpg) | ![Two copies of one song](docs/screenshots/copies.jpg) |
 | **Library:** 20 of 246 albums, because the filter matched a word in their artist — it searches albums, artists and song titles at once, highlights what it matched, and **▶ Play** queues everything it found across all of them. ♪ counts the tracks whose lyrics are here, ⏱ marks an album that is not the length it should be, and **♪ N need you** collects the tracks where LRCLIB has words and the aligner could not decide whether they belong to your file — nothing was taken, and each is one click from the two numbers. Opening one artist instead gives the same view with "check for new albums", which asks YouTube about that artist alone. | **Two copies of one song:** what `merge` could not decide, kept where you can decide it — the panel of one track, opened with **⇄**. Every copy is named by the last two parts of its path (the whole path is in its tooltip) and carries what was measured: codec, bitrate, where the audio stops, length, size. The one in use says so; the other says what stopped the pass from ranking it — here two files that are the same recording by every number there is and **3 seconds apart**, which is inside the range where this program shows you rather than decides. **take this one** fetches it, **not this one** is remembered for good, and the count on the album card can only fall. |
 
@@ -476,12 +476,19 @@ and drafting with Deepgram shows three fields and no endpoint. Switching a provi
 at once, and a field that hides **keeps what you typed**: it is not sent while it is hidden, so what the
 config holds for it stays as it was.
 
-**Settings › Sources is where a provider with an account of its own is configured.** A session from a
-browser you are already logged in with, or the **path** of a cookies file — the path is all noaap keeps;
-the file is read on this machine while a download runs and its contents never reach the page. Patreon
-also offers *take the audio out of a video post* and *keep the post's captions as lyrics*. The section is
-built from what the program actually has: a provider that needs a session appears there without anybody
-editing the page.
+**Settings › Sources is a list of the sources you have set up**, one row each: the provider, one line
+saying what it has (*session from Firefox · audio taken out of video posts*), an **Edit** and a
+**Remove**. *Add a source* offers the ones that can be set up and are not yet. A row's fields live in
+**that source's own dialog** — a session from a browser you are already logged in with, or the **path**
+of a cookies file (the path is all noaap keeps; the file is read on this machine while a download runs
+and its contents never reach the page), and for Patreon *take the audio out of a video post* and *keep
+the post's captions as lyrics*. Nothing of another source is in that dialog, and **Remove** clears that
+one provider after saying what it clears — no file of yours is touched, and the source still works for
+anything that needs no login.
+
+The list is built from what the program actually has: a provider that needs a session appears there
+without anybody editing the page, and a config you wrote by hand shows up as a row. The config keys are
+unchanged — `<provider>_cookies_from_browser`, `<provider>_cookies_file`, and Patreon's two switches.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:

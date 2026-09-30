@@ -2,7 +2,8 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
-         binLabel, candidateLine, copyLabels, repairState, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
+         binLabel, browserLabel, candidateLine, clearedSource, copyLabels, dialogFields, removeConfirm,
+         repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice, resetKind, roundMark,
          scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
          timingFields, timingNotice,
@@ -2056,8 +2057,6 @@ const watchesIn = (list) => [...list.querySelectorAll(".watch-row")].map((row) =
   shape: row.querySelector(".watch-shape").value,
 })).filter((w) => w.folder || w.name);
 
-const BROWSER_NAMES = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium", brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
-
 // What noaap moved aside instead of deleting (§9, slice 49). It never empties itself, so the only
 // way anything leaves is from here or `noaap recycle empty` — which is the point of having it.
 //
@@ -2195,13 +2194,15 @@ function showTimingFields(form) {
   if (box) box.hidden = !(said.fields.length || said.keys.length);
 }
 
-// **Where else music comes from** (§9, slice 92). The user: *"how do i configure alternative sources,
-// like another local or nas folder for merge, patreon, others?"* A folder is taken in below, under
-// Library. A provider that needs an account of its own is configured here, and what it needs is a
-// session — from a browser you are already logged in with, or a cookies file. Both stay on this machine.
+// **Where else music comes from, as a list** (§9, slice 95). The user, of slice 92's section: *"sources
+// as cards or rows that can be added and removed and have their own config dialog once you add or edit
+// them, so you have all sources together visible and do not have each source's settings mess exposed
+// right away."* So the settings show **which** sources are set up, one row each, and the fields live in
+// a dialog that holds one provider and nothing of anybody else.
 //
-// One section per such provider, from what the server answered: the page does not know which sources
-// exist, and a second one that needs a session appears here without an edit.
+// The rows come from what the server answers, and the server builds that from the registry and the
+// provider's own field names: the page does not know which sources exist, and one that needs a session
+// appears here the day it registers itself.
 const SOURCE_FIELD = {
   cookies_from_browser: (name) => [`${name} session from a browser`,
     `the browser you are logged in to ${name} with. Its cookies are read on this machine while a `
@@ -2215,32 +2216,78 @@ const SOURCE_FIELD = {
     "when a post carries captions, they are kept as the track's words instead of asking LRCLIB"],
 };
 
-// how a provider writes its own name, where a capital in the middle of it would be lost otherwise
-const SOURCE_NAMES = { youtube: "YouTube", soundcloud: "SoundCloud", bandcamp: "Bandcamp" };
-const sourceName = (name) => SOURCE_NAMES[name] || name.charAt(0).toUpperCase() + name.slice(1);
+function sourcesSection() {
+  const box = h("div", { class: "setting sources" });
+  fillSources(box);
+  return box;
+}
 
-function sourcesSections(st, browsers, row) {
-  const out = [];
-  for (const [name, fields] of Object.entries(st.sources || {})) {
-    const called = sourceName(name);
-    out.push(h("p", { class: "muted setting" },
-      `A ${called} album is opened like any other source \u2014 paste its URL in the search box. What `
-      + `${called} keeps behind a login needs your own session, which noaap reads on this machine and `
-      + "sends to nobody."));
-    for (const [field, text] of Object.entries(SOURCE_FIELD)) {
-      if (!(field in fields)) continue;
-      const [label, help] = text(called);
-      out.push(row(label, help, sourceInput(name, field, fields[field], browsers)));
-    }
-  }
-  return out.length ? out : h("p", { class: "muted setting" }, "Nothing else needs an account of its own.");
+function fillSources(box) {
+  const st = state.settings || {};
+  const said = sourceRows(st.sources || {});
+  const chosen = h("select", { class: "add-source", "aria-label": "a source to set up" },
+    said.unset.map((name) => h("option", { value: name }, sourceLabel(name))));
+  fill(box,
+    // the "Sources" heading is the section's own; this box says what a source is
+    h("div", { class: "muted" },
+      "Where music comes from besides YouTube. A source needs setting up only where it keeps something "
+      + "behind a login \u2014 what is public needs nothing, and a folder you already have is taken in "
+      + "under Library below."),
+    said.none
+      ? h("div", { class: "muted" }, "None is set up yet.")
+      : h("div", { class: "source-rows" }, said.rows.map((row) => h("div", { class: "source-row" },
+          h("strong", {}, row.label),
+          h("span", { class: "muted" }, row.summary),
+          h("span", { class: "row-actions" },
+            h("button", { class: "quiet small", type: "button",
+              onclick: () => openSourceDialog(row.name, box) }, "Edit"),
+            h("button", { class: "quiet small danger-text", type: "button",
+              onclick: (e) => removeSource(row.name, box, e.currentTarget) }, "Remove"))))),
+    said.unset.length
+      ? h("div", { class: "add-row" }, chosen,
+          h("button", { class: "quiet small", type: "button",
+            onclick: () => openSourceDialog(chosen.value, box) }, "Add a source"))
+      : h("div", { class: "muted" }, "Every source that can be set up is."));
+}
+
+// One provider's fields, in a dialog of its own: the sentences are slice 92's, the fields are this
+// provider's, and a key or a path of another provider cannot be reached from here.
+function openSourceDialog(name, box) {
+  const st = state.settings || {};
+  const fields = st.sources?.[name] || {};
+  const shown = dialogFields(name, st.sources || {});
+  if (!shown.length) return toast(`${sourceLabel(name)} has nothing to configure`, "blocked");
+  const label = sourceLabel(name);
+  const inputs = new Map();
+  const row = (field) => {
+    const [title, help] = SOURCE_FIELD[field](label);
+    const input = sourceInput(name, field, fields[field], ["", ...(st.browsers || [])]);
+    inputs.set(field, input);
+    return h("label", { class: "setting" },
+      h("span", {}, h("strong", {}, title), h("small", { class: "muted" }, help)), input);
+  };
+  const note = h("div", { class: "muted dialog-note" });
+  const dialog = h("dialog", { class: "source-dialog" },
+    h("div", { class: "panel-head" }, h("h3", {}, label)),
+    h("div", { class: "muted" },
+      `What ${label} keeps behind a login needs your own session, which noaap reads on this machine and `
+      + "sends to nobody. A cookies file is kept as a path; its contents never reach this page."),
+    ...shown.map(row),
+    note,
+    h("div", { class: "actions" },
+      h("button", { type: "button", onclick: (e) => saveSource(name, inputs, dialog, box, note, e.currentTarget) }, "Save"),
+      h("button", { class: "quiet", type: "button", onclick: () => dialog.close() }, "Cancel")));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+  dialog.querySelector("input, select")?.focus();
 }
 
 function sourceInput(name, field, value, browsers) {
   if (field === "cookies_from_browser") {
     const known = browsers.includes(value) ? browsers : [...browsers, value];
     return h("select", { name: `${name}_${field}` }, known.map((b) =>
-      h("option", { value: b, selected: b === value }, b ? BROWSER_NAMES[b.split(":")[0]] || b : "none")));
+      h("option", { value: b, selected: b === (value || "") }, b ? browserLabel(b) : "none")));
   }
   if (field === "cookies_file") {
     return h("input", { type: "text", name: `${name}_${field}`, value: value || "", autocomplete: "off",
@@ -2249,17 +2296,37 @@ function sourceInput(name, field, value, browsers) {
   return h("input", { type: "checkbox", name: `${name}_${field}`, checked: Boolean(value) });
 }
 
-// what the Sources section would save: every field the server offered for every provider it named
-function sourcesFrom(f, st) {
-  const out = {};
-  for (const [name, fields] of Object.entries(st.sources || {})) {
-    for (const field of Object.keys(SOURCE_FIELD)) {
-      const el = f[`${name}_${field}`];
-      if (!el || !(field in fields)) continue;
-      out[`${name}_${field}`] = el.type === "checkbox" ? el.checked : el.value.trim();
-    }
+async function saveSource(name, inputs, dialog, box, note, button) {
+  const body = {};
+  for (const [field, el] of inputs) {
+    body[`${name}_${field}`] = el.type === "checkbox" ? el.checked : el.value.trim();
   }
-  return out;
+  setWorking(button, true);
+  try {
+    state.settings = await api("/api/settings", body);
+    toast(`\u2713 ${sourceLabel(name)} saved`, "done");
+    dialog.close();
+    fillSources(box);
+  } catch (e) {
+    note.textContent = e.message;     // said in the dialog, where the field that is wrong still is
+  } finally {
+    setWorking(button, false);
+  }
+}
+
+async function removeSource(name, box, button) {
+  const st = state.settings || {};
+  if (!confirm(removeConfirm(name, st.sources || {}))) return;
+  setWorking(button, true);
+  try {
+    state.settings = await api("/api/settings", clearedSource(name, st.sources || {}));
+    toast(`\u2713 ${sourceLabel(name)}'s settings cleared`, "done");
+    fillSources(box);
+  } catch (e) {
+    toast(e.message, "failed");
+  } finally {
+    setWorking(button, false);
+  }
 }
 
 function openSettings() {
@@ -2276,7 +2343,7 @@ function openSettings() {
       row("Library folder", "where albums are stored (created if missing); existing albums are not moved",
         h("input", { type: "text", name: "library", value: st.library })),
       row("YouTube login", "browser whose YouTube session is used — avoids the bot check, needed for age-restricted videos",
-        h("select", { name: "cookies_from_browser" }, browsers.map((b) => h("option", { value: b, selected: b === (st.cookies_from_browser || "") }, b ? BROWSER_NAMES[b.split(":")[0]] || b : "none")))),
+        h("select", { name: "cookies_from_browser" }, browsers.map((b) => h("option", { value: b, selected: b === (st.cookies_from_browser || "") }, b ? browserLabel(b) : "none")))),
       row("MusicBrainz", "look up correct names, years, covers and tracklists",
         h("input", { type: "checkbox", name: "musicbrainz", checked: st.musicbrainz })),
       row("Token helper", "proof-of-origin tokens for streams YouTube withholds; server = started on demand",
@@ -2296,7 +2363,7 @@ function openSettings() {
             h("option", { value: m, selected: m === providerFor("transcribe") }, m)))),
       timingDetails(st),
       h("h3", {}, "Sources"),
-      sourcesSections(st, browsers, row),
+      sourcesSection(),
       h("h3", {}, "Library"),
       updateSection(),
       repairSection(),
@@ -2351,7 +2418,6 @@ async function saveSettings(ev) {
       ...Object.fromEntries((state.settings.timing?.vendors || [])
         .filter((v) => shows(f, `key:${v}`) && f[`timing_${v}_key`]?.value)
         .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
-      ...sourcesFrom(f, state.settings),
       watches,
     });
     toast("✓ Settings saved — they apply from the next job", "done");

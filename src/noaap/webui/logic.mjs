@@ -769,6 +769,87 @@ export function binLabel(count) {
         title: "What noaap moved aside instead of deleting. Nothing leaves it on its own." };
 }
 
+/** Sources as a list of what is set up (§9, slice 95).
+ *
+ * The user: *"sources as cards or rows that can be added and removed and have their own config dialog
+ * once you add or edit them, so you have all sources together visible and do not have each source's
+ * settings mess exposed right away."* Slice 92 put every field of every provider on the page at once;
+ * what a person wants to see is **which** sources they have, and the fields only when they open one.
+ *
+ * A provider is a row when something about it is set: a session (a browser or a cookies file) or one of
+ * its switches. `post_cap` is not evidence — it has a default of 200 that nobody chose — so only the
+ * fields the page offers count.
+ */
+export const SOURCE_FIELDS = ["cookies_from_browser", "cookies_file", "audio_from_video", "captions"];
+
+export const BROWSER_LABEL = { firefox: "Firefox", chrome: "Chrome", chromium: "Chromium",
+                               brave: "Brave", edge: "Edge", vivaldi: "Vivaldi", opera: "Opera" };
+
+export const browserLabel = (name) =>
+  BROWSER_LABEL[String(name || "").split(":")[0]] || String(name || "");
+
+const SOURCE_NAMES = { youtube: "YouTube", soundcloud: "SoundCloud", bandcamp: "Bandcamp" };
+export const sourceLabel = (name) =>
+  SOURCE_NAMES[name] || String(name || "").charAt(0).toUpperCase() + String(name || "").slice(1);
+
+/** Which of a provider's offered fields hold something. */
+export const fieldsSet = (fields = {}) =>
+  SOURCE_FIELDS.filter((field) => field in fields && Boolean(fields[field]));
+
+/** One line saying what is configured, in the order it is asked for. */
+export function sourceSummary(fields = {}) {
+  const parts = [];
+  const session = [];
+  if (fields.cookies_from_browser) session.push(`from ${browserLabel(fields.cookies_from_browser)}`);
+  if (fields.cookies_file) session.push("from a cookies file");
+  if (session.length) parts.push(`session ${session.join(" and ")}`);
+  else if ("cookies_from_browser" in fields || "cookies_file" in fields) parts.push("no session — public posts only");
+  if (fields.audio_from_video) parts.push("audio taken out of video posts");
+  if (fields.captions) parts.push("captions kept as lyrics");
+  return parts.join(" · ");
+}
+
+export function sourceRows(sources = {}) {
+  const names = Object.keys(sources).sort();
+  const rows = [];
+  const unset = [];
+  for (const name of names) {
+    const fields = sources[name] || {};
+    const set = fieldsSet(fields);
+    if (set.length) rows.push({ name, label: sourceLabel(name), set, summary: sourceSummary(fields), fields });
+    else unset.push(name);
+  }
+  return { rows, unset, none: rows.length === 0 };
+}
+
+/** Which fields a provider's dialog shows: its own, and nothing of anybody else's. */
+export const dialogFields = (name, sources = {}) =>
+  SOURCE_FIELDS.filter((field) => field in (sources[name] || {}));
+
+/** What clearing a source sends: that provider's offered fields, emptied, and nothing else. */
+export function clearedSource(name, sources = {}) {
+  const out = {};
+  for (const field of dialogFields(name, sources)) {
+    out[`${name}_${field}`] = field.startsWith("cookies") ? "" : false;
+  }
+  return out;
+}
+
+/** What a Remove has to say before it does it: the provider, and what of it goes. */
+export function removeConfirm(name, sources = {}) {
+  const fields = sources[name] || {};
+  const said = [];
+  if (fields.cookies_from_browser) said.push(`the session from ${browserLabel(fields.cookies_from_browser)}`);
+  if (fields.cookies_file) said.push(`the path of the cookies file (${fields.cookies_file})`);
+  if (fields.audio_from_video) said.push("taking the audio out of video posts");
+  if (fields.captions) said.push("keeping the captions as lyrics");
+  const label = sourceLabel(name);
+  return `Remove ${label}'s settings?\n\n`
+    + (said.length ? `This clears ${said.join(", ")}.\n\n` : "")
+    + `No file of yours is touched, and ${label} still works for anything that needs no login. `
+    + "You can set it up again at any time.";
+}
+
 /** Which timing fields a slot's provider actually uses (§9, slice 92).
  *
  * The settings showed every one of them whatever was selected — an endpoint for `local`, two API keys

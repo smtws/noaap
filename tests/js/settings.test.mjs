@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TIMING_FIELDS, takeInState, timingFields, watchTrouble } from "../../src/noaap/webui/logic.mjs";
+import { TIMING_FIELDS, clearedSource, dialogFields, removeConfirm, sourceRows, sourceSummary,
+         takeInState, timingFields, watchTrouble } from "../../src/noaap/webui/logic.mjs";
 
 // -- 1. a field is shown only when the selected provider uses it ---------------------------------
 
@@ -132,4 +133,82 @@ test("watched folders may not be nested", () => {
 test("nothing watched is not trouble", () => {
   assert.deepEqual(watchTrouble([], "/home/u/Music"), []);
   assert.deepEqual(watchTrouble(), []);
+});
+
+// -- 6. sources as a list, and a dialog per provider (§9, slice 95) ------------------------------
+
+// what the server answers: every provider that *can* be set up, with the fields it has
+const PATREON_SET = { cookies_from_browser: "firefox", cookies_file: "", audio_from_video: true,
+                      captions: false, post_cap: 200 };
+const NOTHING = { cookies_from_browser: "", cookies_file: "" };
+
+test("nothing set up is a list with no rows and everything on offer", () => {
+  const said = sourceRows({ patreon: { ...NOTHING, audio_from_video: false, captions: false, post_cap: 200 },
+                            soundcloud: { ...NOTHING } });
+  assert.equal(said.none, true);
+  assert.deepEqual(said.rows, []);
+  assert.deepEqual(said.unset, ["patreon", "soundcloud"]);
+});
+
+test("one source set up is one row, and the other is still on offer", () => {
+  const said = sourceRows({ patreon: PATREON_SET, soundcloud: NOTHING });
+  assert.equal(said.rows.length, 1);
+  assert.equal(said.rows[0].label, "Patreon");
+  assert.equal(said.rows[0].summary, "session from Firefox · audio taken out of video posts");
+  assert.deepEqual(said.unset, ["soundcloud"], "add offers only what is not set up");
+});
+
+test("several sources set up are several rows, in a settled order", () => {
+  const said = sourceRows({ soundcloud: { cookies_from_browser: "chrome", cookies_file: "" },
+                            patreon: PATREON_SET });
+  assert.deepEqual(said.rows.map((r) => r.label), ["Patreon", "SoundCloud"]);
+  assert.deepEqual(said.unset, []);
+  assert.equal(said.rows[1].summary, "session from Chrome");
+});
+
+test("a default that nobody chose is not a setting", () => {
+  // `post_cap` is 200 out of the box, and the page never offers it: it cannot make a row
+  const said = sourceRows({ patreon: { ...NOTHING, audio_from_video: false, captions: false, post_cap: 200 } });
+  assert.equal(said.none, true);
+});
+
+test("a switch without a session is a row, and says what it can do", () => {
+  const said = sourceRows({ patreon: { ...NOTHING, captions: true } });
+  assert.equal(said.rows.length, 1);
+  assert.equal(said.rows[0].summary, "no session — public posts only · captions kept as lyrics");
+});
+
+test("a cookies file reads as a session without naming the file", () => {
+  assert.equal(sourceSummary({ cookies_from_browser: "", cookies_file: "/home/u/c.txt" }),
+               "session from a cookies file");
+  assert.equal(sourceSummary({ cookies_from_browser: "firefox:dev", cookies_file: "/home/u/c.txt" }),
+               "session from Firefox and from a cookies file");
+});
+
+test("a dialog holds its own provider's fields and nobody else's", () => {
+  const sources = { patreon: PATREON_SET, soundcloud: NOTHING };
+  assert.deepEqual(dialogFields("patreon", sources),
+                   ["cookies_from_browser", "cookies_file", "audio_from_video", "captions"]);
+  assert.deepEqual(dialogFields("soundcloud", sources), ["cookies_from_browser", "cookies_file"]);
+  assert.deepEqual(dialogFields("nobody", sources), []);
+});
+
+test("removing a source clears that provider and touches no other", () => {
+  const sources = { patreon: PATREON_SET, soundcloud: { cookies_from_browser: "chrome", cookies_file: "" } };
+  const cleared = clearedSource("patreon", sources);
+  assert.deepEqual(cleared, { patreon_cookies_from_browser: "", patreon_cookies_file: "",
+                              patreon_audio_from_video: false, patreon_captions: false });
+  assert.ok(Object.keys(cleared).every((k) => k.startsWith("patreon_")));
+  // soundcloud has two fields, so clearing it sends two
+  assert.deepEqual(Object.keys(clearedSource("soundcloud", sources)),
+                   ["soundcloud_cookies_from_browser", "soundcloud_cookies_file"]);
+});
+
+test("a removal says what it clears, and what still works afterwards", () => {
+  const said = removeConfirm("patreon", { patreon: PATREON_SET });
+  assert.match(said, /Remove Patreon's settings\?/);
+  assert.match(said, /the session from Firefox/);
+  assert.match(said, /taking the audio out of video posts/);
+  assert.match(said, /still works for anything that needs no login/);
+  assert.doesNotMatch(said, /cookies file/, "there is none set, so it is not mentioned");
 });

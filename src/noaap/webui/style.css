@@ -237,6 +237,24 @@ pre.check { margin: .6rem 0 0; padding: .5rem .6rem; max-height: 18rem; overflow
 .watch-row select { min-width: 0; }
 .watch-trouble { margin-top: .4rem; font-size: .82rem; }
 @media (max-width: 60rem) { .watch-row { grid-template-columns: 1fr; } }
+/* Sources as rows, and one provider's fields in a dialog of its own (§9, slice 95). */
+.setting.sources { display: block; }
+.setting.sources > .muted { margin-top: .3rem; max-width: 60ch; }
+.source-rows { display: grid; gap: .35rem; margin: .6rem 0; }
+.source-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr) auto; gap: .6rem; align-items: center; }
+.source-row .row-actions { display: flex; gap: .4rem; }
+.add-row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+/* `button.small` carries `margin-left: auto` so a lone small button sits at the end of its row —
+   right for a row's actions, wrong for a button that belongs beside the select it acts on. */
+.add-row button.small { margin-left: 0; }
+.add-row select { min-width: 10rem; }
+dialog.source-dialog { max-width: min(46rem, 92vw); border: 1px solid var(--line); border-radius: 10px;
+                       background: var(--panel); color: inherit; padding: 1rem 1.25rem; }
+dialog.source-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+dialog.source-dialog h3 { margin: 0; }
+dialog.source-dialog .setting:last-of-type { border-bottom: 0; }
+dialog.source-dialog .dialog-note:not(:empty) { margin-top: .5rem; color: var(--bad); }
+@media (max-width: 40rem) { .source-row { grid-template-columns: 1fr; } }
 dl.info { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: 1rem 0 0; font-size: .82rem; color: var(--muted); }
 dl.info dt { font-weight: 600; }
 dl.info dd { margin: 0; overflow-wrap: anywhere; }

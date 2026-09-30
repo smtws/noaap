@@ -241,6 +241,48 @@ def test_the_other_sources_are_saved_like_every_other_setting(server, monkeypatc
     assert app.cfg.patreon_cookies_file is None
 
 
+def test_the_door_takes_exactly_the_same_source_keys_as_before(server, monkeypatch, tmp_path):
+    """Sources became a list with a dialog each (§9, slice 95) — and **nothing about the keys changed.**
+
+    The page sends one provider's keys at a time now instead of all of them at once, so the thing worth
+    holding is that the door still accepts each `<provider>_<field>` on its own, that a key of another
+    provider is not touched by it, and that the config file keeps the same format.
+    """
+    app, c = server
+    monkeypatch.setattr("noaap.config.detect_browsers", lambda: ["firefox", "chrome"])
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    cookies = tmp_path / "cookies.txt"
+    cookies.write_text("# Netscape HTTP Cookie File\n")
+
+    offered = ("cookies_from_browser", "cookies_file", "audio_from_video", "captions")
+    values = {"cookies_from_browser": "firefox", "cookies_file": str(cookies),
+              "audio_from_video": True, "captions": True}
+    for name, fields in c.get("/api/state").json()["settings"]["sources"].items():
+        for short in offered:
+            if short not in fields:
+                continue
+            # one provider, one field, one request — which is what a dialog's Save is
+            r = c.post("/api/settings", json={f"{name}_{short}": values[short]}, headers=HDR)
+            assert r.status_code == 200, (name, short, r.text)
+            assert r.json()["sources"][name][short] == values[short]
+            assert getattr(app.cfg, f"{name}_{short}") in (values[short], str(cookies))
+
+    # …and clearing one provider leaves the other exactly as it was
+    before = c.get("/api/state").json()["settings"]["sources"]
+    assert set(before) >= {"patreon", "soundcloud"}
+    cleared = {f"patreon_{short}": "" if short.startswith("cookies") else False
+               for short in offered if short in before["patreon"]}
+    after = c.post("/api/settings", json=cleared, headers=HDR).json()["sources"]
+    assert after["patreon"] == {**before["patreon"], "cookies_from_browser": "", "cookies_file": "",
+                                "audio_from_video": False, "captions": False}
+    assert after["soundcloud"] == before["soundcloud"]
+
+    # the file format is the one `noaap config` has always written: flat keys, one per line
+    text = (tmp_path / "cfg" / "noaap" / "config.toml").read_text()
+    assert 'soundcloud_cookies_from_browser = "firefox"' in text
+    assert f'soundcloud_cookies_file = "{cookies}"' in text
+
+
 def test_what_the_local_timing_uses_is_saved_and_answered(server, monkeypatch, tmp_path):
     app, c = server
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
