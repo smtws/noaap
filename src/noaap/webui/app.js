@@ -1059,7 +1059,7 @@ function lyricsEditor(p, t, d) {
   return h("div", { class: "editor-with-preview" }, area, claimRow,
     h("div", { class: "panel-actions stamp-tools" },
       h("button", { class: "quiet small", type: "button",
-        title: "Write the moment you are hearing on this line, in the file's own clock, and move to the next line (Ctrl+Enter).\nPlay the track first.\nOn the last line it stamps once and then says so, rather than rewriting it.",
+        title: "Write the moment you are hearing on this line, in the file's own clock (Ctrl+Enter).\nPlay the track first.\nThe cursor stays on the line, so the nudges beside this button can fine-tune the stamp;\nthe down arrow moves on.",
         onclick: () => tapStamp(p, t, area) }, "⏱ stamp this line"),
       h("button", { class: "quiet small", type: "button", title: "Play from this line's stamp (Alt+Enter)",
         onclick: () => playLine(p, t, area) }, "▶"),
@@ -1110,8 +1110,6 @@ function tapStamp(p, t, area) {
   const playing = nowPlaying(p, t);
   if (!playing) return toast("Play this track first — a stamp is the moment you are hearing", "blocked");
   const got = tapped(area.value, area.selectionStart, toFileClock(audio.currentTime, trimOffset(playing)));
-  // the last line is stamped once: a further press changes nothing, and says why (§9, slice 96)
-  if (got.refused) return toast(got.refused, "blocked");
   editorText(area, got.text);
   showLine(area, got.caret);
 }

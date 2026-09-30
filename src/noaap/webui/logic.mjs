@@ -284,17 +284,22 @@ export function lineStart(text, index) {
 export function tapped(text, caret, seconds) {
   const lines = (text || "").split("\n");
   const i = Math.min(lineAt(text, caret), lines.length - 1);
-  const last = i >= lines.length - 1;
-  // **the last line is stamped once** (§9, slice 96). There is no line after it to move to, so a
-  // further press used to rewrite the stamp it had just written with a later moment — a person
-  // stamping downwards ran off the end and silently spoiled their last line. It says so instead.
-  if (last && stampOf(lines[i]) != null) {
-    return { text, caret, line: i, at: tenth(seconds), last, refused: "that was the last line" };
-  }
-  lines[i] = withStamp(lines[i], seconds);
+  const line = lines[i];
+  lines[i] = withStamp(line, seconds);
   const value = lines.join("\n");
-  const next = Math.min(i + 1, lines.length - 1);
-  return { text: value, caret: lineStart(value, next), line: i, at: tenth(seconds), last };
+  // **the caret stays on the line it just stamped** (§9, slices 94 and 96, amended 2026-09-30 on the
+  // user's own word: *"setting a timestamp still sets focus to the next line. usually you have to
+  // finetune it, so it should stay on the line you just set."*). The nudges act on the line the caret
+  // is in, so moving away from it was moving away from the four controls that correct the stamp just
+  // written. Moving on is the down arrow, as in any editor.
+  //
+  // Its *place* in the line is kept too, measured from the words rather than from the raw line: the
+  // stamp that was just written is in front of them and would otherwise push the caret along.
+  const words = line.replace(STAMP, "");
+  const inWords = Math.max(0, caret - lineStart(text, i) - (line.length - words.length));
+  const prefix = lines[i].length - words.length;
+  return { text: value, caret: lineStart(value, i) + prefix + Math.min(inWords, words.length),
+           line: i, at: tenth(seconds), last: i >= lines.length - 1 };
 }
 
 /** How tall the editor's box is for this text (§9, slice 96).

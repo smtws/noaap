@@ -54,7 +54,7 @@ test("stamping a line keeps its words, and replaces a stamp already there", () =
   assert.equal(withStamp("[00:12.3] Words", null), "Words");            // and the stamp can come off
 });
 
-test("the cursor decides the line, and the tap moves to the next one", () => {
+test("the cursor decides the line, and the tap stays on it", () => {
   const text = "one\ntwo\nthree";
   assert.equal(lineAt(text, 0), 0);
   assert.equal(lineAt(text, 5), 1);
@@ -65,12 +65,14 @@ test("the cursor decides the line, and the tap moves to the next one", () => {
   assert.equal(first.text, "[00:12.3] one\ntwo\nthree");
   assert.equal(first.line, 0);
   assert.equal(first.at, 12.3);
-  assert.equal(lineAt(first.text, first.caret), 1);   // ready for the next tap
+  assert.equal(lineAt(first.text, first.caret), 0, "still on the line it stamped");
+  assert.equal(first.caret, 11, "and where it was in the words: one character in");
   assert.equal(first.last, false);
 
+  // a second press on the same line is how a stamp is corrected, and the caret does not budge
   const second = tapped(first.text, first.caret, 24.8);
-  assert.equal(second.text, "[00:12.3] one\n[00:24.8] two\nthree");
-  assert.equal(lineAt(second.text, second.caret), 2);
+  assert.equal(second.text, "[00:24.8] one\ntwo\nthree");
+  assert.equal(second.caret, first.caret);
 });
 
 test("the last line takes its stamp and the cursor stays there", () => {
@@ -310,9 +312,9 @@ const afterNudge = (text, caret) => {
   return { text: written, caret: lineStart(written, i) };
 };
 
-test("the stamp moves to the next line and the nudges stay on theirs", () => {
+test("the stamp and the nudges all stay on the line they act on", () => {
   const stamped = afterStamp(WORDS, 0);
-  assert.equal(lineAt(stamped.text, stamped.caret), 1, "the stamp goes on to line 2");
+  assert.equal(lineAt(stamped.text, stamped.caret), 0, "the stamp stays on line 1");
   // and a stamped line can be nudged four ways without the caret leaving it
   const stampedLine = withStamp("line 9", 30);
   for (const delta of [-0.5, -0.1, 0.1, 0.5]) {
@@ -326,13 +328,16 @@ test("the stamp moves to the next line and the nudges stay on theirs", () => {
 });
 
 test("each of the five controls keeps its line in sight", () => {
-  // the caret sits on the last line the box shows; the stamp is the one that leaves the box
-  const at = lineStart(WORDS, 8);                        // line 9, the bottom of the view
+  // none of them moves to another line any more, so what has to be brought back is a line the box
+  // has been scrolled away from — the editor is at the bottom of a long lyric, the caret near the top
+  const at = lineStart(WORDS, 8);                        // line 9
   const stamped = afterStamp(WORDS, at);
   const stampLine = lineAt(stamped.text, stamped.caret) + 1;
-  assert.equal(stampLine, 10, "the stamp is now working on the line below the fold");
-  assert.equal(scrollToLine({ ...BOX, line: stampLine, scrollTop: 0 }), 40,
-               "the box scrolls so the stamped line and one line of context are visible");
+  assert.equal(stampLine, 9, "the stamp works on the line the caret is in");
+  assert.equal(scrollToLine({ ...BOX, line: stampLine, scrollTop: 400 }), 140,
+               "and the box comes back to it, with a line of context");
+  assert.equal(scrollToLine({ ...BOX, line: stampLine, scrollTop: 0 }), null,
+               "while a line already in view moves nothing");
 
   for (const delta of [-0.5, -0.1, 0.1, 0.5]) {
     const moved = afterNudge(WORDS, at);
@@ -377,7 +382,7 @@ test("a box too small for context still shows the line", () => {
   assert.equal(scrollToLine({ ...tiny, line: 5, scrollTop: 0 }), 60);
 });
 
-// -- the box grows, and the last line is stamped once (§9, slice 96) -------------------------------
+// -- the box grows (§9, slice 96), and the caret stays where it stamped (§9, slice 97) -------------------------------
 
 test("the editor's box grows with what is typed, up to a full lyric's height", () => {
   assert.equal(editorRows(""), 8, "an empty editor is the smallest box");
@@ -394,36 +399,41 @@ test("the box never shrinks while the editor is open", () => {
   assert.equal(editorRows(Array.from({ length: 30 }, () => "x").join("\n"), 26), 26);
 });
 
-test("the last line is stamped once, and says so after that", () => {
-  const first = tapped("one\ntwo", 4, 12.3);
-  assert.equal(first.text, "one\n[00:12.3] two", "the last line takes its stamp");
-  assert.equal(first.last, true);
-  assert.equal(first.refused, undefined);
-  assert.equal(first.caret, 4, "and the caret stays on it, there being no line after it");
-
-  const again = tapped(first.text, first.caret, 15);
-  assert.equal(again.refused, "that was the last line");
-  assert.equal(again.text, first.text, "the stamp it already has is not rewritten");
-  assert.equal(again.caret, first.caret, "and nothing moves");
+test("the caret stays on a first, a middle and a last line alike", () => {
+  const text = "one\ntwo\nthree";
+  for (const [i, caret] of [[0, 1], [1, 5], [2, 9]]) {
+    const got = tapped(text, caret, 12.3);
+    assert.equal(lineAt(got.text, got.caret), i, `line ${i + 1} keeps the caret`);
+    assert.equal(got.line, i);
+    // the stamp is written in front of the words, and the caret keeps its place among them
+    const words = got.text.split("\n")[i].replace(/^\[\d+:\d+\.\d+\] ?/, "");
+    const at = got.caret - lineStart(got.text, i) - (got.text.split("\n")[i].length - words.length);
+    assert.equal(at, caret - lineStart(text, i), "the same place in the words as before");
+  }
 });
 
-test("a line that is not the last is stamped as often as you like", () => {
+test("any line is stamped as often as you like, the last one included", () => {
   const once = tapped("one\ntwo\nthree", 0, 5);
-  const twice = tapped(once.text, 0, 9);
-  assert.equal(twice.refused, undefined);
-  assert.equal(twice.text.split("\n")[0], "[00:09.0] one", "a middle line takes a new moment");
-});
+  const twice = tapped(once.text, once.caret, 9);
+  assert.equal(twice.text.split("\n")[0], "[00:09.0] one", "a line takes a new moment");
+  assert.equal(twice.caret, once.caret, "without the caret moving");
 
-test("the last line of a one-line lyric is still stamped once", () => {
+  // the last line is not a special case: fine-tuning it is the same two presses
+  const last = tapped("one\ntwo", 4, 12.3);
+  assert.equal(last.text, "one\n[00:12.3] two");
+  const again = tapped(last.text, last.caret, 15);
+  assert.equal(again.text, "one\n[00:15.0] two", "and it is rewritten, not refused");
+  assert.equal(again.caret, last.caret);
+
+  // …nor is a one-line lyric, which is its own last line
   const only = tapped("just this", 0, 3.5);
   assert.equal(only.text, "[00:03.5] just this");
-  assert.equal(tapped(only.text, 0, 8).refused, "that was the last line");
+  assert.equal(tapped(only.text, only.caret, 8).text, "[00:08.0] just this");
 });
 
-test("an empty last line takes a stamp like any other", () => {
-  // the words end with a blank line more often than not; it is not a special case until it is stamped
+test("an empty line takes a stamp like any other", () => {
+  // the words end with a blank line more often than not
   const got = tapped("one\n", 4, 7);
-  assert.equal(got.refused, undefined);
   assert.equal(got.text, "one\n[00:07.0]", "a stamp with no words after it is just the stamp");
-  assert.equal(tapped(got.text, got.caret, 9).refused, "that was the last line");
+  assert.equal(got.caret, got.text.length, "and the caret is where the words would start");
 });

@@ -2745,9 +2745,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    nudges and the aligner's return to the top all go through it. Verified the same way it was found: the
    same twelve stamps, the caret in view at every one of them (`scrollTop` 0 → 25 → 65 → 106, moving
    only when it must), the nudge unchanged.
-   Kept deliberately: **the stamp still moves to the next line.** That is what stamping line after line
-   from the keyboard needs, and it is what its tooltip promises; what was wrong was that the next line
-   could not be seen.
+   Kept deliberately at the time: **the stamp still moves to the next line** — and **the user reversed
+   that on 2026-09-30** (P79): *"setting a timestamp still sets focus to the next line. usually you have
+   to finetune it, so it should stay on the line you just set."* The caret now stays on the line it
+   stamped, and at the same place in its words, so the four nudges and ▶ act on what was just written
+   without moving about first; the down arrow moves on, as in any editor. What this slice found stands
+   unchanged — a caret the app moves has to be brought into view, which is now what happens when a
+   stamp lands on a line the box has been scrolled away from.
 
 
 95. ✅ **Sources are a list, and each one's fields are its own** (2026-09-30, P75). The user, looking at
@@ -2778,10 +2782,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    preview under it still waits for a pause in the typing.
    **`tapped()` clamped the caret to the last line**, so pressing ⏱ again at the end of a lyric rewrote
    the stamp it had just written with a later moment. Somebody stamping downwards ran off the end and
-   silently spoiled their last line. Now the last line takes its stamp once and a further press changes
-   nothing and says *that was the last line*; the caret stays where it is, and the tooltip says so
-   before it happens. A line that is **not** the last is still stamped as often as you like — hearing
-   that a stamp is half a second late and pressing again is the ordinary way to fix it.
+   silently spoiled their last line, so the last line took its stamp once and a further press said
+   *that was the last line*.
+   **Superseded on 2026-09-30 (P79), by the user's own word** — see slice 94: the caret does not move
+   to the next line any more, so nobody runs off the end, and rewriting a stamp is the point rather
+   than an accident. Every line may be stamped again, the last one included, and the refusal is gone.
+   What remains of this half is the reasoning: a clamp that turns "move on" into "do it again to the
+   same line" is a silent fault, and the answer was to stop moving at all.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
@@ -2987,8 +2994,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
   person is reading.
 - **Clamping hides the end.** `Math.min(i + 1, last)` looks safe and quietly turns "move on" into "do it
   again to the same line".
-- **Refuse out loud, and only where it matters.** The last line says so; every other line still takes a
-  second stamp, because that is how a late one is fixed.
+- **Refuse out loud, and only where it matters.** The last line said so; every other line still took a
+  second stamp, because that is how a late one is fixed. *(Superseded the same day: with the caret
+  staying put, a second stamp is the ordinary act everywhere and nothing refuses it.)*
+- **A user's word about their own editor settles it.** Two packages had reasoned their way to the
+  caret advancing — it is what stamping downwards needs — and the person doing the stamping wants the
+  line they just set, because that is the one they are still listening to.
 
 ### Decisions of 2026-09-30 (sources as a list, §9, slice 95)
 
