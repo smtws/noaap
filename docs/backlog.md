@@ -442,6 +442,17 @@ torch — it is a `sys.modules` lookup where no model was loaded. One defect of 
 by running it against a real server with a deliberately short timer: the watcher took the models out
 of a request that was still being served (catalog AB).
 
+**It came back, and the diagnosis of 2026-09-27 was incomplete (P66, 2026-09-30, DESIGN §9, slice 82).**
+The user's installed service held **4320 MiB** while idle again, and a second program that wanted the
+card failed with an out-of-memory. Two reasons, both measured: the release ran *after a job and only if
+nothing else was queued at that instant*, with nothing to retry it — so one busy moment and the card
+stayed held for the rest of the session; and `release_gpu_memory()` frees **nothing at all** while a
+provider is alive, because the weights are still referenced and the second opinion's 3776 MiB is not
+torch's memory in the first place. What replaces it: the provider is held between jobs on purpose (a
+reload costs about 2 s, so an album pass no longer pays it per track), and a watch gives it back after
+`timing_card_idle_seconds` of quiet — check and release in one step, a queued job counting as work in
+hand. Catalog BU has the numbers.
+
 ## 19. Publish lyrics to LRCLIB — DONE (P31, DESIGN §9, slice 42)
 
 Decided by the user 2026-09-27. Timing lyrics by hand or checking a machine's proposal is work, and

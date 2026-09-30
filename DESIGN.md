@@ -2380,6 +2380,48 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    top of each other, are counted and said in the notice, beside the reason each unplaced line was
    taken back. An unplaced line already kept its words and its place in the order and could be stamped
    by hand; that needed no change, and it got none.
+   **What it is worth, measured against the version before it** (fifteen tracks by fifteen artists,
+   the same set on both): no real line lost — over the fourteen tracks whose words fit, unplaced rose
+   by **2 in about 650** (27 → 28 on one, 2 → 3 on another), placed lines still within two seconds of
+   LRCLIB's own stamps; on a track whose words do *not* fit its recording (a median 15 s out) 0 → 3,
+   which is the point of it; fifteen alignments in one process all ran and the card was free after.
+   **And it is a partial fix, by its own case.** Three runs of the reported track, same words, same
+   device: *(none, none, none, 55.3)*, *(none, none, none, 55.8)*, *(none, 54.1, 54.8, 58.4)* for the
+   four lines that are not sung, against *(0.0, 0.5, 0.8, 55.8)* before. Two runs took back three of
+   the four, the third took back one: the aligner is not deterministic across identical runs, and when
+   it glues an absent line to the first sung stretch the evidence cannot tell it from a real line.
+   A regression test that only counts what came back passes all three — so the count is not the thing
+   to assert, the shift is (`docs/regression.md`).
+
+82. ✅ **The app gives the graphics memory back** (2026-09-30, P66). Measured on the installed
+   service: after one of the user's alignments it held **4320 MiB of 8188** while idle, and a second
+   program that wanted the card failed with an out-of-memory. Every number below is from this laptop's
+   card, taken before anything was written.
+   **What one job holds:** 3608 MiB after one alignment of a four-minute track (peak 3460 MiB
+   reserved); the aligner alone 494, the separator having separated 854, the second opinion **3776**.
+   **`release_gpu_memory()` on its own frees nothing while a provider is alive** — the weights are
+   still referenced, and faster-whisper's 3.6 GB is not torch's memory at all, so `empty_cache` has no
+   claim on it. Only dropping the models gives it back: 3608 MiB → **160**, which is the CUDA context
+   the process keeps until it exits. Loading every model again off a warm disk costs about **2 s**
+   (aligner 0.7, second opinion 1.2).
+   **So: hold the provider between jobs, and let it go when the work stops.** Built per job and
+   dropped with it, `local` reloaded every model for every track; held, a pass over an album loads them
+   once. The window is **60 s** (`timing_card_idle_seconds`, 0 = for ever) because that is the shape of
+   the numbers: two seconds to undo, 3.4 GB to gain, and a minute covers a person working track by
+   track. The old code released after every job *only if nothing else was queued at that instant*, with
+   nothing to retry it — which is how a service ends up holding the card with an empty queue. A watch
+   that looks every quarter-window cannot miss it that way.
+   **The release and the check that it is safe are one step**, under the lock a job must pass to
+   start: two steps leave a window in which a job starts and has its models taken away, which is the
+   failure this was first built from (`docs/qa-catalog.md`, section AB). A queued job counts as work in
+   hand, and a program that has done nothing since its last release does not release again — otherwise
+   an idle app collects garbage once a minute for ever.
+   **A full card is not a failure.** A job asks how much room there is at the moment it starts — its
+   own loaded models counting as room, because it reuses them — and where there is less than it needs
+   (3500 MiB to place words, 3800 to derive them) it runs on the processor and says so in its first
+   line: the same track took **11.4×** as long there, which is slow but is an answer. Running out half
+   way through is one sentence naming the cause and nothing else; a stack trace in the page tells the
+   person waiting nothing they can act on.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
@@ -2575,6 +2617,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (the app gives the card back, §9, slice 82)
+
+- **Measure before choosing the number.** The idle window is 60 s because a reload costs 2 s and a
+  hold costs 3.4 GB, not because a minute sounds reasonable.
+- **A tidy-up that runs only when it happens to be convenient is not a tidy-up.** The old release ran
+  once, after a job, and only if nothing else was queued; nothing retried it. A watch retries.
+- **The hold belongs to whoever runs the jobs**, not to a module-level cache: one per server, one per
+  CLI pass, so nothing leaks between two programs or two tests.
+- **Check and release in one step**, inside the lock a job must pass to start.
+- **A full card is a slower job, not a failed one** — and the job says which it is in its first line.
+- **One sentence for a person, never a traceback in a page.**
 
 ### Decisions of 2026-09-27 (giving the words back, §9, slice 42)
 

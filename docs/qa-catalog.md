@@ -4835,10 +4835,130 @@ to Cloudflare"* for the non-app path.
   taken back, and it carries the check's own objection when stamps sit in silence or on top of each
   other.
 
+- [x] **BT6 · M** — what it is worth, and what it is not (the reviewer's runs, R-280; fifteen tracks
+  by fifteen artists, the identical set on 239a61a and on v1.14.0, in memory, nothing written)
+
+  | | v1.14.0 | with the rule |
+  |---|---|---|
+  | unplaced lines over the fourteen tracks whose words fit (~650 lines) | the baseline | **+2** (one track 27 → 28, another 2 → 3; the totals themselves were not recorded) |
+  | placed lines against LRCLIB's own stamps | within 2 s | within 2 s |
+  | a track whose words do **not** fit its recording (median 15 s out) | 0 unplaced | **3** unplaced |
+  | fifteen alignments in one process | ran, card free after | ran, card free after |
+
+  **The reported case is a partial fix, and the aligner is not deterministic.** Same track, same
+  words, same device, three runs, the four lines that are not sung:
+
+  | run | line 1 | line 2 | line 3 | line 4 |
+  |---|---|---|---|---|
+  | v1.14.0 | 0.0 | 0.5 | 0.8 | 55.8 |
+  | mine | none | none | none | 55.3 |
+  | the reviewer's | none | none | none | 55.8 |
+  | the reviewer's, again | none | **54.1** | **54.8** | 58.4 |
+
+  Two runs take back three of the four; the third takes back one, because that run glued two of the
+  absent lines to the first sung stretch, where no per-line evidence tells them from real lines.
+  **My regression test passes all three**, since it asserts the count and a window — so the count is
+  not the thing to assert (`docs/regression.md`). Found on the way, and not this slice's doing: BU5.
+
+## BU. The app gives the graphics memory back (P66, DESIGN §9, slice 82)
+
+- [x] **BU1 · M** — what a job holds, and what actually gives it back (this laptop's card, RTX 4060,
+  8188 MiB, taken before anything was written; own XDG directories, a copy of one track, the user's
+  service never touched)
+
+  | | driver says this process holds | torch's pool |
+  |---|---|---|
+  | nothing loaded | 0 MiB | 0 |
+  | after one alignment of a four-minute track | **3608 MiB** | 368 allocated / 3460 reserved |
+  | after `release_gpu_memory()` **while the provider is alive** | **3608 MiB — nothing freed** | unchanged |
+  | after dropping the models (`release()`) | **160–180 MiB** | 8 / 32 |
+
+  Per model, loaded on its own: the aligner **494 MiB** (400 of it the pool), the separator having
+  separated **854** (726 of it work, which `empty_cache` does return), the second opinion **3776** —
+  and **none of the second opinion's is torch's memory**, so `empty_cache` has no claim on it at all.
+  What remains after everything is let go is the CUDA context, which belongs to the process until it
+  exits. Peak during one alignment: 3415 MiB allocated, 3460 reserved.
+
+- [x] **BU2 · M** — what the window has to be worth: loading again, off a warm disk
+
+  | | first | after a release |
+  |---|---|---|
+  | aligner | 0.9 s | **0.7 s** |
+  | second opinion | 2.0 s | **1.2 s** |
+  | separator (loads **and** separates the track) | 9.4 s | 9.1 s |
+  | one whole alignment | 18.5 s cold, 11.6 s with the models in hand | **12.6 s** |
+
+  So a release costs about **two seconds** of loading and returns about **3.4 GB**. That is why the
+  window is 60 s and not ten minutes: it covers a person working track by track, and where it does
+  expire in the middle of that it costs those two seconds once. (The second opinion's *first ever*
+  load in a fresh cache took 118.9 s — that is a 3.09 GB download, not a load.)
+
+- [x] **BU3** — the rules, on fixtures with a stand-in for the card: the same provider comes back for
+  the next job; two capabilities that resolve to the same settings share one; a settings change
+  releases the provider that was replaced at once; `let_go` releases every held provider and survives
+  one that refuses; nothing is released while a job runs, before the window has passed, or while one
+  is queued; the check and the release are **one step**, proved by a job that tries to start inside
+  the release and cannot; an idle program does not release twice.
+
+- [x] **BU4** — a full card and one that fills up: with less room than the job needs it runs on the
+  processor and says so in one line naming the numbers (*"900 MiB free of 8188 … about 11× as long"*);
+  what the provider already holds counts as room, the second opinion it is holding included; drafting
+  words asks for more room than placing them (3800 against 3500); a card that cannot be asked is used
+  anyway; a processor-only provider never asks. Running out half way through is `TimingUnavailable`
+  with one sentence, the models let go — and the job log shows **that sentence and no traceback**.
+  Measured for the sentence's claim: the same 49-line track, 13.3 s on the card against **152.1 s**
+  on the processor, 11.4×.
+
+- [x] **BU5 · R** — *report only, nothing changed*: why ten of Sabaton — *Smoking Snakes*' 46 lines
+  come back unplaced, on a track whose words fit (R-281 item 4)
+
+  Reproduced exactly, on a copy, with the settings the installed app runs: **36 of 46 placed, the
+  same ten lines**. It is neither the aligner nor slice 81: with the second opinion **off** the same
+  run places **46 of 46**, and the placement rule took nothing back (`unsupported` empty). It is the
+  cross-check's per-line rule (slice 38): ten lines the two methods place more than the 2 s threshold
+  apart come back without a stamp.
+
+  **And all ten of the discarded stamps were right** — every one within **0.3 s** of LRCLIB's own
+  stamp for that line:
+
+  | line | wav2vec2 | large-v3 | apart | LRCLIB for that line |
+  |---|---|---|---|---|
+  | 3 | 9.80 | 7.46 | 2.3 | 9.73 |
+  | 12 | 41.06 | 38.72 | 2.3 | 40.94 |
+  | 39 | 162.61 | 138.04 | 24.6 | 162.62 |
+  | 40 | 168.85 | 139.78 | 29.1 | 168.59 |
+  | 41 | 171.95 | 139.78 | 32.2 | 171.96 |
+  | 42 | 174.87 | 141.78 | 33.1 | 174.72 |
+  | 43 | 177.13 | 141.96 | 35.2 | 177.03 |
+  | 44 | 178.71 | 141.96 | 36.8 | 178.65 |
+  | 45 | 181.35 | 143.40 | 37.9 | 181.40 |
+  | 46 | 184.31 | 181.66 | 2.7 | 184.31 |
+
+  **Why those ten.** Seven of them are the song's last chorus, after a **37-second instrumental break**
+  (2:05–2:42), and the second opinion piles all seven into a 5.4-second window inside that break while
+  the primary spreads them over 22 seconds where they are actually sung. The other three are 2.3, 2.3
+  and 2.7 s apart — just over the threshold. That nine of the ten are lines *occurring more than once*
+  is a coincidence of position, not the cause: the nearest LRCLIB occurrence to the check's own stamps
+  is still the last one, so it did not pick a different verse, it stopped following the song.
+  Seven lines more than 5 s apart out of 46 compared is not "more than half", so the whole-track
+  regime — the one whose measured answer is *keep the primary* (section Y) — never fires, and the
+  per-line rule discards the good stamps one at a time.
+
+  **Is it intended?** Yes, as written: disagreement means neither is trusted. **What placing them
+  would cost:** the numbers needed are already in hand, so nothing in model time. Judge the
+  disagreement per line by each method's own signals, the way slice 44 already judges a whole track —
+  here the check's seven stamps sit inside a stretch where nobody sings, which is exactly what
+  `voiced_share` from slice 81 measures — and keep the primary's stamp when its own evidence stands
+  and the other's does not, saying in the notice that the check disagreed. The risk is keeping a wrong
+  primary stamp where both look plausible; the cheaper half-measure, raising the threshold, recovers
+  three of the ten at 3 s and would need ~38 s for the rest, which is no check at all. Today's lever
+  for a user who wants all 46: `timing_verify = false`.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BU cases (P66: the app gives the graphics memory back) + BT6 | 5 | 0 | The installed service held **4320 MiB of 8188** while idle and a second program failed with an out-of-memory. Measured first: one alignment holds **3608 MiB**, and `release_gpu_memory()` while the provider is alive frees **nothing** — the weights are still referenced and the second opinion's **3776 MiB** is not torch's memory at all. Dropping the models takes it to **160 MiB** (the CUDA context), and loading every model again off a warm disk costs about **2 s**. So the provider is now held between jobs and let go after **60 s** of quiet (`timing_card_idle_seconds`), the check and the release are one step under the lock a job must pass, and a queued job counts as work in hand. A job that finds the card full runs on the processor and says so in its first line (**11.4×** the time, measured: 13.3 s → 152.1 s); one that runs out half way through fails with one sentence and no traceback. Report only: Sabaton — *Smoking Snakes* loses ten stamps to the **cross-check**, not to the aligner or to slice 81 — all ten within **0.3 s** of LRCLIB's own stamps, seven of them piled by the second opinion into a 37-second instrumental break. 1586 pytest + 132 node. |
 | 2026-09-30 | the BT cases (P65: a line is placed when something supports it) | 5 | 0 | Forced alignment places everything, so four lines this cut does not sing were pinned at 0.0, 53.2, 53.7 and 55.8 s and the report said *placed 49 of 49*. The evidence that works is the vocal stem the aligner already made: **the four scored 0.00, 0.00, 0.09 and 0.64 of their claimed stretch sung, the forty-five genuine lines 0.41 at worst and 1.00 in 44 of 45** — so a quarter is the threshold and three of the four are taken back. The aligner's own score **does not separate** (0.001–0.006 against four genuine lines at or below that) and is recorded rather than obeyed. The rate backstop comes from **128 263 line gaps** of the real library (median 8.3, p99 25.7 cps) and sits at 60. The fourth line is still placed, and the docs say so. 1559 pytest + 132 node. |
 | 2026-09-30 | the BS cases (P64b: it was the handshake) | 3 | 0 | Two requests settled what eight could not: same cookies, same query, same headers, 37 s apart — **Python's default cipher list answered 200, and the cipher string yt-dlp pins answered 403 in 0.1 s**. The bot check reads the TLS hello, and ours was the unusual one; gallery-dl, on paper, customises nothing below the headers. The fix is one documented yt-dlp option for this provider alone, and it is *less* shaping, not more — measured through noaap's own reader at 01:31, four formats and the captions, with no browser opened since 20:57. Its cost, said out loud: the same option permits legacy TLS renegotiation for this provider. The week-old advice to open the browser first is gone from the README and the refusal. 1548 pytest + 129 node. |
 | 2026-09-30 | the BR probes (P64: why we are refused where another tool is not) | 6 probes, 8 requests | nothing built, and three deviations of mine | Eight reads settled what it is **not**: not the millisecond cookie expiry (yt-dlp already divides it), not the session, not the browser, not the header set, not the app version string, not the HTTP client library — yt-dlp prefers its Requests handler when `requests` is installed and is refused just the same. What answered: **gallery-dl, same machine, same session, same minute, 200 on the same post**. So the difference is below the headers this program can set. Nothing was built: that route is GPL-2.0 against MIT (a subprocess, a second JSON shape) and would rest on an unexplained difference. My deviations: 8 requests where 6 were allowed, two media hosts touched by the probe, and no build. 1545 pytest + 129 node. |

@@ -62,6 +62,17 @@ is not load-bearing between 1.15 and 1.25; removing it is, which is why the case
 4. A slow case skips — never fails — when the track or the extra is absent. A library that does not
    contain somebody else's music is not a regression.
 
+## A count is not a shift (2026-09-30)
+
+The opt-in case for slice 81 (`NOAAP_PLACEMENT_CASE`, `tests/test_placement.py`) asserts that three of
+the four absent lines come back unplaced and that the first placed line falls in a 50–60 s window. The
+reviewer's third run of the same track, same words, same device **passed it while placing two of the
+absent lines at 54.1 and 54.8 s**, because the aligner had glued them to the first sung stretch — the
+count was right and the placement was not (`docs/qa-catalog.md`, BT6). The aligner is not
+deterministic across identical runs, so a case over real models has to assert *where the genuinely sung
+lines landed* — against LRCLIB's own stamps, line by line — and not how many came back. Whoever
+strengthens that case: the shift is the subject, the count is a symptom.
+
 ## What the corpus cannot do
 
 P33's raw per-line stamps, sung stretches and confidences were written to a scratch directory that

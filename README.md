@@ -786,10 +786,27 @@ timing_device   = "auto"                         # "cpu" or "cuda" to force it
 ```
 
 **It gives the graphics card back.** Holding 3 GB of an 8 GB card while doing nothing would be rude
-to whatever else the machine is for — including its desktop — so noaap lets go as soon as there is
-nothing to do: the app's own service the moment its queue is empty, and `timing-serve` after
-`timing_idle_minutes` of quiet (set it to `0` on a machine that exists to serve this). The next
-request loads the models again off a warm disk and takes about the same time it did before.
+to whatever else the machine is for — including its desktop — so noaap lets go when the work stops:
+the app's own service after `timing_card_idle_seconds` of quiet (**60** by default), and
+`timing-serve` after `timing_idle_minutes` (5 by default; `0` on a machine that exists to serve this).
+Both numbers come from measuring this on one laptop's 8 GB card, and either can be set to `0` to hold
+the models for ever:
+
+| | |
+|---|---|
+| held after one alignment of a four-minute track | **3608 MiB** |
+| the aligner alone / the separator / the second opinion | 494 / 854 / **3776** MiB |
+| loading every model again off a warm disk | about **2 s** |
+| peak during one alignment | 3460 MiB reserved |
+
+So a minute: it covers working track by track — align, read the placement, fix a line, align the next
+— and where it does run out in the middle of that, it costs those two seconds once. A job **keeps** the
+models while it runs and while another is queued; nothing is ever taken out from under work in hand.
+
+**If the card is already full**, a job says so in its first line and runs on the processor instead —
+the same track took **11.4×** as long there, which is slow but is an answer. If the card runs out half
+way through, the job stops with one sentence saying so; there is nothing in a stack trace that the
+person waiting can use.
 
 **What it does.** Given the words that are already in the editor, it places each line on the file's
 own clock. It downloads two models on first use, into torch's usual cache: a wav2vec2 aligner for
@@ -801,6 +818,22 @@ Save, exactly as if you had typed them. It does not transcribe — it can only p
 have. It cannot promise every line: one it will not place keeps its words and gets no stamp, and the
 panel says how many. And it is a proposal, not an answer — press ▶ on the first line and you will
 know in a second whether it found the song.
+
+**What "will not place" is worth, measured.** Since 1.15.0 a line is only placed where somebody is
+singing (see below), and the limits of that were measured on fifteen tracks by fifteen artists
+against the version before it:
+
+- **No real line was lost.** Over fourteen tracks whose words fit their recording, the number of
+  unplaced lines rose by **2 in about 650** (one track 27 → 28, another 2 → 3), and the placed lines
+  still agree with LRCLIB's own stamps to within two seconds.
+- On a track whose words do **not** fit — a different recording of the same song, a median 15 s out —
+  it went from 0 unplaced to 3, which is the point of it.
+- **On the reported case it is a partial fix, and the same input does not always give the same
+  answer.** Three runs, same track, same words, same device: *(none, none, none, 55.3)*,
+  *(none, none, none, 55.8)*, *(none, 54.1, 54.8, 58.4)* for the four lines that are not sung — where
+  the version before placed all four, at 0.0, 0.5, 0.8 and 55.8. Two runs took back three of the four;
+  the third took back one, because the aligner had glued the other two to the first sung stretch,
+  where the evidence cannot tell them from a real line.
 
 ### A second opinion, and words without a vendor
 
@@ -1005,7 +1038,8 @@ confirm — and the change, if there is one to make, is yours.
 | `timing_verify` | unset | Check each alignment against a second method. Unset means "whenever the `timing-check` extra is installed". |
 | `timing_verify_threshold` | `2.0` | Seconds two methods may differ by and still count as agreeing. |
 | `timing_verify_lost` | `5.0` | Seconds past which a line counts as *lost*, not merely disagreed about. More than half a track's lines lost means the second method lost the song: every stamp is kept and the editor says so. |
-| `timing_idle_minutes` | `5.0` | How long `noaap timing-serve` keeps its models loaded with nothing to do. `0` = for ever. The app's own service needs no timer: it gives the card back as soon as its queue is empty. |
+| `timing_idle_minutes` | `5.0` | How long `noaap timing-serve` keeps its models loaded with nothing to do. `0` = for ever. |
+| `timing_card_idle_seconds` | `60.0` | The same for the app's own service, in seconds, because a laptop shares its card with the desktop in front of it. `0` = for ever. Read when the service starts. |
 
 The `timing_*` keys may also be written as a table, if grouping reads better — the flat key wins
 where both are present:
