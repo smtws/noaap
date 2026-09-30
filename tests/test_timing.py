@@ -476,7 +476,8 @@ def test_what_the_page_may_offer_is_the_union_of_both_slots(tmp_path, monkeypatc
     # the second one), deepgram can only transcribe — and both are true at once, which no single
     # provider could have said
     monkeypatch.setattr(LocalTiming, "capabilities", lambda self: frozenset({ALIGN}))
-    assert capabilities_of(cfg) == frozenset({ALIGN, TRANSCRIBE})
+    # and Deepgram brings `listen` with its transcription, which the aligning slot knows nothing about
+    assert capabilities_of(cfg) == frozenset({ALIGN, TRANSCRIBE, "listen"})
     assert can(cfg, ALIGN) and can(cfg, TRANSCRIBE)
     # and the drafting slot cannot align, whatever the aligning slot can do
     assert "align" not in provider(cfg, TRANSCRIBE).capabilities()

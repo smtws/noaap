@@ -391,6 +391,15 @@ export function alignNotice(timed, result) {
   // or because the words could not have been sung that fast. The reasons are the aligner's own.
   const why = p.unsupported ? ` ${String(p.unsupported).split("; ")[0]}${
     String(p.unsupported).split("; ").length > 1 ? `, and ${String(p.unsupported).split("; ").length - 1} more` : ""}.` : "";
+  // **placed by listening** (§9, slice 83): the provider wrote down what it heard and these lines were
+  // matched to it, so an unplaced line means its words were not heard — which is an answer about the
+  // recording, not a failure of the method, and the line's own count says how close it came.
+  const heard = timed && timed.method === "listen"
+    ? ` Placed by listening: ${p.heard_words || 0} words were heard in the recording, and a line is `
+      + `placed when ${Math.round(Number(p.enough || 0.5) * 100)}% of its own words are among them, in order.`
+      + (p.not_heard ? ` ${String(p.not_heard).split("; ")[0]}${
+          String(p.not_heard).split("; ").length > 1 ? `, and ${String(p.not_heard).split("; ").length - 1} more` : ""}.` : "")
+    : "";
   // and the arithmetic's own objection to what is left: stamps where nobody sings, or piled together
   const silent = Number(p.own_in_silence || 0);
   const piled = Number(p.own_piled || 0);
@@ -400,7 +409,7 @@ export function alignNotice(timed, result) {
     : "";
   return `timed by ${by} \u2014 a machine's proposal, nothing is saved yet: press \u25b6 on the first line`
     + (left ? `. ${left} line${left > 1 ? "s" : ""} could not be placed and kept no stamp.${why}` : ".")
-    + checked + objection
+    + heard + checked + objection
     + (kept
       ? kept > 1
         ? ` ${kept} stamped lines without words were left as they were; check they are still in order.`

@@ -497,7 +497,8 @@ def test_the_page_is_not_offered_what_the_server_would_refuse(tmp_path):
 
     payload = app.lyrics(plan.source_id, plan.tracks[0].video_id)
 
-    assert payload["may_send_audio"] == {"align": False, "draft": False}
+    # and listening is refused with them: it sends the whole recording to Deepgram (§9, slice 83)
+    assert payload["may_send_audio"] == {"align": False, "draft": False, "listen": False}
     assert payload["can_check"] is False
 
 

@@ -532,7 +532,7 @@ def test_the_marker_reads_the_lrc_file_beside_the_track(lyrics_server):
     publish = got.pop("publish")
     assert got.pop("fit") is None and got.pop("can_check") is False   # it has words already (§9, slice 46)
     # an ordinary album: its audio may go to whatever timing provider is configured (§9, slice 75)
-    assert got.pop("may_send_audio") == {"align": True, "draft": True}
+    assert got.pop("may_send_audio") == {"align": True, "draft": True, "listen": True}
     assert got == {"status": "synced", "lrclib_id": 11, "text": FakeLyrics.LRC, "owner": None, "state": "done",
                    "timed_by": None, "words_by": None,  # nobody's clock and nobody's words but LRCLIB's
                    "timings": None}  # and they were written for the file that is there

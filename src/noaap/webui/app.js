@@ -1004,6 +1004,14 @@ function lyricsEditor(p, t, d) {
           + "It writes nothing: the stamps appear here and you decide whether to save them.\n"
           + "Without a GPU this takes a couple of minutes for a four-minute track.",
         onclick: (e) => alignWords(e.currentTarget, p, t, area, proposal, timing) }, "⚖ align these words") : null,
+      // the other way round (§9, slice 83): write down what the recording says, then find these lines
+      // in it. Slower and it costs a transcription, but a line that was never sung stays unplaced —
+      // which forced alignment cannot tell you, because it places everything it is given.
+      canListen() && maySendAudio(d, "listen") ? h("button", { class: "quiet small", type: "button",
+        title: "Write down what the recording actually says, then place these lines where their words\n"
+          + "were heard. A line whose words are not in the recording gets no stamp and says so.\n"
+          + "Slower than aligning, and with a paid provider it costs a transcription.",
+        onclick: (e) => alignWords(e.currentTarget, p, t, area, proposal, timing, "listen") }, "👂 listen for these words") : null,
       h("span", { class: "muted stamp-clock" })),
     previewHead, preview,
     proposal,
@@ -1082,6 +1090,9 @@ function shiftStamps(area, by) {
 // slot, never "the provider".
 const canAlign = () => (state.settings?.timing?.capabilities || []).includes("align");
 const canTranscribe = () => (state.settings?.timing?.capabilities || []).includes("transcribe");
+// listening is offered by whoever transcribes with word times — the drafting slot, not the aligning
+// one, because that is the work it does and how it is paid for (§9, slice 83)
+const canListen = () => (state.settings?.timing?.capabilities || []).includes("listen");
 // a draft is only for a track with nothing to lose: no words, or only the note that LRCLIB has none
 const canDraft = (t) => canTranscribe() && !HAS_WORDS(t);
 const providerFor = (what) =>
@@ -1123,12 +1134,16 @@ async function draftWords(button, p, t) {
     { text: draftText(timed), by: job.result.by || "", notice: draftNotice(timed) }));
 }
 
-async function alignWords(button, p, t, area, notice, timing) {
-  if (!mayLeave("place these words on its clock", "align")) return;
-  const id = await submit("align", { id: p.source_id, video_id: t.video_id, text: area.value }, button);
+async function alignWords(button, p, t, area, notice, timing, method = "align") {
+  const listening = method === "listen";
+  if (!mayLeave(listening ? "write down what it hears and find these words in it"
+                          : "place these words on its clock", method)) return;
+  const id = await submit("align", { id: p.source_id, video_id: t.video_id, text: area.value, method }, button);
   if (id == null) return;
   notice.hidden = false;
-  notice.textContent = "⏳ asking the timing provider — minutes, on a machine without a GPU";
+  notice.textContent = listening
+    ? "⏳ listening to the whole track, then looking for these words in it — minutes"
+    : "⏳ asking the timing provider — minutes, on a machine without a GPU";
   const job = await jobSettled(id, 4800);  // up to twenty minutes: a CPU box is slow, not broken
   if (!job || job.state !== "done") {
     notice.hidden = true;

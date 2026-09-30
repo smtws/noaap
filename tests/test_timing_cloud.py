@@ -23,7 +23,7 @@ from noaap.config import Config
 from noaap.download import load_plan, run, save_plan
 from noaap.plan import build_plan
 from noaap.service import Service
-from noaap.timing import ALIGN, TRANSCRIBE, TimingUnavailable, capabilities_of, provider
+from noaap.timing import ALIGN, LISTEN, TRANSCRIBE, TimingUnavailable, capabilities_of, provider
 from noaap.timing_cloud import DeepgramTiming, ElevenLabsTiming
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -92,9 +92,10 @@ def test_a_vendor_without_a_key_offers_nothing():
 
 
 def test_each_vendor_claims_only_what_it_sells():
-    assert capabilities_of(Config(timing_provider="elevenlabs", timing_elevenlabs_key="k")) == {ALIGN, TRANSCRIBE}
-    # Deepgram transcribes; it does not align words you give it, and never says it does
-    assert capabilities_of(Config(timing_provider="deepgram", timing_deepgram_key="k")) == {TRANSCRIBE}
+    assert capabilities_of(Config(timing_provider="elevenlabs", timing_elevenlabs_key="k")) == {ALIGN, TRANSCRIBE, LISTEN}
+    # Deepgram transcribes; it does not align words you give it, and never says it does. It can
+    # *listen* for them, which is that same transcription matched in the core (§9, slice 83).
+    assert capabilities_of(Config(timing_provider="deepgram", timing_deepgram_key="k")) == {TRANSCRIBE, LISTEN}
     with pytest.raises(TimingUnavailable, match="does not align"):
         DeepgramTiming("k").align(Path("x.opus"), ["one"])
     assert provider(Config(timing_provider="deepgram", timing_deepgram_key="k")).name == "deepgram"
@@ -300,7 +301,7 @@ def test_a_key_never_reaches_the_page_or_the_log(album, tmp_path, monkeypatch):
     # per capability now (§9, slice 40): one provider in both slots answers for both
     assert settings["timing"]["price"]["align"][0].startswith("$")  # the list price, with its date
     assert settings["timing"]["price"]["transcribe"][0].startswith("$")
-    assert settings["timing"]["sends_audio"] == {"align": True, "transcribe": True}
+    assert settings["timing"]["sends_audio"] == {"align": True, "transcribe": True, "listen": True}
 
     service, log = service_with(tmp_path, yt, FakeVendor(), monkeypatch, cfg)
     service.draft_lyrics(plan.source_id, plan.tracks[0].video_id)
@@ -374,7 +375,8 @@ def test_the_settings_answer_per_slot(tmp_path):
     settings = App(cfg, tmp_path).settings()["timing"]
     assert settings["align_provider"] == "local" and settings["draft_provider"] == "deepgram"
     # the audio leaves the machine for a draft and never for an alignment
-    assert settings["sends_audio"] == {"align": False, "transcribe": True}
+    # listening is bought where drafting is bought, so it answers with the drafting slot (§9, slice 83)
+    assert settings["sends_audio"] == {"align": False, "transcribe": True, "listen": True}
     assert settings["price"]["align"] == ["", ""]
     assert settings["price"]["transcribe"][0].startswith("$")
     assert "secret-two" not in json.dumps(settings)

@@ -25,10 +25,13 @@ from typing import Any
 from . import config
 from .timing import (
     ALIGN,
+    LISTEN,
     TRANSCRIBE,
+    Heard,
     Timed,
     TimedLine,
     TimingUnavailable,
+    heard_from,
     line_starts,
     lines_from_words,
 )
@@ -124,7 +127,15 @@ class ElevenLabsTiming(CloudTiming):
     MODEL = "scribe_v2"
 
     def capabilities(self) -> frozenset[str]:
-        return frozenset({ALIGN, TRANSCRIBE}) if self.key else frozenset()
+        return frozenset({ALIGN, TRANSCRIBE, LISTEN}) if self.key else frozenset()
+
+    def heard(self, audio: Path, *, language: str | None = None,
+              check: Callable[[], None] | None = None) -> Heard:
+        """The same transcription, kept as words rather than grouped into lines (§9, slice 83)."""
+        body = self._transcription(audio, language, check)
+        words = [w for w in (body.get("words") or []) if (w.get("type") or "word") == "word"]
+        return heard_from(words, self.name, self.MODEL,
+                          parameters={"language": str(body.get("language_code") or language or "")})
 
     def align(self, audio: Path, lines: list[str], *, language: str | None = None,
               check: Callable[[], None] | None = None) -> Timed:
@@ -151,8 +162,9 @@ class ElevenLabsTiming(CloudTiming):
                      version=str(body.get("version") or ""),
                      parameters={"words": str(len(got)), "loss": str(body.get("loss", ""))})
 
-    def transcribe(self, audio: Path, *, language: str | None = None,
-                   check: Callable[[], None] | None = None) -> Timed:
+    def _transcription(self, audio: Path, language: str | None,
+                       check: Callable[[], None] | None) -> dict[str, Any]:
+        """One transcription request. Shared, so that listening and drafting cost the same call."""
         self._guard(check)
         data = {"model_id": self.MODEL, "timestamps_granularity": "word"}
         if language:
@@ -163,6 +175,11 @@ class ElevenLabsTiming(CloudTiming):
                               data=data, files={"file": (audio.name, fh, _media_type(audio))})
         if check:
             check()
+        return body
+
+    def transcribe(self, audio: Path, *, language: str | None = None,
+                   check: Callable[[], None] | None = None) -> Timed:
+        body = self._transcription(audio, language, check)
         # `words` carries spacing and audio events beside the words themselves; only words are lyrics
         words = [w for w in (body.get("words") or []) if (w.get("type") or "word") == "word"]
         if not words and body.get("text"):
@@ -187,11 +204,13 @@ class DeepgramTiming(CloudTiming):
 
     def capabilities(self) -> frozenset[str]:
         # never ALIGN: Deepgram transcribes, and a provider that overstates itself is worse than one
-        # that cannot do the job at all
-        return frozenset({TRANSCRIBE}) if self.key else frozenset()
+        # that cannot do the job at all. LISTEN is not alignment — it is this transcription, matched
+        # to the user's own lines in the core (§9, slice 83).
+        return frozenset({TRANSCRIBE, LISTEN}) if self.key else frozenset()
 
-    def transcribe(self, audio: Path, *, language: str | None = None,
-                   check: Callable[[], None] | None = None) -> Timed:
+    def _alternative(self, audio: Path, language: str | None,
+                     check: Callable[[], None] | None) -> dict[str, Any]:
+        """One transcription request. Shared, so that listening and drafting cost the same call."""
         self._guard(check)
         params = {"model": self.MODEL, "smart_format": "true", "punctuate": "true", "paragraphs": "true"}
         params["language"] = language or "multi"
@@ -201,7 +220,18 @@ class DeepgramTiming(CloudTiming):
                           params=params, content=audio.read_bytes())
         if check:
             check()
-        alternative = (((body.get("results") or {}).get("channels") or [{}])[0].get("alternatives") or [{}])[0]
+        return (((body.get("results") or {}).get("channels") or [{}])[0].get("alternatives") or [{}])[0]
+
+    def heard(self, audio: Path, *, language: str | None = None,
+              check: Callable[[], None] | None = None) -> Heard:
+        """The same transcription, kept as words rather than grouped into lines (§9, slice 83)."""
+        alternative = self._alternative(audio, language, check)
+        return heard_from(alternative.get("words") or [], self.name, self.MODEL,
+                          parameters={"language": str(language or "multi")})
+
+    def transcribe(self, audio: Path, *, language: str | None = None,
+                   check: Callable[[], None] | None = None) -> Timed:
+        alternative = self._alternative(audio, language, check)
         words = alternative.get("words") or []
         # **Lines come from the word timings, never from the sentences** (§9, slice 45). Their sentences are
         # punctuation, and a song's lines are pauses: the user's first real draft came back as eleven

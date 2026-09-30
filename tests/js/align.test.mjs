@@ -208,3 +208,35 @@ test("a clean result says none of that", () => {
   assert.ok(!notice.includes("objects"), notice);
   assert.ok(notice.includes("A second method agreed"), notice);
 });
+
+// -- placed by listening first (§9, slice 83) --------------------------------------------------------
+
+test("the notice says the words were placed by listening, and on what evidence", () => {
+  const notice = alignNotice({provider: "local", model: "large-v3", method: "listen", parameters: {
+    heard_words: "193", enough: "0.5", skip: "3",
+    not_heard: "line 1: not heard (0 of 4 words); line 2: not heard (0 of 3 words)",
+  }}, {unplaced: [0, 1], kept: 0});
+
+  assert.ok(notice.includes("Placed by listening"), notice);
+  assert.ok(notice.includes("193 words were heard"), notice);
+  assert.ok(notice.includes("50% of its own words"), notice);
+  assert.ok(notice.includes("line 1: not heard (0 of 4 words)"), notice);
+  assert.ok(notice.includes("and 1 more"), notice);
+});
+
+test("an alignment says nothing about listening", () => {
+  const notice = alignNotice({provider: "local", model: "wav2vec2", parameters: {}},
+                             {unplaced: [], kept: 0});
+
+  assert.ok(!notice.includes("listening"), notice);
+});
+
+test("listening that heard every line still says what it did", () => {
+  const notice = alignNotice({provider: "deepgram", model: "nova-3", method: "listen",
+                              parameters: {heard_words: "300", enough: "0.5"}},
+                             {unplaced: [], kept: 0});
+
+  assert.ok(notice.includes("timed by deepgram/nova-3"), notice);
+  assert.ok(notice.includes("300 words were heard"), notice);
+  assert.ok(!notice.includes("could not be placed"), notice);
+});

@@ -2423,6 +2423,42 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    way through is one sentence naming the cause and nothing else; a stack trace in the page tells the
    person waiting nothing they can act on.
 
+83. ✅ **Words placed by listening first** (2026-09-30, P67). Slice 81 takes back a line that was
+   placed where nobody sings; it cannot take back one glued to real singing, and on the reported case
+   the fourth absent line is placed every time. The question forced alignment cannot ask is *were
+   these words said at all* — so ask a transcriber with word times, then match the given lines to what
+   it heard. **`listen`, a capability, asked of the drafting slot**, because the work it does is
+   transcription and a vendor bills it by the minute; `local` and both vendors offer it, `http` does
+   not yet.
+   **The matching is string work and lives in the core** (`place_by_listening`): normalised words,
+   `difflib` over the whole song at once so a chorus matches its three occurrences in the order they
+   were sung, and a line is placed when at least **half** of its own words are found in one run —
+   tolerating three heard words in between, because a transcriber drops words inside a line it
+   otherwise has. Unplaced comes back with its reason: *not heard (1 of 6 words)*.
+   **The threshold is not what limits this.** Between 0.3 and 0.7 the agreement of the placed lines
+   does not move at all (79% within a second) while recall moves 49% → 58%, and the reported case's
+   four absent lines are refused at every setting. What limits it is how much of the lyric the
+   transcriber writes down the same way. Half is the middle, and it is a rule a person can check by
+   eye.
+   **Measured against the aligner on fifteen tracks by fifteen artists, 725 lines** (`docs/qa-catalog.md`,
+   BV): the aligner places 96% with a median error of 0.27 s, listening places 57% at 0.49 s. On the
+   reported case listening refuses all four absent lines where the aligner refuses three — and places
+   36 of the other 45. So it is **a second action, not a replacement**, and the page offers both.
+   **Two measurements changed the design as it was being built.** A transcriber left to detect the
+   language wrote *27 words of Russian subtitle boilerplate* over a four-minute German song, so the
+   given words name the language when two stopword lists can be sure of it (`language_hint`) — and say
+   nothing when they cannot, because a wrong language is worse than none. And what is listened to is
+   not the same for everyone: the local model does better on the track as it stands (412 lines against
+   399, and 36 against **0** on the reported case, whose vocal stem lost the song), while a speech
+   service over a band writes down *nothing* — five of six tracks came back from Deepgram empty, and
+   the isolated voice took it from 8% of lines placed to 27%. So a vendor is sent the voice alone,
+   which is also less of the record to send (§9, slice 45), and a listener on this machine is sent the
+   recording.
+   **What a stamp now says about itself:** `lyrics_timed_by` names the provider, the model *and* the
+   method — `local/large-v3 (listen)` — because the same provider answers differently depending on
+   which question it was asked. The words stay whose they were: listening writes nothing and claims
+   nothing (§9, slice 21).
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
@@ -2617,6 +2653,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - **Never import a heavy dependency to tidy up after it.** The release is a `sys.modules` lookup.
 - **A timer must know when the thing is in use.** Found by running it: the first version took the
   models out of a request that was still being served.
+
+### Decisions of 2026-09-30 (placing words by listening, §9, slice 83)
+
+- **A method that can say "these words are not in this recording" is worth having even at half the
+  recall**, because the alternative is a confident wrong answer.
+- **The matching belongs in the core, not in a provider.** It is normalised strings and `difflib`;
+  every provider that transcribes with word times gets the method for free.
+- **Where a knob does not change the outcome, say so and stop turning it.** The sweep over both
+  thresholds moves accuracy not at all; the limit is the transcript.
+- **Never tell a model something you are not sure of.** The words name their language only when two
+  stopword lists agree clearly; otherwise the model detects for itself.
+- **What to listen to is a measurement, not a principle.** The local model wants the track; a vendor
+  wants the isolated voice. Both numbers are in the catalog.
+- **The mark says which question was asked**, not only who answered it.
 
 ### Decisions of 2026-09-30 (the app gives the card back, §9, slice 82)
 

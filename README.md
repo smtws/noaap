@@ -835,6 +835,38 @@ against the version before it:
   the third took back one, because the aligner had glued the other two to the first sung stretch,
   where the evidence cannot tell them from a real line.
 
+### Or place them by listening first
+
+**⚖ align these words** forces the words you have onto the clock. It cannot know that a line is *not*
+in the recording — forced alignment places everything it is given, because that is what it is. So
+there is a second button beside it:
+
+**👂 listen for these words** writes down what the recording actually says, then finds your lines in
+that transcript, in order. A line whose words are not in it keeps no stamp and the notice says so —
+*line 1: not heard (0 of 4 words)*. That is the answer the aligner cannot give, and it is the reason
+this exists: the user's own case was an LRCLIB entry whose four opening lines their cut does not sing.
+
+It is offered by whoever **transcribes with word times** — the `timing_draft_provider` slot, not the
+aligning one, because listening *is* transcription and a paid provider bills it by the minute. A line
+is placed when **at least half of its own words** are found in one stretch of the transcript
+(`docs/qa-catalog.md`, BV, has the sweep behind that number).
+
+**What it is worth, measured on fifteen tracks by fifteen artists (725 lines) plus the reported case:**
+
+| | lines placed | median error | within 1 s | the reported case |
+|---|---|---|---|---|
+| ⚖ align (local) | **96%** | **0.27 s** | 85% | 3 of 4 absent lines refused |
+| 👂 listen (local) | 57% | 0.49 s | 79% | **4 of 4 refused**, 36 of the other 45 placed |
+| 👂 listen (Deepgram, isolated voice) | 27% | 0.56 s | 91% | 4 of 4 refused, 8 of 45 placed |
+
+So: **the aligner is still the one to reach for**, and listening is the one to reach for when you
+suspect the words are not what the recording sings. Two things it does not do: it does not hear every
+line (a transcriber over a loud mix writes down about half a metal song), and with a paid speech
+service it barely works at all — five of six tracks came back from Deepgram with an **empty**
+transcript over the band, which is why a vendor is sent the isolated voice and the local model is sent
+the track as it stands (both measured, BV). The stamp records which method ran:
+`local/large-v3 (listen)`.
+
 ### A second opinion, and words without a vendor
 
 ```sh

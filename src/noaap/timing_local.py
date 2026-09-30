@@ -31,12 +31,15 @@ from pathlib import Path
 
 from .timing import (
     ALIGN,
+    LISTEN,
     TRANSCRIBE,
     VERIFY_LOST,
     VERIFY_THRESHOLD,
+    Heard,
     Timed,
     TimedLine,
     TimingUnavailable,
+    heard_from,
     language_of,
     release_gpu_memory,
     signals_of,
@@ -100,13 +103,17 @@ class LocalTiming:
     # -- what it can do ----------------------------------------------------------------
 
     def capabilities(self) -> frozenset[str]:
-        """Align always; derive words only with the second extra, which carries the big model."""
+        """Align always; derive words — and listen for given ones — only with the second extra.
+
+        `listen` comes with the big model rather than with the aligner, because it *is* the big model
+        (§9, slice 83): the words are matched to what it heard, and the matching lives in the core.
+        """
         try:
             import torch  # noqa: F401
             import torchaudio  # noqa: F401
         except ImportError:
             return frozenset()
-        return frozenset({ALIGN, TRANSCRIBE}) if has_whisper() else frozenset({ALIGN})
+        return frozenset({ALIGN, TRANSCRIBE, LISTEN}) if has_whisper() else frozenset({ALIGN})
 
     def verifying(self) -> bool:
         """Whether an alignment is checked against the second method (§9, slice 38)."""
@@ -334,6 +341,30 @@ class LocalTiming:
                      parameters={"device": self._whisper_device, "language": language or "detected",
                                  "temperature": "0"})
 
+    def heard(self, audio: Path, *, language: str | None = None,
+              check: Callable[[], None] | None = None, device: str | None = None) -> Heard:
+        """What this machine heard, word by word, for `listen` to match given lines to (§9, slice 83).
+
+        The same model and the same request as a draft — a transcript is a transcript — kept as words
+        instead of grouped into lines, because the grouping is what a draft needs and what matching
+        must not be given.
+        """
+        if not has_whisper():
+            raise TimingUnavailable("listening for the words needs the bigger model. " + NO_CHECK)
+        if check:
+            check()
+        self._whisper_where = device or self.device_now(TRANSCRIBE)
+        self.log(f"listening to {audio.name} with {WHISPER} for the words you gave")
+        result = self._whisper_run(
+            lambda model: model.transcribe(str(audio), language=language, temperature=0,
+                                           verbose=None, word_timestamps=True))
+        if check:
+            check()
+        words = [{"text": w.word, "start": w.start, "end": w.end} for w in result.all_words()]
+        return heard_from(words, self.name, WHISPER, _whisper_version(),
+                          parameters={"device": self._whisper_device,
+                                      "language": language or "detected", "temperature": "0"})
+
     def release(self) -> bool:
         """Let go of every model this provider has loaded (§9, slice 41, slice 82).
 
@@ -431,7 +462,9 @@ class LocalTiming:
         except ImportError as e:
             raise TimingUnavailable(NO_CHECK) from e
         device = wanted
-        self.log(f"loading {WHISPER} for the second opinion ({WHISPER_SIZE})")
+        # not "for the second opinion": the same model checks an alignment, drafts words and listens
+        # for given ones, and the line above this one has already said which of the three it is
+        self.log(f"loading {WHISPER} ({WHISPER_SIZE})")
         try:
             self._whisper = stable_whisper.load_faster_whisper(
                 WHISPER, device=device, compute_type="float16" if device == "cuda" else "int8")

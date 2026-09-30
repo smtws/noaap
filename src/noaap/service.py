@@ -14,6 +14,7 @@ import tempfile
 import threading
 from collections import Counter
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,11 +76,14 @@ from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
     ALIGN,
+    LISTEN,
     TRANSCRIBE,
     Engines,
     TimingUnavailable,
     capabilities_of,
     coverage,
+    language_hint,
+    place_by_listening,
     plain_lines,
     release_gpu_memory,
     stamped,
@@ -917,7 +921,8 @@ class Service:
         held = api.cached_by_id(track.lyrics_id)
         return held.text if held else None
 
-    def align_lyrics(self, source_id: str, video_id: str, text: str) -> dict[str, Any]:
+    def align_lyrics(self, source_id: str, video_id: str, text: str,
+                     method: str = ALIGN) -> dict[str, Any]:
         """Put the words the editor is holding onto this track's clock. **Writes nothing** (§9, slice 36).
 
         The words come from the page, not from the disk, because the user may have just typed them;
@@ -938,19 +943,39 @@ class Service:
         if not lines:
             raise ValueError("there are no words to place")
 
-        self._audio_may_be_sent(plan, ALIGN, "align words")
-        engine = self._timing(ALIGN, "align words")
+        if method not in (ALIGN, LISTEN):
+            raise ValueError(f"unknown way of placing words: {method!r}")
         audio = album_dir / track.filename
+        self._audio_may_be_sent(plan, method, f"{'align' if method == ALIGN else 'listen for'} words")
+        engine = self._timing(method, "align words" if method == ALIGN else "listen for the words")
         # asked before anything else is said, so that "this is running on the processor" is the job's
         # first line and not a footnote under a minute of waiting (§9, slice 82)
-        where = self._where_it_runs(engine, ALIGN)
-        self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
-                 f"· {_minutes(audio)} of audio")
-        timed = engine.align(audio, lines, check=self.check, **where)
+        where = self._where_it_runs(engine, method)
+        if method == LISTEN:
+            # **listen first, then match** (§9, slice 83). The provider hears the recording; which of
+            # the given lines were actually sung is decided in the core, over words, by nobody's model.
+            self.log(f"listening to {track.title} with {engine.name} for {len(lines)} lines "
+                     f"· {_minutes(audio)} of audio")
+            # **the words say what language they are in** (§9, slice 83): a transcriber left to detect
+            # it for itself wrote 27 words of Russian boilerplate over a four-minute German song,
+            # and we are holding the lyric. Where the words cannot say, it detects as before.
+            hint = language_hint(lines)
+            with self._what_it_listens_to(audio) as listen_to:
+                heard = engine.heard(listen_to, language=hint, check=self.check, **where)
+            self.log(f"heard {len(heard.timed)} words with a time")
+            timed = place_by_listening(lines, heard)
+        else:
+            self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
+                     f"· {_minutes(audio)} of audio")
+            timed = engine.align(audio, lines, check=self.check, **where)
         placed = len(lines) - len(timed.unplaced)
+        for said in (timed.parameters.get("not_heard") or "").split("; "):
+            if said:
+                self.log(f"  {said}")
         self.log(f"placed {placed}/{len(lines)} lines · {timed.by}"
                  + (f" · {len(timed.unplaced)} left unplaced" if timed.unplaced else ""))
-        return {"timed": timed.to_dict(), "by": timed.by, "placed": placed, "lines": len(lines)}
+        return {"timed": timed.to_dict(), "by": timed.by, "placed": placed, "lines": len(lines),
+                "method": timed.method or ALIGN}
 
     def draft_lyrics(self, source_id: str, video_id: str) -> dict[str, Any]:
         """Ask a provider what it hears, for a track that has no words at all. **Writes nothing.**
@@ -1101,6 +1126,30 @@ class Service:
         if hasattr(engine, "log"):
             engine.log = self.log
         return engine
+
+    @contextmanager
+    def _what_it_listens_to(self, audio: Path):
+        """The recording as it is for a listener on this machine; the isolated voice for a vendor.
+
+        **Both halves measured** (§9, slice 83, `docs/qa-catalog.md` BV). The local model does better
+        on the track as it stands — 448 lines placed against 399 over fifteen tracks — and on the
+        reported case the separated stem lost it almost entirely (193 words heard against 36). A
+        speech service over a band writes down *nothing*: five of six tracks came back from Deepgram
+        with an empty transcript, the sixth with 129 words. So a vendor is sent the voice alone, which
+        is also less of the record to send (§9, slice 45).
+        """
+        if stays_here(self.cfg, LISTEN):
+            yield audio
+            return
+        # imported here and nowhere else, so an installation with no timing extra never touches it
+        from .timing_local import separated_voice
+
+        with tempfile.TemporaryDirectory(prefix="noaap-voice-") as tmp:
+            voice = separated_voice(audio, Path(tmp) / "voice.wav", self.log, self.check)
+            if voice:
+                self.log("sending the isolated voice, not the recording: a speech service hears "
+                         "nothing through a band")
+            yield voice or audio
 
     def _where_it_runs(self, engine: Any, capability: str) -> dict[str, str]:
         """Ask a provider that runs here where it will run, before the job says anything else.

@@ -47,6 +47,7 @@ from .tag import image_mime
 from .text import natural_key
 from .timing import (
     ALIGN,
+    LISTEN,
     OFFERS,
     PRICES,
     PROVIDERS,
@@ -468,7 +469,8 @@ class App:
                 # **what the server will refuse, the page does not offer** (§9, slice 75): a private
                 # album's audio goes to a timing provider only if that provider runs on this machine
                 "may_send_audio": {"align": may_send_audio(self.cfg, plan, ALIGN),
-                                   "draft": may_send_audio(self.cfg, plan, TRANSCRIBE)}}
+                                   "draft": may_send_audio(self.cfg, plan, TRANSCRIBE),
+                                   "listen": may_send_audio(self.cfg, plan, LISTEN)}}
 
     def recycle(self) -> list[dict[str, Any]]:
         """The bin, for the page. Deliberately without any path: an entry is its id."""
@@ -591,9 +593,9 @@ class App:
                        # provider that could never do that job (§9, slice 40)
                        "offers": {kind: list(what) for kind, what in OFFERS.items()},
                        "price": {what: list(PRICES.get(kind_for(self.cfg, what), ("", "")))
-                                 for what in (ALIGN, TRANSCRIBE)},
+                                 for what in (ALIGN, TRANSCRIBE, LISTEN)},
                        "sends_audio": {what: kind_for(self.cfg, what) in VENDORS
-                                       for what in (ALIGN, TRANSCRIBE)},
+                                       for what in (ALIGN, TRANSCRIBE, LISTEN)},
                        # whether every alignment is checked against a second method (§9, slice 38): it is
                        # the provider's answer, and it costs the user time, so the panel says so
                        "verifies": verifies_with(self.cfg)},
@@ -881,15 +883,25 @@ class App:
                 track = next((t for t in found[1].tracks if t.video_id == video_id), None)
                 if not track:
                     raise ValueError("no such track in this album")
-                if ALIGN not in capabilities_of(self.cfg):
-                    raise ValueError("no timing provider can align words — see `timing_provider` in the config")
-                if not may_send_audio(self.cfg, found[1], ALIGN):
+                # two ways to place the same words (§9, slice 83), each asked of its own slot: the
+                # aligner forces them onto the clock, listening hears the song first and matches
+                method = str(body.get("method") or ALIGN)
+                if method not in (ALIGN, LISTEN):
+                    raise ValueError(f"unknown way of placing words: {method}")
+                if method not in capabilities_of(self.cfg):
+                    raise ValueError("no timing provider can align words — see `timing_provider` in the config"
+                                     if method == ALIGN else
+                                     "no timing provider can listen for the words — that needs a provider "
+                                     "that transcribes with word times, in `timing_draft_provider`")
+                if not may_send_audio(self.cfg, found[1], method):
                     raise ValueError(PRIVATE_AUDIO)
                 text = str(body.get("text", ""))
                 # the read lane: this writes nothing, so it may run beside a download, and it can
                 # take minutes on a machine without a GPU (§9, slice 36)
-                return self.jobs.submit("align", f"Align the words of {track.title}",
-                                        lambda s: s.align_lyrics(source_id, video_id, text), target=source_id)
+                label = ("Align the words of" if method == ALIGN else "Listen for the words of")
+                return self.jobs.submit("align", f"{label} {track.title}",
+                                        lambda s: s.align_lyrics(source_id, video_id, text, method),
+                                        target=source_id)
             case "lyrics_track":
                 source_id, video_id = str(body.get("id", "")), str(body.get("video_id", ""))
                 found = self.album(source_id)

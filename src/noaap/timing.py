@@ -22,6 +22,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -29,6 +30,10 @@ log = logging.getLogger(__name__)
 
 ALIGN = "align"
 TRANSCRIBE = "transcribe"
+#: place words a user already has by **listening first** and matching them to what was heard
+#: (§9, slice 83). Not a third market: it is asked of whoever transcribes, because that is the work
+#: it does — so a provider offers it exactly when it transcribes *with word times*.
+LISTEN = "listen"
 PROVIDERS = ("none", "local", "http", "elevenlabs", "deepgram")
 VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the audio away
 
@@ -39,8 +44,8 @@ VENDORS = ("elevenlabs", "deepgram")  # the ones that need a key and send the au
 # two local ones depend on what is installed or on the machine at the other end, and `capabilities()`
 # answers that at runtime. This is for the settings panel, so that the slot for drafting words does
 # not offer a provider that only aligns, and the slot for aligning does not offer Deepgram (§9, slice 40).
-OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE), "http": (ALIGN, TRANSCRIBE),
-          "elevenlabs": (ALIGN, TRANSCRIBE), "deepgram": (TRANSCRIBE,)}
+OFFERS = {"none": (), "local": (ALIGN, TRANSCRIBE, LISTEN), "http": (ALIGN, TRANSCRIBE),
+          "elevenlabs": (ALIGN, TRANSCRIBE, LISTEN), "deepgram": (TRANSCRIBE, LISTEN)}
 
 PRICES = {
     "elevenlabs": ("$0.22 per audio hour (alignment and transcription alike)", "2026-09-27"),
@@ -75,6 +80,9 @@ class Timed:
     model: str
     version: str = ""
     parameters: dict[str, str] = field(default_factory=dict)
+    #: how the words were placed: `align` (forced alignment) or `listen` (§9, slice 83). Empty means
+    #: the answer came from before there was a choice, and is read as `align`.
+    method: str = ""
 
     @property
     def unplaced(self) -> list[int]:
@@ -82,8 +90,14 @@ class Timed:
 
     @property
     def by(self) -> str:
-        """What goes into `lyrics_timed_by`: short, and enough to tell two runs apart."""
-        return f"{self.provider}/{self.model}" + (f" {self.version}" if self.version else "")
+        """What goes into `lyrics_timed_by`: short, and enough to tell two runs apart.
+
+        The method is part of it (§9, slice 83): the same provider and model answer differently
+        depending on whether they were asked to align the words or to listen for them, so a stamp
+        that says only *local/large-v3* does not say what was done.
+        """
+        return (f"{self.provider}/{self.model}" + (f" {self.version}" if self.version else "")
+                + (f" ({self.method})" if self.method else ""))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -92,7 +106,8 @@ class Timed:
     def from_dict(cls, d: dict[str, Any]) -> Timed:
         return cls(lines=[TimedLine(**line) for line in d.get("lines", [])],
                    provider=str(d.get("provider", "")), model=str(d.get("model", "")),
-                   version=str(d.get("version", "")), parameters=dict(d.get("parameters", {})))
+                   version=str(d.get("version", "")), parameters=dict(d.get("parameters", {})),
+                   method=str(d.get("method", "")))
 
 
 @runtime_checkable
@@ -152,6 +167,31 @@ def language_of(lines: list[str], default: str = "en") -> str:
         return default
     de, en = sum(w in _DE for w in words), sum(w in _EN for w in words)
     return "de" if de > en else "en" if en > de else default
+
+
+#: how many stopword hits, and how clear a win, before the words are allowed to name the language
+#: for a transcriber. Two lists settle German against English; a lyric in a third language must not
+#: be told it is one of them.
+LANGUAGE_SURE = 3
+
+
+def language_hint(lines: list[str]) -> str | None:
+    """The language the given words are clearly in, or None — *for a transcriber* (§9, slice 83).
+
+    Not the same question as `language_of`, which must answer something because there are two
+    aligners and one has to be chosen. Here a wrong answer is worse than none: a transcriber told the
+    wrong language writes down nonsense, and a transcriber told nothing detects it itself. Measured:
+    letting it detect for itself, the German track of the reported case came back as **27 words of
+    Russian subtitle boilerplate** out of a four-minute song, and one English track as 18 — while the
+    same model given the language heard 190 and 300. But it is only ever told what these two word
+    lists can be sure of (`docs/qa-catalog.md`, BV).
+    """
+    words = re.findall(r"[\w']+", " ".join(lines).lower())
+    de, en = sum(w in _DE for w in words), sum(w in _EN for w in words)
+    best, other = ("de", en) if de > en else ("en", de)
+    if max(de, en) >= LANGUAGE_SURE and max(de, en) >= 2 * other:
+        return best
+    return None
 
 
 STAMP = re.compile(r"^\s*\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]\s?")
@@ -432,6 +472,134 @@ def line_starts(owners: list[int], wanted: list[str], got: list[dict[str, Any]])
     return starts
 
 
+# -- placing words by listening first (§9, slice 83) -----------------------------------------------
+#
+# **Forced alignment cannot know that a line is not in the recording.** It places every line it is
+# given, because that is what it is; slice 81 takes back the ones where nobody was singing, which
+# catches a line pinned into silence but not one glued to real singing. Listening asks a different
+# question: *were these words said at all?* A transcript with word times is the recording's own
+# account of itself, and a line whose words are not in it was not sung — which is the answer the
+# reported case needs and the aligner can never give.
+
+
+@dataclass
+class HeardWord:
+    """One word a provider heard, and when. `start is None` for a provider that gives no times."""
+
+    text: str
+    start: float | None = None
+    end: float | None = None
+
+
+@dataclass
+class Heard:
+    """What a provider heard, word by word — the raw material `listen` matches the given lines to."""
+
+    words: list[HeardWord]
+    provider: str
+    model: str
+    version: str = ""
+    parameters: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def timed(self) -> list[HeardWord]:
+        """Only the words that carry a time: the rest cannot place anything."""
+        return [w for w in self.words if w.start is not None]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def heard_from(raw: list[dict[str, Any]], provider: str, model: str, version: str = "",
+               parameters: dict[str, str] | None = None) -> Heard:
+    """A provider's word list, whatever it calls its fields, as `Heard`."""
+    words = []
+    for one in raw:
+        text = str(one.get("text") or one.get("word") or one.get("punctuated_word") or "").strip()
+        if not text:
+            continue
+        start, end = one.get("start"), one.get("end")
+        words.append(HeardWord(text=text, start=None if start is None else round(float(start), 2),
+                               end=None if end is None else round(float(end), 2)))
+    return Heard(words=words, provider=provider, model=model, version=version,
+                 parameters=dict(parameters or {}))
+
+
+#: share of a line's own words that must be heard, in one run, for the line to be placed. Measured
+#: (`docs/qa-catalog.md`, section BV) rather than chosen.
+HEARD_ENOUGH = 0.5
+#: heard words that may sit between two of a line's words and still count as *one* run — a
+#: transcriber mishears and drops words inside a line it otherwise got right.
+HEARD_SKIP = 3
+
+
+def place_by_listening(lines: list[str], heard: Heard, *, enough: float = HEARD_ENOUGH,
+                       skip: int = HEARD_SKIP) -> Timed:
+    """Place each given line where its words were heard, and leave the rest unplaced (§9, slice 83).
+
+    Matched **in order**, over the whole song at once, by `difflib` over normalised words: a chorus
+    sung three times matches its three occurrences in the order they were sung, and a line that is
+    not in the recording matches nothing without pushing the lines after it out of step. No model and
+    no arithmetic on audio here — this is string work, and it belongs in the core.
+
+    A line is placed when at least `enough` of its own words are found inside **one run** of heard
+    words (a run tolerating `skip` heard words between two of them, because a transcriber drops and
+    mishears words inside a line it otherwise has). Its start is that run's first word's start, its
+    end the last one's end. Anything less and the line comes back unplaced, saying how much of it was
+    heard — *the same first-class answer as an aligner's refusal, with a reason a person can check
+    against the audio.*
+    """
+    words: list[tuple[int, str]] = []          # (line, normalised word) for every word with a key
+    counts: list[int] = []
+    for i, line in enumerate(lines):
+        mine = [k for k in (_key(w) for w in line.split()) if k]
+        counts.append(len(mine))
+        words.extend((i, k) for k in mine)
+    got = heard.timed
+    keys = [_key(w.text) for w in got]
+    pairs: dict[int, int] = {}
+    if words and got:
+        matcher = SequenceMatcher(None, [k for _, k in words], keys, autojunk=False)
+        for a, b, size in matcher.get_matching_blocks():
+            for n in range(size):
+                pairs[a + n] = b + n
+    mine_by_line: dict[int, list[int]] = {}
+    for at, (line_no, _) in enumerate(words):
+        if at in pairs:
+            mine_by_line.setdefault(line_no, []).append(pairs[at])
+
+    placed, said = [], []
+    for i, line in enumerate(lines):
+        run = _longest_run(mine_by_line.get(i, []), skip)
+        share = (len(run) / counts[i]) if counts[i] else 0.0
+        if run and share >= enough:
+            placed.append(TimedLine(text=line, start=got[run[0]].start, end=got[run[-1]].end))
+            continue
+        placed.append(TimedLine(text=line))
+        if counts[i]:
+            said.append(f"line {i + 1}: not heard ({len(run)} of {counts[i]} words)")
+        else:
+            said.append(f"line {i + 1}: no words to listen for")
+    timed = Timed(lines=placed, provider=heard.provider, model=heard.model, version=heard.version,
+                  method=LISTEN,
+                  parameters={**heard.parameters, "heard_words": str(len(got)),
+                              "enough": f"{enough:g}", "skip": str(skip)})
+    if said:
+        timed.parameters["not_heard"] = "; ".join(said)
+    return timed
+
+
+def _longest_run(heard_at: list[int], skip: int) -> list[int]:
+    """The longest stretch of matched heard words with no more than `skip` others between any two."""
+    best: list[int] = []
+    run: list[int] = []
+    for at in heard_at:
+        if run and at - run[-1] - 1 > skip:
+            best, run = max(best, run, key=len), []
+        run.append(at)
+    return max(best, run, key=len)
+
+
 SENTENCE_END = re.compile(r"[.!?…]$")
 
 
@@ -624,7 +792,10 @@ def kind_for(cfg: Any, what: str = "") -> str:
     falls back to `timing_provider`, which is what every config written before this said and still
     means both, so nothing anyone has configured breaks.
     """
-    slot = {ALIGN: "timing_align_provider", TRANSCRIBE: "timing_draft_provider"}.get(what, "")
+    # `listen` places words you already have, but the work it does is transcription and it is paid for
+    # by the minute like transcription — so it is asked of the drafting slot (§9, slice 83)
+    slot = {ALIGN: "timing_align_provider", TRANSCRIBE: "timing_draft_provider",
+            LISTEN: "timing_draft_provider"}.get(what, "")
     chosen = (getattr(cfg, slot, "") or "").strip() if slot else ""
     return chosen or (getattr(cfg, "timing_provider", "none") or "none")
 
@@ -706,7 +877,7 @@ def capabilities_of(cfg: Any) -> frozenset[str]:
     A union of two providers, and deliberately so — with `local` aligning and a vendor drafting, both
     are true at once and neither provider alone could say so.
     """
-    return frozenset(what for what in (ALIGN, TRANSCRIBE) if can(cfg, what))
+    return frozenset(what for what in (ALIGN, TRANSCRIBE, LISTEN) if can(cfg, what))
 
 
 def release_gpu_memory() -> bool:
@@ -920,11 +1091,12 @@ def verifies_with(cfg: Any) -> bool:
         return False
 
 
-__all__ = ["ALIGN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE", "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD",
-           "Engines", "HttpTiming", "Idle", "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable",
-           "can", "capabilities_of", "kind_for", "language_of", "let_engine_go", "line_starts", "lines_from_words",
-           "plain_lines", "provider", "release_gpu_memory", "release_when_idle", "stamped", "verified",
-           "verifies_with"]
+__all__ = ["ALIGN", "HEARD_ENOUGH", "HEARD_SKIP", "LISTEN", "OFFERS", "PRICES", "PROVIDERS", "TRANSCRIBE",
+           "VENDORS", "VERIFY_LOST", "VERIFY_THRESHOLD", "Engines", "Heard", "HeardWord", "HttpTiming", "Idle",
+           "NoTiming", "Timed", "TimedLine", "Timing", "TimingUnavailable", "can", "capabilities_of",
+           "heard_from", "kind_for", "language_hint", "language_of", "let_engine_go", "line_starts", "lines_from_words",
+           "place_by_listening", "plain_lines", "provider", "release_gpu_memory", "release_when_idle",
+           "stamped", "verified", "verifies_with"]
 
 
 # -- a line is placed when something supports it (§9, slice 81) --------------------------------------

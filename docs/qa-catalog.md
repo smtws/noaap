@@ -4954,10 +4954,105 @@ to Cloudflare"* for the non-app path.
   three of the ten at 3 s and would need ~38 s for the rest, which is no check at all. Today's lever
   for a user who wants all 46: `timing_verify = false`.
 
+## BV. Words placed by listening first (P67, DESIGN §9, slice 83)
+
+- [x] **BV1 · M** — the threshold, from a sweep rather than from taste
+
+  Per line, the share of its own words found in one run of the transcript, over the fifteen tracks
+  (770 lines) and the reported case. Genuine lines: median **0.56**, mean 0.48, and a quarter of them
+  at **0.00** — the transcript simply does not hold them. The reported case's four absent lines:
+  **0.00, 0.00, 0.00, 0.00**.
+
+  | `enough` | lines placed of the 725 that fit | median error | within 1 s | the case's four absent lines |
+  |---|---|---|---|---|
+  | 0.3 | 418 (57.7%) | 0.50 s | 79% | 4 of 4 refused |
+  | 0.4 | 418 (57.7%) | 0.50 s | 79% | 4 of 4 refused |
+  | **0.5** | **412 (56.8%)** | **0.49 s** | **79%** | **4 of 4 refused** |
+  | 0.6 | 391 (53.9%) | 0.50 s | 79% | 4 of 4 refused |
+  | 0.7 | 364 (50.2%) | 0.48 s | 79% | 4 of 4 refused |
+
+  **The knob does not move the answer.** Accuracy is flat to the percent across the whole range, and
+  the case is refused at every setting; only recall moves. `skip` (heard words tolerated inside one
+  run) moves recall by about a point between 1 and 10, so it is 3. Half is the middle and it is a rule
+  a person can check by eye: *half the line has to be in there*.
+
+- [x] **BV2 · M** — the table of item 4: every arm on the same fifteen tracks and the same case
+
+  | arm | lines placed | median | within 1 s | within 2 s | the reported case |
+  |---|---|---|---|---|---|
+  | ⚖ align, local | **698/725 (96.3%)** | **0.27 s** | 85% | 89% | 3 of 4 absent refused, 45/45 of the rest placed |
+  | 👂 listen, local, the track as it is | 412/725 (56.8%) | 0.49 s | 79% | 87% | **4 of 4 refused**, 36/45 placed |
+  | 👂 listen, local, isolated voice | 399/725 (55.0%) | 0.47 s | 77% | 86% | 4 of 4 refused, **0/45** placed |
+  | 👂 listen, Deepgram, the track | 23/296 (7.8%) | 0.74 s | 91% | 100% | 4 of 4 refused, 0/45 placed |
+  | 👂 listen, Deepgram, isolated voice | 79/296 (26.7%) | 0.56 s | 91% | 100% | 4 of 4 refused, 8/45 placed |
+
+  Per track, the two extremes of the local arm: *Lord of the Lost — One Last Song* 65/65 placed at a
+  median of 0.27 s, and *Heavysaurus — Laser Ninja* **0 of 45** — the model wrote 916 words of "la la
+  la" over it. *Lord of the Lost — Square One*, the track whose words belong to another recording, is
+  the one where 0/61 is the **right** answer: the aligner places 59 of them, 2% within a second.
+  (One of the fifteen, *Dämmerland, Versengold — Schiff aus Glas*, has a plain sidecar with no stamps,
+  so it counts in the placed column and not in the agreement columns.)
+
+- [x] **BV3 · M** — two measurements that changed the design while it was being built
+
+  **The language.** Left to detect it, the model returned **27 words** of Russian subtitle boilerplate
+  for the four-minute German song of the reported case and **18** for an English one; given the
+  language the words are in, the same model heard **193** and **300**. So the given words name the
+  language — but only when two stopword lists are clearly sure, because a lyric in a third language
+  told it is German is worse off than one left alone.
+
+  **What is listened to.** Not the same answer for everyone, and neither was guessed: the local model
+  does better on the track as it stands (412 lines against 399, and on the reported case 36 against
+  **0**, whose vocal stem lost the song entirely — 193 words heard against 36). A speech service over
+  a band writes down nothing at all: **five of six** Deepgram calls on the mixed track returned an
+  *empty* transcript with the audio decoded correctly (duration read to the centisecond, model
+  `general-nova-3`), and the isolated voice took it from 23 to 79 lines placed. So a vendor is sent
+  the voice, a listener on this machine the recording.
+
+- [x] **BV4** — the rules on fixtures (26 cases, no audio, no model): a line placed where its words
+  were heard; a line that was never heard unplaced with *not heard (0 of 4 words)* and the lines after
+  it **not** shifted; half of a line is enough and a third is not; a word dropped inside a line does
+  not lose it; case and punctuation ignored; a chorus sung three times matched in order; a repeated
+  line the singer left out taking nobody else's place; a transcript with no word times placing
+  nothing; the mark `fake/ears (listen)`; every shape of vendor word list; the language hint sure,
+  unsure and silent; the door refusing an unknown method, refusing listening where no provider can,
+  labelling the job *Listen for the words of…*, and refusing a private album's audio to a vendor that
+  would have to hear it.
+
+- [x] **BV5 · R** — the reported case against the real model (opt-in, `NOAAP_LISTEN_CASE`)
+
+  All four opening lines unplaced, 36 of the other 45 placed, stamps in order, and the reason on the
+  first one reads *not heard (0 of 4 words)*. 131 s on the card.
+
+- [x] **BV6 · M** — *report only, nothing built*: what the two methods are worth **together**
+
+  Keeping the aligner's stamps and letting the transcript veto a line it did not hear is the most
+  accurate thing measured: **406/725 placed, median 0.35 s, 92% within a second, 97% within two** —
+  better than either method alone — and it refuses all four absent lines. But at that recall it also
+  takes back **330 stamps that were right** (45 of Kupfergold's 67, 43 of Laser Ninja's 44). A
+  narrower veto, speaking only where the transcriber was busy in that stretch, trades the two against
+  each other:
+
+  | veto fires when | lines placed | median | within 1 s | right stamps taken back | the case's four |
+  |---|---|---|---|---|---|
+  | ≥3 heard words within 4 s, none of them this line's | 555/725 (76.6%) | 0.34 s | 83% | 132 | 4 of 4 refused |
+  | ≥5 within 2 s | 631/725 (87.0%) | 0.31 s | 84% | 65 | 3 of 4 refused |
+  | ≥8 within 2 s | 669/725 (92.3%) | 0.28 s | 85% | 28 | 3 of 4 refused |
+
+  **No setting refuses the fourth absent line without giving up real stamps**, which is the honest
+  shape of the trade and why nothing was built here. Whoever takes it further has the numbers.
+
+- [x] **BV7** — the paid arm, counted: **13 calls, 47.55 minutes of audio** of the 60-minute budget
+  (6 on the mixed track, 6 on the isolated voice, 1 diagnostic to see what an empty answer looks
+  like), on the reported case and five of the fifteen. 16–21 MB uploaded per voice call. No retries.
+  The key was read from `~/.config/noaap/deepgram.env` into the calling process and appears in no log,
+  no config of mine and no commit.
+
 ## Results
 
 | Date | Cases run | Passed | Failed | Notes |
 |---|---|---|---|---|
+| 2026-09-30 | the BV cases (P67: words placed by listening first) | 7 | 0 | Forced alignment cannot know that a line is not in the recording; a transcript can. `listen`, asked of the drafting slot, with the matching in the core: `difflib` over normalised words, a chorus matched to its three occurrences in order, and a line placed when **half** of its own words are found in one run. Measured over fifteen tracks (725 lines) and the reported case: the aligner places **96%** at a median 0.27 s and refuses 3 of the 4 absent lines; listening places **57%** at 0.49 s and refuses **4 of 4** — so it is a second action, not a replacement. Two measurements changed the design mid-build: a model left to detect the language wrote **27 words of Russian boilerplate** over a German song (the words name their language now, when two stopword lists are sure), and a speech vendor over a band returned an **empty transcript on five of six tracks** (a vendor is sent the isolated voice, the local model the track — 412 lines against 399, and 36 against 0 on the case). Report only: the aligner vetoed by the transcript is the most accurate thing measured (92% within a second) and costs 330 right stamps, with no setting that refuses the fourth absent line for free. Deepgram: 13 calls, 47.55 of 60 minutes. 1611 pytest + 135 node. |
 | 2026-09-30 | the BU cases (P66: the app gives the graphics memory back) + BT6 | 5 | 0 | The installed service held **4320 MiB of 8188** while idle and a second program failed with an out-of-memory. Measured first: one alignment holds **3608 MiB**, and `release_gpu_memory()` while the provider is alive frees **nothing** — the weights are still referenced and the second opinion's **3776 MiB** is not torch's memory at all. Dropping the models takes it to **160 MiB** (the CUDA context), and loading every model again off a warm disk costs about **2 s**. So the provider is now held between jobs and let go after **60 s** of quiet (`timing_card_idle_seconds`), the check and the release are one step under the lock a job must pass, and a queued job counts as work in hand. A job that finds the card full runs on the processor and says so in its first line (**11.4×** the time, measured: 13.3 s → 152.1 s); one that runs out half way through fails with one sentence and no traceback. Report only: Sabaton — *Smoking Snakes* loses ten stamps to the **cross-check**, not to the aligner or to slice 81 — all ten within **0.3 s** of LRCLIB's own stamps, seven of them piled by the second opinion into a 37-second instrumental break. 1586 pytest + 132 node. |
 | 2026-09-30 | the BT cases (P65: a line is placed when something supports it) | 5 | 0 | Forced alignment places everything, so four lines this cut does not sing were pinned at 0.0, 53.2, 53.7 and 55.8 s and the report said *placed 49 of 49*. The evidence that works is the vocal stem the aligner already made: **the four scored 0.00, 0.00, 0.09 and 0.64 of their claimed stretch sung, the forty-five genuine lines 0.41 at worst and 1.00 in 44 of 45** — so a quarter is the threshold and three of the four are taken back. The aligner's own score **does not separate** (0.001–0.006 against four genuine lines at or below that) and is recorded rather than obeyed. The rate backstop comes from **128 263 line gaps** of the real library (median 8.3, p99 25.7 cps) and sits at 60. The fourth line is still placed, and the docs say so. 1559 pytest + 132 node. |
 | 2026-09-30 | the BS cases (P64b: it was the handshake) | 3 | 0 | Two requests settled what eight could not: same cookies, same query, same headers, 37 s apart — **Python's default cipher list answered 200, and the cipher string yt-dlp pins answered 403 in 0.1 s**. The bot check reads the TLS hello, and ours was the unusual one; gallery-dl, on paper, customises nothing below the headers. The fix is one documented yt-dlp option for this provider alone, and it is *less* shaping, not more — measured through noaap's own reader at 01:31, four formats and the captions, with no browser opened since 20:57. Its cost, said out loud: the same option permits legacy TLS renegotiation for this provider. The week-old advice to open the browser first is gone from the README and the refusal. 1548 pytest + 129 node. |
