@@ -266,3 +266,26 @@ def test_the_kept_original_is_filed_where_the_snapshot_will_look(tmp_path, one_s
     assert done.missing == [] and done.changed == []
     assert {str(p.relative_to(library)): p.read_bytes()
             for p in folder.glob("*.opus")} == before, "byte for byte, from the kept originals"
+
+
+def test_another_collections_resume_file_is_not_this_ones(collection, service, tmp_path):
+    """Two snapshots can share a directory; one resume file between them took in nothing.
+
+    Found while measuring: a second copy of the same collection, snapshot beside the first, read the
+    first's state, decided all 133 albums were done and finished in a tenth of a second — reporting
+    `0 albums` as if that were an answer. The file is named after its snapshot now, and the root it
+    was written for is read back and checked.
+    """
+    snapshot = tmp_path / "mine.jsonl"
+    assert intake.state_path(snapshot).name == "mine.take-in.json", "named after its own snapshot"
+
+    somebody_else = intake.state_path(tmp_path / "theirs.jsonl")
+    intake.write_state(somebody_else, tmp_path / "another-collection",
+                       {str(p.relative_to(collection)) for p in intake.albums_under(
+                           collection, sources.get("folder", service.cfg))})
+    assert intake.read_state(somebody_else, tmp_path / "another-collection"), "theirs, for their root"
+    assert intake.read_state(somebody_else, collection) == set(), "and nothing at all for this one"
+
+    done = intake.take_in(service, collection, QUIET, dry_run=False, snapshot=tmp_path / "theirs.jsonl",
+                          log=lambda s: None)
+    assert (done.adopted, done.tracks) == (3, 6), "every album taken in, none skipped"

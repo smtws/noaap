@@ -118,6 +118,15 @@ Both are mp3-and-real-collection faults again, and both now have cases (an embed
 not hide a file, a file whose audio really changed being named, the kept original filed where the
 snapshot looks).
 
+**And the seventh came out of my own measurement setup, which is the best kind of evidence.** The
+resume file was one fixed name beside the snapshot, `noaap-take-in.state.json`, so two collections
+whose snapshots share a directory share one resume file — and the root written into that file from
+the first version was never read back. A second copy of the same collection, with its own snapshot
+in the same folder, read the first copy's state, decided all 133 albums were done, and took in
+**nothing in a tenth of a second** while reporting `0 albums, 0 tracks`. I nearly recorded that as a
+measurement. The file is named after its own snapshot now (`<snapshot>.take-in.json`) and the root is
+read back and checked; a state file for another root is not this run's.
+
 ### What the real pass costs, and three ways to cut it
 
 First, what the careful write actually costs, measured on 24 files drawn at random from

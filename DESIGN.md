@@ -2859,6 +2859,11 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **decoded** recording now and one function answers both questions — a decode instead of a remux
    per file: three times the CPU, the same read, and over a share the read is the ceiling. A snapshot
    written before this still restores, with the weaker digest it was written with.
+   (7) **The resume file was one fixed name beside the snapshot**, so two collections whose snapshots
+   share a directory shared one — and the root written into it from the first version was never read
+   back. A second copy of the same collection read the first's state, decided all 133 albums were
+   done and took in nothing in a tenth of a second, reporting `0 albums` as if that were an answer.
+   It is named after its own snapshot now, and the root in it is checked.
 
 100. ✅ **The settings are the state; an album may only be excepted** (2026-10-01, P81). The user
    asked twice, and the second time settled it: *"we had consistent state and now we got persisted

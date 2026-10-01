@@ -33,7 +33,7 @@ from .enrich import enrich
 from .models import AlbumPlan
 from .treatment import Treatment
 
-STATE = "noaap-take-in.state.json"
+STATE = "take-in.json"      # the suffix; the name is the snapshot's own (see `state_path`)
 
 
 @dataclass
@@ -80,17 +80,32 @@ class Progress:
 
 
 def state_path(snapshot: Path) -> Path:
-    return snapshot.with_name(STATE)
+    """Named after the snapshot it belongs to, because two collections can share a directory.
+
+    It was one fixed name beside the snapshot, and two snapshots in one folder then shared a single
+    resume file. Found while measuring: a second copy of the same collection, with its own snapshot
+    in the same directory, read the first copy's state, decided all 133 albums were done and took in
+    nothing in a tenth of a second — reporting `0 albums` as if that were the answer.
+    """
+    return snapshot.with_name(f"{snapshot.stem}.{STATE}")
 
 
-def read_state(path: Path) -> set[str]:
-    """Which album folders are already finished, by their path relative to the root."""
+def read_state(path: Path, root: Path | None = None) -> set[str]:
+    """Which album folders are already finished, by their path relative to the root.
+
+    **A state file belonging to another root is not this run's.** The root was written into the file
+    from the first version and never read back; checking it is what makes a stale or shared file
+    harmless rather than silent.
+    """
     if not path.is_file():
         return set()
     try:
-        return set(json.loads(path.read_text()).get("done") or [])
+        got = json.loads(path.read_text())
     except (ValueError, OSError):
         return set()
+    if root is not None and got.get("root") not in (None, str(root), str(root.resolve())):
+        return set()
+    return set(got.get("done") or [])
 
 
 def write_state(path: Path, root: Path, done: set[str]) -> None:
@@ -130,7 +145,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
 
     snapshot = snapshot or root.parent / precautions.SNAPSHOT
     state = state_path(snapshot)
-    finished = read_state(state) if resume and not dry_run else set()
+    finished = read_state(state, root) if resume and not dry_run else set()
     if finished:
         log(f"  {len(finished)} album(s) were done by an earlier run and are skipped")
     if not dry_run and not snapshot.exists():

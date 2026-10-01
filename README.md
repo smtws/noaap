@@ -333,7 +333,10 @@ that goes away mid-pass, or a deleted snapshot.
 It names any audio file it could not match instead of guessing at it.
 
 The pass expects to be interrupted: it writes down each album as it finishes, so running the same
-command again continues where it stood and repeats no album.
+command again continues where it stood and repeats no album. That record sits beside the snapshot and
+is named after it (`noaap-snapshot.take-in.json`), and it says which collection it is about — so two
+collections can keep their snapshots in one folder without one of them deciding the other's albums
+are already done.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:
