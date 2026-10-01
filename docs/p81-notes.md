@@ -35,47 +35,99 @@ R-338 (the settings are the state; an album may only be excepted), R-339 (measur
 
 - Copy: `~/Music/legacy` (41 GB, 2153 files, 2000 audio) → `~/Musik/noaap-takein`. **Done** (the copy
   ran ~14 min). `~/Music/legacy` is never written. The copy is QA scratch and the reviewer's to remove.
-- Driver: `<scratchpad>/measure.py` — runs a phase in-process and reads `/proc/self/io`
-  (`read_bytes`/`write_bytes`, i.e. what a NAS would see) around it, with the wall time and the
-  request counts.
+- Driver and method: **`docs/spikes/2026-10-take-in-cost.md`**, which is the measurement's own
+  write-up — what was measured, how, the numbers, and the ten faults in one table.
 - Phases to run: dry → real (`--apply --keep-originals`) → restore, then compare the restored copy
   with the pristine `~/Music/legacy`.
 - Open question I decided to settle with data: all switches on means ~2000 MusicBrainz + ~2000 LRCLIB
   requests for a *training* run. Plan: price one album with lookups on, then decide whether to run the
   whole copy with them or to extrapolate; **say which was done in I-221**.
-### Numbers so far (local copy, 132 albums / 2000 tracks / 41 GB)
+### The numbers, on a byte-exact copy of the user's own collection
 
-| phase | seconds | read from device | written |
+133 album folders, 2000 audio files, 153 files of theirs that are not audio, 41 GB. Every phase run
+with everything on and the names brought to the scheme; `read`/`write` are `/proc/self/io`, which is
+device I/O — what a share would see on the wire.
+
+| phase | seconds | read | written | what it did |
+|---|---|---|---|---|
+| snapshot | 561.6 | 43.78 GB | 1.1 MB | 2153 files written down; the file is 1,073,289 bytes — **499 bytes each** |
+| dry run | 10.3 | 2.33 GB | 0 | 132 albums, 2000 tracks: 440 renamed, 2000 rewritten, 72 asked for a cover |
+| the pass | 453.1 | 43.31 GB | 87.80 GB | 440 renamed, 2000 rewritten, 4 covers written, 2000 originals kept (41 GB) |
+| restore | 211.2 | 54.24 GB | 43.76 GB | 2153 files, 573 renamed back, **0 missing, 0 changed, 0 fields of theirs lost** |
+
+And then every file of the restored copy against the pristine original: **2153 of 2153
+byte-identical**, nothing of theirs missing, nothing of theirs altered. What is left over is 136
+files of noaap's own — 132 plans and the 4 covers it fetched — which the restore names rather than
+deciding they are rubbish.
+
+**The dry run's numbers are the pass's numbers**: 440 renamed and 2000 rewritten, said before and
+done after (fault 9). It reads 2.33 GB instead of 43.8 because an adoption does not rank copies and
+so does not digest every file (`FolderSource.digests`, which only `merge` needs).
+
+The dry run's numbers are now the pass's numbers (fault 9), and it reads 2.33 GB instead of 43.8
+because an adoption does not rank copies and so does not digest every file (`FolderSource.digests`,
+which only `merge` needs).
+
+**A restore that has nothing to do still costs a full read.** Measured by accident when a pass was
+skipped: 568.3 s and 43.26 GB read, 0 bytes written, every one of the 2153 files found at its
+recorded path — because the only way to say *this is the recording that was written down* is to
+decode it. That is the floor under any restore without kept originals.
+
+### Earlier runs, kept because they are what found the faults
+
+| phase | seconds | read | written |
 |---|---|---|---|
-| dry run, as first built | 171.9 | 43.77 GB | 0 |
-| dry run, after the fix below | **8.8** | **1.63 GB** | 0 |
-| real pass, everything on, originals kept — **1662 files silently not tagged** | 277.4 | 86.13 GB | 87.67 GB |
-| restore of that state | 102.0 | 44.96 GB | 37.94 GB |
-| **real pass again, with all three fixes** | **614.5** | **87.42 GB** | **87.80 GB** |
-
-The second pass logged **0 errors** where the first logged 1662, and took 2.2× as long — the missing
-time is the work that had been failing. Both dry runs said the same thing: 132 albums, 2000 tracks,
-440 files would be renamed, 1896 retagged.
-
-What the 87 GB read and the 88 GB written are made of, per pass: the snapshot digests every file
-(41 GB read), `--keep-originals` copies every file it touches (41 GB written), and each careful write
-copies the file and digests both copies (another 41 GB written, and 41 GB read for the temporary copy
-— the source itself comes back out of the page cache). A share has less cache than this laptop, so the
-extrapolation below is a floor, not a promise.
+| dry run, before `digests=False` | 171.9 | 43.77 GB | 0 |
+| the pass, **1662 files silently not tagged** (fault 1) | 277.4 | 86.13 GB | 87.67 GB |
+| the pass, after faults 1–3 | 614.5 | 87.42 GB | 87.80 GB |
+| the pass, snapshot taken separately, with the covers | 453.1 | 43.31 GB | 87.76 GB |
+| restore of that, 67 files not byte-identical (fault 8) | 231.8 | 53.70 GB | 43.25 GB |
 
 ### At 30 MB/s, for the user's 11,000 tracks (R-340)
 
-5.5× this copy. Bytes over a share cross the wire in both directions, so the hours are read + written.
+5.5× this copy (11,000 tracks against 2000). Over a share the bytes cross the wire in both
+directions, so the hours are read **plus** written. The local times are what this laptop did on a
+local disk and are not the number to plan by.
 
-| phase | local | bytes for 11,000 tracks | at 30 MB/s |
-|---|---|---|---|
-| dry run (as built, digests) | 15.8 min | 241 GB read | **2.2 h** |
-| dry run (digests off) | 48 s | 9 GB read | **5 min** |
-| the real pass | 56 min | 481 GB read + 483 GB written | **8.9 h** |
-| the restore | 9.4 min | 247 GB read + 209 GB written | **4.2 h** |
+| phase | per track | for 11,000 tracks | local | **at 30 MB/s** |
+|---|---|---|---|---|
+| snapshot | 21.9 MB read | 241 GB read | 9.4 min | **2.2 h** |
+| dry run | 1.17 MB read | 12.8 GB read | 10 s | **7 min** |
+| the pass | 21.7 read + 43.9 written | 238 GB + 483 GB | 7.6 min | **6.7 h** |
+| the restore | 27.1 read + 21.9 written | 298 GB + 241 GB | 3.5 min | **5.0 h** |
 
-Eight to nine hours for the pass is the number that matters, and it is why the three cuts below are
-worth a decision rather than a shrug.
+**Taking the collection in is the snapshot plus the pass: ~9 hours over the share**, and a restore
+of all of it would be 5 more. An overnight job, once, with a resume file that means a broken
+connection costs the album it was in and nothing else.
+
+Two things to say plainly about those hours. The snapshot's 2.2 h is **one read of the whole
+collection and nothing else** — it cannot be made cheaper without giving something up (cut 3 below).
+The pass's 6.7 h is mostly the copies: `--keep-originals` writes the collection a second time and the
+careful write a third. Without `--keep-originals` the pass is ~4.5 h and the way back is no longer
+byte for byte.
+
+### The lookups, which are not about bytes at all (R-335 item 4)
+
+Priced on three album folders copied out of `~/Music/legacy`, with a **cold cache** — the user's own
+caches are warm (84 MB of lyrics, 24 MB of MusicBrainz, from their own use of the app), so the first
+attempt at this measured **1 request for 43 tracks** and would have been reported as "the lookups are
+free". `XDG_CACHE_HOME` pointed at a throwaway directory; their caches were not touched.
+
+| | measured | per unit |
+|---|---|---|
+| 2 albums, 31 tracks, 33.0 s | 4 MusicBrainz requests | **2 an album** |
+| | 32 LRCLIB requests | **~1 a track** |
+
+For 11,000 tracks in ~700 albums that is ~1,400 MusicBrainz and ~11,000 LRCLIB requests. The client
+holds itself to one request every 1.1 s at MusicBrainz and every 0.5 s at LRCLIB, so **the floor is
+26 min + 1.5 h ≈ 2 h of deliberate politeness**, and the measured end-to-end rate (1.06 s a track)
+puts it at **~3.2 h**. None of that is disk: a faster share does not move it, and it is serial by
+design because both services are somebody else's.
+
+So: **a first take-in of the collection with everything on is ~12 hours** — 2.2 h of snapshot, 6.7 h
+of pass, 3.2 h of asking. Each album is recorded as it finishes, so a connection that drops costs
+the album it was in. With the lookups left for later (`--no-mb --no-lyrics`) it is ~9 h, and a later
+`repair` does the asking, because the settings are the state of the library (§9, slice 100).
 
 **The re-run found the fourth fault, and the worst so far — the restore does not scale.** With all
 2000 files renamed *and* retagged, the digest search had nothing to go on: its one guess was the
@@ -212,15 +264,18 @@ choose**:
 
 ## Next steps, in order
 
-1. **A second copy** of `~/Music/legacy` at `~/Musik/noaap-takein2` (running). The first copy is too
-   muddled to measure on: two restores were interrupted on purpose, so it holds 21 strays, a kept
-   store filed under the wrong names, and plans that no longer match the files. It stays as it is —
-   the reviewer's to remove — and nothing is deleted to make room.
-2. On the fresh copy, in one run: snapshot (now decoding), dry run, the whole pass with everything on
-   and the originals kept, the restore, and the comparison with the pristine original. Those are the
-   numbers I-221 reports.
-3. Price the lookups on three albums of the fresh copy. The first attempt measured nothing: the
-   plans in the muddled copy no longer matched the files, so the pass skipped every track in 0.2 s
-   and asked nobody anything (0 requests, 0 renames) — a result I nearly reported as "the lookups
-   are free".
-4. Report I-221.
+1. **Report I-221.** Everything R-335 asked for is built, measured and pushed; the report carries the
+   numbers, the ten faults, and the three decisions below.
+2. **For the reviewer and the user**, in the order I would ask them:
+   - the three ways to cut the pass (above): cut 1 is my recommendation and gives up nothing, cut 2
+     is measurably pointless, cut 3 is a real trade. None is implemented.
+   - after a restore, the 132 plans the pass wrote are left behind describing names that no longer
+     exist. The restore names them and removes nothing, which is the rule it is built on; whether a
+     restore should also undo noaap's *record* of the albums is a question about what "a way back"
+     means, not a bug I should settle alone.
+   - the QA copies are the reviewer's to remove: `~/Musik/noaap-takein` (41 GB, deliberately left in
+     a half-restored state as evidence), `~/Musik/noaap-takein-originals` (41 GB),
+     `~/Musik/noaap-takein2` (41 GB, restored and byte-exact), `~/Musik/noaap-takein2-kept` (41 GB),
+     `~/Musik/noaap-lookups`, `~/Musik/noaap-lookups2`, and the snapshots beside them.
+3. Queued, not started, and not part of P81: bracketed non-speech caption cues; first-load cover
+   contention.

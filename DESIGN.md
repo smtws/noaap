@@ -2920,7 +2920,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    10 minutes locally — **~9 hours over the share**. The restore: 45 GB read, 38 GB written. Of the
    2093 names present in both the restored copy and the pristine original, 2093 were byte-identical.
    The numbers are what make the three ways to cut the pass worth a decision rather than a shrug, and
-   they are recorded with their arithmetic in `docs/p81-notes.md`.
+   they are recorded with their arithmetic in `docs/spikes/2026-10-take-in-cost.md`, which is the
+   measurement's own write-up: method, harness, every phase, and the ten faults in one table.
+   **The final figures, on a byte-exact copy and with every fault fixed**: the snapshot 561.6 s and
+   43.78 GB read for 2153 files (499 bytes written down each); the dry run 10.3 s and 2.33 GB, saying
+   440 renames and 2000 rewrites, which is exactly what the pass then did; the pass 453.1 s, 43.31 GB
+   read, 87.80 GB written, keeping all 2000 originals; the restore 211.2 s, 0 missing, 0 changed, 0
+   fields of theirs lost — and **2153 of 2153 files byte-identical to the pristine original**
+   afterwards. At 30 MB/s for 11,000 tracks that is 2.2 h of snapshot, 6.7 h of pass and 3.2 h of
+   asking MusicBrainz and LRCLIB (2 requests an album, ~1 a track, measured with a cold cache): a
+   twelve-hour job that resumes per album, or nine hours with the lookups left for a later `repair`.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
