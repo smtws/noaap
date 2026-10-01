@@ -1,7 +1,9 @@
 # P81 — taking the user's collection in: where it stands
 
-Working notes, kept current at every checkpoint (R-341). Message ledger: last out **I-220**, last in
-**R-341**; the next report of mine is **I-221**.
+Working notes, kept current at every checkpoint (R-341). **P81 is reported: I-221 went out on
+2026-10-01 and was acknowledged**; the next report of mine is I-222. What is left in here is the three
+things the report hands back for a decision (bottom of the file) — the notes themselves are now a
+record rather than a to-do list.
 
 The package is R-335, amended by R-336 (a switch per operation), R-337 (precedence — **superseded**),
 R-338 (the settings are the state; an album may only be excepted), R-339 (measure on a local copy of
