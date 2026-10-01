@@ -223,14 +223,21 @@ def tagged_lyrics(path: Path) -> str | None:
 
 
 def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> dict[str, str]:
+    # **a track total is the count of the disc the track is on**, and the count of discs is its own
+    # field (§9, slice 102). This was `len(plan.tracks)` — the whole album — in all three writers, so
+    # every track of a three-disc set said 29 of 29 and none of them said how many discs there were:
+    # 627 files in the user's own library, 23 albums, every one of them. For a single-disc album the
+    # two numbers are the same, which is why nothing noticed and why the fix moves no single-disc file.
+    discs = max(t.disc for t in plan.tracks)
+    on_this_disc = sum(1 for t in plan.tracks if t.disc == track.disc)
     tags = {
         "title": track.title,
         "artist": track.artist,
         "albumartist": plan.albumartist,
         "album": plan.album,
         "tracknumber": str(track.number),
-        "tracktotal": str(len(plan.tracks)),
-        "totaltracks": str(len(plan.tracks)),
+        "tracktotal": str(on_this_disc),
+        "totaltracks": str(on_this_disc),
     }
     # Where the album came from, for whoever opens the file later — worth writing only when it is
     # somewhere they could go. A folder's address is the user's own directory: it identifies the
@@ -247,8 +254,9 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
         tags["date"] = str(plan.year)
     if plan.is_compilation:
         tags["compilation"] = "1"
-    if max(t.disc for t in plan.tracks) > 1:
+    if discs > 1:
         tags["discnumber"] = str(track.disc)
+        tags["disctotal"] = tags["totaldiscs"] = str(discs)
     if plan.mbid:
         tags["musicbrainz_albumid"] = plan.mbid
     if track.mbid:
@@ -297,11 +305,19 @@ def tags_in(path: Path) -> dict[str, str]:
         for frame in tags.values():
             if isinstance(frame, USLT):
                 out["lyrics"] = one(frame.text)
-        if "TRCK" in tags:
-            numbers = one(tags["TRCK"].text).split("/")
-            out["tracknumber"] = numbers[0]
-            if len(numbers) > 1:
-                out["tracktotal"] = out["totaltracks"] = numbers[1]
+        # **both of ID3's paired frames are read as the pair they are.** `TPOS` went through the key
+        # loop above, which would hand `discnumber` the whole of "1/2" — and a dry run comparing that
+        # with "1" would say the file needs retagging after every pass that had just written it.
+        for frame, number, totals in (("TRCK", "tracknumber", ("tracktotal", "totaltracks")),
+                                      ("TPOS", "discnumber", ("disctotal", "totaldiscs"))):
+            if frame in tags:
+                numbers = one(tags[frame].text).split("/")
+                out[number] = numbers[0]
+                for name in totals:
+                    if len(numbers) > 1 and numbers[1]:
+                        out[name] = numbers[1]
+                    else:
+                        out.pop(name, None)
         if "TCMP" in tags:
             out["compilation"] = one(tags["TCMP"].text)
     else:
@@ -314,7 +330,10 @@ def tags_in(path: Path) -> dict[str, str]:
             if total:
                 out["tracktotal"] = out["totaltracks"] = str(total)
         if tags.get("disk"):
-            out["discnumber"] = str(tags["disk"][0][0])
+            disc, of = [*list(tags["disk"][0]), 0, 0][:2]
+            out["discnumber"] = str(disc)
+            if of:
+                out["disctotal"] = out["totaldiscs"] = str(of)
         if tags.get("cpil"):
             out["compilation"] = "1"
     return out
@@ -444,7 +463,12 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
             id3.setall(frame, [TXXX(encoding=3, desc=frame[5:], text=[tags[key]])])
         else:
             id3.setall(frame, [ID3_FRAMES[frame](encoding=3, text=[tags[key]])])
-    id3.setall("TRCK", [ID3_FRAMES["TRCK"](encoding=3, text=[f"{track.number}/{len(plan.tracks)}"])])
+    # ID3 carries each number and its total in one frame, so these two are set here rather than by
+    # the loop above: `TRCK` as track/of, `TPOS` as disc/of (§9, slice 102).
+    on_this_disc = sum(1 for t in plan.tracks if t.disc == track.disc)
+    id3.setall("TRCK", [ID3_FRAMES["TRCK"](encoding=3, text=[f"{track.number}/{on_this_disc}"])])
+    if (discs := max(t.disc for t in plan.tracks)) > 1:
+        id3.setall("TPOS", [ID3_FRAMES["TPOS"](encoding=3, text=[f"{track.disc}/{discs}"])])
     if plan.is_compilation:
         id3.setall("TCMP", [TCMP(encoding=3, text=["1"])])
     if "lyrics" in tags:
@@ -467,9 +491,9 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]
-    audio["trkn"] = [(track.number, len(plan.tracks))]
-    if max(t.disc for t in plan.tracks) > 1:
-        audio["disk"] = [(track.disc, max(t.disc for t in plan.tracks))]
+    audio["trkn"] = [(track.number, sum(1 for t in plan.tracks if t.disc == track.disc))]
+    if (discs := max(t.disc for t in plan.tracks)) > 1:
+        audio["disk"] = [(track.disc, discs)]   # the only writer that had the disc total right
     audio["cpil"] = plan.is_compilation
     if cover and (mime := image_mime(cover)) in ("image/jpeg", "image/png"):
         fmt = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG

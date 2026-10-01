@@ -364,3 +364,87 @@ def test_the_dry_run_counts_every_file_the_pass_rewrites(collection, service, tm
     assert real.retagged == 6, "every file is rewritten, because the plan cannot say it need not be"
     assert (dry.renamed, dry.retagged) == (real.renamed, real.retagged), \
         f"dry said {dry.renamed}/{dry.retagged}, the pass did {real.renamed}/{real.retagged}"
+
+
+def test_a_disc_folder_the_pass_empties_is_removed_and_one_with_anything_in_it_is_not(tmp_path,
+                                                                                      one_second_of_sound):
+    """Bringing a two-disc album to the scheme takes every file out of `CD 1` and `CD 2`.
+
+    Measured on a two-disc album before this: both folders still standing, empty. They are the pass's
+    own mess, so the pass clears them — but only when they are empty, and `rmdir` is what decides
+    that, so a folder holding the owner's scan of the booklet keeps the scan and keeps the folder.
+    A restore puts the files back under their recorded paths, which makes the folder again.
+    """
+    library = tmp_path / "collection"
+    for disc, titles in ((1, ["Opening"]), (2, ["Closing"])):
+        folder = library / "Aphelion" / "Live im Winter" / f"CD {disc}"
+        folder.mkdir(parents=True)
+        for n, title in enumerate(titles, 1):
+            path = folder / f"{n:02d} {title}.opus"
+            shutil.copy(one_second_of_sound, path)
+            audio = MFile(path)
+            audio["title"] = [title]
+            audio["artist"] = ["Aphelion"]
+            audio["album"] = ["Live im Winter"]
+            audio["discnumber"] = [str(disc)]
+            audio["comment"] = [f"disc {disc}"]
+            audio.save()
+    theirs = library / "Aphelion" / "Live im Winter" / "CD 2" / "booklet.jpg"
+    theirs.write_bytes(b"\xff\xd8 their scan")
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    snapshot = tmp_path / "snap.jsonl"
+
+    intake.take_in(service, library, intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=snapshot, keep=tmp_path / "kept", log=lambda s: None)
+
+    album = library / "Aphelion" / "Live im Winter"
+    assert not (album / "CD 1").exists(), "emptied by the pass, so the pass takes it away"
+    assert theirs.read_bytes() == b"\xff\xd8 their scan", "and this one is still in CD 2"
+
+    precautions.restore(precautions.read(snapshot), library, apply=True, kept=tmp_path / "kept",
+                        log=lambda s: None)
+    assert (album / "CD 1" / "01 Opening.opus").is_file(), "the folder is back, with its file in it"
+
+
+def test_a_restore_takes_away_what_the_pass_itself_put_there(collection, service, tmp_path):
+    """R-342 ruling 3: "a way back" means the folder as it was, not the folder plus our leavings.
+
+    The pass writes one plan per album, and saves any cover it fetched and any words it found. A
+    restore that only put files back left all of that behind: measured on the user's own 2000 files,
+    the restored copy held **136 files its owner never had**. So the pass records what it creates as
+    it goes, and the restore removes exactly those paths and nothing else — listing every one of them
+    in its dry run first.
+    """
+    snapshot = tmp_path / "snap.jsonl"
+    theirs = next(iter(sorted(collection.rglob("*.opus")))).parent / "booklet.jpg"
+    theirs.write_bytes(b"\xff\xd8 their scan")
+
+    intake.take_in(service, collection, QUIET, dry_run=False, snapshot=snapshot, log=lambda s: None)
+
+    made = intake.read_made(intake.made_path(snapshot), collection)
+    assert made and all(name.endswith(".ytalbum.json") for name in made), made
+    assert len(made) == 3, "one plan per album, and nothing of theirs"
+
+    said = []
+    dry = precautions.restore(precautions.read(snapshot), collection, apply=False, made=made,
+                              log=said.append)
+    assert len(dry.removed) == 3
+    assert sum(1 for line in said if "would remove" in line) == 3, said
+    assert all((collection / name).is_file() for name in made), "a dry run removes nothing"
+
+    done = precautions.restore(precautions.read(snapshot), collection, apply=True, made=made,
+                               log=lambda s: None)
+    assert sorted(done.removed) == sorted(made)
+    assert not list(collection.rglob(".ytalbum.json")), "the plans are gone"
+    assert theirs.read_bytes() == b"\xff\xd8 their scan", "and what was theirs is untouched"
+    assert len(list(collection.rglob("*.opus"))) == 6, "every track still here"
+
+
+def test_the_record_of_another_collection_is_not_read(collection, service, tmp_path):
+    """The same rule as the resume file: a record names the root it was written for."""
+    snapshot = tmp_path / "snap.jsonl"
+    intake.write_made(intake.made_path(snapshot), tmp_path / "somewhere-else", ["a/plan.json"])
+
+    assert intake.read_made(intake.made_path(snapshot), tmp_path / "somewhere-else")
+    assert intake.read_made(intake.made_path(snapshot), collection) == []

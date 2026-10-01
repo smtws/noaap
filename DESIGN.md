@@ -2931,6 +2931,36 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    asking MusicBrainz and LRCLIB (2 requests an album, ~1 a track, measured with a cold cache): a
    twelve-hour job that resumes per album, or nine hours with the lookups left for a later `repair`.
 
+102. ✅ **A track total is the size of its disc, and a restore puts the folder back** (2026-10-01,
+   P81b). What the first pass over a real collection was still getting wrong, after the ten faults of
+   slice 99.
+   **A track total is the count of the disc the track is on**; the count of discs is its own field.
+   All three writers used `len(plan.tracks)` — the whole album — so every track of a three-disc set
+   said 29 of 29, and only the mp4 writer ever wrote a disc total at all. In the user's own library:
+   **627 files across 23 albums, every one of them wrong, 0 of 627 carrying a disc total.** A
+   single-disc album's two numbers are equal, which is why nothing noticed for a year; `signature()`
+   reads the same function, so the repair check names all 627 and no single-disc file at all —
+   measured over the whole library: 247 albums read, 627 named, 0 collateral. The reader had to be
+   fixed with the writers: ID3 keeps each number and its total in one frame, and `TPOS` went through
+   the loop that reads a frame's whole text, so a file noaap had just written would have come back
+   with `discnumber` = "2/3", be compared against "2", and be reported as needing a retag for ever.
+   **A restore means the folder as it was**, so it also removes what the pass created — the plan per
+   album, a cover it fetched, the words it saved. It knows which those are because the pass writes
+   them down as it goes, by asking what is in the album folder besides its audio before and after:
+   measured rather than predicted, so a writer that gains a file does not have to remember to say so.
+   Only those paths are removed, never a file nobody wrote down, and the dry run lists every one of
+   them first. Before this, the restored copy of the user's collection came back holding **136 files
+   its owner never had**.
+   **A disc folder the pass empties is the pass's own mess**: bringing a multi-disc album to the
+   scheme takes every file out of `CD 1` and `CD 2` and left them standing empty. The pass clears
+   them, `rmdir` decides whether they are empty — so a folder holding their scan of the booklet keeps
+   both — and a restore makes them again by putting the files back into them.
+   **The careful write reads one file instead of two.** The snapshot measured the original minutes
+   earlier, so the proof is the copy's digest against that recorded one, and the full comparison runs
+   only if they disagree: a stale expectation costs time, never correctness.
+   And the two names that were one: a snapshot defaults to `<root>-snapshot.jsonl` rather than one
+   fixed name beside the root, so two collections under one parent cannot write to the same file.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

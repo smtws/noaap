@@ -25,6 +25,7 @@ mid-pass, or somebody deleting the snapshot. It is a way back from *what noaap d
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -39,7 +40,7 @@ from typing import Any
 from .sources_folder import AUDIO, stream_sha
 from .tag import decoded_sha, decoder, raw_tags, restore_tags, tags_outside_ours
 
-SNAPSHOT = "noaap-snapshot.jsonl"   # what `take-in` writes beside the root unless told otherwise
+SNAPSHOT = "snapshot.jsonl"         # the suffix; the name is the root's own (see `snapshot_for`)
 KEPT = "noaap-originals"            # and where it keeps the originals, likewise
 
 
@@ -123,6 +124,7 @@ class Summary:
     missing: list[str] = field(default_factory=list)
     changed: list[str] = field(default_factory=list)
     lost: list[str] = field(default_factory=list)   # keys of theirs a pass dropped, named
+    removed: list[str] = field(default_factory=list)   # what the pass had created, taken away again
 
 
 def audio_under(root: Path) -> Iterator[Path]:
@@ -161,6 +163,19 @@ def bytes_sha(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def snapshot_for(root: Path) -> Path:
+    """Where a snapshot of this root goes unless told otherwise: beside it, named after it.
+
+    It was one fixed name beside the root, so two collections under one parent — `/mnt/nas/Music` and
+    `/mnt/nas/Live`, or a copy of one beside it — would have written to the same file. Taking a
+    snapshot refuses to overwrite one, so the second take-in would simply have stopped; the first
+    would have been fine and the message would have been a puzzle. Named after the root, as the
+    resume file now is (§9, slice 102).
+    """
+    root = root.resolve()
+    return root.parent / f"{root.name}-{SNAPSHOT}"
+
+
 def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambda s: None) -> Path:
     """Write down every audio file under `root` before anything is done to it.
 
@@ -168,7 +183,7 @@ def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambd
     thousand tracks are a file a person can read with `head` and a program can stream. Overwriting an existing snapshot is refused: the one
     that is there may be the only way back from the pass that wrote it.
     """
-    out = out or root.parent / SNAPSHOT
+    out = out or snapshot_for(root)
     if out.exists():
         raise Unsafe(f"{out} is already there — name another file, or move that one away")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -217,8 +232,8 @@ def read(path: Path) -> Snapshot:
 
 
 def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, kept: Path | None = None,
-            log: Callable[[str], None] = lambda s: None) -> Summary:
-    """Put every file back where and as it was. Dry by default, like every other pass here.
+            made: Iterable[str] = (), log: Callable[[str], None] = lambda s: None) -> Summary:
+    """Put the folder back as it was. Dry by default, like every other pass here.
 
     A file is found by its recorded path first, then — for anything renamed — by its size and the
     digest of the recording it holds among the files that are there now. What is still not found is
@@ -226,6 +241,12 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
 
     With `kept`, a file whose original was put aside is restored by copying that back: the only way
     that is byte for byte. Otherwise the name and the tags go back and the audio is proved unchanged.
+
+    **`made` is what the pass created and this takes away again** (R-342, ruling 3): the plan per
+    album, a cover it fetched, the words it saved. Only those paths, read from the record the pass
+    wrote as it went — never a file it did not write down, and the dry run lists every one of them
+    before anything is removed. Without it a restored folder came back holding 136 files its owner
+    never had, and "a way back" has to mean the folder as it was.
     """
     root = root or snapshot.root
     done = Summary()
@@ -292,17 +313,31 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     # or one added since. Named, never removed — this pass only puts back. **A snapshot records audio
     # files only**, so what a pass wrote beside them — plans, covers, `.lrc` sidecars — is not counted
     # here and is not touched either; the README says so where the precautions are described.
-    left = [name for name in unclaimed if name not in recorded]
+    ours = set(made)
+    left = [name for name in unclaimed if name not in recorded and name not in ours]
     if left:
         log(f"{len(left)} file(s) under the root are not in the snapshot and were left alone "
-            f"(a pass's own — a plan, a cover it fetched — or added since): "
-            f"{', '.join(sorted(left)[:3])}" + (" …" if len(left) > 3 else ""))
+            f"(nobody wrote down who made them): {', '.join(sorted(left)[:3])}"
+            + (" …" if len(left) > 3 else ""))
+    # what the pass created goes last, so nothing is removed before everything is back
+    for name in sorted(dict.fromkeys(made)):
+        path = root / name
+        if not path.is_file():
+            continue
+        done.removed.append(name)
+        log(f"  {'would remove' if not apply else 'removed'} {name} — the pass wrote it")
+        if apply:
+            path.unlink()
+            with contextlib.suppress(OSError):
+                path.parent.rmdir()   # only if the pass's own file was the last thing in there
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
-            f"name; nothing was changed. `--restore … --apply` does it.")
+            f"name, {len(done.removed)} of the pass's own would be removed; nothing was changed. "
+            "`--restore … --apply` does it.")
     else:
-        log(f"{done.files} file(s) restored, {done.renamed} renamed back, {(done.changed and len(done.changed)) or 0} "
-            "whose audio is not what it was")
+        log(f"{done.files} file(s) restored, {done.renamed} renamed back, {len(done.removed)} of the "
+            f"pass's own removed, {(done.changed and len(done.changed)) or 0} whose audio is not what "
+            "it was")
     return done
 
 
@@ -387,7 +422,8 @@ def same_audio(a: Path, b: Path) -> bool:
 
 
 def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
-           root: Path | None = None, log: Callable[[str], None] = lambda s: None) -> Any:
+           root: Path | None = None, expect: str | None = None,
+           log: Callable[[str], None] = lambda s: None) -> Any:
     """Write to a copy, prove the recording survived, then replace the file in one step.
 
     `write` is given the path of a copy beside the original and may do what it likes to it. If it
@@ -396,6 +432,13 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
 
     With `keep` (and `root`), the original is copied there **before** the replace and only the first
     time, so a second pass does not overwrite the first copy with an already-written file.
+
+    **`expect` is the digest the snapshot already wrote down for this file**, and it halves the
+    reading (R-342, ruling 4). Without it the proof is `same_audio(path, tmp)` — both files read.
+    With it only the copy is read, and the answer is compared with a digest this same pass computed
+    minutes earlier, so nothing is taken on trust that was not measured. A digest that disagrees is
+    not a failure: the full comparison runs after all, which is what makes a stale expectation cost
+    time instead of correctness.
     """
     # **the copy keeps the suffix.** `tag.kind` is the one place a suffix decides anything, and a
     # temporary file called `.x.mp3.noaap-new` reads as an Opus — measured on the user's own
@@ -407,7 +450,7 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
     shutil.copy2(path, tmp)
     try:
         answer = write(tmp)
-        if not same_audio(path, tmp):
+        if not (expect is not None and decoded_sha(tmp) == expect) and not same_audio(path, tmp):
             raise Unsafe(f"{path.name}: what was written is not the same recording — nothing was changed")
         if keep is not None:
             put_aside(path, root or path.parent, keep)
@@ -476,5 +519,6 @@ __all__ = [
     "safely",
     "same_audio",
     "says_room",
+    "snapshot_for",
     "take",
 ]

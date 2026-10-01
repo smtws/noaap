@@ -303,7 +303,7 @@ comes out of its own files — the picture inside the first track that carries o
 noaap take-in /mnt/nas/Music                          # says what it would do, writes nothing
 noaap take-in /mnt/nas/Music --apply \
       --keep-originals ~/noaap-originals              # …and does it
-noaap take-in /mnt/nas/Music --restore ~/noaap-snapshot.jsonl --apply   # the way back
+noaap take-in /mnt/nas/Music --restore /mnt/nas/Music-snapshot.jsonl --apply   # the way back
 ```
 
 Each operation can be switched off for that run — `--names keep`, `--no-mb`, `--no-lyrics`,
@@ -317,7 +317,7 @@ every album to it.
 | | what it is | what it costs |
 |---|---|---|
 | the snapshot | one line per file — **every** file, not only the audio: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not (your `comment`, your replaygain, your cover), and a digest of what it holds — the **decoded** recording for audio, which is the one thing a retag cannot change, and the bytes for your `cover.jpg`, your `.url`, your thumbnails | a few hundred bytes a file, and one read of the tree |
-| the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy and two digests per file written |
+| the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy per file written, and one digest, because the snapshot already measured the original |
 | `--keep-originals DIR` | the first write to a file copies it there whole, **before** the rename | as much disk as the part of the collection that is touched |
 
 The third is the only one that can give a file back **byte for byte**: a tag round-trip is not
@@ -335,10 +335,17 @@ snapshot, so a restore leaves those where they are rather than deciding they are
 them. Anything it could not match it names instead of guessing at it.
 
 The pass expects to be interrupted: it writes down each album as it finishes, so running the same
-command again continues where it stood and repeats no album. That record sits beside the snapshot and
-is named after it (`noaap-snapshot.take-in.json`), and it says which collection it is about — so two
-collections can keep their snapshots in one folder without one of them deciding the other's albums
-are already done.
+command again continues where it stood and repeats no album. Three files sit beside the collection,
+all named after it — `Music-snapshot.jsonl`, `Music-snapshot.take-in.json` (what is finished) and
+`Music-snapshot.made.json` (what the pass created) — and each says which collection it is about, so
+two collections under one parent never read each other's.
+
+**A restore puts the folder back as it was**, which means it also takes away what the pass itself
+created: the plan it wrote for each album, a cover it fetched, the words it saved. Those are the paths
+in `…made.json` and nothing else — it never removes a file nobody wrote down — and the dry run lists
+every one of them before anything goes. Files of yours that the pass moved come back where they were,
+including the ones that are not audio; a disc folder it emptied to bring the album into the scheme is
+made again by the files going back into it.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:
@@ -384,7 +391,7 @@ whether it has been here.
 | `noaap watch-service install\|uninstall\|status` | The watcher as a user service of its own — it is always on, where the web service starts on demand. `--port` names the app, `--from-checkout` makes the unit follow this tree instead of the release venv. |
 | `noaap migrate` | Report what a ytalbum installation left behind and, with `--apply`, move its settings over; `--uninstall-old` also removes its units and launcher. See **[Coming from ytalbum](#coming-from-ytalbum)**. |
 | `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
-| `noaap take-in <folder>` | Take a whole collection in and bring every album to one state: adopted, looked up, covered, worded, tagged, named. Dry by default; `--apply` does it. `--names keep\|scheme`, `--no-mb`, `--no-lyrics`, `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` switch off what this run should not do. `--keep-originals DIR` copies each file aside before its first write — the only way back byte for byte — `--snapshot FILE` says where the record of every file goes, `--no-resume` starts again instead of continuing, and `--restore SNAPSHOT` puts names and tags back. See **[taking a whole collection in](#taking-a-whole-collection-in)**. |
+| `noaap take-in <folder>` | Take a whole collection in and bring every album to one state: adopted, looked up, covered, worded, tagged, named. Dry by default; `--apply` does it. `--names keep\|scheme`, `--no-mb`, `--no-lyrics`, `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` switch off what this run should not do. `--keep-originals DIR` copies each file aside before its first write — the only way back byte for byte — `--snapshot FILE` says where the record of every file goes, `--no-resume` starts again instead of continuing, and `--restore SNAPSHOT` puts the folder back as it was — names, tags, the files of yours it moved, and away again what the pass itself created. See **[taking a whole collection in](#taking-a-whole-collection-in)**. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap merge <folder>` | Compare another library with this one track by track and take the better copies. Dry by default; `--apply` acts, `--only` / `--album` narrow, `--new` also fetches the albums this library does not have, `--undecided` lists only the pairs nobody could rank, `--rejudge` settles the copies already listed here. See **[two copies of one song](#two-copies-of-one-song)**. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. `--find-moved` looks for a track's file again by what the file holds, `--strays` for copies an old version left in an adopted album's root, `--under FOLDER` also searches there; those two report only, and **`--apply` is what makes them act** — without it the whole run is a dry one. |
@@ -805,10 +812,10 @@ Every finished file carries these, written with [mutagen](https://mutagen.readth
 |---|---|
 | `title`, `artist` | the track, after the name fixing above |
 | `albumartist`, `album` | the album |
-| `tracknumber`, `tracktotal`, `totaltracks` | position and size |
+| `tracknumber`, `tracktotal`, `totaltracks` | the track's position on its disc, and how many tracks that disc has |
 | `date` | the album year, when there is one |
 | `compilation` | `1` on a compilation |
-| `discnumber` | on a multi-disc album |
+| `discnumber`, `disctotal`, `totaldiscs` | on a multi-disc album: which disc, and how many there are (in `.mp3` both pairs are one frame each, `TRCK` and `TPOS`) |
 | `musicbrainz_albumid`, `musicbrainz_trackid` | when MusicBrainz matched |
 | `lyrics` | a copy of the `.lrc` beside the file |
 | **`youtube_id`** | **the video id this track came from** |
@@ -1409,9 +1416,12 @@ Nothing outside this repository implements it yet; when something does, it gets 
   keeps that order through every later update; a video that appears afterwards joins the end
   instead of pushing your arrangement around. Until you change it, the source decides — and you
   can hand the order back, after which the source arranges it again.
-- **Multi-disc albums** are supported — file names carry `1-07`, `discnumber` is tagged, and
-  a split survives updates. The album view has a disc column after the title, on
-  every album, and each disc is numbered from 1 again when you change it.
+- **Multi-disc albums** are supported — file names carry `1-07`, the disc and the number of discs
+  are tagged, and a split survives updates. The album view has a disc column after the title, on
+  every album, and each disc is numbered from 1 again when you change it. **A track total is the
+  size of its own disc**, not of the album: before 1.26.1 all three writers wrote the album's length
+  into every file and none of them said how many discs there were, so a repair after upgrading lists
+  every track of every multi-disc album and corrects both.
 - **A lyrics lookup can also change what the ⏱ marks.** LRCLIB answers how long a song is even
   when its words were refused, so a track MusicBrainz does not know gains a length reference from
   the lyrics pass — and an album can pick up or lose its length flag because of it.

@@ -432,3 +432,67 @@ def test_the_owners_own_files_come_back_too(tmp_path, one_second_of_sound):
     assert done.missing == [] and done.changed == []
     assert {str(p.relative_to(root)): p.read_bytes()
             for p in sorted(root.rglob("*")) if p.is_file()} == before, "all four, where they were"
+
+
+def test_a_careful_write_reads_one_file_when_the_digest_is_already_known(tmp_path, one_second_of_mp3):
+    """The snapshot measured this file minutes ago; the write does not measure it again.
+
+    R-342 ruling 4. Without `expect` the proof is `same_audio(path, tmp)` — both files read. With it
+    only the copy is read, against a digest this same pass wrote down. Over a share that is the
+    difference between one remote read of the collection and two.
+    """
+    path = tmp_path / "collection" / "01 Track.mp3"
+    path.parent.mkdir(parents=True)
+    shutil.copy(one_second_of_mp3, path)
+    snap = precautions.read(precautions.take(tmp_path / "collection", tmp_path / "snap.jsonl"))
+    known = snap.files[0].audio
+
+    def write(tmp: Path) -> str:
+        audio = MFile(tmp, easy=True)
+        audio["title"] = ["What noaap says it is"]
+        audio.save()
+        return "written"
+
+    read: list[Path] = []
+    real_stream, real_decoded = precautions.stream_sha, precautions.decoded_sha
+    precautions.stream_sha = lambda p: (read.append(p), real_stream(p))[1]
+    precautions.decoded_sha = lambda p: (read.append(p), real_decoded(p))[1]
+    try:
+        assert precautions.safely(path, write, expect=known) == "written"
+        with_expect = list(read)
+        read.clear()
+        assert precautions.safely(path, write) == "written"
+        without = list(read)
+    finally:
+        precautions.stream_sha, precautions.decoded_sha = real_stream, real_decoded
+
+    assert len(with_expect) == 1 and with_expect[0] != path, "only the copy, and only once"
+    assert len(without) == 2 and path in without, "the old way reads the original too"
+
+
+def test_a_digest_that_disagrees_costs_time_and_not_correctness(tmp_path, one_second_of_mp3):
+    """A stale expectation must never be the reason a write is refused — or accepted."""
+    path = tmp_path / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    before = path.read_bytes()
+
+    def retag(tmp: Path) -> str:
+        audio = MFile(tmp, easy=True)
+        audio["title"] = ["fine"]
+        audio.save()
+        return "written"
+
+    # a digest of some other recording: the full comparison runs after all and lets this through
+    assert precautions.safely(path, retag, expect="not this file's digest at all") == "written"
+    from noaap.tag import raw_tags
+    assert raw_tags(path).get("TIT2") == ["fine"]
+
+    def ruin(tmp: Path) -> None:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+                        "-i", "sine=frequency=880:duration=1", "-c:a", "libmp3lame", str(tmp)],
+                       check=True)
+
+    path.write_bytes(before)
+    with pytest.raises(Unsafe):
+        precautions.safely(path, ruin, expect="not this file's digest at all")
+    assert path.read_bytes() == before, "and the file that was there is still there"

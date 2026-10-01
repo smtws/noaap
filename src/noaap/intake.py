@@ -34,6 +34,7 @@ from .models import AlbumPlan
 from .treatment import Treatment
 
 STATE = "take-in.json"      # the suffix; the name is the snapshot's own (see `state_path`)
+MADE = "made.json"          # and what the pass created, so a restore can undo that too
 
 
 @dataclass
@@ -90,6 +91,50 @@ def state_path(snapshot: Path) -> Path:
     return snapshot.with_name(f"{snapshot.stem}.{STATE}")
 
 
+def made_path(snapshot: Path) -> Path:
+    """Where the pass writes down what it *created*, so a restore can take it away again.
+
+    The snapshot says what was there; this says what was not. A restore that only put files back
+    left noaap's own leavings behind — one plan per album, the covers it fetched, the words it
+    saved — so the folder came back with 136 files in it that its owner never had (R-342, ruling 3:
+    "a way back" means the folder as it was).
+    """
+    return snapshot.with_name(f"{snapshot.stem}.{MADE}")
+
+
+def read_made(path: Path, root: Path | None = None) -> list[str]:
+    """What a pass recorded as its own, for this root. Another root's record is not this one's."""
+    if not path.is_file():
+        return []
+    try:
+        got = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return []
+    if root is not None and got.get("root") not in (None, str(root), str(root.resolve())):
+        return []
+    return [str(name) for name in (got.get("made") or [])]
+
+
+def write_made(path: Path, root: Path, made: list[str]) -> None:
+    """Written after each album, like the resume file: an interruption loses nothing but its album."""
+    tmp = path.with_suffix(".part")
+    tmp.write_text(json.dumps({"root": str(root), "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                               "made": sorted(dict.fromkeys(made))}, ensure_ascii=False, indent=1))
+    os.replace(tmp, path)
+
+
+def beside(folder: Path) -> set[str]:
+    """What is in an album folder that is not audio — a plan, a cover, an `.lrc`, their own scan.
+
+    Asked before a pass touches the album and again afterwards; the difference is what the pass
+    created. Measured rather than predicted, so a writer that gains a file does not have to remember
+    to say so.
+    """
+    return {str(p.relative_to(folder)) for p in folder.rglob("*")
+            if p.is_file() and p.suffix.lower() not in precautions.AUDIO
+            and not p.name.endswith(".part") and ".noaap-new" not in p.name}
+
+
 def read_state(path: Path, root: Path | None = None) -> set[str]:
     """Which album folders are already finished, by their path relative to the root.
 
@@ -143,9 +188,10 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     log(f"{len(folders)} album folder(s) under {root}")
     log(f"  {choices.says()}")
 
-    snapshot = snapshot or root.parent / precautions.SNAPSHOT
-    state = state_path(snapshot)
+    snapshot = snapshot or precautions.snapshot_for(root)
+    state, made_at = state_path(snapshot), made_path(snapshot)
     finished = read_state(state, root) if resume and not dry_run else set()
+    made = read_made(made_at, root) if resume and not dry_run else []
     if finished:
         log(f"  {len(finished)} album(s) were done by an earlier run and are skipped")
     if not dry_run and not snapshot.exists():
@@ -153,6 +199,13 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         precautions.take(root, snapshot, log=log)
     if keep is not None and not dry_run:
         log("  " + precautions.says_room(root, keep))
+    # **what the snapshot already measured, so a careful write reads one file instead of two**
+    # (R-342, ruling 4). A couple of megabytes of strings for eleven thousand tracks, read once.
+    recorded: dict[str, str] = {}
+    if not dry_run and snapshot.is_file():
+        recorded = {r.path: r.audio for r in precautions.read(snapshot).files
+                    if r.audio and r.is_audio}
+        log(f"  {len(recorded)} file(s) already have a digest from the snapshot")
 
     for album_dir in folders:
         where = str(album_dir.relative_to(root))
@@ -160,6 +213,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             continue
         service.check()
         done.albums += 1
+        # what is in the folder besides its audio, before this pass has written anything into it
+        was_beside = beside(album_dir)
         plan = _adopted(album_dir, root, source, log=log)
         if plan is None:
             done.refused.append(where)
@@ -180,12 +235,17 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         had_a_cover = dict(plan.cover_fetched)
         run(plan, here, service.source_for(plan), want=want, careful=True, keep=keep, keep_root=root,
             keep_as=where,          # the folder the snapshot knows, which `relocate` may have changed
+            expect=lambda name, folder=where: recorded.get(f"{folder}/{name}"),
             track_source=service._track_source(plan), on_track=_counted(done, service.on_track),
             check=service.check, download=False)
         if plan.cover_fetched != had_a_cover:
             done.covers += 1        # a cover was written beside this album, and the plan records it
+        # **what this pass put in the folder, so a restore can take it away** (§9, slice 102). The
+        # difference between before and after, not a list some writer has to remember to add to.
+        made += [str((here / name).relative_to(root)) for name in beside(here) - was_beside]
         finished.add(where)
         write_state(state, root, finished)
+        write_made(made_at, root, made)
         log(f"  {plan.albumartist} — {plan.album}: {len(plan.tracks)} track(s)")
 
     if dry_run:

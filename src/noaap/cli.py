@@ -800,15 +800,24 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     service = _service(cfg, library)
 
     if args.restore:
-        snap = precautions.read(Path(args.restore).expanduser())
+        where = Path(args.restore).expanduser()
+        snap = precautions.read(where)
         kept = Path(args.keep_originals).expanduser() if args.keep_originals else None
-        done = precautions.restore(snap, root, apply=args.apply, kept=kept, log=print)
+        # what the pass wrote down as its own, so the restore can take it away (R-342, ruling 3)
+        made = intake.read_made(intake.made_path(where), root)
+        done = precautions.restore(snap, root, apply=args.apply, kept=kept, made=made, log=print)
         for name in done.missing:
             print(f"  not there: {name}")
         for line in done.lost:
             print(f"  lost a field of yours: {line}")
         if done.changed:
             print(f"  ⚠ {len(done.changed)} file(s) do not hold the recording they held")
+        if args.apply:
+            # the pass's own two records go last of all: they describe a pass that has been undone
+            for path in (intake.state_path(where), intake.made_path(where)):
+                if path.is_file():
+                    path.unlink()
+                    print(f"  removed {path.name} — the record of a pass that is undone")
         return 1 if (done.changed or done.lost) else 0
 
     choices = intake.Choices(names=args.names, musicbrainz=not args.no_mb, lyrics=not args.no_lyrics,

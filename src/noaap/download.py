@@ -6,6 +6,7 @@ changed, missing ones are downloaded, and the plan is saved after every track.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -670,6 +671,9 @@ def run(
     # that moves an album into noaap's scheme does it before the first write (§9, slice 99). What is
     # filed is `keep_as` plus the track's own place inside the album, so a disc subfolder is kept too.
     keep_as: str | None = None,
+    # the digest a snapshot already recorded for a file, by its name in the album: it is what makes a
+    # careful write read one file instead of two (§9, slice 102, R-342 ruling 4).
+    expect: Callable[[str], str | None] | None = None,
     # A track's audio comes from its chosen candidate, which carries its own provider: one album can
     # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
     # — the cover — and this answers for a track.
@@ -706,11 +710,15 @@ def run(
     rename, retag = renames(plan, want), retags(plan, want)
     if want is not None and not want.cover_embedded:
         cover = None          # the picture stays beside the album, not inside every file
+    emptied: set[Path] = set()   # disc folders the renames below take the last file out of
     for track in plan.tracks:
         check()
         # **the original goes aside before anything happens to the file** (§9, slice 99), under the
         # name it has now — which is the name the snapshot wrote down. Putting it aside after the
         # rename filed it under noaap's name instead, and a restore then could not find it.
+        # **both of these are asked before the rename**, while the file still has the name the
+        # snapshot wrote down: where the original is kept, and what it is expected to hold.
+        recorded = expect(track.filename) if expect else None
         if keep is not None and track.state == "done":
             here_now = album_dir / track.filename
             if here_now.exists():
@@ -719,6 +727,8 @@ def run(
         wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted
+            if old.parent != album_dir:
+                emptied.add(old.parent)     # a disc folder this pass is taking the files out of
             if old.exists() and not new.exists():
                 old.rename(new)
                 on_track(track, "renamed")
@@ -769,7 +779,8 @@ def run(
                     # a `comment` that had been in the file since 2006.
                     theirs = bool(plan.adopted)
                     write = lambda f: tag_file(f, plan, track, cover, text, keep_unknown=theirs)  # noqa: E731
-                    track.tagged = safely(final, write, log=say) if careful else write(final)
+                    track.tagged = (safely(final, write, expect=recorded, log=say) if careful
+                                    else write(final))
                     save_plan(plan, album_dir)
                     on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")
                 elif looked_up or measured or failed_trim or reconciled:
@@ -860,6 +871,14 @@ def run(
 
     if all(t.state == "done" or not t.in_source for t in plan.tracks) and parts.exists():
         shutil.rmtree(parts)  # only our own scratch dir, and only when nothing is left to resume
+    # **a disc folder this pass emptied is this pass's own mess** (§9, slice 102). Bringing a
+    # multi-disc album to the scheme takes every file out of `CD 1`, `CD 2` and leaves them standing
+    # empty — measured on a two-disc album: both still there afterwards. Deepest first, and `rmdir`
+    # refuses a folder that still holds anything, so whatever else was in there stays and so does the
+    # folder. A restore puts the files back under their recorded paths, which makes it again.
+    for folder in sorted(emptied, key=lambda path: -len(path.parts)):
+        with contextlib.suppress(OSError):
+            folder.rmdir()
     return plan
 
 

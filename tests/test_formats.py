@@ -134,10 +134,12 @@ def test_a_disc_number_is_written_only_when_there_is_more_than_one(mp3_file, fla
     tag_file(mp3_file, one, one.tracks[0])
     tag_file(flac_file, one, one.tracks[0])
     assert "TPOS" not in ID3(mp3_file) and "discnumber" not in FLAC(flac_file)
+    assert "disctotal" not in FLAC(flac_file), "nor a count of discs there is one of"
 
     tag_file(mp3_file, many, many.tracks[1])
     tag_file(flac_file, many, many.tracks[1])
-    assert ID3(mp3_file)["TPOS"].text == ["2"] and FLAC(flac_file)["discnumber"] == ["2"]
+    assert ID3(mp3_file)["TPOS"].text == ["2/2"], "ID3 counts within the total, in one frame"
+    assert FLAC(flac_file)["discnumber"] == ["2"] and FLAC(flac_file)["disctotal"] == ["2"]
 
 
 def test_lyrics_are_written_and_read_back_in_both(flac_file, mp3_file):
@@ -287,3 +289,63 @@ def test_a_length_is_measured_once_and_the_same_way_everywhere(tmp_path, monkeyp
     _measure_candidate(track, path)
 
     assert track.candidate("x").length == 269.7, "a known length survives a file that will not say"
+
+
+def _three_discs():
+    """A plan whose discs are of different lengths, and whose numbers restart on each — which is
+    what the user's own library does: 52 discs across 23 albums, numbered 1..n within the disc."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+
+    tracks = [PlanTrack(video_id=f"v{d}{n}", number=n, artist="A", title=f"T{d}-{n}",
+                        filename=f"{d}-{n}.x", provenance={}, disc=d)
+              for d, many in ((1, 3), (2, 1), (3, 2)) for n in range(1, many + 1)]
+    return AlbumPlan(source_url="https://www.youtube.com/playlist?list=PLx", source_id="PLx",
+                     kind=Kind.OFFICIAL_ALBUM, album="Alles", albumartist="Aphelion", year=None,
+                     cover_url=None, folder="x", tracks=tracks)
+
+
+def test_a_track_total_is_the_count_of_its_own_disc(flac_file, mp3_file, m4a_file):
+    """And the count of discs is a field of its own (§9, slice 102).
+
+    All three writers used `len(plan.tracks)` — the whole album — so every track of a three-disc set
+    said 29 of 29, and only the m4a writer ever said how many discs there were. Measured in the
+    user's own library before the fix: **627 files across 23 albums**, every one of them wrong, and
+    0 of 627 carrying a disc total at all. A single-disc album's two numbers are equal, which is why
+    nothing noticed.
+    """
+    from mutagen.mp4 import MP4
+
+    plan = _three_discs()
+    second = next(t for t in plan.tracks if t.disc == 2)      # the only track on disc 2
+
+    tag_file(flac_file, plan, second)
+    assert FLAC(flac_file)["tracktotal"] == ["1"] and FLAC(flac_file)["totaltracks"] == ["1"]
+    assert FLAC(flac_file)["disctotal"] == ["3"] and FLAC(flac_file)["totaldiscs"] == ["3"]
+
+    tag_file(mp3_file, plan, second)
+    assert ID3(mp3_file)["TRCK"].text == ["1/1"] and ID3(mp3_file)["TPOS"].text == ["2/3"]
+
+    tag_file(m4a_file, plan, second)
+    assert MP4(m4a_file)["trkn"] == [(1, 1)] and MP4(m4a_file)["disk"] == [(2, 3)]
+
+    third = next(t for t in plan.tracks if t.disc == 3)       # a disc of two
+    tag_file(flac_file, plan, third)
+    assert FLAC(flac_file)["tracktotal"] == ["2"], "its own disc, not the album's nine"
+
+
+def test_the_disc_totals_read_back_as_they_were_written(flac_file, mp3_file, m4a_file):
+    """Which is the half that keeps the dry run honest (§9, slice 85).
+
+    `TPOS` went through the key loop that reads a frame's whole text, so a file noaap had just
+    written would come back with `discnumber` = "2/3" and be compared against "2" — and every pass
+    would say, for ever, that it needs retagging.
+    """
+    from noaap.tag import tags_in
+
+    plan = _three_discs()
+    second = next(t for t in plan.tracks if t.disc == 2)
+    for path in (flac_file, mp3_file, m4a_file):
+        tag_file(path, plan, second)
+        got = tags_in(path)
+        assert (got["tracknumber"], got["tracktotal"], got["totaltracks"]) == ("1", "1", "1"), path.suffix
+        assert (got["discnumber"], got["disctotal"], got["totaldiscs"]) == ("2", "3", "3"), path.suffix
