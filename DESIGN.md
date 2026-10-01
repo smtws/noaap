@@ -2987,6 +2987,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    and **461 more in 33 single-disc albums**, each of them an album of thirteen tracks whose highest
    number is fourteen. Same defect, one disc at a time.
 
+103. ✅ **A collection on a share comes here a batch at a time** (2026-10-01, P82). The user's music
+   is on a Zyxel NAS540, and the first question was whether to put a helper on it. Measured on the box
+   (`docs/spikes/2026-10-nas-helper.md`): it reads at 128 MB/s and writes at 72.8, `md5sum` runs at
+   25–49 MB/s — but the **decoded** digest, which is what a snapshot records and a careful write
+   proves, runs at **0.97 MB/s on mp3**, so 225 GB would take 62 hours there against 2.1 h of reading
+   it over a 30 MB/s wire. And `ffmpeg -c copy -metadata` on that box produced a file whose decoded
+   digest **differed from the original's** — the mp3 muxer rewrites the Xing/LAME header — so nothing
+   on the NAS may write a tag either. A helper would have been worth 1.2 h out of 8.3; copying the
+   collection here, taking it in, and copying it back is ~5.2 h with every precaution at full
+   strength, because the digests and the tag writes happen where they are fast. **So there is no
+   helper.**
+   What there is instead is `--staging`, and the shape of it is the user's: *"think about a
+   configurable batch size from the start (maybe default to 1/10th of any given running-box's free
+   disk space) (careful, dont count mounted nas shares into it like many filemanagers do)"*. A batch
+   defaults to a tenth of the free space of **the filesystem the staging folder is on**, from
+   `statvfs` of that one path — the trap being that a file manager shows one number for "disk" and a
+   batch sized against 5.4 TB of NAS would fill this machine. An album larger than a batch is a batch
+   of its own rather than a refusal: a twelve-gigabyte live set is still somebody's album.
+   **The share is its own way back**, which is why `--keep-originals` is refused here: every original
+   stays untouched until its replacement has been copied back *and* digested. The copy back writes
+   beside its target and renames into place — atomic within the share — and **removes nothing until
+   every file of the batch is verified**, because an album whose folder the scheme renamed shares no
+   path with its old self, so the rule has to be "what the snapshot recorded and the staged copy no
+   longer has", applied once at the end. One file that cannot be verified means nothing is removed at
+   all. A stop leaves whole batches done or not started; a rerun skips an album that already holds a
+   plan, which is what makes the mode idempotent across the renames it does itself — a batch's name
+   cannot survive its own albums being moved.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

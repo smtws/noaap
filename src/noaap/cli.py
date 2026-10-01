@@ -193,6 +193,12 @@ def main(argv: list[str] | None = None) -> int:
     ti.add_argument("--no-resume", action="store_true", help="start again rather than continue an interrupted run")
     ti.add_argument("--restore", type=Path, metavar="SNAPSHOT",
                     help="put names and tags back from a snapshot (dry unless --apply)")
+    ti.add_argument("--staging", type=Path, metavar="DIR",
+                    help="for a collection on another filesystem (a mounted share): copy it here a "
+                         "batch at a time, take each batch in on this machine, and copy it back")
+    ti.add_argument("--batch-size", metavar="BYTES",
+                    help="how much to stage at once — a number, or with G/M (default: a tenth of the "
+                         "free space of the filesystem the staging folder is on, that one alone)")
 
     ad = sub.add_parser("adopt", help="take a collection in where it stands: one plan per album, nothing else")
     ad.add_argument("root", nargs="?", help="the folder to adopt — the library root by default")
@@ -787,6 +793,22 @@ def _watch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         time.sleep(interval)
 
 
+def _bytes(said: str | None) -> int | None:
+    """A size a person would type: `20G`, `500M`, or plain bytes. None stays None."""
+    if not said:
+        return None
+    text = str(said).strip().upper().removesuffix("B")
+    scale = {"K": 1000, "M": 1000**2, "G": 1000**3, "T": 1000**4}.get(text[-1:], 1)
+    number = text[:-1] if scale > 1 else text
+    try:
+        value = float(number)
+    except ValueError as e:
+        raise config_mod.Refused(f"--batch-size {said!r}: a number, or one with G or M after it") from e
+    if value <= 0:
+        raise config_mod.Refused("--batch-size has to be more than nothing")
+    return int(value * scale)
+
+
 def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     """`noaap take-in`: a whole collection to one state, or a snapshot put back."""
     from . import intake, precautions
@@ -825,6 +847,18 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     choices = intake.Choices(names=args.names, musicbrainz=not args.no_mb, lyrics=not args.no_lyrics,
                              cover_beside=not args.no_cover, cover_embedded=not args.no_embed_cover,
                              lyrics_embedded=not args.no_embed_lyrics, tags=not args.no_tags)
+    if args.staging:
+        from . import staged
+        if args.keep_originals:
+            raise config_mod.Refused(
+                "--keep-originals is not for a staged run: the share holds the untouched original of "
+                "every file until its replacement has been copied back and verified, which is a "
+                "better way back than a copy of it")
+        done = staged.take_in_staged(service, root, choices,
+                                     staging=Path(args.staging).expanduser(),
+                                     batch_size=_bytes(args.batch_size), dry_run=not args.apply,
+                                     resume=not args.no_resume, log=print)
+        return 1 if done.unverified else 0
     keep = Path(args.keep_originals).expanduser() if args.keep_originals else None
     done = intake.take_in(service, root, choices, dry_run=not args.apply,
                           snapshot=Path(args.snapshot).expanduser() if args.snapshot else None,

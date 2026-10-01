@@ -347,6 +347,38 @@ every one of them before anything goes. Files of yours that the pass moved come 
 including the ones that are not audio; a disc folder it emptied to bring the album into the scheme is
 made again by the files going back into it.
 
+<a id="when-the-collection-is-on-a-nas"></a>
+### When the collection is on a NAS
+
+A share is slow for the two things a take-in does most — proving a recording and writing a tag — so
+`--staging` turns the pass around: it copies a **batch** of albums to this machine's own disk, takes
+that batch in here at local speed with every precaution, copies it back verified, removes the local
+copy, and goes on to the next batch. Measured on the user's own NAS: about 5 hours for 11,000 tracks
+this way against 8.3 over the share, and the write-up of why is in
+`docs/spikes/2026-10-nas-helper.md`.
+
+```sh
+noaap take-in /mnt/nas/Music --staging ~/noaap-staging                    # says what it would do
+noaap take-in /mnt/nas/Music --staging ~/noaap-staging --apply            # …and does it
+noaap take-in /mnt/nas/Music --staging ~/noaap-staging --batch-size 20G --apply
+```
+
+**The batch is a tenth of the free space of the filesystem the staging folder is on** — that one
+filesystem, asked directly, never the share and never some total across your mounts. The dry run says
+which filesystem it measured and how much was free. An album larger than a whole batch is a batch of
+its own and says so.
+
+**The share is its own way back.** `--keep-originals` is not used and is refused here: every original
+stays untouched on the share until its replacement has been copied back *and* its digest checked, so
+there is nothing to keep a second copy of. On the way back a file is written beside its target and
+renamed into place, which is atomic within the share; only once every file of the batch is verified
+are the files the scheme replaced removed, and they are listed. If one file cannot be verified,
+**nothing is removed at all** and the share keeps every original. The batch's snapshot restores
+against the share exactly as against a local folder.
+
+A run that stops leaves whole batches done or not started, resumes where it stood, and skips an album
+that already holds a plan — bringing those to changed settings is a repair, which needs no staging.
+
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:
 
@@ -391,7 +423,7 @@ whether it has been here.
 | `noaap watch-service install\|uninstall\|status` | The watcher as a user service of its own — it is always on, where the web service starts on demand. `--port` names the app, `--from-checkout` makes the unit follow this tree instead of the release venv. |
 | `noaap migrate` | Report what a ytalbum installation left behind and, with `--apply`, move its settings over; `--uninstall-old` also removes its units and launcher. See **[Coming from ytalbum](#coming-from-ytalbum)**. |
 | `noaap config` | Show the settings. With a setter — `--library`, `--cookies-from-browser BROWSER[:PROFILE]`, `--cookies-file FILE`, `--lyrics on\|off` — it **writes** the configuration file and says so, naming the file and what changed. Without one it reports and writes nothing. Note that `--library` on every *other* command only overrides the library for that run. |
-| `noaap take-in <folder>` | Take a whole collection in and bring every album to one state: adopted, looked up, covered, worded, tagged, named. Dry by default; `--apply` does it. `--names keep\|scheme`, `--no-mb`, `--no-lyrics`, `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` switch off what this run should not do. `--keep-originals DIR` copies each file aside before its first write — the only way back byte for byte — `--snapshot FILE` says where the record of every file goes, `--no-resume` starts again instead of continuing, and `--restore SNAPSHOT` puts the folder back as it was — names, tags, the files of yours it moved, and away again what the pass itself created. See **[taking a whole collection in](#taking-a-whole-collection-in)**. |
+| `noaap take-in <folder>` | Take a whole collection in and bring every album to one state: adopted, looked up, covered, worded, tagged, named. Dry by default; `--apply` does it. `--names keep\|scheme`, `--no-mb`, `--no-lyrics`, `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` switch off what this run should not do. `--keep-originals DIR` copies each file aside before its first write — the only way back byte for byte — `--snapshot FILE` says where the record of every file goes, `--no-resume` starts again instead of continuing, `--staging DIR` with `--batch-size` takes in a collection on another filesystem a batch at a time (see **[when the collection is on a NAS](#when-the-collection-is-on-a-nas)**), and `--restore SNAPSHOT` puts the folder back as it was — names, tags, the files of yours it moved, and away again what the pass itself created. See **[taking a whole collection in](#taking-a-whole-collection-in)**. |
 | `noaap adopt <folder>` | Take a collection in where it stands: one plan per album, nothing renamed and nothing written into your files. `--apply` writes, `--only` / `--album` narrow, `--rename` and `--retag` are separate acts afterwards, `--undo` gives it back. |
 | `noaap merge <folder>` | Compare another library with this one track by track and take the better copies. Dry by default; `--apply` acts, `--only` / `--album` narrow, `--new` also fetches the albums this library does not have, `--undecided` lists only the pairs nobody could rank, `--rejudge` settles the copies already listed here. See **[two copies of one song](#two-copies-of-one-song)**. |
 | `noaap repair` | One-off, offline: performer-only artist names, guest credits moved into the title, the album's own name removed from its track titles, one spelling per artist, duplicate tracks removed — renames and retags, no downloads. It also gives every finished track the **measured length of its own file**, which is the one thing a tidy library never got: the pass that measures used to be skipped for any album whose names were already right. `--dry-run` names everything the real run would do — **per track**, including which audio files would be rewritten and which tag values would change — and writes nothing. `--find-moved` looks for a track's file again by what the file holds, `--strays` for copies an old version left in an adopted album's root, `--under FOLDER` also searches there; those two report only, and **`--apply` is what makes them act** — without it the whole run is a dry one. |

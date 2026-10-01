@@ -1,0 +1,219 @@
+"""Taking in a collection that is somewhere else, a batch at a time (DESIGN §9, slice 103).
+
+The user's collection is on a NAS, and 225 GB staged in one go would fill this machine and block
+whatever else they are doing: *"think about a configurable batch size from the start (maybe default
+to 1/10th of any given running-box's free disk space) (careful, dont count mounted nas shares into
+it like many filemanagers do)"*.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+from pathlib import Path
+
+import pytest
+from mutagen import File as MFile
+
+from noaap import intake, precautions, staged
+from noaap.config import Config
+from noaap.service import Service
+
+
+def _album(folder: Path, titles: list[str], tone: Path, artist: str, album: str) -> None:
+    folder.mkdir(parents=True)
+    for n, title in enumerate(titles, 1):
+        path = folder / f"{n:02d} {title}.opus"
+        shutil.copy(tone, path)
+        audio = MFile(path)
+        audio["title"] = [title]
+        audio["artist"] = [artist]
+        audio["album"] = [album]
+        audio["comment"] = [f"{album} {title}"]
+        audio.save()
+
+
+@pytest.fixture
+def elsewhere(tmp_path, one_second_of_sound):
+    """A collection standing in for the share, with the owner's own cover in one album."""
+    root = tmp_path / "share"
+    _album(root / "aphelion" / "nocturnes (2003)", ["First", "Second"], one_second_of_sound,
+           "Aphelion", "Nocturnes")
+    _album(root / "bramblewood" / "hollow", ["Hollow", "Rime", "Vigil"], one_second_of_sound,
+           "Bramblewood", "Hollow")
+    (root / "bramblewood" / "hollow" / "cover.jpg").write_bytes(b"\xff\xd8 theirs")
+    return root
+
+
+# -- the batch size ---------------------------------------------------------------------------
+
+
+def test_the_free_space_is_the_staging_filesystems_and_no_other(tmp_path):
+    """The trap the user named: a file manager shows one number for "disk" and counts the share in.
+
+    `statvfs` of the staging path alone. On this machine the two differ by an order of magnitude —
+    the laptop's own disk against 5.9 TB on the NAS — so sizing a batch against the wrong one would
+    stage hundreds of gigabytes onto a disk that has not got them.
+    """
+    free, where = staged.free_space(tmp_path)
+    mine = os.statvfs(tmp_path)
+    assert free == mine.f_bavail * mine.f_frsize
+    assert where, "and it says which filesystem that was"
+
+
+def test_the_free_space_of_a_folder_that_is_not_there_yet(tmp_path):
+    """A staging folder is named before it is made, and still has to answer for its filesystem."""
+    free, _ = staged.free_space(tmp_path / "not" / "yet" / "made")
+    assert free == staged.free_space(tmp_path)[0]
+
+
+def test_albums_are_grouped_into_batches_that_fit():
+    made = staged.batches([(Path(f"a{i}"), 3) for i in range(7)], 10)
+    assert [len(b.albums) for b in made] == [3, 3, 1]
+    assert [b.bytes for b in made] == [9, 9, 3]
+
+
+def test_an_album_bigger_than_a_batch_is_its_own_batch():
+    """A twelve-gigabyte live set is still somebody's album: it is named, not refused."""
+    made = staged.batches([(Path("big"), 12), (Path("small"), 1)], 10)
+    assert [b.bytes for b in made] == [12, 1]
+    assert made[0].alone and made[0].bytes > 10
+
+
+def test_the_batch_order_is_the_listings_order_so_a_resume_means_something():
+    albums = [(Path(f"a{i}"), 4) for i in range(5)]
+    once = staged.batches(albums, 10)
+    again = staged.batches(albums, 10)
+    assert [[str(a) for a in b.albums] for b in once] == [[str(a) for a in b.albums] for b in again]
+
+
+def test_a_record_of_another_root_is_not_this_ones(tmp_path):
+    where = tmp_path / staged.STAGED
+    staged.write_done(where, tmp_path / "somewhere-else", {"a"})
+    assert staged.read_done(where, tmp_path / "somewhere-else") == {"a"}
+    assert staged.read_done(where, tmp_path / "here") == set()
+
+
+# -- the round trip ---------------------------------------------------------------------------
+
+
+def _service(tmp_path, root):
+    cfg = Config(library_root=root, musicbrainz=False, lyrics=False)
+    return Service(cfg, root, log=lambda s: None)
+
+
+QUIET = intake.Choices(names="scheme", musicbrainz=False, lyrics=False)
+
+
+def test_a_dry_run_says_the_batches_and_writes_nothing_anywhere(elsewhere, tmp_path):
+    before = {str(p.relative_to(elsewhere)): p.read_bytes()
+              for p in sorted(elsewhere.rglob("*")) if p.is_file()}
+    said = []
+
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=True, log=said.append)
+
+    assert done.albums == 2 and done.batches >= 1 and done.tracks == 5
+    assert any("GB free" in line for line in said), said
+    assert any("would be renamed" in line for line in said), said
+    assert {str(p.relative_to(elsewhere)): p.read_bytes()
+            for p in sorted(elsewhere.rglob("*")) if p.is_file()} == before
+    assert not (tmp_path / "staging").exists(), "not even the staging folder"
+
+
+def test_the_round_trip_leaves_the_share_as_the_pass_would_have(elsewhere, tmp_path):
+    """One batch per album, so the copy back is exercised twice, and nothing is lost either way."""
+    staging = tmp_path / "staging"
+
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=staging, batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert done.batches == 2 and done.tracks == 5 and done.unverified == []
+    assert done.copied_out > 0 and done.copied_back > 0
+    assert not (staging / "batch").exists(), "the staging copy is gone"
+
+    on_share = sorted(str(p.relative_to(elsewhere)) for p in elsewhere.rglob("*") if p.is_file())
+    assert "Aphelion/Nocturnes/Aphelion - Nocturnes - 01 - First.opus" in on_share, on_share
+    assert not any("nocturnes (2003)" in name for name in on_share), "the old folder is gone"
+    assert "Bramblewood/Hollow/cover.jpg" in on_share, "their cover came along"
+    assert all(not name.endswith(staged.PART) for name in on_share), "no half-copied file left"
+    assert len([n for n in on_share if n.endswith(".opus")]) == 5, on_share
+
+
+def test_nothing_on_the_share_is_removed_until_its_replacement_is_verified(elsewhere, tmp_path,
+                                                                           monkeypatch):
+    """The rule that makes the share its own way back: add and replace, and remove only after.
+
+    A digest that does not match stands for any reason a copy back can go wrong — a dropped
+    connection, a share that filled up — and in every one of them the original has to still be there.
+    """
+    before = {str(p.relative_to(elsewhere)): p.read_bytes()
+              for p in sorted(elsewhere.rglob("*")) if p.is_file()}
+    real = staged.bytes_sha
+
+    def wrong(path: Path) -> str:
+        """One file arrives on the share wrong — and only the share's copy of it reads wrong, since
+        a fake that lies about both sides would have them agree, which is no test at all."""
+        said = real(path)
+        inside = str(path).startswith(str(elsewhere))
+        return said + "-wrong" if inside and "Rime" in path.name else said
+
+    monkeypatch.setattr(staged, "bytes_sha", wrong)
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=False, log=said.append)
+
+    assert done.unverified, "the mismatch was noticed"
+    assert done.superseded == [], "and so nothing of the share's was removed"
+    for name, was in before.items():
+        assert (elsewhere / name).is_file(), f"{name} is still there"
+        assert (elsewhere / name).read_bytes() == was, f"{name} is unchanged"
+    assert any("nothing of the share's own was removed" in line for line in said), said
+
+
+def test_a_batch_already_done_is_not_done_again(elsewhere, tmp_path):
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    again = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                  batch_size=1, dry_run=False, log=lambda s: None)
+    assert again.done == [], "both batches were finished by the first run"
+    assert again.copied_out == 0 and again.copied_back == 0, "and nothing crossed again"
+
+
+def test_a_restore_from_the_batchs_snapshot_reaches_the_share(elsewhere, tmp_path):
+    """The snapshot is taken on the staging copy, and its paths are relative — so a restore can be
+    pointed at the share, which is the root those paths were read from in the first place."""
+    staging = tmp_path / "keeping"
+    before = {str(p.relative_to(elsewhere)): p.read_bytes()
+              for p in sorted(elsewhere.rglob("*")) if p.is_file()}
+
+    # keep the batch's snapshot by taking it ourselves, the way `--restore` would be given one
+    source = __import__("noaap.sources", fromlist=["get"]).get("folder",
+                                                               Config(library_root=elsewhere))
+    one = staged.batches(staged.album_sizes(elsewhere, source), 1)[0]
+    copy = staging / "batch"
+    for album in one.albums:
+        (copy / album.relative_to(elsewhere)).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(album, copy / album.relative_to(elsewhere))
+    snapshot = precautions.take(copy, tmp_path / "batch.jsonl")
+
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    assert (elsewhere / "Aphelion" / "Nocturnes").is_dir(), "the share has noaap's names now"
+
+    done = precautions.restore(precautions.read(snapshot), elsewhere, apply=True, log=lambda s: None)
+
+    assert done.missing == [] and done.changed == [] and done.lost == []
+    for name in before:
+        if name.startswith("aphelion/"):
+            assert (elsewhere / name).is_file(), f"{name} is back under its own name"
+    # names, tags and a proof of the recording — not the bytes, because a tag round-trip is not
+    # byte-identical and there are no kept originals here. **Before the copy back, the share's own
+    # untouched file is the byte-for-byte way back**; after it, this is.
+    from noaap.tag import raw_tags
+    recorded = {r.path: r.tags for r in precautions.read(snapshot).files}
+    name = "aphelion/nocturnes (2003)/01 First.opus"
+    assert raw_tags(elsewhere / name) == recorded[name], "every tag it had, as it had it"

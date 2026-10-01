@@ -1,5 +1,12 @@
 # A helper on the NAS — what the box can do, and whether it is worth it (P82, 2026-10-01)
 
+> **Closed, 2026-10-01: no helper.** Decided with the user on the numbers below. What was built
+> instead is `noaap take-in --staging`, which brings the collection here a batch at a time — DESIGN
+> §9 slice 103, and *When the collection is on a NAS* in the README. The one part of the design that
+> was worth arguing for, the NAS-side copy for `--keep-originals`, fell away with it: a staged run
+> needs no kept originals, because the share holds every untouched original until its replacement is
+> copied back and verified.
+
 R-349, for the user's twenty-year collection on a Zyxel NAS540. Two questions: what can that box
 actually do, and what should run there. Everything below was measured on the box itself, inside the
 `music` share and nowhere else.
