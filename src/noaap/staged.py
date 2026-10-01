@@ -71,6 +71,7 @@ class Staged:
     copied_out: int = 0        # bytes read from the share
     copied_back: int = 0       # bytes written to the share
     superseded: list[str] = field(default_factory=list)   # what the scheme replaced, by its old name
+    changed_meanwhile: list[str] = field(default_factory=list)   # somebody else had it since
     aside: list[str] = field(default_factory=list)       # and what was moved into the store for it
     moved_aside: int = 0
     unverified: list[str] = field(default_factory=list)   # a copy back whose digest did not match
@@ -339,6 +340,22 @@ def aside_for(root: Path) -> Path:
     return root.parent / ASIDE
 
 
+def _moved_on(path: Path, recorded: Any) -> bool:
+    """Whether the share's copy is no longer the one the snapshot wrote down.
+
+    Size and mtime, which a snapshot records for every file and which cost a `stat`. A digest would
+    be surer and would read every file of every batch over the wire again; this catches anything that
+    has been written to, which is the question being asked.
+    """
+    if recorded is None or not hasattr(recorded, "size"):
+        return False
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    return st.st_size != recorded.size or st.st_mtime_ns != recorded.mtime_ns
+
+
 def _move_aside(path: Path, name: str, root: Path, done: Staged) -> bool:
     """Move one file into the store under the path the snapshot knows it by. A rename, once."""
     where = aside_for(root) / name
@@ -368,6 +385,16 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     way back.
     """
     verified: set[str] = set()
+    # **the share decides what "the same name" means, so it is asked once and used everywhere here.**
+    # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
+    # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
+    # aside — twelve files of one album in round 1, overwritten with nothing kept.
+    folding = precautions.folds_case(root)
+    recorded_by = {name.casefold() if folding else name: name for name in was}
+
+    def recorded(name: str) -> str | None:
+        return recorded_by.get(name.casefold() if folding else name)
+
     for album in sorted({p.parent for p in here.rglob("*") if p.is_file()}):
         inside = album.relative_to(here)
         for path in sorted(p for p in album.iterdir() if p.is_file()):
@@ -378,8 +405,18 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             # pass did not rename it, the new file lands on the old one and there would be nothing
             # left to go back to; the superseded loop below only ever sees the names that *did*
             # change.
-            if name in was and target.is_file() and _move_aside(target, name, root, done):
-                done.aside.append(name)
+            # **a file somebody changed while this ran is not written over** (R-365, point 2). The
+            # snapshot says what it was when the batch was copied out; if the share's copy no longer
+            # matches it in size or mtime, somebody has had it since and their change is not ours to
+            # throw away. Named, skipped, and the rest of the batch goes on.
+            known = recorded(name)
+            if target.is_file() and _moved_on(target, was.get(known) if known else None):
+                done.changed_meanwhile.append(name)
+                log(f"  ⚠ {name} changed on the share since this batch was copied out — "
+                    "left exactly as it is")
+                continue
+            if known and target.is_file() and _move_aside(target, known, root, done):
+                done.aside.append(known)
             tmp = target.with_name(target.name + PART)
             shutil.copy2(path, tmp)
             os.replace(tmp, target)          # atomic within the share
@@ -389,6 +426,9 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             else:
                 done.unverified.append(name)
         log(f"  {inside}: back on the share")
+    if done.changed_meanwhile:
+        log(f"  {len(done.changed_meanwhile)} file(s) were changed on the share while this ran "
+            "and were left exactly as they are; nothing of theirs was replaced")
     if done.unverified:
         log(f"  ⚠ {len(done.unverified)} file(s) did not match after the copy — nothing of the "
             "share's own was removed, and every original is still there")
@@ -405,7 +445,6 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # (130595 against 130597, measured) — so the guard answered "a different file" every time and
     # fourteen files of an album were deleted after being verified. The case fixture passed because
     # it used a symlink on ext4, where the inode really is shared.
-    folding = precautions.folds_case(root)
     written = sorted(verified)
     emptied: set[Path] = set()
     for name in sorted(set(was) - verified):

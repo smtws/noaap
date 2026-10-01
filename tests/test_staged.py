@@ -257,41 +257,6 @@ def test_a_finished_run_leaves_a_way_back(elsewhere, tmp_path):
     assert not (elsewhere / "Aphelion").exists(), "and noaap's folder is gone again"
 
 
-def test_a_share_that_folds_case_does_not_lose_the_file_it_just_got(tmp_path, one_second_of_sound):
-    """The worst thing this package has done, and comparing with a local run is what caught it.
-
-    The share is case-insensitive and this machine is not. An album folder differing from the scheme
-    only in its case — `iii` against `III` — comes back to the *same* directory on the share, and
-    where the file names were already the scheme's, the superseded path **is** the path just written.
-    On the real share that deleted 14 files after verifying every one of them.
-
-    The copy back is called directly here, with a symlink standing in for the folding, because a
-    symlink inside the tree would be copied into the staging folder and change the case the pass sees.
-    """
-    share = tmp_path / "share"
-    folded = share / "Der W" / "iii"
-    folded.mkdir(parents=True)
-    staging = tmp_path / "batch"
-    scheme = staging / "Der W" / "III"          # what the pass renamed it to, on this machine
-    scheme.mkdir(parents=True)
-    names = []
-    for n, title in enumerate(["Operation", "Mordballaden"], 1):
-        name = f"Der W - III - {n:02d} - {title}.opus"   # already the scheme's own names
-        shutil.copy(one_second_of_sound, scheme / name)
-        shutil.copy(one_second_of_sound, folded / name)
-        names.append(name)
-    (share / "Der W" / "III").symlink_to("iii")         # what a case-folding share does
-    was = {r.path: r for r in precautions.read(precautions.take(staging, tmp_path / "s.jsonl")).files}
-    was |= {f"Der W/iii/{name}": None for name in names}   # the share knows them by the folded name
-
-    done = staged.Staged()
-    staged._copy_back(share, staging, was, done, lambda s: None)
-
-    assert done.unverified == []
-    assert sorted(p.name for p in folded.iterdir()) == sorted(names), "every file still there"
-    assert done.superseded == [], "and nothing was called superseded that we had just written"
-
-
 def test_an_empty_folder_of_the_owners_is_not_tidied_away(elsewhere, tmp_path):
     """Sweeping the whole root for empty directories removed one from the real share."""
     (elsewhere / "aphelion" / "a folder they left empty").mkdir()
@@ -479,3 +444,40 @@ def test_a_file_whose_name_does_not_change_is_moved_aside_before_it_is_written_o
     assert done.aside == ["Aphelion/Nocturnes/Aphelion - Nocturnes - 01 - First.opus"], done.aside
     assert (staged.aside_for(share) / done.aside[0]).read_bytes() == was, "kept before it was written"
     assert path.read_bytes() != was, "and the file itself was rewritten"
+
+
+def test_on_a_folding_share_the_file_about_to_be_written_over_is_kept(tmp_path, monkeypatch,
+                                                                     one_second_of_sound):
+    """A recorded name is looked up the way the filesystem compares names, not exactly.
+
+    Round 1 of the gate, second attempt: twelve files of `Der W/iii` came back with different bytes.
+    The album's folder differs from the scheme only in case and its files already carried the
+    scheme's names, so on the share the new file landed on the old one at what the share calls the
+    same path — and `name in was` was False, because the snapshot wrote `Der W/iii/x` and the pass
+    was writing `Der W/III/x`. So nothing was moved aside and the original was gone.
+    """
+    share = tmp_path / "share"
+    folded = share / "Der W" / "iii"
+    folded.mkdir(parents=True)
+    staging = tmp_path / "batch"
+    scheme = staging / "Der W" / "III"
+    scheme.mkdir(parents=True)
+    name = "Der W - III - 01 - Operation.opus"
+    shutil.copy(one_second_of_sound, scheme / name)
+    shutil.copy(one_second_of_sound, folded / name)
+    (scheme / name).write_bytes((scheme / name).read_bytes() + b"\x00")   # the pass rewrote it
+    was = {r.path: r for r in
+           precautions.read(precautions.take(share, tmp_path / "s.jsonl")).files}
+    theirs = (folded / name).read_bytes()
+    # two things a folding share does, and ext4 does neither: `III` and `iii` are one directory —
+    # which a symlink models, and *only* that — and a name is compared without regard to its case,
+    # which is the answer `folds_case` gives on the share and is forced here.
+    (share / "Der W" / "III").symlink_to("iii")
+    monkeypatch.setattr(staged.precautions, "folds_case", lambda where: True)
+
+    done = staged.Staged()
+    staged._copy_back(share, staging, was, done, lambda s: None)
+
+    assert done.aside == [f"Der W/iii/{name}"], done.aside
+    assert (staged.aside_for(share) / "Der W" / "iii" / name).read_bytes() == theirs, \
+        "the file that was written over is kept, under the name the snapshot knows"
