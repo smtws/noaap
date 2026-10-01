@@ -66,6 +66,7 @@ from .plan import (
     merge_plans,
     refresh_derived,
     set_single_album_name,
+    states_numbers,
     wanted_filename,
     wanted_folder,
 )
@@ -799,10 +800,15 @@ class Service:
                      + (f" ({entry.name})" if entry else " — nothing was on disk")
                      + ("" if path else " (unsafe file name ignored)"))
         plan.tracks = [t for t in plan.tracks if t.in_source]
-        # Close the gap the removed tracks leave — on every album, not only single-disc ones:
-        # a player showing 1, 2, 4 is a defect in the tags, and what a user order protects is
-        # the arrangement, which counting the discs off in their own order keeps exactly.
-        arrange(plan)
+        # Close the gap the removed tracks leave — on every album, not only single-disc ones: for an
+        # album noaap fetched, the position in the source is the only thing a number ever was, and
+        # what a user order protects is the arrangement, which counting the discs off in their own
+        # order keeps exactly.
+        # **Unless the source states its numbers** (R-375). Then the files are the authority and a
+        # player showing 1, 2, 4 shows the truth: the owner's disc is missing track 3. Closing that
+        # gap writes a wrong position into every file after it, which is R-372 by another route.
+        if not states_numbers(plan):
+            arrange(plan)
         save_plan(plan, album_dir)
         return self.execute(plan, album_dir)  # renames/retags only (tracktotal changed)
 

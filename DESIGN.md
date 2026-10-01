@@ -3155,6 +3155,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Measured over the user's real library, read-only: 41 gapped discs (the 8 multi-disc and 33
    single-disc of slice 102), none of them in an album holding a duplicate id — so `repair` would not
    have reached them today, and the defect was reaching them through adoption only.
+   **Then the same rule one update later** (R-375). Adoption kept the numbers and `prune` and
+   `merge_plans` took them away again: `prune` called `arrange`, which counts every disc off from 1,
+   and a merge whose track count had changed counted by position. So the authority is named once —
+   `plan.states_numbers`, which is "the source knows a track's number without fetching anything",
+   and today that is the folder provider. Where it holds, a file that left leaves a gap, a file that
+   arrived takes the number its own file states, and a file stating none takes the lowest number free
+   on its disc (`plan.keep_stated_numbers`). Where it does not — every source that must fetch before
+   there is a file — position follows the source exactly as before.
 
 109. ✅ **A batch is known by what it holds, and only its own marker says it is done**
    (2026-10-02, P84, the gate). The first interruption scenario found it: a SIGTERM after a batch's

@@ -749,3 +749,52 @@ def test_a_disc_that_states_no_number_is_still_counted_from_one(tmp_path):
     plan = build_plan(folder().collection(str(album)), source=folder())
 
     assert [t.number for t in plan.tracks] == [1, 2, 3]
+
+
+def test_a_gapped_folder_album_keeps_its_numbers_when_a_file_leaves(gapped, tmp_path):
+    """R-375: where the files state the numbers, the files are the authority. A file that leaves
+    leaves a gap; nothing counts the disc off again."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    album_dir = tmp_path / "A Band" / "A Gapped Album"
+    assert [t.number for t in load_plan(album_dir).tracks] == [1, 2, 4]
+    (album_dir / "02 - Two.mp3").unlink()
+
+    reread(tmp_path, album_dir)
+
+    # the track whose file has gone keeps the number it had; it used to be moved past the highest
+    # one in the source, so an album of 1, 2, 4 became 1, 4, 5
+    waiting = load_plan(album_dir)
+    assert [(t.title, t.number, t.in_source) for t in waiting.tracks] == [
+        ("One", 1, True), ("Four", 4, True), ("Two", 2, False)], \
+        "what left the source stands last, as it always has, and keeps its own number"
+
+    from noaap.service import Service
+    Service(Config(musicbrainz=False, lyrics=False), tmp_path, log=lambda s: None).prune(album_dir)
+
+    plan = load_plan(album_dir)
+    assert [(t.title, t.number) for t in plan.tracks] == [("One", 1), ("Four", 4)], \
+        "the two that are left are still 1 and 4"
+
+
+def test_a_file_that_arrives_takes_its_own_number_or_the_lowest_free_one(gapped, tmp_path):
+    """One numbered file and one with no number at all, added to a gapped album at once."""
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    album_dir = tmp_path / "A Band" / "A Gapped Album"
+    encode(album_dir / "03 - Three.mp3", title="Three", artist="A Band",
+           album="A Gapped Album", album_artist="A Band", track="3/5")
+    encode(album_dir / "zz - Nameless.mp3", title="Nameless", artist="A Band",
+           album="A Gapped Album", album_artist="A Band")
+
+    reread(tmp_path, album_dir)
+
+    plan = load_plan(album_dir)
+    numbers = {t.title: t.number for t in plan.tracks}
+    assert numbers["Three"] == 3, "the number its own file states"
+    assert numbers["Nameless"] == 5, "and the lowest number free on that disc"
+    assert [numbers[name] for name in ("One", "Two", "Four")] == [1, 2, 4], "the rest stand"

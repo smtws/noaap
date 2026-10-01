@@ -404,6 +404,10 @@ Restoring the staging folder puts **the whole collection** back, and then reads 
 originals: a file in there that no snapshot of the run names is a file whose way back exists and
 cannot be found, so it is listed and the restore does not report clean.
 
+**So keep the staging folder.** It holds the run's index and every batch's snapshot, it is what a
+restore is pointed at, and nothing in noaap removes it — it stays until you no longer want the way
+back.
+
 Measured over a real NAS share at 41 MB/s: 2000 tracks took 1 h 40 min, which is about **9 hours for
 eleven thousand** — the collection crosses the wire three times, out, back, and once more to verify
 what landed. A dry run over a share is dearer than it looks (about 2.7 reads of the collection),
@@ -650,7 +654,11 @@ album of sixteen with track 10 missing, and that is how it is written: the numbe
 the name is the one the file already had. A number is counted off by position only for files that
 state none, and only into numbers still free on that disc. The track total follows the same rule as
 ever — never below the highest number present. From here, a track's number changes only when **you**
-reorder the album in the editor: neither `repair` nor a deletion closes a gap any more.
+reorder the album in the editor: neither `repair` nor a deletion closes a gap any more, and it holds
+for every later pass too — a file you remove from the folder leaves its number empty, and one you add
+takes the number its own tag states, or the lowest one still free on that disc. For an album noaap
+fetched there is no such number to keep, so there the position in the playlist decides as it always
+has.
 
 **Discs in sub-folders stay in them.** A plan records each track's file as a path relative to the
 album — `cd1/…` when that is where it is — and no pass moves it, copies it or renames it out of its

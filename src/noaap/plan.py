@@ -388,6 +388,50 @@ def refresh_derived(plan: AlbumPlan) -> AlbumPlan:
     return plan
 
 
+FOLDER = "folder"   # the one provider that reads a track's number before anything is fetched
+
+
+def states_numbers(plan: AlbumPlan) -> bool:
+    """Whether this album's source knows what number a track carries (R-375).
+
+    A folder does: the number is in the file, and `Entry.number` carries it. Everything that has to
+    fetch before there is a file cannot know one, and for those the position in the source is the
+    only answer there is. Where the source does know, **the files are the authority**: a file that
+    left leaves a gap, a file that arrived takes its own number, and nothing counts off a disc that
+    already has numbers — counting it is R-372's defect one update later.
+    """
+    return plan.provider == FOLDER
+
+
+def keep_stated_numbers(plan: AlbumPlan, fresh_by_id: dict[str, PlanTrack]) -> None:
+    """Every track's number as its file states it now; a track no longer there keeps the one it had.
+
+    Claimed in the plan's own order — the source's tracks first, then what has left it — so that a
+    file which now carries number 4 gets it and a departed track holding 4 is the one that moves. A
+    track with no usable number, or one already taken on its disc, takes the lowest number free
+    there.
+    """
+    for t in plan.tracks:
+        if (f := fresh_by_id.get(t.video_id)) is not None:
+            t.number, t.disc = f.number, f.disc
+    taken: dict[int, set[int]] = {}
+    owed: list[PlanTrack] = []
+    for t in plan.tracks:
+        mine = taken.setdefault(t.disc, set())
+        if t.number and t.number not in mine:
+            mine.add(t.number)
+        else:
+            owed.append(t)
+    last: dict[int, int] = {}
+    for t in owed:
+        mine = taken.setdefault(t.disc, set())
+        number = last.get(t.disc, 0) + 1
+        while number in mine:
+            number += 1
+        last[t.disc], t.number = number, number
+        mine.add(number)
+
+
 ALBUM_FIELDS = ("kind", "album", "albumartist", "year")
 TRACK_FIELDS = ("artist", "title")
 
@@ -441,6 +485,13 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
             placed.add(f.video_id)
             ordered.append(by_id[f.video_id])
     rest = sorted((t for t in merged.tracks if t.video_id not in fresh_by_id), key=lambda t: (t.disc, t.number))
+    # **where the source states its numbers, they are kept and nothing is counted off** (R-375).
+    # An update of a folder album read every number out of the files again; position-counting them
+    # here would renumber a gapped disc one update after adoption stopped doing it.
+    if states_numbers(fresh):
+        merged.tracks = ordered + rest
+        keep_stated_numbers(merged, fresh_by_id)
+        return refresh_derived(merged)
     # The order is the user's when they said so: a YouTube playlist's sequence is often just
     # the order things were added in, while the album may follow a release or another shop.
     if merged.provenance.get("order") == Provenance.USER:
