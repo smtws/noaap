@@ -73,6 +73,7 @@ class Staged:
     peak_staged: int = 0       # the most this machine held at once
     done: list[str] = field(default_factory=list)
     would: list[str] = field(default_factory=list)
+    snapshots: list[str] = field(default_factory=list)   # the way back, one per batch, kept
 
 
 def free_space(path: Path) -> tuple[int, str]:
@@ -234,6 +235,9 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"⚠ {len(done.unverified)} file(s) could not be verified after the copy back — "
             "the share's own file was left in place")
     log(f"this machine held at most {done.peak_staged / 1e9:.2f} GB at once")
+    if done.snapshots:
+        log(f"the way back is {len(done.snapshots)} snapshot(s) in {staging}, one per batch: "
+            f"`noaap take-in {root} --restore <one of them> --apply`")
     return done
 
 
@@ -269,9 +273,9 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     done.peak_staged = max(done.peak_staged, held)
     log(f"  copied {held / 1e9:.2f} GB to {here}")
 
-    snapshot = staging / f"batch-{len(done.done) + 1}-snapshot.jsonl"
+    snapshot = staging / f"batch-{len(done.done) + 1}-{root.name}-snapshot.jsonl"
     if snapshot.exists():
-        snapshot.unlink()
+        snapshot.unlink()       # ours, from a batch that did not finish; the share is intact
     precautions.take(here, snapshot, log=lambda s: None)
     was = {r.path: r for r in precautions.read(snapshot).files}
     log(f"  wrote down {len(was)} file(s)")
@@ -288,9 +292,14 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
 
     _copy_back(root, here, was, done, log)
     shutil.rmtree(here)
-    snapshot.unlink(missing_ok=True)
-    intake.state_path(snapshot).unlink(missing_ok=True)
-    intake.made_path(snapshot).unlink(missing_ok=True)
+    # **the batch's snapshot stays, and so does the record of what the pass made.** The share's own
+    # untouched file is the way back only until its replacement is verified and the old one removed;
+    # after that these two are the only way back there is, and they cost half a megabyte a batch. A
+    # first version of this deleted them with the staging copy, which left a finished run with no way
+    # back at all — the one thing the whole package is for.
+    intake.state_path(snapshot).unlink(missing_ok=True)      # the resume file, which is spent
+    done.snapshots.append(str(snapshot))
+    log(f"  the way back for this batch: {snapshot.name} (and {intake.made_path(snapshot).name})")
 
 
 def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
@@ -326,20 +335,46 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
         log(f"  ⚠ {len(done.unverified)} file(s) did not match after the copy — nothing of the "
             "share's own was removed, and every original is still there")
         return
+    # **a superseded path that is the same file as one just written is not superseded.** The share is
+    # case-insensitive and this machine is not, so an album whose folder differs from the scheme only
+    # in its case — `iii` against `III` — comes back to the very same directory, and where the file
+    # names were already the scheme's, the old path *is* the new path. Measured on the real share:
+    # 14 files written, verified, and then deleted again by this loop, which is as close to losing
+    # somebody's music as this program has come. `samefile` answers it without knowing anything
+    # about how a filesystem folds names.
+    written = [root / name for name in sorted(verified)]
+    emptied: set[Path] = set()
     for name in sorted(set(was) - verified):
         old = root / name
-        if old.is_file():
-            old.unlink()
-            done.superseded.append(name)
+        if not old.is_file():
+            continue
+        if any(_same(old, kept) for kept in written):
+            continue
+        old.unlink()
+        emptied.add(old.parent)
+        done.superseded.append(name)
     if done.superseded:
         log(f"  {len(done.superseded)} file(s) the scheme replaced removed: "
             f"{', '.join(done.superseded[:3])}" + (" …" if len(done.superseded) > 3 else ""))
-    for folder in sorted((p for p in root.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
+    # **only the folders this pass emptied**, deepest first. Sweeping the whole root for empty
+    # directories removed one the owner had and we never touched — `Der W/Autonomie`, empty in their
+    # own collection — which is deleting something of theirs under cover of tidying up.
+    for folder in sorted(emptied | {f.parent for f in emptied}, key=lambda p: -len(p.parts)):
+        if folder == root or root not in folder.parents:
+            continue
         try:
             if not any(folder.iterdir()):
-                folder.rmdir()               # a folder the scheme emptied, and only when it is empty
+                folder.rmdir()
         except OSError:
             pass
+
+
+def _same(one: Path, two: Path) -> bool:
+    """Whether two paths are the same file, whatever the filesystem thinks a name is."""
+    try:
+        return one.samefile(two)
+    except OSError:
+        return False
 
 
 __all__ = [

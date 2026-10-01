@@ -378,6 +378,13 @@ against the share exactly as against a local folder.
 
 A run that stops leaves whole batches done or not started, resumes where it stood, and skips an album
 that already holds a plan — bringing those to changed settings is a repair, which needs no staging.
+**Each batch's snapshot is kept** when the batch is done, beside the staging folder, and the run
+prints the command that uses one: that is the way back once the originals it replaced are gone.
+
+Measured over a real NAS share at 41 MB/s: 2000 tracks took 1 h 40 min, which is about **9 hours for
+eleven thousand** — the collection crosses the wire three times, out, back, and once more to verify
+what landed. A dry run over a share is dearer than it looks (about 2.7 reads of the collection),
+because reading an album to adopt it opens every file several times.
 
 **Settings › Library › Take in a folder** is `noaap merge` and `noaap adopt` in the page. Name a folder
 in full — somewhere else on this machine, or a share you have mounted — and choose how:

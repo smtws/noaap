@@ -3014,6 +3014,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    all. A stop leaves whole batches done or not started; a rerun skips an album that already holds a
    plan, which is what makes the mode idempotent across the renames it does itself — a batch's name
    cannot survive its own albums being moved.
+   **Measured on the real share, and it cost two faults to get right.** The one permitted transfer of
+   the test data ran at **41.2 MB/s** over Wi-Fi — not the 30 assumed — and the staged round trip of
+   2000 tracks took **6036 s**: 93.3 GB received and 44.3 GB sent, peak 9.89 GB staged against a
+   10 GB limit, 573 files superseded, 0 unverified. Which extrapolates to **9.2 h** for 11,000
+   tracks rather than the ~5.2 h the spike predicted, because the verification reads every file back:
+   the round trip carries the collection **three** times, not twice.
+   Comparing the share with a local take-in of the same source is what caught both faults.
+   (1) **A case-folding share lost the files it had just verified**: `Der W/iii` differs from the
+   scheme's `Der W/III` only in case and its files already carried the scheme's names, so the copy
+   back wrote them into what the share treats as the same directory, verified all 14, and then
+   removed them as superseded — the old path *being* the new path. A superseded path that
+   `samefile`s one just written is not superseded, which answers it without knowing how any
+   filesystem folds a name. (2) **The owner's own empty folder was tidied away**, because the sweep
+   for empty directories ran over the whole root instead of only the folders this pass emptied.
+   And a third that was in the measurement rather than the code: a reference run given
+   `NOAAP_LIBRARY`, which the CLI does not read, left the library as configured so `relocate` never
+   ran — 325 files looked misplaced until it was run with the library set to the root.
+   **One cost is worth recording for every pass, not just this one**: a dry run over a share reads
+   **2.7× the collection** (80.75 GB, 47 minutes), and the dry run is not why. `would_do` reads
+   2.3 MB of a 77.4 MB album; the adoption under it reads 212.6 MB, because
+   `sources_folder.collection` opens every file four times — `read_tags`, `audio_length`, and twice
+   inside `audio_quality` — and a share re-reads on each open. Opening once would cut every adoption
+   there is.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)

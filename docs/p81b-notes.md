@@ -195,3 +195,89 @@ about a disc, not about a set, so it reaches a single-disc album with a gap too:
 Those 461 are albums of thirteen tracks whose highest number is fourteen, which were being written as
 *of 13*. It is the same defect one disc at a time, so I left the rule general — but scoping it to
 multi-disc albums only is one condition, and the brief said "a single-disc album (unchanged)".
+
+
+---
+
+# P82 — the collection comes here a batch at a time
+
+R-351, decided with the user after the NAS measurement (`docs/spikes/2026-10-nas-helper.md`): no
+helper on the NAS, the round trip instead, in batches, because 225 GB in one go would block the
+user's other work.
+
+## The measurement, on the real share
+
+`~/Music/legacy` copied once into the `music` share — **43.8 GB in 1062 s = 41.2 MB/s**, which is
+the real rate of this link and not the 30 MB/s we had assumed. The share is reached over **Wi-Fi**
+(`wlp3s0f0`), so that figure is a Wi-Fi rate; a cable would be faster.
+
+| phase | wall | over the wire | and |
+|---|---|---|---|
+| the one transfer out | 1062 s | 43.8 GB sent | 41.2 MB/s |
+| **dry run over the share** | **2859 s** | **80.75 GB received** | nothing written anywhere |
+| **the staged round trip** | **6036 s** | **93.3 GB received, 44.3 GB sent** | 5 batches of 10 GB |
+
+and of the round trip: 132 albums, 2000 tracks, 440 renamed, 2000 rewritten, 4 covers, 573 files
+superseded and removed, **0 unverified**, **peak staged 9.89 GB** against a 10 GB limit — the
+laptop's free space never fell by more than 10.08 GB.
+
+**The dry run costs 2.7 reads of the collection**, and that is the surprise: 80.75 GB and 47 minutes
+to say what it would do, against 2.25 GB and 10 s locally. The cause is not the dry run but the
+adoption under it — `sources_folder.collection` opens every file **four** times (`read_tags`,
+`audio_length`, and twice inside `audio_quality`), and over SMB with `actimeo=1` each open re-reads.
+Measured on one 77.4 MB album: `collection` 158.4 MB, `adopt.examine` 212.6 MB, and `would_do` — the
+part that is actually the dry run — **2.3 MB**. Opening each file once would cut every adoption
+everywhere, local or remote. **Not fixed here**: it is `measure`/`tag` and every pass uses them.
+
+## Two faults, and the comparison with a local run is what caught them
+
+R-351 asked whether the share ends up byte-identical to what a local take-in produces. It did not,
+and the two reasons were both losing data.
+
+1. **A case-folding share lost the files it had just verified.** The share is case-insensitive and
+   this machine is not. `Der W/iii` differs from the scheme's `Der W/III` only in case, and its
+   files already carried the scheme's names — so the copy back wrote them to `III/`, which on the
+   share *is* `iii/`, verified every one, and then removed all 14 as "superseded", because the old
+   path and the new path are the same file. **14 files deleted after being verified**, which is as
+   close to losing somebody's music as this program has come. A superseded path that `samefile`s one
+   just written is not superseded; `samefile` answers it without knowing how a filesystem folds names.
+2. **The owner's own empty folder was tidied away.** `Der W/Autonomie` is empty in their collection,
+   and the copy back's final sweep removed every empty directory **under the whole root** — so it
+   deleted a folder the pass had never touched. Only the folders this pass emptied are swept now.
+
+Both have a case that fails without the fix (the folding one through a symlink, since ext4 will not
+fold on its own), and the share's test data was put back from the local reference.
+
+**And one in my own measurement, not the code**: the first reference run passed `NOAAP_LIBRARY`,
+which the CLI does not read, so the library stayed the configured one, `relocate` never ran and no
+album folder was renamed — which made 325 files look misplaced and the cover count read 16 against
+the staged run's 4. Run with the library set to the root, the two agree: 2187 of 2201 shared paths
+byte-identical, the 14 that differ all `.ytalbum.json` (a plan records its own folder and date), and
+52 more the same file under a differently-cased folder.
+
+## What is still missing
+
+**The restore over the share was not measured, and that is my fault twice over**: the first version
+of the staged pass deleted each batch's snapshot along with the staging copy, so the finished run
+left no way back at all — the one thing the package exists for. That is fixed (the snapshots and the
+record of what the pass made are kept, and the run prints the command to use them), but the
+measurement would need a second transfer of the test data, and the user permitted one. The restore
+itself is measured locally in P81b: 2153 files in 248.5 s, 0 missing, 0 changed. Over the share it is
+one read and one write per file, so ~2 × 225 GB ≈ **3.0 h at 41 MB/s** for the user's collection.
+
+## The hours, at the measured 41.2 MB/s and at the assumed 30
+
+For 11,000 tracks (225 GB), 5.5× this copy:
+
+| | at 41.2 MB/s | at 30 MB/s |
+|---|---|---|
+| the dry run over the share (2.7 reads) | 4.1 h | 5.6 h |
+| **the staged round trip** | **9.2 h** | 12.7 h |
+| of which: out 225 GB, back 226 GB, verify 226 GB | | |
+| the local work inside it (snapshot, pass) | ~1.6 h of that | ~1.6 h |
+
+So the staged round trip measured **6036 s for 41 GB**, which extrapolates to **9.2 hours** for the
+collection — against the 8.3 h the arithmetic gave for working directly over the share, and the
+~5.2 h the spike predicted for a round trip. **The prediction was too optimistic by 4 hours**, and
+the reason is in the numbers above: the verification reads every file back over the wire, so the
+round trip carries the collection three times (out, back, verified) and not twice.

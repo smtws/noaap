@@ -57,8 +57,15 @@ def test_the_free_space_is_the_staging_filesystems_and_no_other(tmp_path):
     """
     free, where = staged.free_space(tmp_path)
     mine = os.statvfs(tmp_path)
-    assert free == mine.f_bavail * mine.f_frsize
+    expected = mine.f_bavail * mine.f_frsize
+    # within a hair of each other: two readings of a live filesystem, taken a moment apart
+    assert abs(free - expected) < max(expected // 100, 1 << 20), (free, expected)
     assert where, "and it says which filesystem that was"
+
+    # and the part that matters: a path on another filesystem gives another answer. `/proc` is not
+    # the disk, and a share is not the disk either — that is the whole of the user's warning.
+    elsewhere, named = staged.free_space(Path("/proc"))
+    assert named != where, (named, where)
 
 
 def test_the_free_space_of_a_folder_that_is_not_there_yet(tmp_path):
@@ -217,3 +224,80 @@ def test_a_restore_from_the_batchs_snapshot_reaches_the_share(elsewhere, tmp_pat
     recorded = {r.path: r.tags for r in precautions.read(snapshot).files}
     name = "aphelion/nocturnes (2003)/01 First.opus"
     assert raw_tags(elsewhere / name) == recorded[name], "every tag it had, as it had it"
+
+
+def test_a_finished_run_leaves_a_way_back(elsewhere, tmp_path):
+    """Which a first version of this did not, and that is the one thing the package is for.
+
+    The share's own untouched file is the way back only until its replacement is verified and the
+    superseded one removed. After that the batch's snapshot and the record of what the pass made are
+    the only way back there is — and they were being deleted with the staging copy, so a finished run
+    could not be undone at all. They cost half a megabyte a batch.
+    """
+    staging = tmp_path / "staging"
+
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert len(done.snapshots) == done.batches == 2
+    for name in done.snapshots:
+        snapshot = Path(name)
+        assert snapshot.is_file(), name
+        assert intake.made_path(snapshot).is_file(), "and what the pass created, to take away again"
+        assert not intake.state_path(snapshot).exists(), "the resume file is spent and goes"
+
+    # and it reaches the share: the first batch put back under the names its owner gave it
+    snapshot = Path(done.snapshots[0])
+    back = precautions.restore(precautions.read(snapshot), elsewhere, apply=True,
+                               made=intake.read_made(intake.made_path(snapshot)),
+                               folders=intake.read_made(intake.made_path(snapshot), folders=True),
+                               log=lambda s: None)
+    assert back.missing == [] and back.changed == []
+    assert (elsewhere / "aphelion" / "nocturnes (2003)" / "01 First.opus").is_file()
+    assert not (elsewhere / "Aphelion").exists(), "and noaap's folder is gone again"
+
+
+def test_a_share_that_folds_case_does_not_lose_the_file_it_just_got(tmp_path, one_second_of_sound):
+    """The worst thing this package has done, and comparing with a local run is what caught it.
+
+    The share is case-insensitive and this machine is not. An album folder differing from the scheme
+    only in its case — `iii` against `III` — comes back to the *same* directory on the share, and
+    where the file names were already the scheme's, the superseded path **is** the path just written.
+    On the real share that deleted 14 files after verifying every one of them.
+
+    The copy back is called directly here, with a symlink standing in for the folding, because a
+    symlink inside the tree would be copied into the staging folder and change the case the pass sees.
+    """
+    share = tmp_path / "share"
+    folded = share / "Der W" / "iii"
+    folded.mkdir(parents=True)
+    staging = tmp_path / "batch"
+    scheme = staging / "Der W" / "III"          # what the pass renamed it to, on this machine
+    scheme.mkdir(parents=True)
+    names = []
+    for n, title in enumerate(["Operation", "Mordballaden"], 1):
+        name = f"Der W - III - {n:02d} - {title}.opus"   # already the scheme's own names
+        shutil.copy(one_second_of_sound, scheme / name)
+        shutil.copy(one_second_of_sound, folded / name)
+        names.append(name)
+    (share / "Der W" / "III").symlink_to("iii")         # what a case-folding share does
+    was = {r.path: r for r in precautions.read(precautions.take(staging, tmp_path / "s.jsonl")).files}
+    was |= {f"Der W/iii/{name}": None for name in names}   # the share knows them by the folded name
+
+    done = staged.Staged()
+    staged._copy_back(share, staging, was, done, lambda s: None)
+
+    assert done.unverified == []
+    assert sorted(p.name for p in folded.iterdir()) == sorted(names), "every file still there"
+    assert done.superseded == [], "and nothing was called superseded that we had just written"
+
+
+def test_an_empty_folder_of_the_owners_is_not_tidied_away(elsewhere, tmp_path):
+    """Sweeping the whole root for empty directories removed one from the real share."""
+    (elsewhere / "aphelion" / "a folder they left empty").mkdir()
+
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                          staging=tmp_path / "staging", batch_size=10_000_000, dry_run=False,
+                          log=lambda s: None)
+
+    assert (elsewhere / "aphelion" / "a folder they left empty").is_dir()
