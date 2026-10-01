@@ -127,6 +127,35 @@ in the same folder, read the first copy's state, decided all 133 albums were don
 measurement. The file is named after its own snapshot now (`<snapshot>.take-in.json`) and the root is
 read back and checked; a state file for another root is not this run's.
 
+**The clean cycle then found three more — 8, 9 and 10 — and the tenth is the one a person would
+notice.** This is what a measurement is for: every one of these was invisible in a suite of 1736
+cases.
+
+8. **The kept original dropped the disc subfolder.** Filing the copy under the *album's* recorded
+   folder (fault 5's fix) is not enough: a file at `Album/cd1/x.mp3` was kept as `Album/x.mp3`. 67 of
+   2000 came back from their tags instead of byte for byte — and where two discs held a track of the
+   **same name**, both mapped onto one kept copy, so **3 originals were never kept at all** and
+   nothing said so. It is filed under the file's own recorded path now, which is unique by
+   construction, and that ends the class. The case is a two-disc album with a track of one name on
+   both discs.
+9. **The dry run undercounted by 104 files.** It said 1896 audio files would be rewritten; the pass
+   rewrote 2000. The lines were all there — the counter looked only for *would be retagged* and
+   missed *would be rewritten with the same tag values*, which is a rewrite too. This is §9 slice 85
+   again, in the arithmetic rather than in the lines, and the case now runs both passes over one
+   fixture and insists their numbers agree.
+10. **A restore left the user's own non-audio files in a folder they never made.** The snapshot
+    recorded audio only; the pass moves a whole album folder into the scheme, so their `cover.jpg`,
+    their `New Album Releases.url` and their `.thumb` cache went with it — and the restore, which
+    puts audio back by its recorded path, left them behind. Measured: **8 of their files** ended up
+    somewhere else while the album looked restored. The snapshot records **every** file now, with a
+    digest of the bytes where it is not audio; 153 such files in this collection, 14 MB, which is
+    nothing for the thing it closes.
+
+And one number that was right and read wrong: the dry run says **72 albums would be asked for a
+cover** and the pass wrote **4**. Both are correct — 72 of the 132 album folders hold no `cover.*`,
+and 4 of those have a picture inside one of their files. The line said "would be given a cover",
+which promised the answer; it says "would be asked for a cover" now.
+
 ### What the real pass costs, and three ways to cut it
 
 First, what the careful write actually costs, measured on 24 files drawn at random from

@@ -316,7 +316,7 @@ every album to it.
 
 | | what it is | what it costs |
 |---|---|---|
-| the snapshot | one line per file: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not — your `comment`, your replaygain, your cover — and a digest of the **decoded** recording, which is the one thing a retag cannot change | a few hundred bytes a track, and one read of the tree |
+| the snapshot | one line per file — **every** file, not only the audio: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not (your `comment`, your replaygain, your cover), and a digest of what it holds — the **decoded** recording for audio, which is the one thing a retag cannot change, and the bytes for your `cover.jpg`, your `.url`, your thumbnails | a few hundred bytes a file, and one read of the tree |
 | the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy and two digests per file written |
 | `--keep-originals DIR` | the first write to a file copies it there whole, **before** the rename | as much disk as the part of the collection that is touched |
 
@@ -328,9 +328,11 @@ yours that went missing on the way.
 **None of that is a backup.** It is a way back from what noaap did, not from a disk that fails, a share
 that goes away mid-pass, or a deleted snapshot.
 
-**The snapshot is of your audio files.** What a pass writes *beside* them — a plan, a `cover.jpg`, an
-`.lrc` — is not in it, and a restore leaves those where they are rather than deciding they are rubbish.
-It names any audio file it could not match instead of guessing at it.
+**The snapshot is of everything that was there**, so a restore puts your own `cover.jpg` and your
+`.url` back into the folder they were in — the pass moves a whole album folder, and they go with it.
+What a pass writes *afterwards* — a plan, a cover it fetched for you, an `.lrc` — is not in the
+snapshot, so a restore leaves those where they are rather than deciding they are rubbish, and names
+them. Anything it could not match it names instead of guessing at it.
 
 The pass expects to be interrupted: it writes down each album as it finishes, so running the same
 command again continues where it stood and repeats no album. That record sits beside the snapshot and

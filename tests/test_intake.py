@@ -209,7 +209,7 @@ def test_the_covers_it_writes_are_counted_and_the_dry_run_says_so(collection, se
     said = []
     dry = intake.take_in(service, collection, QUIET, dry_run=True, log=said.append)
     assert dry.covers == 3, dry.would
-    assert any("would be given a cover beside them" in line for line in said)
+    assert any("would be asked for a cover" in line for line in said)
 
     done = intake.take_in(service, collection, QUIET, dry_run=False,
                           snapshot=tmp_path / "snap.jsonl", log=lambda s: None)
@@ -289,3 +289,78 @@ def test_another_collections_resume_file_is_not_this_ones(collection, service, t
     done = intake.take_in(service, collection, QUIET, dry_run=False, snapshot=tmp_path / "theirs.jsonl",
                           log=lambda s: None)
     assert (done.adopted, done.tracks) == (3, 6), "every album taken in, none skipped"
+
+
+@pytest.fixture
+def two_discs(tmp_path, one_second_of_sound):
+    """One album in two disc folders, with a track of the same name on both — as the collection has."""
+    library = tmp_path / "collection"
+    for disc, titles in ((1, ["Opening", "Shared"]), (2, ["Closing", "Shared"])):
+        folder = library / "Aphelion" / "Live im Winter" / f"cd{disc}"
+        folder.mkdir(parents=True)
+        for n, title in enumerate(titles, 1):
+            path = folder / f"{n:02d} {title}.opus"
+            shutil.copy(one_second_of_sound, path)
+            audio = MFile(path)
+            audio["title"] = [title]
+            audio["artist"] = ["Aphelion"]
+            audio["album"] = ["Live im Winter"]
+            audio["discnumber"] = [str(disc)]
+            audio["comment"] = [f"disc {disc} track {n}"]      # so no two files are byte-equal
+            audio.save()
+    return library
+
+
+def test_a_disc_folder_keeps_its_originals_under_their_own_paths(two_discs, tmp_path):
+    """Four files in two disc folders, four kept originals — and the album moves on top of that.
+
+    Measured on the user's own collection: filing the copy under the *album's* recorded folder
+    dropped the disc subfolder for 67 of 2000 files, and where two discs held a track of the same
+    name it mapped both onto one kept copy — so 3 originals were never kept at all, and nothing said
+    so. The restore then put those files back from their tags instead of byte for byte.
+    """
+    library = two_discs
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    kept, snapshot = tmp_path / "originals", tmp_path / "snap.jsonl"
+    before = {str(p.relative_to(library)): p.read_bytes()
+              for p in sorted(library.rglob("*.opus"))}
+    assert len(before) == 4
+
+    intake.take_in(service, library, intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=snapshot, keep=kept, log=lambda s: None)
+
+    assert sorted(str(p.relative_to(kept)) for p in kept.rglob("*.opus")) == sorted(before), \
+        "every original, under the path the snapshot wrote down"
+    for name, bytes_before in before.items():
+        assert (kept / name).read_bytes() == bytes_before
+
+    done = precautions.restore(precautions.read(snapshot), library, apply=True, kept=kept,
+                               log=lambda s: None)
+    assert (done.missing, done.changed, done.lost) == ([], [], [])
+    assert {str(p.relative_to(library)): p.read_bytes()
+            for p in sorted(library.rglob("*.opus"))} == before, "byte for byte, all four"
+
+
+def test_the_dry_run_counts_every_file_the_pass_rewrites(collection, service, tmp_path):
+    """The two runs' arithmetic has to agree, not just their lines (§9, slice 85).
+
+    Measured: the dry run said 1896 audio files would be rewritten and the pass then rewrote 2000.
+    The lines were all there — the counter only looked for *would be retagged* and missed the 104
+    that said *would be rewritten with the same tag values*, which is a rewrite too.
+    """
+    # a pass has been here, and the plans it wrote are gone — so every value in every file is
+    # already the one noaap wants and only the record of them is missing. That is the case whose
+    # lines say "would be rewritten with the same tag values", and the one the counter missed.
+    intake.take_in(service, collection, QUIET, dry_run=False, snapshot=tmp_path / "first.jsonl",
+                   log=lambda s: None)
+    for plan in collection.rglob(".ytalbum.json"):
+        plan.unlink()
+
+    dry = intake.take_in(service, collection, QUIET, dry_run=True, log=lambda s: None)
+    real = intake.take_in(service, collection, QUIET, dry_run=False,
+                          snapshot=tmp_path / "second.jsonl", log=lambda s: None)
+
+    assert real.retagged == 6, "every file is rewritten, because the plan cannot say it need not be"
+    assert (dry.renamed, dry.retagged) == (real.renamed, real.retagged), \
+        f"dry said {dry.renamed}/{dry.retagged}, the pass did {real.renamed}/{real.retagged}"

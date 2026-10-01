@@ -399,3 +399,36 @@ def test_a_file_whose_audio_really_changed_is_named(tmp_path, one_second_of_mp3)
     done = precautions.restore(snap, root, apply=True)
 
     assert done.changed == ["Artist/Album/01 Track.mp3"], done.changed
+
+
+def test_the_owners_own_files_come_back_too(tmp_path, one_second_of_sound):
+    """A cover, a `.url`, a thumbnail cache — the pass moves them with the folder, so they are in it.
+
+    Measured on the user's own collection: the snapshot recorded audio only, the pass moved each
+    album folder into the scheme — folder and all — and the restore put the audio back under its
+    recorded paths and left **8 of their own files** in a folder they never made. The album looked
+    restored and its cover was somewhere else.
+    """
+    root = tmp_path / "collection"
+    album = root / "aphelion" / "nocturnes (2003)"
+    (album / ".thumb").mkdir(parents=True)
+    shutil.copy(one_second_of_sound, album / "01 First.opus")
+    (album / "cover.jpg").write_bytes(b"\xff\xd8" + b"a picture of theirs" * 50)
+    (album / "New Album Releases.url").write_text("[InternetShortcut]\nURL=https://example.invalid\n")
+    (album / ".thumb" / "cover.jpg.jpg").write_bytes(b"\xff\xd8" + b"a thumbnail" * 20)
+    before = {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+    assert len(before) == 4, before.keys()
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+    assert len(snap.files) == 4, [r.path for r in snap.files]
+    assert [r.how for r in snap.files].count("bytes") == 3, "three of them are not audio"
+
+    moved = root / "Aphelion" / "Nocturnes"                 # what the pass does to the folder
+    moved.parent.mkdir(parents=True)
+    album.rename(moved)
+    (moved / "01 First.opus").rename(moved / "Aphelion - Nocturnes - 01 - First.opus")
+
+    done = precautions.restore(snap, root, apply=True)
+
+    assert done.missing == [] and done.changed == []
+    assert {str(p.relative_to(root)): p.read_bytes()
+            for p in sorted(root.rglob("*")) if p.is_file()} == before, "all four, where they were"

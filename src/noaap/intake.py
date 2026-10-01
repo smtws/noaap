@@ -194,14 +194,19 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         # **totals per kind** — "two albums would be taken in" is not an answer to "how many of my
         # files does this rewrite?" (the lesson of §9, slice 85, applied to somebody's own collection)
         done.renamed = sum(1 for line in done.would if "would be renamed" in line)
-        done.retagged = sum(1 for line in done.would if "would be retagged" in line)
+        # **both lines mean the file is rewritten**: one says which values change, the other that
+        # none do and the plan's record of them is out of date. Counting only the first said 1896
+        # where the pass then rewrote 2000 — a dry run that undercounts by 104 files is the fault
+        # §9 slice 85 exists for, in the arithmetic this time rather than in the lines.
+        done.retagged = sum(1 for line in done.would
+                            if "would be retagged" in line or "would be rewritten" in line)
         done.covers = sum(1 for line in done.would if "a cover would be saved beside" in line)
         asked = sum(1 for line in done.would if "would ask MusicBrainz" in line)
         asked_words = sum(1 for line in done.would if "would ask LRCLIB" in line)
         log(f"{done.adopted} album(s), {done.tracks} track(s) would be taken in; "
             f"{len(done.refused)} folder(s) refused")
         log(f"{done.renamed} file(s) would be renamed, {done.retagged} audio file(s) would be "
-            f"rewritten (their tags), {done.covers} album(s) would be given a cover beside them")
+            f"rewritten (their tags), {done.covers} album(s) would be asked for a cover")
         if asked or asked_words:
             log(f"{asked} album(s) would be asked about at MusicBrainz, {asked_words} at LRCLIB")
         log("nothing was written. `take-in … --apply` does it.")

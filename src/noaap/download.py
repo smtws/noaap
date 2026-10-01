@@ -667,7 +667,8 @@ def run(
     keep: Path | None = None,
     keep_root: Path | None = None,
     # the folder the snapshot knows this album by, where that is not the folder it is in now: a pass
-    # that moves an album into noaap's scheme does it before the first write (§9, slice 99).
+    # that moves an album into noaap's scheme does it before the first write (§9, slice 99). What is
+    # filed is `keep_as` plus the track's own place inside the album, so a disc subfolder is kept too.
     keep_as: str | None = None,
     # A track's audio comes from its chosen candidate, which carries its own provider: one album can
     # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
@@ -713,7 +714,8 @@ def run(
         if keep is not None and track.state == "done":
             here_now = album_dir / track.filename
             if here_now.exists():
-                put_aside(here_now, keep_root or album_dir, keep, under=keep_as)
+                put_aside(here_now, keep_root or album_dir, keep,
+                          as_path=f"{keep_as}/{track.filename}" if keep_as else None)
         wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted

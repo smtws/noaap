@@ -2864,6 +2864,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    back. A second copy of the same collection read the first's state, decided all 133 albums were
    done and took in nothing in a tenth of a second, reporting `0 albums` as if that were an answer.
    It is named after its own snapshot now, and the root in it is checked.
+   (8) The kept copy filed under the album's recorded folder still dropped the **disc subfolder** a
+   file was in — 67 of 2000 — and where two discs held a track of the same name it mapped both onto
+   one kept copy, so 3 originals were never kept at all and nothing said so. It is filed under the
+   file's own recorded path now, which is unique by construction. (9) The dry run said 1896 audio
+   files would be rewritten where the pass then rewrote 2000: the lines were all there and the
+   counter looked only for *would be retagged*, missing *would be rewritten with the same tag
+   values*, which is a rewrite too — slice 85 again, in the arithmetic rather than the lines.
+   (10) **A restore left the owner's own non-audio files in a folder they never made.** The snapshot
+   recorded audio only; a pass moves a whole album folder into the scheme, so their `cover.jpg`,
+   their `.url` and their thumbnail cache went with it and nothing put them back — 8 files, while
+   the album looked restored. The snapshot records **every** file now, with a digest of the bytes
+   where it is not audio: 153 such files and 14 MB in the reference collection, which is nothing
+   against what it closes.
 
 100. ✅ **The settings are the state; an album may only be excepted** (2026-10-01, P81). The user
    asked twice, and the second time settled it: *"we had consistent state and now we got persisted

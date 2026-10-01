@@ -4,10 +4,12 @@ The user, of twenty years of music on a NAS: *"i wont let it to my collection of
 precautions prepared (no, i do not have a full backup of the nas)"*. Everything here exists for that
 sentence. Three layers, cheapest first, and a pass over somebody's collection uses all three:
 
-1. **A snapshot** — one line per audio file: where it is, how big, when it was last written, what its
-   tags said, and a digest of the **decoded** recording — the one digest a tag block at the end of an
-   mp3 cannot move. A few hundred bytes per track, so eleven thousand of them cost a couple of
-   megabytes and one read of the tree. It is what a restore reads.
+1. **A snapshot** — one line per file: where it is, how big, when it was last written, what its tags
+   said, and a digest of what it holds: the **decoded** recording for audio, which is the one digest
+   a tag block at the end of an mp3 cannot move, and the bytes themselves for everything else, which
+   is how the owner's own `cover.jpg` finds its way back after a pass moved the folder it was in. A
+   few hundred bytes per file, so eleven thousand tracks cost a couple of megabytes and one read of
+   the tree. It is what a restore reads.
 2. **A safe write** — nothing is written *into* an audio file. A copy is made beside it, the copy is
    written, the audio is proved unchanged, and only then does an atomic replace put it in place. An
    interruption at any moment leaves the file that was there.
@@ -23,11 +25,12 @@ mid-pass, or somebody deleting the snapshot. It is a way back from *what noaap d
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,12 +65,18 @@ class Recorded:
     audio: str | None  # **the decoded recording**, not the file: see `of`
     tags: dict[str, Any]
     others: dict[str, str] = field(default_factory=dict)
-    how: str = "decoded"   # how `audio` was arrived at; a snapshot written before this says "packets"
+    # how `audio` was arrived at: the decoded recording, the bytes (for a file that is not audio),
+    # or — in a snapshot written before the decoded identity — a digest of the audio packets
+    how: str = "decoded"
+
+    @property
+    def is_audio(self) -> bool:
+        return self.how != "bytes"
 
     def as_line(self) -> str:
         return json.dumps({"path": self.path, "size": self.size, "mtime_ns": self.mtime_ns,
-                           "audio": self.audio, "tags": self.tags, "others": self.others},
-                          ensure_ascii=False)
+                           "audio": self.audio, "how": self.how,
+                           "tags": self.tags, "others": self.others}, ensure_ascii=False)
 
     @staticmethod
     def of(path: Path, root: Path) -> Recorded:
@@ -82,8 +91,13 @@ class Recorded:
         way — it is the decode that costs, and over a share the read is the ceiling.
         """
         st = path.stat()
-        return Recorded(path=str(path.relative_to(root)), size=st.st_size, mtime_ns=st.st_mtime_ns,
-                        audio=decoded_sha(path), tags=raw_tags(path), others=tags_outside_ours(path))
+        here = dict(path=str(path.relative_to(root)), size=st.st_size, mtime_ns=st.st_mtime_ns)
+        if path.suffix.lower() not in AUDIO:
+            # not audio: its bytes are its identity, there are no tags of anybody's to keep, and a
+            # digest of it costs nothing (153 such files in the reference collection, 14 MB in all)
+            return Recorded(**here, audio=bytes_sha(path), tags={}, how="bytes")
+        return Recorded(**here, audio=decoded_sha(path), tags=raw_tags(path),
+                        others=tags_outside_ours(path))
 
 
 @dataclass
@@ -116,11 +130,42 @@ def audio_under(root: Path) -> Iterator[Path]:
     yield from sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in AUDIO)
 
 
+def files_under(root: Path, skip: Iterable[Path] = ()) -> Iterator[Path]:
+    """**Every** file under a root, audio or not, in that same settled order.
+
+    What the snapshot walks. It recorded audio only, and a pass that moves an album into the scheme
+    moves the whole folder — so the owner's `cover.jpg`, their `.url`, their `.thumb` cache went with
+    it and the restore, which puts audio back by its recorded path, left them behind in a folder they
+    never made. Measured on the user's own collection: 8 of their files ended up somewhere else and
+    the album looked restored. They are a few hundred of a few thousand and they cost a `stat` and a
+    digest of fourteen megabytes, so there was never a reason not to write them down.
+    """
+    away = {p.resolve() for p in skip}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.resolve() in away:
+            continue
+        if path.name.endswith(".part") or ".noaap-new" in path.name:
+            continue    # something's temporary file, including ours
+        yield path
+
+
+def bytes_sha(path: Path) -> str | None:
+    """A digest of the bytes themselves — for a file that is not audio, that *is* its identity."""
+    try:
+        digest = hashlib.blake2b(digest_size=16)
+        with path.open("rb") as fh:
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(block)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
 def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambda s: None) -> Path:
     """Write down every audio file under `root` before anything is done to it.
 
-    One JSON line per file, plus a header line, so eleven thousand tracks are a file a person can
-    read with `head` and a program can stream. Overwriting an existing snapshot is refused: the one
+    One JSON line per file — **every** file, not only the audio — plus a header line, so eleven
+    thousand tracks are a file a person can read with `head` and a program can stream. Overwriting an existing snapshot is refused: the one
     that is there may be the only way back from the pass that wrote it.
     """
     out = out or root.parent / SNAPSHOT
@@ -132,7 +177,7 @@ def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambd
     with tmp.open("w", encoding="utf-8") as fh:
         fh.write(json.dumps({"noaap_snapshot": 1, "root": str(root), "digest_by": decoder(),
                              "at": datetime.now(UTC).isoformat(timespec="seconds")}) + "\n")
-        for path in audio_under(root):
+        for path in files_under(root, skip=(out, tmp)):
             fh.write(Recorded.of(path, root).as_line() + "\n")
             seen += 1
             if seen % 250 == 0:
@@ -161,7 +206,8 @@ def read(path: Path) -> Snapshot:
             snap.files.append(Recorded(path=got["path"], size=got["size"], mtime_ns=got["mtime_ns"],
                                        audio=got.get("audio") or got.get("packets"),
                                        tags=got.get("tags") or {}, others=got.get("others") or {},
-                                       how="decoded" if got.get("audio") else "packets"))
+                                       how=got.get("how") or ("decoded" if got.get("audio")
+                                                              else "packets")))
         except (ValueError, KeyError) as e:
             raise Unsafe(f"{path} line {n}: {e}") from e
     return snap
@@ -183,7 +229,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     """
     root = root or snapshot.root
     done = Summary()
-    here = {p: (p.stat().st_size, None) for p in audio_under(root)}   # digests are read only if needed
+    here = {p: (p.stat().st_size, None) for p in files_under(root)}   # digests are read only if needed
     by_path = {str(p.relative_to(root)): p for p in here}
     unclaimed = dict(by_path)
     recorded = {r.path for r in snapshot.files}
@@ -230,7 +276,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
             now.rename(want)
             now = want
         if apply and now.exists():
-            if restore_tags(now, was.tags):
+            if was.is_audio and restore_tags(now, was.tags):
                 done.retagged += 1
             else:
                 done.already += 1
@@ -248,9 +294,9 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     # here and is not touched either; the README says so where the precautions are described.
     left = [name for name in unclaimed if name not in recorded]
     if left:
-        log(f"{len(left)} audio file(s) under the root are not in the snapshot and were left alone "
-            f"(renamed and unmatched, or added since): {', '.join(sorted(left)[:3])}"
-            + (" …" if len(left) > 3 else ""))
+        log(f"{len(left)} file(s) under the root are not in the snapshot and were left alone "
+            f"(a pass's own — a plan, a cover it fetched — or added since): "
+            f"{', '.join(sorted(left)[:3])}" + (" …" if len(left) > 3 else ""))
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
             f"name; nothing was changed. `--restore … --apply` does it.")
@@ -316,6 +362,8 @@ def holds_it(was: Recorded, now: Path) -> bool:
     """
     if was.audio is None:
         return True
+    if was.how == "bytes":
+        return bytes_sha(now) == was.audio
     if was.how == "decoded":
         return decoded_sha(now) == was.audio
     return stream_sha(now) == was.audio or decoded_sha(now) is not None
@@ -370,18 +418,20 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
             tmp.unlink()
 
 
-def put_aside(path: Path, root: Path, keep: Path, under: str | None = None) -> Path | None:
+def put_aside(path: Path, root: Path, keep: Path, as_path: str | None = None) -> Path | None:
     """The original, kept whole, once. Returns where it went, or None when it is already there.
 
-    **`under` is the folder the snapshot knows this file by**, which is not always the folder it is
-    in: a pass that moves an album into noaap's scheme does so before the first file is written, so
-    without this the copy is filed under the new folder's name and `restore` — which looks for
-    `kept / <the recorded path>` — cannot find it. Measured on the user's own collection: 295 of
-    2000 files were put back from their tags rather than byte for byte for exactly this reason, and
-    one whole album's originals were filed under a name no snapshot had ever seen.
+    **`as_path` is the path the snapshot knows this file by**, which is not always the path it is at:
+    a pass moves an album into noaap's scheme before the first file in it is written. Measured on the
+    user's own collection, twice. Filing the copy under the folder the file is in *now* put 295 of
+    2000 files back from their tags instead of byte for byte, and one album's originals under a name
+    no snapshot had ever seen. Filing it under the *album's* recorded folder then dropped the disc
+    subfolder a file was in — 67 of 2000 — and, where two discs held a track of the same name, mapped
+    two files onto one kept copy, so **3 originals were never kept at all** and nothing said so. A
+    recorded path is unique, which is the end of that whole class of fault.
     """
     try:
-        where = keep / (f"{under}/{path.name}" if under else str(path.relative_to(root)))
+        where = keep / (as_path or str(path.relative_to(root)))
     except ValueError:
         where = keep / path.name
     if where.exists():
