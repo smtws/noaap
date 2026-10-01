@@ -836,9 +836,12 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         # what the pass wrote down as its own, so the restore can take it away (R-342, ruling 3)
         made = intake.read_made(intake.made_path(where), root)
         husks = intake.read_made(intake.made_path(where), root, folders=True)
+        # how far the search may look for a renamed file: this snapshot's own territory and the
+        # folders the pass made for it, never another batch's albums (§9, slice 107)
+        from . import staged as staged_mod
         done = precautions.restore(snap, root, apply=args.apply, kept=kept, made=made,
                                    folders=husks, pictures=precautions.pictures_for(where),
-                                   log=print)
+                                   within=staged_mod.territory(snap, husks), log=print)
         for name in done.missing:
             print(f"  not there: {name}")
         for line in done.lost:

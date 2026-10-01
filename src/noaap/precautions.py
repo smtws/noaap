@@ -274,7 +274,7 @@ def read(path: Path) -> Snapshot:
 
 def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, kept: Path | None = None,
             made: Iterable[str] = (), folders: Iterable[str] = (), pictures: Path | None = None,
-            log: Callable[[str], None] = lambda s: None) -> Summary:
+            within: Iterable[str] = (), log: Callable[[str], None] = lambda s: None) -> Summary:
     """Put the folder back as it was. Dry by default, like every other pass here.
 
     A file is found by its recorded path first, then — for anything renamed — by its size and the
@@ -298,6 +298,13 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     `pictures` is the store `take` filled, and with it the **embedded cover** goes back too: taken
     out where the snapshot says the file had none, and put back where the pass replaced one. Without
     the store only the first of those is possible, and the second is named instead.
+
+    **`within` is how far the search may reach**, as folders relative to the root, and a staged run
+    has to set it. The rule "never claim a file this snapshot records under its own name" protects a
+    track that is also on a best-of — within one snapshot. A batch's snapshot does not record the
+    other batches, so restoring batch one went looking for a recording, found a file of batch two's
+    album that happened to hold the same one, and renamed somebody else's file away. Found by round 2
+    of the gate. Empty means anywhere, which is right for a root taken in all at once.
     """
     root = root or snapshot.root
     done = Summary()
@@ -305,6 +312,10 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     by_path = {str(p.relative_to(root)): p for p in here}
     unclaimed = dict(by_path)
     recorded = {r.path for r in snapshot.files}
+    # **where the search may look**: this batch's own territory, or anywhere when nothing says.
+    fences = tuple(f"{name}/" for name in within)
+    reachable = ({name: path for name, path in unclaimed.items() if name.startswith(fences)}
+                 if fences else unclaimed)
     near: Path | None = None        # where the last file of this album turned up: the first guess
 
     for was in snapshot.files:
@@ -313,7 +324,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
         source = kept / was.path if kept and (kept / was.path).is_file() else None
         now = by_path.get(was.path)
         if now is None:
-            now = _found_again(was, unclaimed, here, recorded, root, near)
+            now = _found_again(was, reachable, here, recorded, root, near)
             near = now.parent if now is not None else near
         if now is None and source is None:
             done.missing.append(was.path)
@@ -330,6 +341,7 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
             done.renamed += 1
             continue
         unclaimed.pop(str(now.relative_to(root)), None)
+        reachable.pop(str(now.relative_to(root)), None)
 
         if now != want:
             log(f"  {'would put' if not apply else 'put'} {now.relative_to(root)} back as {was.path}")

@@ -481,3 +481,68 @@ def test_on_a_folding_share_the_file_about_to_be_written_over_is_kept(tmp_path, 
     assert done.aside == [f"Der W/iii/{name}"], done.aside
     assert (staged.aside_for(share) / "Der W" / "iii" / name).read_bytes() == theirs, \
         "the file that was written over is kept, under the name the snapshot knows"
+
+
+def test_a_restore_of_one_batch_does_not_reach_into_another(tmp_path, one_second_of_sound):
+    """Round 2 of the gate, and the nastiest thing it found.
+
+    Two albums held the **same recording** — which a real collection does, a track on an album and on
+    a best-of — and they fell into different batches. Restoring batch one went looking for its file
+    by what it holds, found batch two's copy, and renamed somebody else's file away. The guard
+    "never claim a file this snapshot records" could not help: a batch's snapshot does not record the
+    other batches. So a restore is told how far it may look.
+    """
+    library = tmp_path / "collection"
+    for artist, album in (("First", "one"), ("Second", "two")):
+        folder = library / artist / album
+        folder.mkdir(parents=True)
+        path = folder / "01 Track.opus"
+        shutil.copy(one_second_of_sound, path)        # the very same recording in both
+        audio = MFile(path)
+        audio["title"] = ["Track"]
+        audio["artist"] = [artist]
+        audio["album"] = [album]
+        audio.save()
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    staging = tmp_path / "staging"
+
+    done = staged.take_in_staged(service, library, QUIET, staging=staging, batch_size=1,
+                                 dry_run=False, log=lambda s: None)
+    assert done.batches == 2, "one album per batch, which is what makes this reachable"
+    theirs = sorted(str(p.relative_to(library)) for p in (library / "Second").rglob("*")
+                    if p.is_file())
+
+    first = Path(done.snapshots[0])
+    snapshot = precautions.read(first)
+    husks = intake.read_made(intake.made_path(first), library, folders=True)
+    # **batch one's own copy is gone**, which is the situation on the share: its album folder was
+    # left empty, so the only file left holding that recording belonged to batch two. With its own
+    # copy present the search finds that first and never reaches, which is why this has to be set up.
+    for path in (library / "First").rglob("*"):
+        if path.is_file():
+            path.unlink()
+    precautions.restore(snapshot, library, apply=True, kept=staged.aside_for(library),
+                        within=staged.territory(snapshot, husks),
+                        made=intake.read_made(intake.made_path(first), library),
+                        folders=husks, pictures=precautions.pictures_for(first),
+                        log=lambda s: None)
+
+    assert sorted(str(p.relative_to(library)) for p in (library / "Second").rglob("*")
+                  if p.is_file()) == theirs, "the other batch's album is exactly as it was"
+
+
+def test_without_a_fence_the_search_may_look_anywhere(tmp_path, one_second_of_sound):
+    """Which is right for a root taken in all at once: one snapshot, one territory, no batches."""
+    root = tmp_path / "collection"
+    (root / "Artist" / "Album").mkdir(parents=True)
+    path = root / "Artist" / "Album" / "01 Track.opus"
+    shutil.copy(one_second_of_sound, path)
+    snapshot = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+    moved = root / "Elsewhere" / "Somewhere" / "renamed.opus"
+    moved.parent.mkdir(parents=True)
+    path.rename(moved)
+
+    done = precautions.restore(snapshot, root, apply=True, log=lambda s: None)
+
+    assert done.missing == [] and path.is_file(), "found by what it holds, wherever it had gone"

@@ -325,6 +325,17 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     log(f"  the way back for this batch: {snapshot.name} (and {intake.made_path(snapshot).name})")
 
 
+def territory(snapshot: precautions.Snapshot, made_folders: Iterable[str]) -> list[str]:
+    """How far a restore of this batch may look for a renamed file: the batch's own territory.
+
+    The folders the snapshot recorded a file in, and the folders the pass made for them. Nothing
+    else: a batch's snapshot does not record the other batches, so without this the search for a
+    recording reached into another batch's album and renamed its file away (round 2 of the gate).
+    """
+    out = {str(Path(r.path).parent) for r in snapshot.files if str(Path(r.path).parent) != "."}
+    return sorted(out | {name for name in made_folders})
+
+
 def aside_for(root: Path) -> Path:
     """Where a file the copy back replaces is moved to: beside the collection, on the share itself.
 

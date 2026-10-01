@@ -3113,6 +3113,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    user removes it. That is what makes a staged restore byte for byte, and it is the difference
    between a way back and a good intention.
 
+107. ✅ **A restore of one batch does not reach into another** (2026-10-02, P84 round 2). The rule
+   "never claim a file this snapshot records under its own name" protects a track that is also on a
+   best-of, and it protects it **within one snapshot**. A batch's snapshot does not record the other
+   batches. So restoring batch one went looking for its file by the recording it holds, found a file
+   of batch two's album that happened to hold the same recording, and renamed somebody else's file
+   away — and then overwrote it from the store of originals, so the collection was left with batch
+   two's album missing a track and batch one's track sitting under a name nobody had asked for.
+   A restore is told how far it may look: the folders the snapshot recorded a file in, and the
+   folders the pass made for them, and nothing else. Empty means anywhere, which is right for a root
+   taken in all at once. Verified against the real batch that found it: its territory does not
+   contain the album whose file was claimed.
+   **The case for it had to be built to reproduce**, which is worth recording. Two albums holding the
+   same recording in two batches is not enough, because the batch's *own* renamed copy ranks first in
+   the search and is found before the reach ever happens; on the share that copy was missing, which
+   is what exposed the other. A fixture that cannot fail is not a case, and the first version of this
+   one passed with the fence removed.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
