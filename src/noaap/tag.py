@@ -223,13 +223,15 @@ def tagged_lyrics(path: Path) -> str | None:
 
 
 def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> dict[str, str]:
-    # **a track total is the count of the disc the track is on**, and the count of discs is its own
+    # **a track total is the length of the disc the track is on**, and the count of discs is its own
     # field (§9, slice 102). This was `len(plan.tracks)` — the whole album — in all three writers, so
     # every track of a three-disc set said 29 of 29 and none of them said how many discs there were:
     # 627 files in the user's own library, 23 albums, every one of them. For a single-disc album the
     # two numbers are the same, which is why nothing noticed and why the fix moves no single-disc file.
+    # The length is `plan.disc_length`, which is never below the highest number present — "track 10
+    # of 9" is what the count of tracks present would have written on 8 of their 52 discs (R-346).
     discs = max(t.disc for t in plan.tracks)
-    on_this_disc = sum(1 for t in plan.tracks if t.disc == track.disc)
+    on_this_disc = plan.disc_length(track.disc)
     tags = {
         "title": track.title,
         "artist": track.artist,
@@ -465,7 +467,7 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
             id3.setall(frame, [ID3_FRAMES[frame](encoding=3, text=[tags[key]])])
     # ID3 carries each number and its total in one frame, so these two are set here rather than by
     # the loop above: `TRCK` as track/of, `TPOS` as disc/of (§9, slice 102).
-    on_this_disc = sum(1 for t in plan.tracks if t.disc == track.disc)
+    on_this_disc = plan.disc_length(track.disc)
     id3.setall("TRCK", [ID3_FRAMES["TRCK"](encoding=3, text=[f"{track.number}/{on_this_disc}"])])
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         id3.setall("TPOS", [ID3_FRAMES["TPOS"](encoding=3, text=[f"{track.disc}/{discs}"])])
@@ -491,7 +493,7 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]
-    audio["trkn"] = [(track.number, sum(1 for t in plan.tracks if t.disc == track.disc))]
+    audio["trkn"] = [(track.number, plan.disc_length(track.disc))]
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         audio["disk"] = [(track.disc, discs)]   # the only writer that had the disc total right
     audio["cpil"] = plan.is_compilation

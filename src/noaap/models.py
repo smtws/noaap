@@ -388,6 +388,42 @@ class PlanTrack:
         return self.source_override or self.video_id
 
 
+def _track_total(tags: dict[str, object] | None) -> int | None:
+    """The track total a file carried, in whichever of the four spellings it used.
+
+    `adopted_tags` holds what the file said when it was taken in, in its container's own words:
+    `tracktotal`/`totaltracks` for Vorbis comments, `TRCK` as "n/of" for ID3, `trkn` as a pair for
+    MP4. Anything unreadable is no answer rather than a wrong one.
+    """
+    if not tags:
+        return None
+    for key in ("tracktotal", "totaltracks"):
+        if (value := tags.get(key)) is not None:
+            return _whole(value)
+    if (value := tags.get("TRCK")) is not None:
+        text = _first(value)
+        return _whole(text.split("/")[1]) if "/" in text else None
+    if (value := tags.get("trkn")) is not None:
+        pair = value[0] if isinstance(value, list | tuple) and value else value
+        if isinstance(pair, list | tuple) and len(pair) > 1:
+            return _whole(pair[1])
+    return None
+
+
+def _first(value: object) -> str:
+    while isinstance(value, list | tuple) and value:
+        value = value[0]
+    return str(value)
+
+
+def _whole(value: object) -> int | None:
+    try:
+        number = int(str(_first(value)).strip() or 0)
+    except ValueError:
+        return None
+    return number or None
+
+
 @dataclass
 class AlbumPlan:
     source_url: str
@@ -461,6 +497,37 @@ class AlbumPlan:
         plan = keeping(cls, {**d, "tracks": [PlanTrack.from_dict(t) for t in d["tracks"]]})
         plan.own_the_candidates()
         return plan
+
+    def disc_length(self, disc: int) -> int:
+        """How many tracks the disc numbered `disc` holds — the number that goes in a track total.
+
+        The user, reading the rule that the count of tracks *present* was written: *"it could have
+        track 10 of 9? that'd be odd"*. It could, and on 8 of the 52 discs in their own collection it
+        would have: a disc of eleven with two tracks missing was being told it had nine. **So the
+        total is never below the highest number present** (R-346).
+
+        In order: what every file on the disc already said, when that is credible — it is the only
+        thing that can know the length of a disc whose tracks are not all here — and otherwise the
+        highest number present, which for a full disc *is* the count.
+
+        **A value equal to the whole album's length is not evidence about a disc**, and that is the
+        one thing the ordering cannot be read literally about: before this, noaap wrote the album's
+        track count into every file, so for all 23 multi-disc albums in that collection "what every
+        file said" is the album's length — credible-looking, agreed by every track, and wrong. Taking
+        it would have left all 627 files exactly as they are and made the package a no-op, which the
+        acceptance criterion (the repair check still names the 627) rules out. So where more than one
+        disc exists, a remembered total that equals the album's own length is set aside.
+        """
+        mine = [t for t in self.tracks if (t.disc or 1) == disc]
+        if not mine:
+            return 0
+        highest = max(max(t.number for t in mine), len(mine))
+        discs = {t.disc or 1 for t in self.tracks}
+        said = {_track_total(getattr(t, "adopted_tags", None)) for t in mine}
+        if len(said) == 1 and (one := said.pop()):
+            if one >= highest and not (len(discs) > 1 and one == len(self.tracks)):
+                return one
+        return highest
 
     def own_the_candidates(self) -> None:
         """A candidate synthesised from `video_id`/`source_override` belongs to this plan's provider.

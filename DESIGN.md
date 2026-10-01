@@ -2968,6 +2968,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    is what the ruling was for; counted per file, a take-in over a 30 MB/s share is 2.1 h of snapshot
    and 8.3 h of pass rather than 6.7, and 10.4 h without the one-read verify. **A local byte counter
    is not a measurement of a network**, and saying so is the correction.
+   **And the hole in that slice's own rule, found by the user** (P81c, R-346): writing the count of
+   tracks *present* means a disc with tracks 10 and 11 and a gap at 9 is told it has nine of them.
+   *"it could have track 10 of 9? that'd be odd"* — so **a track total is never below the highest
+   number present on the disc**. `AlbumPlan.disc_length` is the one place that decides it, and all
+   three writers ask it: what every file on the disc already agreed on, where that is credible — the
+   only thing that can know the length of a disc whose tracks are not all there — and otherwise the
+   highest number present, which for a full disc *is* the count.
+   One part of that ordering cannot be read literally, and the reason is this program's own history:
+   noaap wrote the album's track count into every file, so for all 23 multi-disc albums in the
+   reference collection "what every file already said" is the album's length — agreed by every track,
+   below no number, and wrong. Taking it would have left all 627 files as they were and made the
+   correction a no-op. So where more than one disc exists, a remembered total equal to the album's own
+   length is set aside: a value that is the thing being corrected is not evidence about the thing it
+   is being corrected to.
+   The rule is about a disc, not about a set, so it reaches **single-disc albums with a gap** as well:
+   on the reference collection the repair check names 627 files in 23 multi-disc albums (as before)
+   and **461 more in 33 single-disc albums**, each of them an album of thirteen tracks whose highest
+   number is fourteen. Same defect, one disc at a time.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)

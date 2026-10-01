@@ -349,3 +349,62 @@ def test_the_disc_totals_read_back_as_they_were_written(flac_file, mp3_file, m4a
         got = tags_in(path)
         assert (got["tracknumber"], got["tracktotal"], got["totaltracks"]) == ("1", "1", "1"), path.suffix
         assert (got["discnumber"], got["disctotal"], got["totaldiscs"]) == ("2", "3", "3"), path.suffix
+
+
+def _disc_plan(shape, totals=None):
+    """A plan whose discs hold the given track numbers, each file remembering `totals` as its own."""
+    from noaap.models import AlbumPlan, Kind, PlanTrack
+
+    tracks = []
+    for disc, numbers in shape.items():
+        for n in numbers:
+            track = PlanTrack(video_id=f"v{disc}{n}", number=n, artist="A", title=f"T{disc}-{n}",
+                              filename=f"{disc}-{n}.opus", provenance={}, disc=disc)
+            if totals is not None and disc in totals:
+                track.adopted_tags = {"tracktotal": [str(totals[disc])]}
+            tracks.append(track)
+    return AlbumPlan(source_url="https://www.youtube.com/playlist?list=PLx", source_id="PLx",
+                     kind=Kind.OFFICIAL_ALBUM, album="Alles", albumartist="Aphelion", year=None,
+                     cover_url=None, folder="x", tracks=tracks)
+
+
+def test_a_disc_total_is_never_below_the_highest_number_on_it():
+    """The user, on the count of tracks present: *"it could have track 10 of 9? that'd be odd"*.
+
+    It could, and on 8 of the 52 discs in their own collection it would have. The five cases of the
+    rule (R-346), in its order.
+    """
+    full = _disc_plan({1: [1, 2, 3], 2: [1, 2]})
+    assert full.disc_length(1) == 3 and full.disc_length(2) == 2, "a full disc: count = highest"
+
+    gapped = _disc_plan({1: [1, 2, 3], 2: [1, 3, 11]})
+    assert gapped.disc_length(2) == 11, "no remembered total: the highest number, not the three present"
+
+    remembered = _disc_plan({1: [1, 2, 3], 2: [1, 3, 11]}, totals={2: 12})
+    assert remembered.disc_length(2) == 12, "every file said twelve, and twelve is credible: kept"
+
+    disagree = _disc_plan({1: [1, 2, 3], 2: [1, 3, 11]})
+    disagree.tracks[-1].adopted_tags = {"tracktotal": ["12"]}
+    assert disagree.disc_length(2) == 11, "the files do not agree, so they are not evidence"
+
+    impossible = _disc_plan({1: [1, 2, 3], 2: [1, 3, 11]}, totals={2: 3})
+    assert impossible.disc_length(2) == 11, "three is below the highest number present: set aside"
+
+    one_disc = _disc_plan({1: [1, 2, 3, 4]})
+    assert one_disc.disc_length(1) == 4, "a single-disc album is unchanged"
+
+
+def test_the_albums_own_length_is_not_evidence_about_a_disc():
+    """Which is the one place the ordering cannot be read literally.
+
+    Before this, noaap wrote the album's track count into every file — so for all 23 multi-disc
+    albums in the user's collection "what every file already said" is the album's length: agreed by
+    every track, not below any number, and wrong. Taking it would have left all 627 files as they are.
+    """
+    theirs = _disc_plan({1: [1, 2, 3], 2: [1, 2]}, totals={1: 5, 2: 5})   # five tracks in all
+    assert theirs.disc_length(1) == 3 and theirs.disc_length(2) == 2
+
+    # the same number, where it is *not* the album's length, is kept
+    credible = _disc_plan({1: [1, 2, 3], 2: [1, 2]}, totals={1: 5})
+    credible.tracks.append(credible.tracks[-1])          # six tracks now, so five means something
+    assert credible.disc_length(1) == 5

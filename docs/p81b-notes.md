@@ -148,3 +148,50 @@ And a consequence worth knowing, because it is silent: `relocate` refuses to mov
 folder that already exists, and says so only in the log. While those 19 husks were there, a second
 take-in left **17 albums unrenamed** and reported nothing wrong. With the husks gone that cannot
 happen; it is the reason the first re-measurement was thrown away and run again.
+
+---
+
+# P81c — the hole in the gapped-disc ruling
+
+R-346, from the user reading the ruling that the count of tracks *present* stands: *"it could have
+track 10 of 9? that'd be odd"*. It could, and on 8 of the 52 discs in their collection it would have.
+
+**The rule**: a track total is never below the highest number present on the disc. In order — what
+every file on the disc already agreed on, where that is credible; otherwise the highest number
+present; and the count only where it equals that. One place decides it, `AlbumPlan.disc_length`, and
+all three writers ask it. Six cases in `tests/test_formats.py`.
+
+**The one thing in that ordering I could not take literally**, and it needed a decision rather than a
+guess: noaap itself wrote the album's track count into every file, so for all 23 multi-disc albums
+"what every file already said" is the album's length — agreed by every track, below no number, and
+wrong. Taking it would have kept all 627 files exactly as they are and made the package a no-op,
+which the acceptance criterion (*the check must still name the 627*) rules out. So where more than one
+disc exists, a remembered total equal to the album's own length is set aside. A value that is the
+thing being corrected cannot be evidence about what it should be corrected to.
+
+**The 8 gapped discs, and what each would be written as** (`would_do` over the real library,
+read-only):
+
+| album | disc | present | highest | writes |
+|---|---|---|---|---|
+| Feuerschwanz — Memento Mori | 3 | 9 | 11 | **11** |
+| Lord of the Lost — Swan Songs | 2 | 7 | 8 | **8** |
+| Lord of the Lost — Weapons of Mass Seduction | 1 | 11 | 12 | **12** |
+| Michael Jackson — Hello World | 1 | 31 | 38 | **38** |
+| Michael Jackson — Hello World | 3 | 20 | 24 | **24** |
+| Mono Inc. — Together Till The End | 3 | 8 | 11 | **11** |
+| Mono Inc. — Welcome to Hell | 2 | 9 | 10 | **10** |
+| dArtagnan — Feuer & Flamme | 2 | 6 | 7 | **7** |
+
+**And the check now names more than the 627, which is a decision for the reviewer.** The rule is
+about a disc, not about a set, so it reaches a single-disc album with a gap too:
+
+| | albums | files |
+|---|---|---|
+| multi-disc (the 627, unchanged) | 23 | **627** |
+| single-disc with a gap in its numbering | 33 | **461** |
+| | 56 | **1088** |
+
+Those 461 are albums of thirteen tracks whose highest number is fourteen, which were being written as
+*of 13*. It is the same defect one disc at a time, so I left the rule general — but scoping it to
+multi-disc albums only is one condition, and the brief said "a single-disc album (unchanged)".

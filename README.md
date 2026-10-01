@@ -812,7 +812,7 @@ Every finished file carries these, written with [mutagen](https://mutagen.readth
 |---|---|
 | `title`, `artist` | the track, after the name fixing above |
 | `albumartist`, `album` | the album |
-| `tracknumber`, `tracktotal`, `totaltracks` | the track's position on its disc, and how many tracks that disc has |
+| `tracknumber`, `tracktotal`, `totaltracks` | the track's position on its disc, and how long that disc is — never less than the highest number on it, so a disc of eleven with two tracks missing still says eleven |
 | `date` | the album year, when there is one |
 | `compilation` | `1` on a compilation |
 | `discnumber`, `disctotal`, `totaldiscs` | on a multi-disc album: which disc, and how many there are (in `.mp3` both pairs are one frame each, `TRCK` and `TPOS`) |
@@ -1419,9 +1419,15 @@ Nothing outside this repository implements it yet; when something does, it gets 
 - **Multi-disc albums** are supported — file names carry `1-07`, the disc and the number of discs
   are tagged, and a split survives updates. The album view has a disc column after the title, on
   every album, and each disc is numbered from 1 again when you change it. **A track total is the
-  size of its own disc**, not of the album: before 1.26.1 all three writers wrote the album's length
-  into every file and none of them said how many discs there were, so a repair after upgrading lists
-  every track of every multi-disc album and corrects both.
+  length of its own disc**, not of the album: before 1.26.1 all three writers wrote the album's
+  length into every file and none of them said how many discs there were, so a repair after
+  upgrading lists every track of every multi-disc album and corrects both.
+- **A track total is never below the highest number on the disc.** If tracks 10 and 11 are there and
+  9 are not, the disc says *of 11*, not *of 9* — a file saying "track 11 of 9" is worse than one
+  saying nothing. Where every file on a disc already agrees on a longer total, that is kept instead,
+  since it is the only thing that can know how long a disc is when some of it is missing. This holds
+  for a single disc as much as for a set, so a repair also corrects an album of 13 tracks whose
+  highest number is 14.
 - **A lyrics lookup can also change what the ⏱ marks.** LRCLIB answers how long a song is even
   when its words were refused, so a track MusicBrainz does not know gains a length reference from
   the lyrics pass — and an album can pick up or lose its length flag because of it.
