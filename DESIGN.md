@@ -3062,6 +3062,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    each one first. `precautions.empty_under` is the single place that decides it: never the root,
    never outside it, and `rmdir` still has the last word, so a folder holding anything at all stays.
 
+105. ✅ **One open per file, for every question asked of it** (2026-10-01, P83). Slice 103 measured
+   the cost and this is the fix. `read_tags`, `audio_length` and `audio_quality` each opened the file
+   for themselves — four opens, two of them inside `audio_quality` — and over a share with
+   `actimeo=1` every open re-reads, so a dry run of `take-in` over the user's collection read **2.7
+   times the whole collection**: 80.75 GB for 41 GB of music, where the dry run's own work is 2.3 MB
+   of an album. Locally the page cache hid all of it, which is why it stood for a year.
+   `tag.Reading` is one open, seeked back between reads and handed to each of the three, so the
+   kernel serves the repeats and nothing is read that was not asked for. mutagen answers identically
+   from a handle as from a path — checked for mp3, flac, opus and m4a, for `info`, for the easy tags,
+   and for the `Candidate` an adoption records. Every signature keeps working: each function takes an
+   optional reading and opens its own when it is not given one, so only `sources_folder.collection`
+   — the one place that reads every file of an album — had to change.
+   **Measured over the share, adopting all 132 albums: 80.75 GB and 2859 s became 21.5 GB and
+   755 s** — 3.8 times less read and 3.8 times faster. It is not down to one read of the collection
+   (21.5 GB is about half of it) because mutagen scans an mp3's frames to answer for its length, and
+   that is a real read; it is down to doing that once instead of four times. Locally the figure moved
+   from 2.25 GB to 2.66 GB of device reads, which is the same work without the cache hiding it.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

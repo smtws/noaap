@@ -607,7 +607,8 @@ def test_a_length_the_header_will_not_give_is_decoded(tmp_path, source, monkeypa
     from noaap import sources_folder
 
     path = encode(tmp_path / "album" / "01 - a.flac", title="a", artist="A", album="B", track="1")
-    monkeypatch.setattr(sources_folder, "audio_length", lambda p: None)  # a header that will not say
+    monkeypatch.setattr(sources_folder, "audio_length",
+                        lambda p, one=None: None)  # a header that will not say
 
     candidate = source.collection(str(tmp_path / "album")).entries[0].copies[0]
 

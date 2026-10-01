@@ -21,6 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import mutagen
 from mutagen import MutagenError
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, TCMP, TXXX, USLT, ID3NoHeaderError
@@ -54,9 +55,75 @@ def kind(path: Path) -> str:
     return "opus"
 
 
-def _open(path: Path) -> Any:
-    """The mutagen object for reading. Raises exactly what mutagen raises."""
-    return {"mp4": MP4, "flac": FLAC, "mp3": MP3, "opus": OggOpus}[kind(path)](path)
+def _open(path: Path, through: Any = None) -> Any:
+    """The mutagen object for reading. Raises exactly what mutagen raises.
+
+    `through` is an open file handle to read it from instead of opening the path again — see
+    `reading`. mutagen answers identically either way; checked for all four containers.
+    """
+    kinds = {"mp4": MP4, "flac": FLAC, "mp3": MP3, "opus": OggOpus}
+    if through is None:
+        return kinds[kind(path)](path)
+    through.seek(0)
+    return kinds[kind(path)](through)
+
+
+class Reading:
+    """One open of a file, answering every question a pass asks about it (§9, slice 105).
+
+    **Measured on a share, where opening a file again is not free**: reading an album to adopt it
+    opened every file **four** times — `read_tags`, `audio_length`, and twice inside `audio_quality`
+    — and a dry run of `take-in` over the user's own collection therefore read **2.7 times the whole
+    collection**, 80.75 GB for 41 GB of music, where the dry run's own work is 2.3 MB of an album.
+    With `actimeo=1` a share re-reads on each open; locally the page cache hid it entirely.
+
+    One handle, seeked back between reads, so the kernel serves the repeats and nothing is read that
+    was not asked for. The handle is closed when the `with` block ends; the mutagen objects are not
+    used for saving, only for reading.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._fh: Any = None
+        self._typed: Any = None
+        self._easy: Any = None
+        self._easy_read = False
+
+    def __enter__(self) -> Reading:
+        try:
+            self._fh = self.path.open("rb")
+        except OSError:
+            self._fh = None
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
+
+    @property
+    def typed(self) -> Any:
+        """The container's own mutagen class, for `info` and for the tags as they are written."""
+        if self._typed is None:
+            self._typed = _open(self.path, self._fh)
+        return self._typed
+
+    @property
+    def easy(self) -> Any:
+        """mutagen's `easy` view, which is one vocabulary for all four containers."""
+        if not self._easy_read:
+            self._easy_read = True
+            if self._fh is None:
+                self._easy = mutagen.File(self.path, easy=True)
+            else:
+                self._fh.seek(0)
+                self._easy = mutagen.File(self._fh, easy=True)
+        return self._easy
+
+
+def reading(path: Path) -> Reading:
+    """`with reading(path) as one:` — then `one.typed` and `one.easy`, from a single open."""
+    return Reading(path)
 
 
 def image_mime(data: bytes) -> str | None:
@@ -69,7 +136,7 @@ def image_mime(data: bytes) -> str | None:
     return None
 
 
-def audio_length(path: Path) -> float | None:
+def audio_length(path: Path, one: Reading | None = None) -> float | None:
     """Seconds of audio in the file — the trimmed truth, not what a source said.
 
     **A zero is not a length.** Three albums in the reference collection are 24-bit FLACs whose
@@ -79,8 +146,8 @@ def audio_length(path: Path) -> float | None:
     with "all 13 videos are unusable". Unknown is what this is, and unknown is what it now says.
     """
     try:
-        return float(_open(path).info.length) or None
-    except (MutagenError, OSError):  # not readable, not audio: an unknown length means "no match"
+        return float((one.typed if one else _open(path)).info.length) or None
+    except (MutagenError, OSError, KeyError):  # not readable, not audio: unknown means "no match"
         return None  # and nothing else is swallowed: a bug here must not read as a missing file
 
 
@@ -263,15 +330,15 @@ def measured_length(path: Path) -> float | None:
     return measure(path)[0]
 
 
-def audio_quality(path: Path) -> dict[str, Any]:
+def audio_quality(path: Path, one: Reading | None = None) -> dict[str, Any]:
     """Codec, bitrate, sample rate and channels — what ranking will compare (§9, slice 50).
 
     Measured from the file, never from what a source claimed. Empty when the file cannot be read,
     because an unknown quality must not read as a bad one.
     """
     try:
-        info = _open(path).info
-    except (MutagenError, OSError):
+        info = (one.typed if one else _open(path)).info
+    except (MutagenError, OSError, KeyError):
         return {}
     out = {"codec": CODECS[kind(path)],
            "bitrate": getattr(info, "bitrate", None),

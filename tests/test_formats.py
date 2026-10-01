@@ -408,3 +408,48 @@ def test_the_albums_own_length_is_not_evidence_about_a_disc():
     credible = _disc_plan({1: [1, 2, 3], 2: [1, 2]}, totals={1: 5})
     credible.tracks.append(credible.tracks[-1])          # six tracks now, so five means something
     assert credible.disc_length(1) == 5
+
+
+def test_one_open_answers_everything_the_old_three_did(flac_file, mp3_file, opus_file, m4a_file):
+    """Reading a file once must say exactly what reading it four times said (§9, slice 105).
+
+    `read_tags`, `audio_length` and `audio_quality` each opened the file for themselves — four opens
+    in all, two of them inside `audio_quality` — and a share re-reads on every one: a dry run of
+    `take-in` over the user's own collection read **2.7 times the whole collection**, 80.75 GB for
+    41 GB of music, where the dry run's own work is 2.3 MB of an album. The values may not move.
+    """
+    from noaap.sources_folder import measure, read_tags
+    from noaap.tag import audio_length, audio_quality, reading
+
+    plan = make_plan()
+    for path in (flac_file, mp3_file, opus_file, m4a_file):
+        tag_file(path, plan, plan.tracks[0], cover=JPEG)       # something in every field
+        apart = (read_tags(path), audio_length(path), audio_quality(path))
+        with reading(path) as one:
+            together = (read_tags(path, one), audio_length(path, one), audio_quality(path, one))
+        assert apart == together, path.suffix
+
+        # and the measurement built on them, which is what an adoption records
+        separately = measure(path, digest=False)
+        with reading(path) as one:
+            shared = measure(path, digest=False, one=one)
+        assert separately == shared, path.suffix
+
+
+def test_a_file_that_cannot_be_read_still_answers_nothing(tmp_path):
+    """One open that fails must read as the old four did: no length, no quality, no tags, no raising."""
+    from noaap.sources_folder import read_tags
+    from noaap.tag import audio_length, audio_quality, reading
+
+    broken = tmp_path / "not really.mp3"
+    broken.write_bytes(b"this is not an mp3")
+    with reading(broken) as one:
+        assert audio_length(broken, one) is None
+        assert audio_quality(broken, one) == {}
+        assert read_tags(broken, one) == {}
+
+    gone = tmp_path / "not there at all.flac"
+    with reading(gone) as one:
+        assert audio_length(gone, one) is None
+        assert audio_quality(gone, one) == {}
+        assert read_tags(gone, one) == {}

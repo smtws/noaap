@@ -35,6 +35,9 @@ from .tag import (
     embedded_cover,
     measured_length,
 )
+from .tag import (
+    reading as tag_reading,
+)
 from .text import key as text_key
 from .text import split_feat
 
@@ -75,7 +78,7 @@ def cover_in(folder: Path) -> Path | None:
     return None
 
 
-def read_tags(path: Path) -> dict[str, Any]:
+def read_tags(path: Path, one: Any = None) -> dict[str, Any]:
     """Artist, title, album, album artist, year, track and disc as the file itself states them.
 
     One vocabulary out, whatever the container: mutagen's `easy` mapping does the translating, and
@@ -85,7 +88,7 @@ def read_tags(path: Path) -> dict[str, Any]:
     import mutagen
 
     try:
-        tags = mutagen.File(path, easy=True)
+        tags = one.easy if one is not None else mutagen.File(path, easy=True)
     except Exception:  # mutagen raises a family of its own; an unreadable file is not an error here
         return {}
     if tags is None or not tags.tags:
@@ -234,7 +237,7 @@ def stream_sha(path: Path) -> str | None:
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
-def measure(path: Path, digest: bool = True) -> Candidate:
+def measure(path: Path, digest: bool = True, one: Any = None) -> Candidate:
     """Everything about this file that ranking will ever want, read from the file itself.
 
     **`digest=False` leaves out the one expensive part** (§9, slice 101). The packet digest is an
@@ -243,13 +246,13 @@ def measure(path: Path, digest: bool = True) -> Candidate:
     for what is otherwise a walk of the tags. It is what ranking two copies of one recording needs,
     so `merge` asks for it and an adoption does not; a later pass measures what it needs, once.
     """
-    length, how = audio_length(path), None
+    length, how = audio_length(path, one), None
     if length is None and (length := decoded_length(path)) is not None:
         how = "decoded"
     return Candidate(ref=str(path), provider=NAME, length=length, length_by=how,
                      bytes=path.stat().st_size, stream_sha=stream_sha(path) if digest else None,
                      added_by="source", why=UNRANKED,
-                     when=dt.date.today().isoformat(), **audio_quality(path))
+                     when=dt.date.today().isoformat(), **audio_quality(path, one))
 
 
 def better(a: Candidate, b: Candidate) -> Candidate:
@@ -302,11 +305,18 @@ class FolderSource:
         # tags and name are read apart and stay apart: `music` carries only what the file itself
         # states, so a value the *name* supplied is recorded as `file_name` and not as `file_tags`
         # (§9, slice 53). `known` is the two together, for the questions that only need an answer.
-        rows = [(disc, path, read_tags(path), from_name(path))
-                for disc, part in (discs or [(1, folder)]) for path in audio_files(part)]
+        # **one open per file, for every question asked of it** (§9, slice 105). This read the tags,
+        # then the length, then the quality — four opens — and a share re-reads on every one of them:
+        # 80.75 GB for a dry run over 41 GB of music. The reading is held open across all three.
+        rows = []
+        for disc, part in (discs or [(1, folder)]):
+            for path in audio_files(part):
+                with tag_reading(path) as one:
+                    rows.append((disc, path, read_tags(path, one), from_name(path),
+                                 measure(path, digest=self.digests, one=one)))
         if not rows:
             raise sources.NotSupported(f"no audio files in {folder.name!r}")
-        if all((t.get("tracknumber") or n.get("tracknumber")) for _, _, t, n in rows):
+        if all((t.get("tracknumber") or n.get("tracknumber")) for _, _, t, n, _ in rows):
             rows.sort(key=lambda r: (r[0], r[2].get("discnumber") or r[0],
                                      r[2].get("tracknumber") or r[3]["tracknumber"]))
 
@@ -320,10 +330,10 @@ class FolderSource:
         # library as well as for a folder.
         tracks: dict[Any, list[Any]] = {}
         for row in rows:
-            disc, path, tags, named = row
+            disc, path, tags, named, measured = row
             known = {**named, **tags}
             name = (disc, known.get("tracknumber"), text_key(known.get("title") or path.stem))
-            tracks.setdefault(name, []).append((row, measure(path, digest=self.digests)))
+            tracks.setdefault(name, []).append((row[:4], measured))
 
         entries = []
         for n, group in enumerate(tracks.values(), 1):
@@ -363,7 +373,7 @@ class FolderSource:
             source_url=str(folder),
             source_id=str(folder),
             is_playlist=True,
-            title=next((t.get("album") or n.get("album") for _, _, t, n in rows
+            title=next((t.get("album") or n.get("album") for _, _, t, n, _ in rows
                          if t.get("album") or n.get("album")), folder.name.strip()),
             channel=owners.pop() if len(owners) == 1 else None,
             thumbnail=str(cover),
