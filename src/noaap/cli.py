@@ -829,7 +829,8 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         made = intake.read_made(intake.made_path(where), root)
         husks = intake.read_made(intake.made_path(where), root, folders=True)
         done = precautions.restore(snap, root, apply=args.apply, kept=kept, made=made,
-                                   folders=husks, log=print)
+                                   folders=husks, pictures=precautions.pictures_for(where),
+                                   log=print)
         for name in done.missing:
             print(f"  not there: {name}")
         for line in done.lost:

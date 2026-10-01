@@ -316,7 +316,7 @@ every album to it.
 
 | | what it is | what it costs |
 |---|---|---|
-| the snapshot | one line per file — **every** file, not only the audio: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not (your `comment`, your replaygain, your cover), and a digest of what it holds — the **decoded** recording for audio, which is the one thing a retag cannot change, and the bytes for your `cover.jpg`, your `.url`, your thumbnails | a few hundred bytes a file, and one read of the tree |
+| the snapshot | one line per file — **every** file, not only the audio: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not (your `comment`, your replaygain), a digest of what it holds — the **decoded** recording for audio, which is the one thing a retag cannot change, and the bytes for your `cover.jpg`, your `.url`, your thumbnails — and **the picture inside each file**, kept once per distinct one in a folder beside the snapshot | a few hundred bytes a file, the covers once each, and one read of the tree |
 | the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy per file written, and one digest, because the snapshot already measured the original |
 | `--keep-originals DIR` | the first write to a file copies it there whole, **before** the rename | as much disk as the part of the collection that is touched |
 
@@ -327,6 +327,10 @@ yours that went missing on the way.
 
 **None of that is a backup.** It is a way back from what noaap did, not from a disk that fails, a share
 that goes away mid-pass, or a deleted snapshot.
+
+A restore also puts the **embedded picture** back as it found it: taken out of a file that had none,
+and replaced in one the pass overwrote, from the store of covers kept beside the snapshot. Without
+that store the first is still possible and the second is named rather than guessed at.
 
 **The snapshot is of everything that was there**, so a restore puts your own `cover.jpg` and your
 `.url` back into the folder they were in — the pass moves a whole album folder, and they go with it.
@@ -1327,6 +1331,7 @@ and two things can never rename the same album at once.
 | `musicbrainz` | `true` | Look up names, years, covers, tracklists. |
 | `cover_beside` | `true` | `cover.jpg` in each album folder. An album taken in where it stood has no published cover address, so the picture comes out of its own files; a pass adds one where the folder has none. |
 | `cover_embedded` | `true` | The picture inside every file. |
+| `remove_empty_folders` | `false` | Off, a pass clears only the folders it emptied itself. On, it also takes away empty folders it finds under the library — including ones you left there — and the check names each one before anything goes. |
 | `lyrics_embedded` | `true` | The words in the file's tag, beside the `.lrc`. |
 | `rename_adopted` | `false` | Rename albums taken in where they stood into noaap's scheme. |
 | `retag_adopted` | `false` | Write noaap's tags into them — never removing a field noaap does not model. |

@@ -3038,6 +3038,30 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    inside `audio_quality` — and a share re-reads on each open. Opening once would cut every adoption
    there is.
 
+104. ✅ **A restore gives the picture back too, and removing folders is a setting** (2026-10-01,
+   P82b). Two defects the reviewer's own run found, both after a restore that reported success.
+   **The embedded cover stayed.** A snapshot records the text tags a writer could touch and
+   `restore_tags` puts them back; the picture is written by those same writers and was in none of
+   their key lists, so a restore left a cover the pass had embedded sitting in somebody's file — 23
+   of 36 files in that run, every text tag correctly restored. The snapshot records the picture by
+   its digest now, the bytes go once per distinct picture into a folder beside the snapshot, and a
+   restore takes a picture out where the file had none and puts the original back where the pass
+   replaced one. Without that folder only the first is possible and the second is named in `lost`
+   rather than guessed at. `tag.set_picture` is the other half of `embedded_cover`, which had no
+   counterpart until now.
+   **And the staged mode's record of its own leavings was stamped with the wrong root.** The pass
+   writes it against the staging copy, and `read_made` checks the root a record was written for —
+   rightly, since another root's record is not this one's — so a restore pointed at the share read
+   nothing of it and left every plan the pass had made. It is rewritten in the share's terms when
+   the batch is copied back; the paths were always relative and always meant the same on either side.
+   **Whether a pass may remove an empty folder that is not of its own making is a setting**, the
+   user's: *"maybe we should make clear empty folders a setting?"*, and then *"clearing means
+   emptying"* — so `remove_empty_folders`, off by default. Off, a pass clears only what it emptied
+   itself, which is what stopped it deleting `Der W/Autonomie`. On, the take-in and the repair also
+   take away empty folders under the root they work on, the owner's included, and the dry run names
+   each one first. `precautions.empty_under` is the single place that decides it: never the root,
+   never outside it, and `rmdir` still has the last word, so a folder holding anything at all stays.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

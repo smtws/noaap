@@ -26,6 +26,7 @@ file until step 4 has verified its replacement, which is a stronger way back tha
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -290,7 +291,15 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
 
-    _copy_back(root, here, was, done, log)
+    _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders))
+    # **the record of what the pass made is rewritten in the share's terms** (R-354 defect 2). The
+    # pass wrote it against the staging copy, and `read_made` checks the root a record was written
+    # for — rightly, since a record of another root is not this one's — so a restore pointed at the
+    # share read nothing and left every plan and cover the pass had made. The paths are already
+    # relative and mean the same thing on either side; only the root they are stamped with was wrong.
+    intake.write_made(intake.made_path(snapshot), root,
+                      intake.read_made(intake.made_path(snapshot), here),
+                      intake.read_made(intake.made_path(snapshot), here, folders=True))
     shutil.rmtree(here)
     # **the batch's snapshot stays, and so does the record of what the pass made.** The share's own
     # untouched file is the way back only until its replacement is verified and the old one removed;
@@ -303,7 +312,7 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
 
 
 def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
-               log: Callable[[str], None]) -> None:
+               log: Callable[[str], None], sweep: bool = False) -> None:
     """Put the batch back on the share: **add and replace only, and remove nothing until all of it is
     verified.**
 
@@ -356,17 +365,11 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     if done.superseded:
         log(f"  {len(done.superseded)} file(s) the scheme replaced removed: "
             f"{', '.join(done.superseded[:3])}" + (" …" if len(done.superseded) > 3 else ""))
-    # **only the folders this pass emptied**, deepest first. Sweeping the whole root for empty
-    # directories removed one the owner had and we never touched — `Der W/Autonomie`, empty in their
-    # own collection — which is deleting something of theirs under cover of tidying up.
-    for folder in sorted(emptied | {f.parent for f in emptied}, key=lambda p: -len(p.parts)):
-        if folder == root or root not in folder.parents:
-            continue
-        try:
-            if not any(folder.iterdir()):
-                folder.rmdir()
-        except OSError:
-            pass
+    # **only the folders this pass emptied**, unless the library is set to clear the owner's too.
+    for folder in precautions.empty_under(root, emptied, everything=sweep):
+        with contextlib.suppress(OSError):
+            folder.rmdir()
+        log(f"  removed the empty folder {folder.relative_to(root)}")
 
 
 def _same(one: Path, two: Path) -> bool:

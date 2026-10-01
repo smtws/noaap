@@ -33,7 +33,7 @@ from .lyrics import (
 )
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import refresh_derived, wanted_filename, wanted_folder
-from .precautions import put_aside, safely
+from .precautions import empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
     KEEP_IF_PRESENT,
@@ -876,7 +876,7 @@ def run(
     # empty — measured on a two-disc album: both still there afterwards. Deepest first, and `rmdir`
     # refuses a folder that still holds anything, so whatever else was in there stays and so does the
     # folder. A restore puts the files back under their recorded paths, which makes it again.
-    for folder in sorted(emptied, key=lambda path: -len(path.parts)):
+    for folder in empty_under(album_dir, emptied, everything=False):
         with contextlib.suppress(OSError):
             folder.rmdir()
     return plan

@@ -142,6 +142,12 @@ class Config:
     lyrics_embedded: bool = True     # the words in the file's tag, beside the .lrc
     rename_adopted: bool = False     # rename an adopted album's files into noaap's scheme
     retag_adopted: bool = False      # and write noaap's tags into them
+    # **whether a pass may clear empty folders that are not of its own making** (§9, slice 104).
+    # The user: *"maybe we should make clear empty folders a setting?"*. Off, a pass removes only
+    # the folders it emptied itself — which is what stopped it deleting `Der W/Autonomie`, empty
+    # in their own collection and never touched by us. On, it also takes away empty folders it
+    # finds under the root it works on, theirs included, and the dry run names every one first.
+    remove_empty_folders: bool = False
     # opt-in, only needed for age-restricted videos (DESIGN.md §7). yt-dlp writes
     # refreshed cookies back into cookies_file.
     cookies_file: Path | None = None
@@ -260,6 +266,7 @@ def load(path: Path | None = None) -> Config:
         lyrics_embedded=bool(data.get("lyrics_embedded", True)),
         rename_adopted=bool(data.get("rename_adopted", False)),
         retag_adopted=bool(data.get("retag_adopted", False)),
+        remove_empty_folders=bool(data.get("remove_empty_folders", False)),
     )
     if root := data.get("library_root"):
         cfg.library_root = Path(root).expanduser()

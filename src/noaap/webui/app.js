@@ -2497,6 +2497,12 @@ function openSettings() {
         row(title, help, h("input", { type: "checkbox", name: `state_${key}`,
                                       checked: Boolean(st.state?.[key]) }))),
       h("h3", {}, "Library"),
+      row("Remove empty folders",
+          "Off, a pass clears only the folders it emptied itself. On, it also takes away empty "
+          + "folders it finds under the library — including ones you left there — and the check "
+          + "names each before anything goes.",
+          h("input", { type: "checkbox", name: "remove_empty_folders",
+                       checked: Boolean(st.remove_empty_folders) })),
       updateSection(),
       repairSection(),
       takeInSection(),

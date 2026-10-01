@@ -654,6 +654,8 @@ class App:
             "cookies_file": str(self.cfg.cookies_file or ""),
             "browsers": config_mod.detect_browsers(),
             "musicbrainz": self.cfg.musicbrainz,
+            # whether a pass may take away empty folders not of its own making (§9, slice 104)
+            "remove_empty_folders": self.cfg.remove_empty_folders,
             # **what every album should have** (§9, slice 100): the state the library is in. A pass
             # brings the albums it touches to these; an album can only be excepted from one.
             "state": {key: bool(getattr(self.cfg, key)) for key in TREATMENT_KEYS},
@@ -716,6 +718,8 @@ class App:
             changes["cookies_from_browser"] = browser
         if "musicbrainz" in body:
             changes["musicbrainz"] = bool(body["musicbrainz"])
+        if "remove_empty_folders" in body:
+            changes["remove_empty_folders"] = bool(body["remove_empty_folders"])
         for key in TREATMENT_KEYS:
             if key in body:
                 changes[key] = bool(body[key])

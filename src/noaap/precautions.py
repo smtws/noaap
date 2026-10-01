@@ -38,9 +38,18 @@ from pathlib import Path
 from typing import Any
 
 from .sources_folder import AUDIO, stream_sha
-from .tag import decoded_sha, decoder, raw_tags, restore_tags, tags_outside_ours
+from .tag import (
+    decoded_sha,
+    decoder,
+    embedded_cover,
+    raw_tags,
+    restore_tags,
+    set_picture,
+    tags_outside_ours,
+)
 
 SNAPSHOT = "snapshot.jsonl"         # the suffix; the name is the root's own (see `snapshot_for`)
+PICTURES = "pictures"               # a folder beside it: one file per distinct embedded cover
 KEPT = "noaap-originals"            # and where it keeps the originals, likewise
 
 
@@ -65,6 +74,7 @@ class Recorded:
     mtime_ns: int
     audio: str | None  # **the decoded recording**, not the file: see `of`
     tags: dict[str, Any]
+    picture: str | None = None   # the digest of the picture inside it, or None for "there was none"
     others: dict[str, str] = field(default_factory=dict)
     # how `audio` was arrived at: the decoded recording, the bytes (for a file that is not audio),
     # or — in a snapshot written before the decoded identity — a digest of the audio packets
@@ -75,9 +85,12 @@ class Recorded:
         return self.how != "bytes"
 
     def as_line(self) -> str:
-        return json.dumps({"path": self.path, "size": self.size, "mtime_ns": self.mtime_ns,
-                           "audio": self.audio, "how": self.how,
-                           "tags": self.tags, "others": self.others}, ensure_ascii=False)
+        line: dict[str, Any] = {"path": self.path, "size": self.size, "mtime_ns": self.mtime_ns,
+                                "audio": self.audio, "how": self.how,
+                                "tags": self.tags, "others": self.others}
+        if self.picture:
+            line["picture"] = self.picture
+        return json.dumps(line, ensure_ascii=False)
 
     @staticmethod
     def of(path: Path, root: Path) -> Recorded:
@@ -92,13 +105,22 @@ class Recorded:
         way — it is the decode that costs, and over a share the read is the ceiling.
         """
         st = path.stat()
-        here = dict(path=str(path.relative_to(root)), size=st.st_size, mtime_ns=st.st_mtime_ns)
+        here: dict[str, Any] = dict(path=str(path.relative_to(root)), size=st.st_size,
+                                    mtime_ns=st.st_mtime_ns)
         if path.suffix.lower() not in AUDIO:
             # not audio: its bytes are its identity, there are no tags of anybody's to keep, and a
             # digest of it costs nothing (153 such files in the reference collection, 14 MB in all)
             return Recorded(**here, audio=bytes_sha(path), tags={}, how="bytes")
+        # **the picture is recorded too, by its digest** (§9, slice 104). A writer here embeds one
+        # and no key list ever held it, so a restore put the text tags back and left somebody's file
+        # carrying a cover the pass had added. The bytes go in a store beside the snapshot, once per
+        # distinct picture, because a cover is a hundred kilobytes and eleven thousand of them are
+        # not a snapshot — on the reference collection 269 files carry one and they share far fewer.
+        inside = embedded_cover(path)
         return Recorded(**here, audio=decoded_sha(path), tags=raw_tags(path),
-                        others=tags_outside_ours(path))
+                        others=tags_outside_ours(path),
+                        picture=hashlib.blake2b(inside, digest_size=16).hexdigest() if inside
+                        else None)
 
 
 @dataclass
@@ -163,6 +185,17 @@ def bytes_sha(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def pictures_for(snapshot: Path) -> Path:
+    """Where the pictures a snapshot records are kept: one file per distinct one, named by its digest.
+
+    Deduplicated, because an album's tracks carry the same cover: on the reference collection 269
+    files hold a picture and far fewer distinct ones. Without this folder a restore can still take
+    away a picture the pass added — the snapshot says which files had none — but it cannot put back
+    one the pass replaced, and it says so rather than pretending.
+    """
+    return snapshot.with_name(f"{snapshot.stem}.{PICTURES}")
+
+
 def snapshot_for(root: Path) -> Path:
     """Where a snapshot of this root goes unless told otherwise: beside it, named after it.
 
@@ -192,8 +225,15 @@ def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambd
     with tmp.open("w", encoding="utf-8") as fh:
         fh.write(json.dumps({"noaap_snapshot": 1, "root": str(root), "digest_by": decoder(),
                              "at": datetime.now(UTC).isoformat(timespec="seconds")}) + "\n")
+        store = pictures_for(out)
         for path in files_under(root, skip=(out, tmp)):
-            fh.write(Recorded.of(path, root).as_line() + "\n")
+            was = Recorded.of(path, root)
+            if was.picture:
+                kept = store / was.picture
+                if not kept.exists():
+                    store.mkdir(parents=True, exist_ok=True)
+                    kept.write_bytes(embedded_cover(path) or b"")
+            fh.write(was.as_line() + "\n")
             seen += 1
             if seen % 250 == 0:
                 log(f"  written down {seen} file(s)")
@@ -221,6 +261,7 @@ def read(path: Path) -> Snapshot:
             snap.files.append(Recorded(path=got["path"], size=got["size"], mtime_ns=got["mtime_ns"],
                                        audio=got.get("audio") or got.get("packets"),
                                        tags=got.get("tags") or {}, others=got.get("others") or {},
+                                       picture=got.get("picture"),
                                        how=got.get("how") or ("decoded" if got.get("audio")
                                                               else "packets")))
         except (ValueError, KeyError) as e:
@@ -232,7 +273,7 @@ def read(path: Path) -> Snapshot:
 
 
 def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, kept: Path | None = None,
-            made: Iterable[str] = (), folders: Iterable[str] = (),
+            made: Iterable[str] = (), folders: Iterable[str] = (), pictures: Path | None = None,
             log: Callable[[str], None] = lambda s: None) -> Summary:
     """Put the folder back as it was. Dry by default, like every other pass here.
 
@@ -253,6 +294,10 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     under their recorded paths, which leaves that one standing **empty**: 19 of them on the user's own
     collection, husks of noaap's spelling of their album names. `rmdir` is what removes them, so one
     that still holds anything at all stays.
+
+    `pictures` is the store `take` filled, and with it the **embedded cover** goes back too: taken
+    out where the snapshot says the file had none, and put back where the pass replaced one. Without
+    the store only the first of those is possible, and the second is named instead.
     """
     root = root or snapshot.root
     done = Summary()
@@ -307,6 +352,8 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
                 done.retagged += 1
             else:
                 done.already += 1
+            if was.is_audio and _picture_back(was, now, pictures, done):
+                done.retagged += 1
             os.utime(now, ns=(was.mtime_ns, was.mtime_ns))
             if not holds_it(was, now):
                 done.changed.append(was.path)
@@ -419,6 +466,26 @@ def _found_again(was: Recorded, unclaimed: dict[str, Path], here: dict[Path, tup
     return None
 
 
+def _picture_back(was: Recorded, now: Path, store: Path | None, done: Summary) -> bool:
+    """The embedded cover as the snapshot found it: gone where there was none, back where there was.
+
+    A pass embeds a picture and no key list ever held it, so a restore used to put the text tags back
+    and leave the cover in place — 23 of 36 files in one run. What cannot be done without the store
+    is replacing a picture the pass overwrote; that is named in `lost`, not guessed at.
+    """
+    inside = embedded_cover(now)
+    here = hashlib.blake2b(inside, digest_size=16).hexdigest() if inside else None
+    if here == was.picture:
+        return False
+    if was.picture is None:
+        return set_picture(now, None)           # the pass put it there; it goes
+    kept = (store / was.picture) if store else None
+    if kept is None or not kept.is_file():
+        done.lost.append(f"{was.path}: the picture it carried, and no store to put it back from")
+        return False
+    return set_picture(now, kept.read_bytes())
+
+
 def holds_it(was: Recorded, now: Path) -> bool:
     """Whether this file holds the recording the snapshot wrote down — the one question, asked once.
 
@@ -490,6 +557,31 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def empty_under(root: Path, only: Iterable[Path] = (), everything: bool = False) -> list[Path]:
+    """Which empty folders a pass may take away, deepest first — and that is a setting (§9, slice 104).
+
+    `only` is what this pass emptied itself, which is always its own to clear. With `everything` the
+    owner's empty folders go too, which is `remove_empty_folders` and is off by default: sweeping the
+    whole root for empty directories once removed `Der W/Autonomie`, empty in somebody's own
+    collection and never touched by us. The root itself is never a candidate and nothing outside it
+    ever is; `rmdir` still decides, so a folder that holds anything at all stays.
+    """
+    if everything:
+        found = {p for p in root.rglob("*") if p.is_dir()}
+    else:
+        found = {p for p in only} | {p.parent for p in only}
+    out = []
+    for folder in sorted(found, key=lambda p: -len(p.parts)):
+        if folder == root or root not in folder.parents or not folder.is_dir():
+            continue
+        try:
+            if not any(folder.iterdir()):
+                out.append(folder)
+        except OSError:
+            continue
+    return out
 
 
 def put_aside(path: Path, root: Path, keep: Path, as_path: str | None = None) -> Path | None:

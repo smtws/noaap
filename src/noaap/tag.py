@@ -125,12 +125,85 @@ def embedded_cover(path: Path) -> bytes | None:
         import base64
 
         from mutagen.flac import Picture
+        if path.suffix.lower() in (".m4a", ".mp4", ".m4b"):
+            from mutagen.mp4 import MP4
+            art = (MP4(path).tags or {}).get("covr")
+            return bytes(art[0]) if art else None
         tags = (mutagen.File(path).tags or {}) if mutagen.File(path) else {}
         if raw := tags.get("metadata_block_picture"):
             return Picture(base64.b64decode(raw[0])).data
     except Exception:  # an unreadable picture is no picture; it must not stop the album
         return None
     return None
+
+
+def set_picture(path: Path, data: bytes | None) -> bool:
+    """Put this picture inside the file, or — with `None` — take out whatever is in there.
+
+    **The other half of `embedded_cover`, and a restore needs it** (§9, slice 104). A snapshot records
+    the text tags a writer could touch and `restore_tags` puts those back; the picture is written by
+    the same writers and was in none of their key lists, so a restore left a cover the pass had
+    embedded sitting in somebody's file — 23 of 36 files in the reviewer's own run. Says whether it
+    changed anything.
+    """
+    from mutagen import File as Any_
+    from mutagen.flac import FLAC
+    from mutagen.id3 import APIC, ID3
+    from mutagen.mp4 import MP4, MP4Cover
+
+    mime = image_mime(data) if data else ""
+    if data and not mime:
+        return False
+    try:
+        kind_ = kind(path)
+        if kind_ == "flac":
+            audio = FLAC(path)
+            if not audio.pictures and data is None:
+                return False
+            audio.clear_pictures()
+            if data:
+                audio.add_picture(_picture(data, mime))
+            audio.save()
+            return True
+        if kind_ == "mp3":
+            try:
+                id3 = ID3(path)
+            except Exception:
+                id3 = ID3()
+            had = bool(id3.getall("APIC"))
+            if not had and data is None:
+                return False
+            id3.delall("APIC")
+            if data:
+                id3.setall("APIC", [APIC(encoding=3, mime=mime, type=3, desc="Cover", data=data)])
+            id3.save(path)
+            return True
+        if kind_ == "mp4":
+            audio = MP4(path)
+            had = bool((audio.tags or {}).get("covr"))
+            if not had and data is None:
+                return False
+            if data:
+                fmt = MP4Cover.FORMAT_PNG if mime == "image/png" else MP4Cover.FORMAT_JPEG
+                audio["covr"] = [MP4Cover(data, imageformat=fmt)]
+            else:
+                audio.pop("covr", None)
+            audio.save()
+            return True
+        audio = Any_(path)                      # opus, ogg: a base64 block in the comments
+        if audio is None or audio.tags is None:
+            return False
+        had = PICTURE_KEY in audio.tags
+        if not had and data is None:
+            return False
+        if data:
+            audio[PICTURE_KEY] = [base64.b64encode(_picture(data, mime).write()).decode("ascii")]
+        else:
+            audio.pop(PICTURE_KEY, None)
+        audio.save()
+        return True
+    except (MutagenError, OSError):
+        return False
 
 
 def decoder() -> str:

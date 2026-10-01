@@ -301,3 +301,62 @@ def test_an_empty_folder_of_the_owners_is_not_tidied_away(elsewhere, tmp_path):
                           log=lambda s: None)
 
     assert (elsewhere / "aphelion" / "a folder they left empty").is_dir()
+
+
+def _tags_and_picture(root: Path) -> dict[str, tuple]:
+    from noaap.tag import embedded_cover, raw_tags
+    return {str(p.relative_to(root)): (raw_tags(p), embedded_cover(p))
+            for p in sorted(root.rglob("*")) if p.suffix.lower() == ".opus"}
+
+
+def test_after_a_staged_run_and_its_restore_the_share_is_the_reference(elsewhere, tmp_path):
+    """The reviewer's own check (R-354): every audio file equal to the reference in tags **and
+    pictures**, and nothing of the pass's left behind.
+
+    It failed twice. A restore put the text tags back and left the cover the pass had embedded in
+    23 of 36 files; and the record of what the pass made was stamped with the staging copy's root, so
+    a restore pointed at the share read nothing of it and left every plan in place.
+    """
+    reference = tmp_path / "reference"
+    shutil.copytree(elsewhere, reference)
+    was = _tags_and_picture(reference)
+    staging = tmp_path / "staging"
+
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+    assert done.unverified == []
+    assert any(precautions.embedded_cover(p) for p in elsewhere.rglob("*.opus")), \
+        "the pass did embed a cover, or this proves nothing"
+
+    for name in done.snapshots:
+        snapshot = Path(name)
+        precautions.restore(precautions.read(snapshot), elsewhere, apply=True,
+                            made=intake.read_made(intake.made_path(snapshot), elsewhere),
+                            folders=intake.read_made(intake.made_path(snapshot), elsewhere,
+                                                     folders=True),
+                            pictures=precautions.pictures_for(snapshot), log=lambda s: None)
+
+    assert _tags_and_picture(elsewhere) == was, "every tag and every picture as the reference has it"
+    assert list(elsewhere.rglob(".ytalbum.json")) == [], "and no plan of the pass's left"
+    assert list(elsewhere.rglob("cover.*")) == [elsewhere / "bramblewood" / "hollow" / "cover.jpg"], \
+        "the cover that was theirs stays; one the pass fetched goes"
+
+
+def test_an_empty_folder_of_the_owners_goes_only_when_the_setting_says_so(elsewhere, tmp_path):
+    """R-355, the user: *"maybe we should make clear empty folders a setting?"* — `remove_empty_folders`."""
+    (elsewhere / "aphelion" / "one they left empty").mkdir()
+    cfg = Config(library_root=elsewhere, musicbrainz=False, lyrics=False)
+    assert cfg.remove_empty_folders is False, "off by default"
+
+    staged.take_in_staged(Service(cfg, elsewhere, log=lambda s: None), elsewhere, QUIET,
+                          staging=tmp_path / "off", batch_size=10_000_000, dry_run=False,
+                          log=lambda s: None)
+    assert (elsewhere / "aphelion" / "one they left empty").is_dir(), "off: theirs is left alone"
+
+    on = Config(library_root=elsewhere, musicbrainz=False, lyrics=False, remove_empty_folders=True)
+    said = []
+    intake.take_in(Service(on, elsewhere, log=lambda s: None), elsewhere,
+                   intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=tmp_path / "on.jsonl", log=said.append)
+    assert not (elsewhere / "aphelion" / "one they left empty").exists(), "on: it goes"
+    assert any("removed the empty folder" in line for line in said), said

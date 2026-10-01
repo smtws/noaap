@@ -496,3 +496,86 @@ def test_a_digest_that_disagrees_costs_time_and_not_correctness(tmp_path, one_se
     with pytest.raises(Unsafe):
         precautions.safely(path, ruin, expect="not this file's digest at all")
     assert path.read_bytes() == before, "and the file that was there is still there"
+
+
+def test_a_picture_the_pass_embedded_is_taken_back_out(tmp_path, one_second_of_mp3):
+    """A restore puts the text tags back; the picture was in no key list, so it stayed.
+
+    Measured by the reviewer on a staged run: **23 of 36 files** still carried the cover the pass had
+    embedded, with every text tag correctly restored. The picture is written by the same writers, so
+    it is recorded and put back like anything else they touch.
+    """
+    root = tmp_path / "collection"
+    root.mkdir()
+    path = root / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    assert precautions.embedded_cover(path) is None, "it starts with none"
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+    assert snap.files[0].picture is None, "and the snapshot says so"
+
+    from noaap.tag import set_picture
+    set_picture(path, b"\xff\xd8" + b"the cover the pass embedded" * 100)
+    assert precautions.embedded_cover(path) is not None
+
+    precautions.restore(snap, root, apply=True, log=lambda s: None)
+
+    assert precautions.embedded_cover(path) is None, "and it is gone again"
+
+
+def test_a_picture_that_was_there_is_put_back(tmp_path, one_second_of_mp3):
+    """And the other half: a pass that *replaced* a cover has to give the original back.
+
+    The bytes live in a store beside the snapshot, one file per distinct picture, because a cover is
+    a hundred kilobytes and eleven thousand of them are not a snapshot.
+    """
+    root = tmp_path / "collection"
+    root.mkdir()
+    path = root / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    theirs = b"\xff\xd8" + b"the picture its owner put there" * 100
+    from noaap.tag import set_picture
+    set_picture(path, theirs)
+
+    where = precautions.take(root, tmp_path / "snap.jsonl")
+    snap = precautions.read(where)
+    assert snap.files[0].picture, "the snapshot records which picture it was"
+    store = precautions.pictures_for(where)
+    assert (store / snap.files[0].picture).read_bytes() == theirs, "and keeps the bytes, once"
+
+    set_picture(path, b"\xff\xd8" + b"what the pass put there instead" * 100)
+    done = precautions.restore(snap, root, apply=True, pictures=store, log=lambda s: None)
+
+    assert precautions.embedded_cover(path) == theirs, "theirs, byte for byte"
+    assert done.lost == []
+
+
+def test_without_the_store_a_replaced_picture_is_named_not_guessed(tmp_path, one_second_of_mp3):
+    root = tmp_path / "collection"
+    root.mkdir()
+    path = root / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    from noaap.tag import set_picture
+    set_picture(path, b"\xff\xd8" + b"theirs" * 200)
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+    set_picture(path, b"\xff\xd8" + b"ours" * 200)
+
+    done = precautions.restore(snap, root, apply=True, pictures=None, log=lambda s: None)
+
+    assert done.lost and "the picture it carried" in done.lost[0]
+
+
+def test_which_empty_folders_may_go_is_a_setting(tmp_path):
+    """The user: *"maybe we should make clear empty folders a setting?"* — and it is off by default."""
+    root = tmp_path / "collection"
+    (root / "theirs").mkdir(parents=True)
+    (root / "ours").mkdir()
+    (root / "holds something").mkdir()
+    (root / "holds something" / "a file").write_text("x")
+
+    mine = precautions.empty_under(root, only=[root / "ours"])
+    assert mine == [root / "ours"], "off: only what this pass emptied"
+
+    everything = precautions.empty_under(root, everything=True)
+    assert set(everything) == {root / "theirs", root / "ours"}, everything
+    assert root not in everything, "never the root"
+    assert not any("holds something" in str(p) for p in everything), "never one that holds anything"

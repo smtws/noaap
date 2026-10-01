@@ -18,6 +18,7 @@ decision about *tonight*, not about the collection.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from collections.abc import Callable
@@ -280,12 +281,18 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             f"rewritten (their tags), {done.covers} album(s) would be asked for a cover")
         if asked or asked_words:
             log(f"{asked} album(s) would be asked about at MusicBrainz, {asked_words} at LRCLIB")
+        for folder in precautions.empty_under(root, everything=bool(cfg.remove_empty_folders)):
+            log(f"  would remove the empty folder {folder.relative_to(root)}")
         log("nothing was written. `take-in … --apply` does it.")
     else:
         log(f"{done.adopted} album(s), {done.tracks} track(s) taken in; "
             f"{len(done.refused)} folder(s) refused")
         log(f"{done.renamed} file(s) renamed, {done.retagged} audio file(s) rewritten (their tags), "
             f"{done.covers} cover(s) written beside an album, {done.lyrics} track(s) with words")
+        for folder in precautions.empty_under(root, everything=bool(cfg.remove_empty_folders)):
+            with contextlib.suppress(OSError):
+                folder.rmdir()
+            log(f"  removed the empty folder {folder.relative_to(root)}")
         if done.musicbrainz_requests or done.lrclib_requests:
             log(f"{done.musicbrainz_requests} MusicBrainz and {done.lrclib_requests} LRCLIB "
                 "request(s) went out")

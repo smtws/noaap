@@ -70,6 +70,7 @@ from .plan import (
     wanted_filename,
     wanted_folder,
 )
+from .precautions import empty_under
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
@@ -1814,6 +1815,16 @@ class Service:
             self.log(f"{renames} file(s) would be renamed and {retags} audio file(s) would be "
                      "rewritten (their tags)")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
+        if self.cfg.remove_empty_folders and self.library:
+            # **only because the library is set to** (§9, slice 104). Off, a pass clears the folders
+            # it emptied itself and leaves the owner's alone; on, these go too, and the dry run names
+            # every one before anything is removed.
+            for folder in empty_under(self.library, everything=True):
+                self.log(f"  {'would remove' if dry_run else 'removed'} the empty folder "
+                         f"{folder.relative_to(self.library)}")
+                if not dry_run:
+                    with contextlib.suppress(OSError):
+                        folder.rmdir()
         return outcomes
 
     # -- taking a folder in (§9, slice 92) -----------------------------------------------
