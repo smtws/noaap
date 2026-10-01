@@ -3077,8 +3077,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **Measured over the share, adopting all 132 albums: 80.75 GB and 2859 s became 21.5 GB and
    755 s** — 3.8 times less read and 3.8 times faster. It is not down to one read of the collection
    (21.5 GB is about half of it) because mutagen scans an mp3's frames to answer for its length, and
-   that is a real read; it is down to doing that once instead of four times. Locally the figure moved
-   from 2.25 GB to 2.66 GB of device reads, which is the same work without the cache hiding it.
+   that is a real read; it is down to doing that once instead of four times.
+   **Locally it changes almost nothing, and the measurement had to be repeated to say so honestly.**
+   The first pair read 2.06 GB before and 2.66 GB after, which looked like a small regression; run
+   again with a warmer cache both fell to 1.3–1.5 GB with the new one slightly *lower*, and the only
+   figure that held across runs was the wall time: 10.6 s before, 9.9 s after. A local device-byte
+   count varies with whatever the page cache happens to hold, which is the lesson of slice 103 over
+   again — it is not a measurement of a network, and here it is barely a measurement at all.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
