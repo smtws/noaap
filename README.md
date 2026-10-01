@@ -373,7 +373,7 @@ which filesystem it measured and how much was free. An album larger than a whole
 its own and says so.
 
 **Your own file is moved aside, never deleted.** When the copy back replaces a file, the one that
-was there is **moved** into `noaap-originals/` beside the collection, under the name it had — a rename
+was there is **moved** into `noaap-originals/<the collection's name>/` beside the collection, under the name it had — a rename
 within the share, so nothing crosses the network — and that store is what makes a restore give the
 bytes back exactly. The dry run says how much it would hold, the run says where it is, and it stays
 until you remove it. (`--keep-originals` is refused here, because this is better: it costs no transfer

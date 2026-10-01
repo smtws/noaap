@@ -3111,7 +3111,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    **nothing over the network** — and `restore(kept=…)` already knew how to copy bytes back from such
    a store. The dry run says how much it would hold, the run says where it is, and it stays until the
    user removes it. That is what makes a staged restore byte for byte, and it is the difference
-   between a way back and a good intention.
+   between a way back and a good intention. **It is named after the collection** —
+   `noaap-originals/<root name>/<recorded path>` — because one store beside the parent would serve
+   every collection under it, and two collections can hold the same artist and album: one would
+   quietly keep the other's file instead of its own and a restore would hand back the wrong bytes.
+   That is the third time one fixed name beside a root has had to be made particular, after the
+   snapshot and the resume file.
 
 107. ✅ **A restore of one batch does not reach into another** (2026-10-02, P84 round 2). The rule
    "never claim a file this snapshot records under its own name" protects a track that is also on a

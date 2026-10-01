@@ -347,8 +347,13 @@ def aside_for(root: Path) -> Path:
     So the original is not deleted, it is moved — and `restore(kept=…)` already knows how to copy
     from such a store, which is the only way back that is byte for byte. It stays until the user
     removes it.
+
+    **Named after the collection** (R-370, ruling 1). `noaap-originals` alone, beside the root, is
+    one store for every collection under that parent — and two of them can hold the same artist and
+    album, so one would quietly keep the other's file instead of its own. The same shape as the one
+    fixed snapshot name that served two collections, found in P81b.
     """
-    return root.parent / ASIDE
+    return root.parent / ASIDE / root.name
 
 
 def _moved_on(path: Path, recorded: Any) -> bool:

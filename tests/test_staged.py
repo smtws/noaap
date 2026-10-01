@@ -546,3 +546,41 @@ def test_without_a_fence_the_search_may_look_anywhere(tmp_path, one_second_of_so
     done = precautions.restore(snapshot, root, apply=True, log=lambda s: None)
 
     assert done.missing == [] and path.is_file(), "found by what it holds, wherever it had gone"
+
+
+def test_two_collections_under_one_parent_do_not_share_a_store(tmp_path, one_second_of_sound):
+    """R-370, ruling 1: the store is named after the collection it belongs to.
+
+    `noaap-originals` alone, beside the root, is one store for every collection under that parent —
+    and two collections can hold the same artist and album, so one would quietly keep the other's
+    file instead of its own and a restore would give back the wrong bytes. The same shape as the one
+    fixed snapshot name that served two collections, found in P81b.
+    """
+    share = tmp_path / "share"
+    for which in ("Music", "Live"):
+        folder = share / which / "Aphelion" / "Nocturnes"
+        folder.mkdir(parents=True)
+        path = folder / "01 First.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"] = ["First"]
+        audio["artist"] = ["Aphelion"]
+        audio["album"] = ["Nocturnes"]
+        audio["comment"] = [which]            # the one thing that tells the two copies apart
+        audio.save()
+
+    assert staged.aside_for(share / "Music") != staged.aside_for(share / "Live")
+    was = {which: (share / which / "Aphelion" / "Nocturnes" / "01 First.opus").read_bytes()
+           for which in ("Music", "Live")}
+
+    for which in ("Music", "Live"):
+        root = share / which
+        cfg = Config(library_root=root, musicbrainz=False, lyrics=False)
+        done = staged.take_in_staged(Service(cfg, root, log=lambda s: None), root, QUIET,
+                                     staging=tmp_path / f"staging-{which}", batch_size=10_000_000,
+                                     dry_run=False, log=lambda s: None)
+        assert done.aside, which
+
+    for which in ("Music", "Live"):
+        kept = staged.aside_for(share / which) / "Aphelion" / "Nocturnes" / "01 First.opus"
+        assert kept.read_bytes() == was[which], f"{which} kept its own file, not the other's"
