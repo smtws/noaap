@@ -825,6 +825,14 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         where = Path(args.restore).expanduser()
         snap = precautions.read(where)
         kept = Path(args.keep_originals).expanduser() if args.keep_originals else None
+        if kept is None:
+            # **a staged run leaves the originals beside the collection** (R-364), and that store is
+            # the only way back that is byte for byte, so a restore uses it without being told to.
+            from . import staged as staged_mod
+            beside = staged_mod.aside_for(root)
+            if beside.is_dir():
+                kept = beside
+                print(f"the originals moved aside by a staged run are in {beside}")
         # what the pass wrote down as its own, so the restore can take it away (R-342, ruling 3)
         made = intake.read_made(intake.made_path(where), root)
         husks = intake.read_made(intake.made_path(where), root, folders=True)

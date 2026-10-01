@@ -372,9 +372,12 @@ filesystem, asked directly, never the share and never some total across your mou
 which filesystem it measured and how much was free. An album larger than a whole batch is a batch of
 its own and says so.
 
-**The share is its own way back.** `--keep-originals` is not used and is refused here: every original
-stays untouched on the share until its replacement has been copied back *and* its digest checked, so
-there is nothing to keep a second copy of. On the way back a file is written beside its target and
+**Your own file is moved aside, never deleted.** When the copy back replaces a file, the one that
+was there is **moved** into `noaap-originals/` beside the collection, under the name it had — a rename
+within the share, so nothing crosses the network — and that store is what makes a restore give the
+bytes back exactly. The dry run says how much it would hold, the run says where it is, and it stays
+until you remove it. (`--keep-originals` is refused here, because this is better: it costs no transfer
+and the original never leaves the share.) On the way back a file is written beside its target and
 renamed into place, which is atomic within the share; only once every file of the batch is verified
 are the files the scheme replaced removed, and they are listed. If one file cannot be verified,
 **nothing is removed at all** and the share keeps every original. The batch's snapshot restores

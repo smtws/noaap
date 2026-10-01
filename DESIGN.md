@@ -3085,6 +3085,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    count varies with whatever the page cache happens to hold, which is the lesson of slice 103 over
    again — it is not a measurement of a network, and here it is barely a measurement at all.
 
+106. ✅ **The original is moved aside, not deleted — and the filesystem is asked what a name is**
+   (2026-10-01, P84). The user asked whether everything possible had been done to protect thirty
+   years of collecting, and the answer is a gate: **three consecutive clean rounds** over the share
+   before the real collection is touched, a round counting only with zero findings of any kind.
+   Round 1 found three things.
+   **`Path.samefile` is False for the same file on CIFS.** The guard of slice 103 — a superseded path
+   that is the same file as one just written is not superseded — compared inodes, and this mount hands
+   out **a different inode for each spelling of one file** (measured: 130595 against 130597). So it
+   answered "a different file" every time and all fourteen files of an album were deleted after being
+   verified, exactly as before the guard existed. The case written for it passed because it used a
+   symlink on ext4, where the inode really is shared: **a fixture that agreed with the assumption
+   instead of with the filesystem.** So the filesystem is asked — `folds_case` writes one tiny file
+   and looks for it under another spelling — and `same_name` compares accordingly, with the inode
+   check left as a second line for a filesystem whose inodes mean something.
+   **A restore removed an empty folder of the owner's**: it cleared every empty directory under a
+   folder the pass had made *and* counted that folder's parents as the pass's, reaching
+   `Der W/Autonomie`, empty in their collection and recorded by nobody. Only a recorded folder's own
+   subdirectories are cleared now; a parent is merely offered to `rmdir`.
+   **And a restore could not give the bytes back at all.** Forty files came back with identical tags
+   and identical pictures and different bytes, because a tag round-trip through mutagen is not
+   byte-identical and a staged run kept nothing else: the share's own file was the way back only
+   until its replacement was verified and it was deleted. So it is **moved**, into
+   `noaap-originals/<recorded path>` beside the collection — a rename within the share, which costs
+   **nothing over the network** — and `restore(kept=…)` already knew how to copy bytes back from such
+   a store. The dry run says how much it would hold, the run says where it is, and it stays until the
+   user removes it. That is what makes a staged restore byte for byte, and it is the difference
+   between a way back and a good intention.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

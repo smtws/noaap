@@ -42,6 +42,7 @@ from .precautions import bytes_sha
 
 STAGED = "noaap-staged.json"     # which batches are finished, beside the staging folder
 PART = ".noaap-incoming"         # the suffix a file being copied back wears until it is verified
+ASIDE = "noaap-originals"       # beside the collection: every file the copy back replaces
 SHARE = 10                       # the default batch is a tenth of the free space
 
 
@@ -70,6 +71,8 @@ class Staged:
     copied_out: int = 0        # bytes read from the share
     copied_back: int = 0       # bytes written to the share
     superseded: list[str] = field(default_factory=list)   # what the scheme replaced, by its old name
+    aside: list[str] = field(default_factory=list)       # and what was moved into the store for it
+    moved_aside: int = 0
     unverified: list[str] = field(default_factory=list)   # a copy back whose digest did not match
     peak_staged: int = 0       # the most this machine held at once
     done: list[str] = field(default_factory=list)
@@ -214,6 +217,12 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             log(f"batch {n} —")
             kept = _as_if(service, root, batch, choices, log)
             done.tracks += kept
+        # **what the store would hold**, which is the disk this asks of the share: every file the
+        # pass writes has its original moved there first, so at most one copy of what it touches.
+        would = sum(size for _, size in sized)
+        log(f"the store of your own originals would hold up to {would / 1e9:.2f} GB in "
+            f"{aside_for(root)} — a rename on the share, so nothing crosses the network, and it is "
+            "what makes a restore byte for byte")
         log("nothing was written, here or on the share. `--apply` does it.")
         return done
 
@@ -236,6 +245,10 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"⚠ {len(done.unverified)} file(s) could not be verified after the copy back — "
             "the share's own file was left in place")
     log(f"this machine held at most {done.peak_staged / 1e9:.2f} GB at once")
+    if done.aside:
+        log(f"{len(done.aside)} file(s) of yours moved aside into {aside_for(root)} "
+            f"({done.moved_aside / 1e9:.2f} GB) — that is the way back, byte for byte, and it stays "
+            "until you remove it")
     if done.snapshots:
         log(f"the way back is {len(done.snapshots)} snapshot(s) in {staging}, one per batch: "
             f"`noaap take-in {root} --restore <one of them> --apply`")
@@ -311,6 +324,36 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     log(f"  the way back for this batch: {snapshot.name} (and {intake.made_path(snapshot).name})")
 
 
+def aside_for(root: Path) -> Path:
+    """Where a file the copy back replaces is moved to: beside the collection, on the share itself.
+
+    **A rename, so nothing crosses the wire** (R-364). The share's own file used to be the way back
+    only until its replacement was verified and it was deleted; after that a restore could put the
+    names, the tags and the pictures back but not the **bytes**, because a tag round-trip through
+    mutagen is not byte-identical and in a staged run nothing else keeps the original. Round 1 of the
+    gate found 40 files back with identical tags, identical pictures and different bytes.
+    So the original is not deleted, it is moved — and `restore(kept=…)` already knows how to copy
+    from such a store, which is the only way back that is byte for byte. It stays until the user
+    removes it.
+    """
+    return root.parent / ASIDE
+
+
+def _move_aside(path: Path, name: str, root: Path, done: Staged) -> bool:
+    """Move one file into the store under the path the snapshot knows it by. A rename, once."""
+    where = aside_for(root) / name
+    if where.exists():
+        return False                 # an earlier batch or run already kept this one
+    where.parent.mkdir(parents=True, exist_ok=True)
+    carried = path.stat().st_size
+    try:
+        os.replace(path, where)      # atomic, and within the share so it costs no bytes
+    except OSError:
+        shutil.move(str(path), str(where))   # a share that will not rename across directories
+    done.moved_aside += carried
+    return True
+
+
 def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
                log: Callable[[str], None], sweep: bool = False) -> None:
     """Put the batch back on the share: **add and replace only, and remove nothing until all of it is
@@ -331,6 +374,12 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             name = str(inside / path.name)
             target = root / name
             target.parent.mkdir(parents=True, exist_ok=True)
+            # **the owner's own file is moved aside before it is written over** (R-364). Where the
+            # pass did not rename it, the new file lands on the old one and there would be nothing
+            # left to go back to; the superseded loop below only ever sees the names that *did*
+            # change.
+            if name in was and target.is_file() and _move_aside(target, name, root, done):
+                done.aside.append(name)
             tmp = target.with_name(target.name + PART)
             shutil.copy2(path, tmp)
             os.replace(tmp, target)          # atomic within the share
@@ -367,7 +416,10 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             continue
         if any(_same(old, root / kept) for kept in written):
             continue        # a second line, for a filesystem whose inodes do mean something
-        old.unlink()
+        if _move_aside(old, name, root, done):
+            done.aside.append(name)
+        else:
+            old.unlink()             # already kept from an earlier run: this copy is spare
         emptied.add(old.parent)
         done.superseded.append(name)
     if done.superseded:

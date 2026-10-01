@@ -419,3 +419,63 @@ def test_a_restore_does_not_reach_a_folder_beside_the_one_the_pass_made(tmp_path
     assert (album / ".thumb" / "cover.jpg.jpg").is_file(), "with their thumbnail in it"
     assert (root / "Aphelion" / "one they left empty").is_dir(), "and the folder beside it is theirs"
     assert not moved.exists(), "while the folder the pass made is gone"
+
+
+def test_the_original_is_moved_aside_so_a_restore_is_byte_for_byte(elsewhere, tmp_path):
+    """R-364, from round 1: 40 files came back with the same tags, the same picture, other bytes.
+
+    A tag round-trip through mutagen is not byte-identical, and in a staged run nothing else kept
+    the original — the share's own copy was the way back only until it was deleted. So it is **moved**
+    into a store beside the collection instead, which is a rename within the share and costs nothing
+    over the network, and `restore(kept=…)` copies the bytes back from there.
+    """
+    was = {str(p.relative_to(elsewhere)): p.read_bytes()
+           for p in sorted(elsewhere.rglob("*")) if p.is_file()}
+
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=False, log=lambda s: None)
+
+    aside = staged.aside_for(elsewhere)
+    assert aside.is_dir() and done.aside, "the store is there and the pass says what it holds"
+    assert done.moved_aside > 0
+    for name in done.aside:
+        assert (aside / name).read_bytes() == was[name], f"{name} is kept byte for byte"
+    assert aside.resolve() not in elsewhere.resolve().parents, "beside the collection, not inside it"
+
+    for name in done.snapshots:
+        snapshot = Path(name)
+        precautions.restore(precautions.read(snapshot), elsewhere, apply=True, kept=aside,
+                            made=intake.read_made(intake.made_path(snapshot), elsewhere),
+                            folders=intake.read_made(intake.made_path(snapshot), elsewhere,
+                                                     folders=True),
+                            pictures=precautions.pictures_for(snapshot), log=lambda s: None)
+
+    now = {str(p.relative_to(elsewhere)): p.read_bytes()
+           for p in sorted(elsewhere.rglob("*")) if p.is_file()}
+    assert now == was, "every file back, byte for byte"
+
+
+def test_a_file_whose_name_does_not_change_is_moved_aside_before_it_is_written_over(tmp_path,
+                                                                                    one_second_of_sound):
+    """The superseded loop only ever sees names that changed; this one would have been overwritten."""
+    share = tmp_path / "share"
+    album = share / "Aphelion" / "Nocturnes"      # already the scheme's folder *and* file names
+    album.mkdir(parents=True)
+    path = album / "Aphelion - Nocturnes - 01 - First.opus"
+    shutil.copy(one_second_of_sound, path)
+    audio = MFile(path)
+    audio["title"] = ["First"]
+    audio["artist"] = ["Aphelion"]
+    audio["album"] = ["Nocturnes"]
+    audio.save()
+    was = path.read_bytes()
+
+    done = staged.take_in_staged(_service(tmp_path, share), share, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=False, log=lambda s: None)
+
+    assert done.superseded == [], "nothing was renamed, so nothing is superseded"
+    assert done.aside == ["Aphelion/Nocturnes/Aphelion - Nocturnes - 01 - First.opus"], done.aside
+    assert (staged.aside_for(share) / done.aside[0]).read_bytes() == was, "kept before it was written"
+    assert path.read_bytes() != was, "and the file itself was rewritten"
