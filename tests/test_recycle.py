@@ -309,15 +309,18 @@ def test_the_bin_holds_no_filesystem_path_for_the_page(library):
 # -- what the first run of P47 got wrong (R-139) ---------------------------------------------------
 
 
-def test_restore_renumbers_instead_of_reusing_the_old_number(library):
-    """Deleting renumbers what is left, so putting a 1 back into an album that now has a 1 gives
-    two of them — which is what the first version did, observed on the disposable copy."""
+def test_restore_puts_the_track_back_under_its_own_number(library):
+    """R-139 made the restore renumber, because deleting closed the gap behind the track and putting
+    a 1 back into an album that already had a 1 gave two of them. R-373 took the closing away: the
+    deletion leaves the gap, so the number the track had is the number that is free, and the album
+    it comes back to is the album it left — the two rulings only hold together as a pair."""
     tmp_path, plan, yt = library
     album_dir = tmp_path / plan.folder
     s = service(tmp_path, yt)
     first = plan.tracks[0]
     s.delete_track(plan.source_id, first.video_id)
-    assert [t.number for t in load_plan(album_dir).tracks] == list(range(1, len(plan.tracks)))
+    assert [t.number for t in load_plan(album_dir).tracks] == list(range(2, len(plan.tracks) + 1)), \
+        "the gap where track 1 was stays open"
 
     s.restore(entries(tmp_path)[0].id)
 
@@ -328,6 +331,25 @@ def test_restore_renumbers_instead_of_reusing_the_old_number(library):
     assert numbers == list(range(1, len(plan.tracks) + 1))
     # and it went back where it stood, not onto the end
     assert back.tracks[0].video_id == first.video_id
+
+
+def test_a_number_taken_while_the_track_was_gone_has_the_disc_counted_again(library):
+    """The one case the old renumbering was really protecting against: something else took the
+    number while the track was in the bin. Only then is the disc counted off again."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    s = service(tmp_path, yt)
+    first = plan.tracks[0]
+    s.delete_track(plan.source_id, first.video_id)
+    meanwhile = load_plan(album_dir)
+    meanwhile.tracks[0].number = 1          # the user dragged a row into the gap
+    save_plan(meanwhile, album_dir)
+
+    s.restore(entries(tmp_path)[0].id)
+
+    numbers = [t.number for t in load_plan(album_dir).tracks]
+    assert len(numbers) == len(set(numbers)), f"two tracks share a number: {numbers}"
+    assert numbers == list(range(1, len(plan.tracks) + 1))
 
 
 def test_a_binned_cover_is_called_a_cover(library):

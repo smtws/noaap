@@ -629,6 +629,13 @@ check and `merge` all work off the plan. The album is marked as **yours, not noa
 ordinary pass afterwards leaves its names and its tags alone, which is the thing that had to be
 built for this to be safe at all.
 
+**The track numbers your files carry are kept, and a gap stays a gap.** A rip of 01…09, 11…16 is an
+album of sixteen with track 10 missing, and that is how it is written: the number in the tag and in
+the name is the one the file already had. A number is counted off by position only for files that
+state none, and only into numbers still free on that disc. The track total follows the same rule as
+ever — never below the highest number present. From here, a track's number changes only when **you**
+reorder the album in the editor: neither `repair` nor a deletion closes a gap any more.
+
 **Discs in sub-folders stay in them.** A plan records each track's file as a path relative to the
 album — `cd1/…` when that is where it is — and no pass moves it, copies it or renames it out of its
 folder. If you adopted a collection with **1.5.0**, run `noaap repair` once before anything else:
@@ -1519,8 +1526,8 @@ panel, which is not where anybody looked for it.)
 empties is one you cannot rely on; `noaap config` and the settings panel report how big it has
 grown, and `recycle empty` is the only thing in noaap that really deletes audio.
 
-Restoring puts the file back, returns the track to its album with its numbering closed up, and
-brings the sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which
+Restoring puts the file back, returns the track to its album **under the number it had** — deleting
+leaves that number free rather than closing the gap — and brings the sidecar with it — **unless you wrote lyrics for that track in the meantime**, in which
 case yours stay and the restore says so. Tags are rewritten by the ordinary pass rather than
 replayed, so a track restored after its album was renamed gets the album's current names. And a
 track the playlist no longer lists comes back the way it was — the next `prune` will move it aside

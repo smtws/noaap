@@ -22,7 +22,7 @@ def library(tmp_path, opus_template):
     return tmp_path, plan, yt
 
 
-def test_delete_track_removes_files_renumbers_and_retags(library):
+def test_delete_track_removes_files_keeps_the_numbers_and_retags(library):
     tmp_path, plan, yt = library
     album_dir = tmp_path / plan.folder
     service = Service(Config(musicbrainz=False), tmp_path, yt=yt)
@@ -34,11 +34,13 @@ def test_delete_track_removes_files_renumbers_and_retags(library):
 
     saved = load_plan(album_dir)
     assert len(saved.tracks) == 12 and victim.video_id not in {t.video_id for t in saved.tracks}
-    assert [t.number for t in saved.tracks] == list(range(1, 13))
+    # **the gap stays where the track was** (R-373): a number changes only by the user's own
+    # reorder. The album is 12 of 13 tracks now, and says so.
+    assert [t.number for t in saved.tracks] == [1, *range(3, 14)]
     assert not (album_dir / victim.filename).exists()
     assert not (album_dir / ORIGINALS / f"{victim.video_id}.opus").exists()
     assert len(list(album_dir.glob("*.opus"))) == 12
-    assert OggOpus(album_dir / saved.tracks[0].filename)["tracktotal"] == ["12"]
+    assert OggOpus(album_dir / saved.tracks[0].filename)["tracktotal"] == ["13"]
     assert len(yt.downloads) == 13  # nothing downloaded again
 
 

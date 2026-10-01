@@ -677,3 +677,75 @@ def test_a_new_file_keeps_its_own_name_and_is_not_fetched(library):
     assert new.adopted_name == new.filename and new.adopted_tags is not None, \
         "and it can be given back like the rest of the album"
     assert len({t.filename for t in plan.tracks}) == 4, "no two tracks claim the same file"
+
+
+# -- the numbers the files already carry ------------------------------------------------------------
+
+
+@pytest.fixture
+def gapped(tmp_path) -> Path:
+    """An owner's rip with a track missing: 01, 02, 04 of an album of five.
+
+    Modelled on `3 Doors Down/Greatest Hits` in the user's own collection — 01/16 … 09/16, then
+    11/16 … 16/16, because they do not have track 10.
+    """
+    album = tmp_path / "A Band" / "A Gapped Album"
+    for n, title in [(1, "One"), (2, "Two"), (4, "Four")]:
+        encode(album / f"{n:02d} - {title}.mp3", title=title, artist="A Band",
+               album="A Gapped Album", album_artist="A Band", track=f"{n}/5")
+    return album
+
+
+def test_a_gapped_disc_keeps_its_numbers(gapped):
+    """R-372: counting the files 1, 2, 3 writes a wrong position into the third one and erases the
+    only evidence that a track is missing. Track 4 is track 4."""
+    plan = build_plan(folder().collection(str(gapped)), source=folder())
+
+    assert [t.number for t in plan.tracks] == [1, 2, 4]
+
+
+def test_a_gapped_disc_round_trips_with_its_numbers(gapped, tmp_path):
+    """The whole way round: adopt, rename into the scheme, retag — and the numbers that come out are
+    the numbers that went in, in the names and in the tags, with the total the files agreed on."""
+    import mutagen
+
+    from noaap import adopt
+    from noaap.download import load_plan
+
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    album_dir = tmp_path / "A Band" / "A Gapped Album"
+    plan = load_plan(album_dir)
+    adopt.rename(album_dir, plan)
+    adopt.retag(album_dir, plan)
+
+    assert [t.number for t in plan.tracks] == [1, 2, 4]
+    assert [Path(t.filename).name for t in plan.tracks] == [
+        "A Band - A Gapped Album - 01 - One.mp3",
+        "A Band - A Gapped Album - 02 - Two.mp3",
+        "A Band - A Gapped Album - 04 - Four.mp3",
+    ]
+    wrote = [str(mutagen.File(album_dir / t.filename).tags["TRCK"]) for t in plan.tracks]
+    assert wrote == ["1/5", "2/5", "4/5"], "and the total the files agreed on stands (R-346)"
+
+
+def test_two_files_claiming_one_number_leave_the_first_holding_it(tmp_path):
+    """R-373: of two entries stating the same number the first in collection order keeps it, the
+    other counts as having none, and position-counting fills what is free, lowest first."""
+    album = tmp_path / "A Band" / "Twice Numbered"
+    for name, title, n in [("a", "First", 2), ("b", "Second", 2), ("c", "Third", 3)]:
+        encode(album / f"{name} - {title}.mp3", title=title, artist="A Band",
+               album="Twice Numbered", album_artist="A Band", track=str(n))
+    plan = build_plan(folder().collection(str(album)), source=folder())
+
+    by_title = {t.title: t.number for t in plan.tracks}
+    assert by_title == {"First": 2, "Third": 3, "Second": 1}
+
+
+def test_a_disc_that_states_no_number_is_still_counted_from_one(tmp_path):
+    album = tmp_path / "A Band" / "Unnumbered"
+    for title in ["One", "Two", "Three"]:
+        encode(album / f"{title}.mp3", title=title, artist="A Band",
+               album="Unnumbered", album_artist="A Band")
+    plan = build_plan(folder().collection(str(album)), source=folder())
+
+    assert [t.number for t in plan.tracks] == [1, 2, 3]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import re
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -160,6 +161,46 @@ def classify(collection: Collection, source: Any = None) -> Kind:
 # -- stages 4+5: metadata and plan ---------------------------------------------------
 
 
+def stated_numbers(entries: Sequence[Entry]) -> list[int]:
+    """The number each entry gets: the one it already carries, else the lowest still free on its disc.
+
+    Numbering runs within a disc. For a flat source — every entry on disc 1, none of them stating a
+    number — this is the straight 1..N it has always been; a source that knows its discs (a folder of
+    `cd1`/`cd2`) counts each one from 1, which is what a disc means.
+
+    **A number the source states is kept, and a gap stays a gap** (R-372, R-373). The owner's rip of
+    `01/16 … 09/16, 11/16 … 16/16` is a disc whose track 10 is missing: counting it 1…15 wrote a
+    wrong position into the tag and the name of six files and erased the only evidence that anything
+    was missing. Of two entries stating the same number on one disc the first in collection order
+    keeps it and the other counts as having none; position-counting then fills only numbers free on
+    that disc, lowest first.
+    """
+    taken: dict[int, set[int]] = {}
+    out: list[int | None] = []
+    # every stated number is claimed before anything is counted, so a number stated late in the
+    # collection is not handed to an earlier entry that had none
+    for entry in entries:
+        stated = entry.number if isinstance(entry.number, int) and entry.number > 0 else None
+        mine = taken.setdefault(entry.disc, set())
+        if stated is not None and stated not in mine:
+            mine.add(stated)
+            out.append(stated)
+        else:
+            out.append(None)
+    last: dict[int, int] = {}
+    for i, entry in enumerate(entries):
+        if out[i] is not None:
+            continue
+        mine = taken.setdefault(entry.disc, set())
+        number = last.get(entry.disc, 0) + 1
+        while number in mine:
+            number += 1
+        last[entry.disc] = number
+        mine.add(number)
+        out[i] = number
+    return [n for n in out if n is not None]
+
+
 def build_plan(collection: Collection, kind: Kind | None = None, source: Any = None) -> AlbumPlan:
     kind = kind or classify(collection, source)
     entries = usable_entries(collection, source)
@@ -193,12 +234,8 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             album_prov["year"] = named_origin["tags"]
 
     tracks = []
-    # numbering runs within a disc. For a flat source — every entry on disc 1 — this is the
-    # straight 1..N it has always been; a source that knows its discs (a folder of `cd1`/`cd2`)
-    # gets each one numbered from 1, which is what the disc means.
-    counted: dict[int, int] = {}
-    for entry in entries:
-        counted[entry.disc] = number = counted.get(entry.disc, 0) + 1
+    numbers = stated_numbers(entries)
+    for entry, number in zip(entries, numbers, strict=True):
         artist, artist_prov = track_artist(entry, source)
         title, title_prov = track_title(entry, source)
         named = entry.music.artist or read_entry(entry, source)[0]
@@ -311,14 +348,6 @@ def set_single_album_name(plan: AlbumPlan) -> str | None:
         plan.provenance["album"] = source
     refresh_derived(plan)
     return wanted
-
-
-def renumber(plan: AlbumPlan) -> AlbumPlan:
-    """Close the gaps after a deletion (single-disc albums only)."""
-    if all(t.disc == 1 for t in plan.tracks):
-        for number, t in enumerate(plan.tracks, 1):
-            t.number = number
-    return plan
 
 
 def wanted_folder(plan: AlbumPlan) -> str:

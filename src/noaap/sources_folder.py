@@ -348,6 +348,10 @@ class FolderSource:
                 channel=known.get("albumartist") or known.get("artist"),
                 duration=copies[0].length,
                 disc=disc,
+                # **the number the file itself states**, tags first and then the name — the same
+                # value this already sorted on. It was read and dropped, and the plan then counted
+                # by position, which renumbered every gapped disc (R-372, §9 slice 108).
+                number=known.get("tracknumber"),
                 copies=copies,
                 # the file is already here, so the container is known now rather than after a
                 # download. Said by the provider, because the ref it is read off is opaque to

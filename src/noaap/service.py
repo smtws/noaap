@@ -65,7 +65,6 @@ from .plan import (
     drop_album_name,
     merge_plans,
     refresh_derived,
-    renumber,
     set_single_album_name,
     wanted_filename,
     wanted_folder,
@@ -1709,7 +1708,9 @@ class Service:
             if len(unique) != len(plan.tracks):
                 self.log(f"{len(plan.tracks) - len(unique)} duplicate track(s) removed from the album")
                 plan.tracks = unique
-                renumber(plan)
+                # **and the gap stays** (R-373): a track number changes only by the user's own
+                # reorder. Closing it here renumbered everything after the drop, which on an
+                # adopted rip writes a wrong position into the files; the gap documents the drop.
             # a length belongs to the recording it was read from; tracks whose recording was
             # refused ("(Live)", a cover) kept one anyway and read as minutes off (fixed 2026-09-25)
             borrowed = sum(bool(t.mb_length and not t.mbid) for t in plan.tracks)
@@ -1938,7 +1939,10 @@ class Service:
         self.log(f"moved {track.number:02d} {track.artist} - {track.title} to the recycle bin"
                  + (f" ({entry.name})" if entry else " — nothing was on disk"))
         plan.tracks.remove(track)
-        renumber(plan)
+        # **the gap the deletion leaves stays** (R-373). For an adopted CD rip a closed gap writes a
+        # wrong position into every file after it, which is R-372's defect by another route; for a
+        # fetched album the gap is the truth of the deletion, and the editor's reorder is one drag
+        # away. Only the user's own reorder moves a number now.
         save_plan(plan, album_dir)
         return self.execute(plan, album_dir)  # renames and retags the rest
 
@@ -2128,15 +2132,19 @@ class Service:
             if (present or track).refuse(displacer):
                 self.log(f"{displacer} will not be offered for {track.title} again")
         if present is None:
-            # Put it back where it stood, then let `arrange` close the numbering. Its old number
-            # cannot simply be reused: the tracks left behind were renumbered when it went, so
-            # restoring a 1 into an album that already has a 1 gives two of them. Sorting the whole
-            # list instead would interleave a multi-disc album (slice 22).
+            # Put it back where it stood, **with the number it had** (R-373). It used to be
+            # renumbered through `arrange`, because deleting closed the gap behind it and restoring
+            # a 1 into an album that already had a 1 gave two of them. Deleting leaves the gap now,
+            # so the track's own number is the one that is free, and the album it comes back to is
+            # the album it left. Sorting the whole list instead would interleave a multi-disc
+            # album (slice 22), so only this one row is placed.
             same_disc = [i for i, t in enumerate(plan.tracks) if t.disc == track.disc]
             after = [i for i in same_disc if plan.tracks[i].number >= track.number]
             plan.tracks.insert(
                 after[0] if after else (same_disc[-1] + 1 if same_disc else len(plan.tracks)), track)
-            arrange(plan)
+            if any(t is not track and t.disc == track.disc and t.number == track.number
+                   for t in plan.tracks):
+                arrange(plan)   # its number was taken while it was gone: the disc is counted again
         save_plan(plan, album_dir)
         if not said:
             shutil.rmtree(entry.path, ignore_errors=True)

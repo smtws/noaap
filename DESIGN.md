@@ -3135,6 +3135,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    is what exposed the other. A fixture that cannot fail is not a case, and the first version of this
    one passed with the fence removed.
 
+108. ✅ **A number the file already carries is kept, and a gap stays a gap** (2026-10-02, P84).
+   `3 Doors Down/Greatest Hits` in the user's collection is 01/16 … 09/16, 11/16 … 16/16: fifteen
+   files of a sixteen-track album, with no track 10. The pass wrote it out as 1…15 of 15. The
+   provider had read every number — it sorts the folder by them — and then dropped them: `Entry`
+   had nowhere to put one, so `build_plan` counted by position. That renamed six files and wrote a
+   wrong position into each one, and erased the only evidence that anything was missing. The total
+   was right (slice 102 keeps 16) while the positions under it were not, which is the worse half:
+   the files agreed with each other and lied together.
+   So `Entry.number` carries what the source states, `None` where it cannot know — every source that
+   fetches before there is a file. `plan.stated_numbers` keeps a stated number and counts only the
+   files without one, filling numbers free on that disc, lowest first; of two files claiming one
+   number the first in collection order keeps it. An unnumbered folder is still 1…N.
+   **And a number now changes only by the user's own reorder** (R-373). `repair` closed the gap after
+   dropping a duplicate entry, `delete_track` closed it after a deletion, and `recycle`'s restore
+   renumbered a whole disc rather than reuse the number it had. On an adopted rip each of those is
+   the same defect by another route; on a fetched album the gap is the truth of what happened, and
+   the editor's reorder is one drag away. `plan.renumber` has no callers left and is gone.
+   Measured over the user's real library, read-only: 41 gapped discs (the 8 multi-disc and 33
+   single-disc of slice 102), none of them in an album holding a duplicate id — so `repair` would not
+   have reached them today, and the defect was reaching them through adoption only.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

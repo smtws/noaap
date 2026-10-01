@@ -105,6 +105,12 @@ class Entry:
     chapters: list[dict[str, Any]] = field(default_factory=list)
     music: Music = field(default_factory=Music)
     disc: int = 1  # a source that knows its discs says so; a flat one leaves it at 1 (§9, slice 53)
+    # **The number this track already carries**, where the source knows one — a folder reads it off
+    # the file, a download cannot know it before there is a file (§9, slice 108). `None` means "no
+    # number stated", and only then does the plan count by position. Keeping it is what lets a
+    # gapped disc stay gapped: an owner's rip of 01…09, 11…16 is a disc missing track 10, and
+    # counting it 1…15 writes a wrong position into every file and erases the evidence (R-372).
+    number: int | None = None
     # The container this entry's audio is in, when the source knows before fetching it — a folder
     # always does, since the file is already there (§9, slice 58). `None` means "find out when it
     # arrives", which is what a download does. **The core may not read it off the ref**: a ref is
