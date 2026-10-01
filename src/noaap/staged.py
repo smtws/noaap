@@ -486,6 +486,13 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
         was = {r.path: r for r in precautions.read(snapshot).files}
         log(f"  wrote down {len(was)} file(s)")
 
+    # **what an earlier run of this batch already recorded as its own, read before the pass runs.**
+    # `intake.take_in` writes its own record over this file, so after it there is nothing left of the
+    # interrupted run's — and that record is the only thing that knows about the plan file its copy
+    # back put on the share.
+    was_made = intake.read_made(intake.made_path(snapshot), root)
+    was_husks = intake.read_made(intake.made_path(snapshot), root, folders=True)
+
     # the pass, unchanged, with the staging copy as its library so the scheme may move folders
     cfg = replace(service.cfg, library_root=here)
     staged_service = Service(cfg, here, log=lambda s: None, on_track=service.on_track,
@@ -505,9 +512,15 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     # share holding files the pass made and no record of them: the restore put the owner's originals
     # back from the store and left the plan and the renamed folder standing beside them. A record
     # naming a file that never reached the share costs nothing — a restore removes what is there.
+    # **and it is added to, never replaced** — the same reason the snapshot is not re-recorded. A
+    # batch that is run again inherits what the interrupted run's copy back already put on the
+    # share: the plan file is *there* when the album is copied out, so the pass does not create one,
+    # its record of what it made is empty, and rewriting the record with that emptiness left the
+    # owner's album with a plan file nothing would take away. Found by the gate's own SIGTERM run —
+    # the one file in 52 that the oracle still called a difference.
     intake.write_made(intake.made_path(snapshot), root,
-                      intake.read_made(intake.made_path(snapshot), here),
-                      intake.read_made(intake.made_path(snapshot), here, folders=True))
+                      [*was_made, *intake.read_made(intake.made_path(snapshot), here)],
+                      [*was_husks, *intake.read_made(intake.made_path(snapshot), here, folders=True)])
     _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders))
     shutil.rmtree(here)
     # **the batch's snapshot stays, and so does the record of what the pass made.** The share's own

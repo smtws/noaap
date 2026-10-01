@@ -337,7 +337,83 @@ def test_a_batch_stopped_before_its_marker_is_not_walked_past_by_the_resume(else
     assert got.orphans == [], got.orphans
     assert got.changed == [] and got.lost == []
     assert _tags_and_picture(elsewhere) == was, "every tag and every picture as the reference has it"
+    # **the plan file the interrupted run put there is taken away too.** The resume copies the album
+    # out again *with* that plan, so its own pass creates nothing and records nothing — and a record
+    # rewritten with that emptiness left the owner's album holding a plan for ever. The gate's own
+    # SIGTERM run found it: one file in 52 that the oracle still called a difference.
     assert list(elsewhere.rglob(".ytalbum.json")) == [], "and no plan of either pass left"
+
+
+@pytest.fixture
+def already_named(tmp_path, one_second_of_sound) -> Path:
+    """A collection whose folders and file names are already what the scheme would give them.
+
+    Which is what the user's own share looks like for most of it — and it is the case the fault
+    needs: the copy back writes into *the same* folder, so the resume plans the same batch under the
+    same key and meets its own snapshot, instead of finding a new folder beside the old one.
+    """
+    root = tmp_path / "share"
+    folder = root / "Aphelion" / "Nocturnes"
+    folder.mkdir(parents=True)
+    for n, title in enumerate(["First", "Second"], 1):
+        path = folder / f"Aphelion - Nocturnes - {n:02d} - {title}.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"], audio["artist"], audio["album"] = [title], ["Aphelion"], ["Nocturnes"]
+        audio["albumartist"], audio["tracknumber"] = ["Aphelion"], [str(n)]
+        audio.save()
+    return root
+
+
+def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_path, monkeypatch):
+    """The gate's SIGTERM run, after R-374: one file in 52 that the oracle still called a difference.
+
+    The signal landed **inside** a copy back, so the share kept the plan file that copy back had
+    already written. The resume then copied that album out again *with* the plan, so its own pass
+    created nothing and recorded nothing — and rewriting the batch's record of what it made with
+    that emptiness left the owner's album holding a plan file no restore would ever take away. The
+    record is added to, never replaced, for the same reason the snapshot is not re-recorded.
+    """
+    elsewhere = already_named
+    reference = tmp_path / "reference"
+    shutil.copytree(elsewhere, reference)
+    was = _tags_and_picture(reference)
+    staging = tmp_path / "staging"
+    real_back = staged._copy_back
+
+    def stop_inside(root, here, recorded, done, log, sweep=False):
+        """Two files back on the share — the plan sorts first — and then the signal."""
+        counted = {"n": 0}
+        real_copy = shutil.copy2
+
+        def die(src, dst, *args, **kw):
+            counted["n"] += 1
+            if counted["n"] > 2:
+                raise KeyboardInterrupt("as a SIGTERM stops it, inside the copy back")
+            return real_copy(src, dst, *args, **kw)
+
+        staged.shutil.copy2 = die
+        try:
+            real_back(root, here, recorded, done, log, sweep=sweep)
+        finally:
+            staged.shutil.copy2 = real_copy
+
+    monkeypatch.setattr(staged, "_copy_back", stop_inside)
+    with pytest.raises(KeyboardInterrupt):
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                              batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+    made = sorted(elsewhere.rglob(".ytalbum.json"))
+    assert made, "the interrupted copy back did put a plan on the share, or this proves nothing"
+
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert got.clean, (got.changed, got.lost, got.orphans)
+    assert list(elsewhere.rglob(".ytalbum.json")) == [], \
+        "the plan the interrupted run made is gone, not only the resume's"
+    assert _tags_and_picture(elsewhere) == was
 
 
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
