@@ -61,7 +61,7 @@ def test_a_snapshot_records_every_file_and_what_it_said(collection, tmp_path):
                                             "Aphelion/Nocturnes/02 Second.opus",
                                             "Aphelion/Vigil/01 Only.opus"]
     one = snap.files[0]
-    assert one.size > 0 and one.mtime_ns > 0 and one.packets
+    assert one.size > 0 and one.mtime_ns > 0 and one.audio and one.how == "decoded"
     assert one.tags["title"] == ["First"], "the keys a pass here could overwrite, verbatim"
     assert "comment" in one.others, "and a fingerprint of every key of theirs that it could not"
     assert one.others["comment"] not in ("", None)
@@ -350,3 +350,52 @@ def test_a_careful_tag_write_to_a_real_mp3_goes_through(tmp_path, one_second_of_
     assert raw_tags(path).get("TIT2") == ["What noaap says it is"]   # ID3 frames, by their own names
     assert not list(path.parent.glob(".*noaap-new*")), "and nothing left beside it"
     assert (kept / "Artist/Album/01 Track.mp3").read_bytes() == before, "the original, byte for byte"
+
+
+def test_a_cover_the_pass_embedded_does_not_hide_the_file(tmp_path, one_second_of_mp3):
+    """The digest a restore searches by must be of the recording, not of the file.
+
+    Found on the user's own collection: the pass embedded the album's cover, which moved the packet
+    digest of every mp3 it touched — ffmpeg's demuxer hands the trailing tag block over as audio —
+    and the restore then reported one file *missing* while its audio sat there decoding identically.
+    """
+    from mutagen.id3 import APIC
+
+    root = tmp_path / "collection"
+    (root / "Artist" / "Album").mkdir(parents=True)
+    path = root / "Artist" / "Album" / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+
+    moved = path.with_name("Artist - Album - 01 - Track.mp3")      # what the pass does
+    path.rename(moved)
+    audio = MFile(moved)
+    audio.add_tags() if audio.tags is None else None
+    audio.tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="", data=b"\xff\xd8" + b"x" * 4000))
+    audio.save()
+    assert precautions.stream_sha(moved) != snap.files[0].audio, "the file digest did move"
+
+    done = precautions.restore(snap, root, apply=True)
+
+    assert done.missing == [] and done.renamed == 1
+    assert path.is_file() and not moved.exists(), "found by what it holds, and put back"
+
+
+def test_a_file_whose_audio_really_changed_is_named(tmp_path, one_second_of_mp3):
+    """And the check that says so has to be a check.
+
+    Where the packet digest had moved, this used to ask only whether ffmpeg could read the file at
+    all — so `0 files whose audio is not what it was` meant nothing for any file a pass had retagged.
+    """
+    root = tmp_path / "collection"
+    (root / "Artist" / "Album").mkdir(parents=True)
+    path = root / "Artist" / "Album" / "01 Track.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    snap = precautions.read(precautions.take(root, tmp_path / "snap.jsonl"))
+
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:duration=1",
+                    "-c:a", "libmp3lame", str(path)], check=True)   # another recording, same name
+
+    done = precautions.restore(snap, root, apply=True)
+
+    assert done.changed == ["Artist/Album/01 Track.mp3"], done.changed

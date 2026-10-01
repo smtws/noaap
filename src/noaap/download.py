@@ -666,6 +666,9 @@ def run(
     # Only a take-in of somebody's own collection asks for this; it costs a copy of every file.
     keep: Path | None = None,
     keep_root: Path | None = None,
+    # the folder the snapshot knows this album by, where that is not the folder it is in now: a pass
+    # that moves an album into noaap's scheme does it before the first write (§9, slice 99).
+    keep_as: str | None = None,
     # A track's audio comes from its chosen candidate, which carries its own provider: one album can
     # hold tracks from two of them (§9, slice 50). `source` stays for what belongs to the collection
     # — the cover — and this answers for a track.
@@ -710,7 +713,7 @@ def run(
         if keep is not None and track.state == "done":
             here_now = album_dir / track.filename
             if here_now.exists():
-                put_aside(here_now, keep_root or album_dir, keep)
+                put_aside(here_now, keep_root or album_dir, keep, under=keep_as)
         wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
             old, new = album_dir / track.filename, album_dir / wanted
@@ -912,12 +915,19 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
     if not fetch:
         return None
     why: list[str] = []
-    for url in filter(None, _cover_addresses(plan, album_dir)):
+    addresses = [url for url in _cover_addresses(plan, album_dir) if url]
+    for url in addresses:
         if found := _download_cover(url, source, why):
             return _save_cover(plan, album_dir, *found)
-    if plan.cover_url or _asks_its_source(plan):
+    # **an album of somebody's own whose files hold no picture is not a problem to report.** Most of
+    # them do not: 269 of 2000 files in the reference collection carry one, so a take-in of 700
+    # albums would warn about hundreds of them. A published address that failed still warns.
+    published = [url for url in addresses if album_dir is None or url != str(album_dir)]
+    if published and (plan.cover_url or _asks_its_source(plan)):
         log.warning("could not fetch any cover for %s%s", plan.cover_url or plan.source_url,
                     f" — {'; '.join(dict.fromkeys(why))}" if why else "")
+    elif addresses:
+        log.debug("no picture in the files of %s", album_dir)
     return None
 
 

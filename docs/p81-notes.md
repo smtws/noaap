@@ -91,6 +91,33 @@ Both the lost suffix and the size guess are mp3 behaviour — mutagen's ID3 padd
 small retag, so a fixture has to write a *big* tag to change the size at all. There is a
 `one_second_of_mp3` fixture now, and three cases use it.
 
+**Then the restore of *that* run found the fifth and the sixth, and they are about the digest
+itself.** Of 2000 files it reported 1 missing and — against the pristine original — only 1704 of
+1999 byte-identical, where the run before had been 2093 of 2093.
+
+5. **The kept originals were filed under the folder the pass had just moved the album into.** The
+   pass relocates an album into the scheme *before* the first file is written, and `put_aside` used
+   the path the file had at that moment, so the copy landed under a name no snapshot ever recorded.
+   `restore` looks for `kept / <the recorded path>`, missed them, fell back to the digest search and
+   put those files back **from their tags instead of byte for byte** — 295 of 2000, including one
+   whole album whose originals were under a name nothing would ever look for. It is filed under the
+   recorded folder now (`run(..., keep_as=…)`), and the case fails without the fix.
+6. **The digest in the snapshot was of the file, not of the recording.** `stream_sha` includes the
+   trailing tag block that ffmpeg's mp3 demuxer hands over as audio data — its own docstring says so
+   — so the moment the pass embedded a cover, every mp3's recorded digest was stale. One file was
+   left behind as *missing* while its audio sat there, decoding identically to the pristine original
+   (checked by hand: same `decoded_sha`, different `stream_sha`, 116,958 bytes bigger — the cover).
+   And the same digest was what "0 files whose audio is not what it was" rested on: where the packets
+   had moved, the check had been reduced to *"can ffmpeg read this file at all"*, which is not a
+   check. **The snapshot records `decoded_sha` now** — the recording, not the file — and one function,
+   `holds_it`, answers both questions. It costs a decode instead of a remux per file at snapshot
+   time: three times the CPU, the *same* read, and over a share the read is the ceiling. A snapshot
+   written before this still restores, with the weaker digest it was written with.
+
+Both are mp3-and-real-collection faults again, and both now have cases (an embedded cover that does
+not hide a file, a file whose audio really changed being named, the kept original filed where the
+snapshot looks).
+
 ### What the real pass costs, and three ways to cut it
 
 First, what the careful write actually costs, measured on 24 files drawn at random from
@@ -147,9 +174,15 @@ choose**:
 
 ## Next steps, in order
 
-1. Measure the restore with the ranked search, on the copy. **Running.**
-2. Run the pass once more (the state file removed, the snapshot kept) so the number includes the
-   covers it can now write, and restore again from that state.
-3. Price the lookups: a handful of albums with `--lookups`, then extrapolate — 11,000 LRCLIB and
-   ~130 MusicBrainz requests is not something to fire at a free service for a training run.
+1. **A second copy** of `~/Music/legacy` at `~/Musik/noaap-takein2` (running). The first copy is too
+   muddled to measure on: two restores were interrupted on purpose, so it holds 21 strays, a kept
+   store filed under the wrong names, and plans that no longer match the files. It stays as it is —
+   the reviewer's to remove — and nothing is deleted to make room.
+2. On the fresh copy, in one run: snapshot (now decoding), dry run, the whole pass with everything on
+   and the originals kept, the restore, and the comparison with the pristine original. Those are the
+   numbers I-221 reports.
+3. Price the lookups on three albums of the fresh copy. The first attempt measured nothing: the
+   plans in the muddled copy no longer matched the files, so the pass skipped every track in 0.2 s
+   and asked nobody anything (0 requests, 0 renames) — a result I nearly reported as "the lookups
+   are free".
 4. Report I-221.

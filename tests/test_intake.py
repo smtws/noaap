@@ -226,3 +226,43 @@ def test_a_real_run_counts_what_it_did(collection, service, tmp_path):
     assert done.tracks == 6
     assert done.renamed == 6, "every file got noaap's name"
     assert done.retagged == 6, "and every file was rewritten"
+
+
+def test_the_kept_original_is_filed_where_the_snapshot_will_look(tmp_path, one_second_of_sound):
+    """An album the pass moves into noaap's scheme is still kept under the name it came in with.
+
+    `restore` looks for `kept / <the recorded path>`; the pass moves the album folder before the
+    first file is written, so the copy was filed under the new folder's name and the restore fell
+    back to putting the tags back. Measured on the user's own collection: 295 of 2000 files came back
+    from their tags rather than byte for byte, and one album's originals under a name no snapshot had
+    ever seen.
+    """
+    library = tmp_path / "collection"
+    folder = library / "aphelion" / "nocturnes (2003 reissue)"     # not the scheme's spelling
+    folder.mkdir(parents=True)
+    for n, title in enumerate(["First", "Second"], 1):
+        path = folder / f"{n:02d} {title}.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"] = [title]
+        audio["artist"] = ["Aphelion"]
+        audio["album"] = ["Nocturnes"]
+        audio.save()
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    kept = tmp_path / "originals"
+    before = {str(p.relative_to(library)): p.read_bytes() for p in folder.glob("*.opus")}
+
+    snapshot = tmp_path / "snap.jsonl"
+    intake.take_in(service, library, intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=snapshot, keep=kept, log=lambda s: None)
+
+    assert not folder.exists(), "the album moved into the scheme"
+    for name, bytes_before in before.items():
+        assert (kept / name).read_bytes() == bytes_before, f"{name} is kept where the snapshot looks"
+
+    done = precautions.restore(precautions.read(snapshot), library, apply=True, kept=kept,
+                               log=lambda s: None)
+    assert done.missing == [] and done.changed == []
+    assert {str(p.relative_to(library)): p.read_bytes()
+            for p in folder.glob("*.opus")} == before, "byte for byte, from the kept originals"

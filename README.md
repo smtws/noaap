@@ -316,7 +316,7 @@ every album to it.
 
 | | what it is | what it costs |
 |---|---|---|
-| the snapshot | one line per file: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not — your `comment`, your replaygain, your cover — and a digest of the audio | a few hundred bytes a track, and a walk of the tree |
+| the snapshot | one line per file: where it is, how big, when it was last written, the tags a pass here could overwrite (verbatim), a fingerprint of every key it could not — your `comment`, your replaygain, your cover — and a digest of the **decoded** recording, which is the one thing a retag cannot change | a few hundred bytes a track, and one read of the tree |
 | the careful write | nothing is written *into* a file: a copy beside it is written, the recording is proved unchanged, and an atomic replace puts it in place — an interruption leaves the file that was there | a copy and two digests per file written |
 | `--keep-originals DIR` | the first write to a file copies it there whole, **before** the rename | as much disk as the part of the collection that is touched |
 

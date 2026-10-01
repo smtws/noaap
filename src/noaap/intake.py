@@ -164,6 +164,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             here = relocate(album_dir, plan, service.library, want)   # only where the root *is* the library
         had_a_cover = dict(plan.cover_fetched)
         run(plan, here, service.source_for(plan), want=want, careful=True, keep=keep, keep_root=root,
+            keep_as=where,          # the folder the snapshot knows, which `relocate` may have changed
             track_source=service._track_source(plan), on_track=_counted(done, service.on_track),
             check=service.check, download=False)
         if plan.cover_fetched != had_a_cover:

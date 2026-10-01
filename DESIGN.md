@@ -2846,6 +2846,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    slow: 54 digests unranked against 24 ranked on a twelve-file fixture. That fixture is in mp3, and
    so are two others, because mutagen's ID3 padding swallows a small retag and an Opus file cannot
    show any of this.
+   **The restore of that run found the fifth and the sixth, and they are about the digest itself.**
+   (5) The kept originals were filed under the folder the pass had just moved the album into, because
+   the relocation happens before the first write — so `restore`, which looks for `kept / <the
+   recorded path>`, missed them and put 295 of 2000 files back from their tags instead of byte for
+   byte. The copy is filed under the folder the snapshot knows now. (6) **The digest was of the file,
+   not of the recording.** `stream_sha` includes the trailing tag block that ffmpeg's mp3 demuxer
+   hands over as audio data, so the moment a pass embedded a cover, every recorded digest of an mp3
+   was stale: one file was reported *missing* while its audio sat there decoding identically to the
+   original, and the check behind "0 files whose audio is not what it was" had been reduced, in
+   exactly that case, to asking whether ffmpeg could read the file at all. The snapshot records the
+   **decoded** recording now and one function answers both questions — a decode instead of a remux
+   per file: three times the CPU, the same read, and over a share the read is the ceiling. A snapshot
+   written before this still restores, with the weaker digest it was written with.
 
 100. ✅ **The settings are the state; an album may only be excepted** (2026-10-01, P81). The user
    asked twice, and the second time settled it: *"we had consistent state and now we got persisted
