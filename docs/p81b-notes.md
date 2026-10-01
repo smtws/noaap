@@ -10,7 +10,7 @@ Working notes. The package is R-342 (six items) with the tree released in R-343;
 | 1 | per-disc track totals, a disc total, and the repair check naming the 627 | **done** |
 | 2 | the snapshot's default name taken from the root | **done** |
 | 3 | a restore removes what the pass created, from a record the pass writes | **done** |
-| 4 | cut 1: reuse the snapshot's digest in the careful write, then re-measure | code **done**, measurement to run |
+| 4 | cut 1: reuse the snapshot's digest in the careful write, then re-measure | **done** |
 | 5 | empty disc folders after a flattening | **done** — they were left; now cleared |
 | 6 | docs | **done** |
 
@@ -75,8 +75,76 @@ after the pass. (The reviewer's run saw none left; mine did.) The pass clears a 
 `rmdir` is what decides whether it is empty, and a folder holding anything else keeps it and keeps
 the folder.
 
-## 4 — the measurement
+## 4 — the measurement, and a correction to P81's hours
 
-To run on a fresh copy of `~/Music/legacy`, removed afterwards. What changed since P81's numbers: the
-careful write reads one file instead of two (`expect`), and the snapshot now also records the 153
-files that are not audio. The hours at 30 MB/s go in here when they exist.
+On a byte-exact copy of `~/Music/legacy` (2153 files, 41 GB), everything on, names to the scheme,
+originals kept. Three runs of the pass agreed within 1.5 %: 643.6, 650.5, 662.0 s.
+
+| phase | seconds | read | written | and |
+|---|---|---|---|---|
+| snapshot | 567.8 | 43.28 GB | 1.1 MB | 2153 files, 499 bytes each |
+| dry run | 10.4 | 2.25 GB | 0 | 440 renames, 2000 rewrites, 72 asked for a cover — the pass's own numbers |
+| the pass | 650.5 | 43.75 GB | 87.80 GB | 440 renamed, 2000 rewritten, 4 covers, 2000 originals kept |
+| restore | 248.5 | 54.21 GB | 43.76 GB | 2153 files, 573 renamed back, **141 of the pass's own removed** |
+
+and afterwards, every file against the pristine original: **2153 of 2153 byte-identical, nothing of
+theirs missing or altered, nothing of noaap's left** — not a plan, not a cover, **not an empty
+folder**.
+
+### What cut 1 actually buys
+
+The pass went **453 s → 650 s** and its device reads did not fall (43.31 → 43.75 GB). That looks like
+a loss, and locally it is: the read cut 1 avoids was being served from the page cache — the original
+had just been copied byte for byte — and the digest it adds is a decode, which is dearer than a remux.
+
+So the two shapes were measured directly, on 24 real files, **with the cache evicted** (`os.sync()`
+then `posix_fadvise(DONTNEED)`; the first attempt measured 0 bytes because the scratchpad is tmpfs on
+this machine — no device to read from):
+
+| | device read | time |
+|---|---|---|
+| both files (`same_audio(path, tmp)`) | **0.97 GB** for 0.49 GB of audio — twice the file | 4.0 s |
+| the copy only (cut 1) | **0.49 GB** — once | 6.5 s |
+
+So cut 1 halves *that step's* reading and costs ~60 % more CPU on it (flac is faster, mp3 and opus
+slower). Over a share the read is the ceiling and the CPU overlaps with the wire, so the ruling is
+right for the NAS and wrong for this laptop. Both numbers are above; neither is hidden.
+
+### The hours at 30 MB/s — and P81's were too low
+
+**A local `read_bytes` count understates a share, and I reported it as if it did not.** The page cache
+serves the second and third read of a file that was just copied, so the pass measured ~1× the
+collection locally where a share must carry every read over the wire. The honest figure is the
+per-file accounting:
+
+| | reads per file | writes | for 11,000 tracks (225 GB) | at 30 MB/s |
+|---|---|---|---|---|
+| snapshot | 1 | — | 225 GB | **2.1 h** |
+| the pass, with cut 1 | 3 (kept copy, temp copy, verify) | 1 (+1 if the kept store is on the share) | 900 GB | **8.3 h** (10.4 h) |
+| the pass, without cut 1 | 4 | 1 (+1) | 1125 GB | **10.4 h** (12.5 h) |
+| the restore from kept originals | 1 | 1 | 450 GB | **4.2 h** |
+| the lookups | — | — | ~1,400 + ~11,000 requests | **3.2 h**, and no disk |
+
+So **cut 1 is worth ~2.1 h of the pass**, which is what it was ruled in for, and a first take-in with
+everything on is **~13.5 hours** rather than the ~12 I reported in I-221 — 2.1 h of snapshot, 8.3 h of
+pass, 3.2 h of asking. Leaving the lookups for a later `repair` makes it ~10.5 h. The local times in
+the table above are what this laptop did on an NVMe and are not the number to plan by.
+
+## 11 — one more the collection found
+
+A restore left **19 folders standing empty**: the album folders the pass had moved each album into,
+husks of noaap's spelling of their names, plus two `.thumb` caches of theirs whose files had gone
+back. Ruling 3 covers them — a folder the pass made is something the pass made — so the record holds
+directories as well as files, and `rmdir` is what removes them, so one that still holds anything
+keeps it.
+
+Fixing that uncovered the shape of the same fault one level up: asking about a folder's **parent**
+right after removing the folder asks while the artist's other albums are still there, so whether it
+works depends on the order the albums happen to come in. Three artist folders were left — `van Canto`,
+`Stimmgewalt`, `Dämmerland, Versengold`. The sweep is deepest-first over the folders *and* their
+parents now, and the confirmed run leaves **0**.
+
+And a consequence worth knowing, because it is silent: `relocate` refuses to move an album onto a
+folder that already exists, and says so only in the log. While those 19 husks were there, a second
+take-in left **17 albums unrenamed** and reported nothing wrong. With the husks gone that cannot
+happen; it is the reason the first re-measurement was thrown away and run again.

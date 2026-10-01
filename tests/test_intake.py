@@ -448,3 +448,83 @@ def test_the_record_of_another_collection_is_not_read(collection, service, tmp_p
 
     assert intake.read_made(intake.made_path(snapshot), tmp_path / "somewhere-else")
     assert intake.read_made(intake.made_path(snapshot), collection) == []
+
+
+def test_the_folder_the_pass_moved_an_album_into_does_not_stay_behind_empty(tmp_path,
+                                                                           one_second_of_sound):
+    """A restore puts the files back under their recorded paths, which leaves that folder empty.
+
+    Measured on the user's own collection: after the files were all back, **19 folders** stood empty
+    — husks of noaap's spelling of their album names. The pass records the folder it moved an album
+    into, and `rmdir` is what takes it away, so one that still holds anything keeps it.
+    """
+    library = tmp_path / "collection"
+    folder = library / "aphelion" / "nocturnes (2003 reissue)"
+    folder.mkdir(parents=True)
+    for n, title in enumerate(["First", "Second"], 1):
+        path = folder / f"{n:02d} {title}.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"] = [title]
+        audio["artist"] = ["Aphelion"]
+        audio["album"] = ["Nocturnes"]
+        audio.save()
+    (folder / ".thumb").mkdir()
+    (folder / ".thumb" / "cover.jpg.jpg").write_bytes(b"\xff\xd8 a thumbnail of theirs")
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    snapshot = tmp_path / "snap.jsonl"
+
+    intake.take_in(service, library, intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=snapshot, keep=tmp_path / "kept", log=lambda s: None)
+
+    moved = library / "Aphelion" / "Nocturnes"
+    assert moved.is_dir() and not folder.exists(), "the pass moved the album into the scheme"
+    husks = intake.read_made(intake.made_path(snapshot), library, folders=True)
+    assert husks == ["Aphelion/Nocturnes"], husks
+
+    precautions.restore(precautions.read(snapshot), library, apply=True, kept=tmp_path / "kept",
+                        made=intake.read_made(intake.made_path(snapshot), library),
+                        folders=husks, log=lambda s: None)
+
+    assert (folder / "01 First.opus").is_file(), "their names, their folder"
+    assert (folder / ".thumb" / "cover.jpg.jpg").is_file(), "and their thumbnail with it"
+    assert not moved.exists(), "and nothing of noaap's spelling left standing"
+
+
+def test_the_artist_folder_the_pass_made_goes_too(tmp_path, one_second_of_sound):
+    """Two albums of one artist, whose folder noaap spells differently from its owner.
+
+    Measured on the user's own collection: three artist folders stood empty after a restore —
+    `van Canto`, `Stimmgewalt`, `Dämmerland, Versengold` — because the parent was asked about while
+    its other album was still there. The sweep is deepest-first over the folders *and* their parents
+    now, so whether it works no longer depends on the order the albums come in.
+    """
+    library = tmp_path / "collection"
+    for album in ("vol 1", "vol 2"):
+        folder = library / "van canto" / album
+        folder.mkdir(parents=True)
+        for n, title in enumerate(["First", "Second"], 1):
+            path = folder / f"{n:02d} {title}.opus"
+            shutil.copy(one_second_of_sound, path)
+            audio = MFile(path)
+            audio["title"] = [f"{album} {title}"]
+            audio["artist"] = ["Van Canto"]
+            audio["album"] = [album.title()]
+            audio.save()
+    cfg = Config(library_root=library, musicbrainz=False, lyrics=False)
+    service = Service(cfg, library, log=lambda s: None)
+    snapshot = tmp_path / "snap.jsonl"
+
+    intake.take_in(service, library, intake.Choices(names="scheme", musicbrainz=False, lyrics=False),
+                   dry_run=False, snapshot=snapshot, keep=tmp_path / "kept", log=lambda s: None)
+    assert (library / "Van Canto").is_dir(), "the pass made its own spelling of the artist"
+
+    precautions.restore(precautions.read(snapshot), library, apply=True, kept=tmp_path / "kept",
+                        made=intake.read_made(intake.made_path(snapshot), library),
+                        folders=intake.read_made(intake.made_path(snapshot), library, folders=True),
+                        log=lambda s: None)
+
+    assert (library / "van canto" / "vol 1" / "01 First.opus").is_file(), "theirs, as it was"
+    assert sorted(p.name for p in library.iterdir()) == ["van canto"], \
+        [p.name for p in library.iterdir()]

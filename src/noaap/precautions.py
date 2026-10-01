@@ -232,7 +232,8 @@ def read(path: Path) -> Snapshot:
 
 
 def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, kept: Path | None = None,
-            made: Iterable[str] = (), log: Callable[[str], None] = lambda s: None) -> Summary:
+            made: Iterable[str] = (), folders: Iterable[str] = (),
+            log: Callable[[str], None] = lambda s: None) -> Summary:
     """Put the folder back as it was. Dry by default, like every other pass here.
 
     A file is found by its recorded path first, then — for anything renamed — by its size and the
@@ -247,6 +248,11 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     wrote as it went — never a file it did not write down, and the dry run lists every one of them
     before anything is removed. Without it a restored folder came back holding 136 files its owner
     never had, and "a way back" has to mean the folder as it was.
+
+    `folders` is the same for directories — the folder a pass moved an album into. The files go back
+    under their recorded paths, which leaves that one standing **empty**: 19 of them on the user's own
+    collection, husks of noaap's spelling of their album names. `rmdir` is what removes them, so one
+    that still holds anything at all stays.
     """
     root = root or snapshot.root
     done = Summary()
@@ -330,6 +336,31 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
             path.unlink()
             with contextlib.suppress(OSError):
                 path.parent.rmdir()   # only if the pass's own file was the last thing in there
+    # **the parents go in the same sweep, not after each child.** Attempting `folder.parent` inline
+    # asks about an artist folder while its other albums are still there, and whether it succeeds
+    # then depends on the order the albums happen to come in: three artist folders were left standing
+    # empty on the user's collection that way. Deepest first over the folders *and* their parents, so
+    # a child is always asked before the folder holding it.
+    husks = {root / name for name in folders}
+    husks |= {parent for where in list(husks) for parent in where.parents
+              if parent != root and root in parent.parents}
+    for where in sorted(husks, key=lambda path: -len(path.parts)):
+        if not where.is_dir():
+            continue
+        name = str(where.relative_to(root))
+        if not apply:
+            if not any(where.iterdir()):
+                log(f"  would remove the folder {name} — the pass made it, and it would be empty")
+            continue
+        for inside in sorted((p for p in where.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
+            with contextlib.suppress(OSError):
+                inside.rmdir()        # a `.thumb` of theirs whose files have gone back
+        try:
+            where.rmdir()
+        except OSError:
+            continue                  # something is still in there: it stays, and so does the folder
+        done.removed.append(name + "/")
+        log(f"  removed the folder {name} — the pass made it and it is empty")
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
             f"name, {len(done.removed)} of the pass's own would be removed; nothing was changed. "

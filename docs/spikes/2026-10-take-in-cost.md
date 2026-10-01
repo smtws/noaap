@@ -74,18 +74,24 @@ Two things worth having separately:
 
 ### At 30 MB/s, for the user's 11,000 tracks
 
-| phase | per track | for 11,000 tracks | local | **at 30 MB/s** |
-|---|---|---|---|---|
-| snapshot | 21.9 MB read | 241 GB read | 9.4 min | **2.2 h** |
-| dry run | 1.17 MB read | 12.8 GB read | 10 s | **7 min** |
-| the pass | 21.7 read + 43.9 written | 238 GB + 483 GB | 7.6 min | **6.7 h** |
-| the restore | 27.1 read + 21.9 written | 298 GB + 241 GB | 3.5 min | **5.0 h** |
-| the lookups | — | ~1,400 + ~11,000 requests | — | **3.2 h** (not disk) |
+**Corrected in P81b, and the correction matters: a local `read_bytes` count understates a share.**
+The page cache serves the second and third read of a file that was just copied, so the pass measures
+about one pass over the collection on this laptop where a share must carry every read over the wire.
+The figure to plan by is the per-file accounting, not the local counter.
 
-**A first take-in with everything on is about twelve hours**, and every album is written down as it
-finishes, so a connection that drops costs the album it was in. Leaving the lookups for later
-(`--no-mb --no-lyrics`) makes it about nine, and a later `repair` does the asking, because the
-settings are the state of the library (§9, slice 100).
+| | reads per file | writes | for 11,000 tracks (225 GB) | **at 30 MB/s** |
+|---|---|---|---|---|
+| snapshot | 1 | — | 225 GB | **2.1 h** |
+| the pass (kept originals, one-read verify) | 3 | 1, or 2 with the kept store on the share | 900 GB | **8.3 h** (10.4 h) |
+| the restore from kept originals | 1 | 1 | 450 GB | **4.2 h** |
+| the lookups | — | — | ~1,400 + ~11,000 requests | **3.2 h**, and no disk |
+
+**A first take-in with everything on is about thirteen and a half hours**, and every album is written
+down as it finishes, so a connection that drops costs the album it was in. Leaving the lookups for
+later (`--no-mb --no-lyrics`) makes it about ten and a half, and a later `repair` does the asking,
+because the settings are the state of the library (§9, slice 100). The local wall times in the table
+above are what an NVMe did and are not the number to plan by — which is the whole lesson of this
+correction.
 
 ## What it found
 

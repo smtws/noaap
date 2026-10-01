@@ -2960,6 +2960,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    only if they disagree: a stale expectation costs time, never correctness.
    And the two names that were one: a snapshot defaults to `<root>-snapshot.jsonl` rather than one
    fixed name beside the root, so two collections under one parent cannot write to the same file.
+   **The hours in slice 101 were too low, and the reason is worth more than the numbers.** They came
+   from `/proc/self/io` on this laptop, where the page cache serves the second and third read of a
+   file that was just copied — so the pass measured about one pass over the collection where a share
+   must carry every read over the wire. Measured directly with the cache evicted, the old
+   verification read a file twice (0.97 GB for 0.49 GB of audio) and the new one reads it once, which
+   is what the ruling was for; counted per file, a take-in over a 30 MB/s share is 2.1 h of snapshot
+   and 8.3 h of pass rather than 6.7, and 10.4 h without the one-read verify. **A local byte counter
+   is not a measurement of a network**, and saying so is the correction.
 
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)

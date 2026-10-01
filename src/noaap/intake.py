@@ -102,8 +102,13 @@ def made_path(snapshot: Path) -> Path:
     return snapshot.with_name(f"{snapshot.stem}.{MADE}")
 
 
-def read_made(path: Path, root: Path | None = None) -> list[str]:
-    """What a pass recorded as its own, for this root. Another root's record is not this one's."""
+def read_made(path: Path, root: Path | None = None, folders: bool = False) -> list[str]:
+    """What a pass recorded as its own, for this root. Another root's record is not this one's.
+
+    With `folders`, the directories it made instead of the files: the album folder a rename moved an
+    album into. A restore puts the files back under their recorded paths, which leaves those standing
+    **empty** — 19 of them on the user's own collection, husks of noaap's spelling of their albums.
+    """
     if not path.is_file():
         return []
     try:
@@ -112,14 +117,16 @@ def read_made(path: Path, root: Path | None = None) -> list[str]:
         return []
     if root is not None and got.get("root") not in (None, str(root), str(root.resolve())):
         return []
-    return [str(name) for name in (got.get("made") or [])]
+    return [str(name) for name in (got.get("folders" if folders else "made") or [])]
 
 
-def write_made(path: Path, root: Path, made: list[str]) -> None:
+def write_made(path: Path, root: Path, made: list[str], folders: list[str] = ()) -> None:
     """Written after each album, like the resume file: an interruption loses nothing but its album."""
     tmp = path.with_suffix(".part")
     tmp.write_text(json.dumps({"root": str(root), "at": datetime.now(UTC).isoformat(timespec="seconds"),
-                               "made": sorted(dict.fromkeys(made))}, ensure_ascii=False, indent=1))
+                               "made": sorted(dict.fromkeys(made)),
+                               "folders": sorted(dict.fromkeys(folders))},
+                              ensure_ascii=False, indent=1))
     os.replace(tmp, path)
 
 
@@ -192,6 +199,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     state, made_at = state_path(snapshot), made_path(snapshot)
     finished = read_state(state, root) if resume and not dry_run else set()
     made = read_made(made_at, root) if resume and not dry_run else []
+    made_folders = read_made(made_at, root, folders=True) if resume and not dry_run else []
     if finished:
         log(f"  {len(finished)} album(s) were done by an earlier run and are skipped")
     if not dry_run and not snapshot.exists():
@@ -232,6 +240,9 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         here = album_dir
         if root.resolve() == service.library.resolve():
             here = relocate(album_dir, plan, service.library, want)   # only where the root *is* the library
+        if here != album_dir and here.is_dir():
+            # the folder this pass moved the album into, so a restore does not leave it standing empty
+            made_folders.append(str(here.relative_to(root)))
         had_a_cover = dict(plan.cover_fetched)
         run(plan, here, service.source_for(plan), want=want, careful=True, keep=keep, keep_root=root,
             keep_as=where,          # the folder the snapshot knows, which `relocate` may have changed
@@ -245,7 +256,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         made += [str((here / name).relative_to(root)) for name in beside(here) - was_beside]
         finished.add(where)
         write_state(state, root, finished)
-        write_made(made_at, root, made)
+        write_made(made_at, root, made, made_folders)
         log(f"  {plan.albumartist} — {plan.album}: {len(plan.tracks)} track(s)")
 
     if dry_run:
