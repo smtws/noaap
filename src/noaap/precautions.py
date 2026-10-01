@@ -388,26 +388,31 @@ def restore(snapshot: Snapshot, root: Path | None = None, apply: bool = False, k
     # then depends on the order the albums happen to come in: three artist folders were left standing
     # empty on the user's collection that way. Deepest first over the folders *and* their parents, so
     # a child is always asked before the folder holding it.
-    husks = {root / name for name in folders}
-    husks |= {parent for where in list(husks) for parent in where.parents
-              if parent != root and root in parent.parents}
-    for where in sorted(husks, key=lambda path: -len(path.parts)):
+    # **only inside a folder the pass actually made.** Clearing every empty directory under a husk
+    # *and* treating the husk's parents as husks reached a folder of the owner's: `Der W/Autonomie`,
+    # empty in their collection, a sibling of the album the pass had moved. The recorded folders get
+    # their own empty subdirectories cleared — a `.thumb` of theirs whose files have gone back — and
+    # the parents are only ever offered to `rmdir`, which refuses anything that still holds a thing.
+    recorded = [root / name for name in folders]
+    inside_them = [p for where in recorded if where.is_dir()
+                   for p in where.rglob("*") if p.is_dir()]
+    parents = [p for where in recorded for p in where.parents
+               if p != root and root in p.parents]
+    for where in sorted(set(recorded + inside_them + parents), key=lambda path: -len(path.parts)):
         if not where.is_dir():
             continue
         name = str(where.relative_to(root))
         if not apply:
-            if not any(where.iterdir()):
+            if not any(where.iterdir()) and where in recorded:
                 log(f"  would remove the folder {name} — the pass made it, and it would be empty")
             continue
-        for inside in sorted((p for p in where.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
-            with contextlib.suppress(OSError):
-                inside.rmdir()        # a `.thumb` of theirs whose files have gone back
         try:
             where.rmdir()
         except OSError:
             continue                  # something is still in there: it stays, and so does the folder
-        done.removed.append(name + "/")
-        log(f"  removed the folder {name} — the pass made it and it is empty")
+        if where in recorded or where in inside_them:
+            done.removed.append(name + "/")
+            log(f"  removed the folder {name} — the pass made it and it is empty")
     if not apply:
         log(f"{done.files} file(s) in the snapshot, {done.renamed} would be put back under their own "
             f"name, {len(done.removed)} of the pass's own would be removed; nothing was changed. "
@@ -557,6 +562,32 @@ def safely(path: Path, write: Callable[[Path], Any], keep: Path | None = None,
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def folds_case(where: Path) -> bool:
+    """Whether this filesystem treats two spellings of one name as the same file — by asking it.
+
+    **Not a guess and not a platform check.** The share the user's music is on is case-insensitive
+    and this machine is not, and the two differ in a way that destroyed fourteen files: the guard
+    that was supposed to stop it compared `Path.samefile`, and **CIFS hands out a different inode
+    for each spelling of the same file** (measured: 130595 against 130597 for one file), so the
+    guard silently answered "different file" every time. A probe costs one tiny write.
+    """
+    where.mkdir(parents=True, exist_ok=True)
+    probe = where / ".noaap-case-Probe"
+    try:
+        probe.write_bytes(b"")
+        return (where / ".noaap-case-probe").exists()
+    except OSError:
+        return False
+    finally:
+        with contextlib.suppress(OSError):
+            probe.unlink()
+
+
+def same_name(one: str, two: str, folding: bool) -> bool:
+    """Whether two relative paths name the same thing on a filesystem that folds case, or not."""
+    return one.casefold() == two.casefold() if folding else one == two
 
 
 def empty_under(root: Path, only: Iterable[Path] = (), everything: bool = False) -> list[Path]:

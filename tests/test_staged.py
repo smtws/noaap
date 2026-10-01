@@ -360,3 +360,62 @@ def test_an_empty_folder_of_the_owners_goes_only_when_the_setting_says_so(elsewh
                    dry_run=False, snapshot=tmp_path / "on.jsonl", log=said.append)
     assert not (elsewhere / "aphelion" / "one they left empty").exists(), "on: it goes"
     assert any("removed the empty folder" in line for line in said), said
+
+
+def test_the_same_name_is_what_the_filesystem_says_it_is(tmp_path, monkeypatch,
+                                                         one_second_of_sound):
+    """The guard that was meant to stop the case-folding loss **did not work on the share**.
+
+    It compared `Path.samefile`, and CIFS hands out a different inode for each spelling of one file
+    — measured on the user's own share, 130595 against 130597 — so it answered "a different file"
+    every time and fourteen files of an album were deleted after being verified. The old case passed
+    because a symlink on ext4 really does share an inode. So the filesystem is **asked** whether it
+    folds case, and here that answer is forced to `True` while the inodes stay honestly different.
+    """
+    share = tmp_path / "share"
+    album = share / "Der W" / "iii"
+    album.mkdir(parents=True)
+    staging = tmp_path / "batch"
+    scheme = staging / "Der W" / "III"
+    scheme.mkdir(parents=True)
+    names = []
+    for n, title in enumerate(["Operation", "Mordballaden"], 1):
+        name = f"Der W - III - {n:02d} - {title}.opus"
+        shutil.copy(one_second_of_sound, scheme / name)
+        shutil.copy(one_second_of_sound, album / name)      # the share's own copy, same name
+        names.append(name)
+    was = {f"Der W/iii/{name}": None for name in names}
+    monkeypatch.setattr(staged.precautions, "folds_case", lambda where: True)
+
+    done = staged.Staged()
+    staged._copy_back(share, staging, was, done, lambda s: None)
+
+    assert done.superseded == [], "nothing the pass had just written was called superseded"
+    assert sorted(p.name for p in album.iterdir()) == sorted(names), "every file still there"
+
+
+def test_a_restore_does_not_reach_a_folder_beside_the_one_the_pass_made(tmp_path,
+                                                                       one_second_of_sound):
+    """It cleared every empty directory under a husk, and counted the husk's parents as husks too.
+
+    Which reached `Der W/Autonomie` — empty in the owner's collection, a sibling of the album the
+    pass had moved, recorded by nobody. Found by round 1 of the gate.
+    """
+    root = tmp_path / "collection"
+    album = root / "Aphelion" / "nocturnes (2003)"
+    album.mkdir(parents=True)
+    shutil.copy(one_second_of_sound, album / "01 First.opus")
+    (root / "Aphelion" / "one they left empty").mkdir()
+    (album / ".thumb").mkdir()
+    (album / ".thumb" / "cover.jpg.jpg").write_bytes(b"\xff\xd8 theirs")
+    snapshot = precautions.take(root, tmp_path / "snap.jsonl")
+    snap = precautions.read(snapshot)
+    moved = root / "Aphelion" / "Nocturnes"                  # what the pass would do
+    album.rename(moved)
+
+    precautions.restore(snap, root, apply=True, folders=["Aphelion/Nocturnes"], log=lambda s: None)
+
+    assert (album / "01 First.opus").is_file(), "their album is back"
+    assert (album / ".thumb" / "cover.jpg.jpg").is_file(), "with their thumbnail in it"
+    assert (root / "Aphelion" / "one they left empty").is_dir(), "and the folder beside it is theirs"
+    assert not moved.exists(), "while the folder the pass made is gone"

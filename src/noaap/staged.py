@@ -351,14 +351,22 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # 14 files written, verified, and then deleted again by this loop, which is as close to losing
     # somebody's music as this program has come. `samefile` answers it without knowing anything
     # about how a filesystem folds names.
-    written = [root / name for name in sorted(verified)]
+    # **the share decides what "the same name" means, and it is asked rather than assumed.** This
+    # compared `Path.samefile`, and CIFS hands out a different inode for each spelling of one file
+    # (130595 against 130597, measured) — so the guard answered "a different file" every time and
+    # fourteen files of an album were deleted after being verified. The case fixture passed because
+    # it used a symlink on ext4, where the inode really is shared.
+    folding = precautions.folds_case(root)
+    written = sorted(verified)
     emptied: set[Path] = set()
     for name in sorted(set(was) - verified):
         old = root / name
         if not old.is_file():
             continue
-        if any(_same(old, kept) for kept in written):
+        if any(precautions.same_name(name, kept, folding) for kept in written):
             continue
+        if any(_same(old, root / kept) for kept in written):
+            continue        # a second line, for a filesystem whose inodes do mean something
         old.unlink()
         emptied.add(old.parent)
         done.superseded.append(name)
