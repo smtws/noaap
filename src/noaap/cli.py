@@ -192,7 +192,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="copy each file there before its first write — the only way back byte for byte")
     ti.add_argument("--no-resume", action="store_true", help="start again rather than continue an interrupted run")
     ti.add_argument("--restore", type=Path, metavar="SNAPSHOT",
-                    help="put names and tags back from a snapshot (dry unless --apply)")
+                    help="put names and tags back from a snapshot — or from a staged run's whole "
+                         "staging folder, which restores every batch of it (dry unless --apply)")
     ti.add_argument("--staging", type=Path, metavar="DIR",
                     help="for a collection on another filesystem (a mounted share): copy it here a "
                          "batch at a time, take each batch in on this machine, and copy it back")
@@ -823,12 +824,35 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 
     if args.restore:
         where = Path(args.restore).expanduser()
+        from . import staged as staged_mod
+        # **a staging folder, or the index in it, restores every batch of that pass** (R-374, ruling
+        # c). One snapshot is one batch, and a restore of one batch cannot know what the others held
+        # — the run that found this out restored three batches, reported clean, and left the twelve
+        # files of a fourth rewritten, because the batch a SIGTERM interrupted had no snapshot left.
+        if where.is_dir() or where.name == staged_mod.STAGED:
+            got = staged_mod.restore_all(root, where, apply=args.apply, log=print)
+            print(f"{len(got.snapshots)} snapshot(s), {got.files} file(s) recorded")
+            for name in got.missing:
+                print(f"  not there: {name}")
+            for line in got.lost:
+                print(f"  lost a field of yours: {line}")
+            if got.changed:
+                print(f"  ⚠ {len(got.changed)} file(s) do not hold the recording they held")
+            if got.orphans:
+                print(f"  ⚠ {len(got.orphans)} file(s) in {staged_mod.aside_for(root)} are named by "
+                      "no snapshot of this pass")
+            if args.apply:
+                for snapshot in got.snapshots:
+                    for path in (intake.state_path(where / snapshot),
+                                 intake.made_path(where / snapshot)):
+                        if path.is_file():
+                            path.unlink()
+            return 0 if got.clean else 1
         snap = precautions.read(where)
         kept = Path(args.keep_originals).expanduser() if args.keep_originals else None
         if kept is None:
             # **a staged run leaves the originals beside the collection** (R-364), and that store is
             # the only way back that is byte for byte, so a restore uses it without being told to.
-            from . import staged as staged_mod
             beside = staged_mod.aside_for(root)
             if beside.is_dir():
                 kept = beside
@@ -838,7 +862,6 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         husks = intake.read_made(intake.made_path(where), root, folders=True)
         # how far the search may look for a renamed file: this snapshot's own territory and the
         # folders the pass made for it, never another batch's albums (§9, slice 107)
-        from . import staged as staged_mod
         done = precautions.restore(snap, root, apply=args.apply, kept=kept, made=made,
                                    folders=husks, pictures=precautions.pictures_for(where),
                                    within=staged_mod.territory(snap, husks), log=print)

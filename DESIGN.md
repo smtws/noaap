@@ -3156,6 +3156,35 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    single-disc of slice 102), none of them in an album holding a duplicate id — so `repair` would not
    have reached them today, and the defect was reaching them through adoption only.
 
+109. ✅ **A batch is known by what it holds, and only its own marker says it is done**
+   (2026-10-02, P84, the gate). The first interruption scenario found it: a SIGTERM after a batch's
+   copy back and before anything recorded the batch as finished. The resume then read the *share* —
+   a plan file beside the album — as "already taken in", walked past that batch, numbered its own
+   batches from 1, and wrote `batch-1-<root>-snapshot.jsonl` over the only record of the twelve
+   files the interrupted pass had rewritten. The restore put three batches back, **reported clean**,
+   and left the fourth album rewritten on the share. The bytes were never lost — the store of
+   originals held every one of them, byte-identical — but no snapshot named them, and `restore` only
+   looks in the store for a file a snapshot records. A way back that nothing can find is not one.
+   Four things, which only hold together as a set:
+   - **the snapshot's name is the batch's content**: `batch-<digest of its album folders>-<the first
+     one, for a person to read>-snapshot.jsonl`. A resume cannot collide with another batch's name.
+   - **an existing snapshot is authoritative and is never re-recorded.** On a resume the share may
+     already hold the files an interrupted copy back replaced, so the staging copy is of *those*, and
+     recording them would call them the originals.
+   - **"done" is a marker the pass writes, after the copy back is verified** — one record per batch
+     in `noaap-staged.json`, written first as not-done with its snapshot's name. What is on the share
+     cannot answer the question: a plan file says a pass got that far, not that its batch came back.
+     The plan file still means "an earlier pass took this album in", but it may no longer hide a
+     folder that an unfinished batch is owed.
+   - **the record of what the pass made is written before the copy back, not after it.** Between the
+     two is the other window the same SIGTERM opens: the restore put the owner's originals back from
+     the store and left the pass's plan and its renamed folder standing beside them. Found by the
+     case, not by reasoning.
+   And the restore reads the index: `--restore <the staging folder>` puts **every** batch back,
+   oldest record last so that the oldest record of a file has the last word, and then reads the store
+   of originals and names any file in it that no snapshot of the pass knows. A restore that finds one
+   does not report clean. The store is the last net; the restore has to know when it is the only one.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

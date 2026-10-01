@@ -18,7 +18,8 @@ Per batch, in this order, and nothing in the next batch starts until this one is
 3. **take it in** with the ordinary pass, unchanged, against the staging folder as its library;
 4. **copy back**, album by album: every file written beside its target and renamed into place,
    verified by digest, and only then are the files the scheme superseded removed from the share;
-5. **remove** the staging copy, and record the batch as finished.
+5. **remove** the staging copy, and record the batch as finished — a marker of its own, written
+   only now, because nothing on the share can say a batch came back (§9, slice 109).
 
 `--keep-originals` is not needed and is not offered: the share holds the untouched original of every
 file until step 4 has verified its replacement, which is a stronger way back than a copy of it.
@@ -27,6 +28,7 @@ file until step 4 has verified its replacement, which is a stronger way back tha
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import shutil
@@ -40,7 +42,8 @@ from . import intake, precautions, sources
 from .download import PLAN_FILE
 from .precautions import bytes_sha
 
-STAGED = "noaap-staged.json"     # which batches are finished, beside the staging folder
+STAGED = "noaap-staged.json"     # the index of this pass: one record per batch, beside the staging
+NAME_LIMIT = 48                  # of the first album's folder name, kept in a snapshot's name
 PART = ".noaap-incoming"         # the suffix a file being copied back wears until it is verified
 ASIDE = "noaap-originals"       # beside the collection: every file the copy back replaces
 SHARE = 10                       # the default batch is a tenth of the free space
@@ -56,6 +59,35 @@ class Batch:
     @property
     def alone(self) -> bool:
         return len(self.albums) == 1
+
+
+@dataclass
+class Recorded:
+    """One batch of a pass, as the index knows it: its snapshot, its albums, and whether it is done.
+
+    **`done` is written only after the copy back is verified** (R-374, ruling b), and it is the only
+    thing that says a batch is finished. What is on the share cannot say it: a plan file beside an
+    album means a pass got that far, not that the batch it belonged to ever came back — and reading
+    it as "already taken in" is what let a resume walk past the batch a SIGTERM had interrupted and
+    overwrite the only record of it.
+    """
+
+    key: str
+    snapshot: str                                        # the file name, in the staging folder
+    albums: list[str] = field(default_factory=list)      # relative to the root, as planned
+    became: list[str] = field(default_factory=list)      # and the folders the pass made for them
+    done: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"key": self.key, "snapshot": self.snapshot, "albums": self.albums,
+                "became": self.became, "done": self.done}
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Recorded:
+        return cls(key=str(d.get("key") or ""), snapshot=str(d.get("snapshot") or ""),
+                   albums=[str(x) for x in (d.get("albums") or [])],
+                   became=[str(x) for x in (d.get("became") or [])],
+                   done=bool(d.get("done")))
 
 
 @dataclass
@@ -152,24 +184,102 @@ def batches(albums: Iterable[tuple[Path, int]], limit: int) -> list[Batch]:
     return made
 
 
-def read_done(path: Path, root: Path | None = None) -> set[str]:
-    """Which batches are finished, by the first album in each. Another root's record is not ours."""
+def batch_key(root: Path, batch: Batch) -> str:
+    """What this batch *is*: the folders it holds, under the root, in one short name.
+
+    **A batch's identity is its content, not its position** (R-374, ruling a). The snapshot used to
+    be `batch-<n>-…`, and a resume numbers its batches from 1 again — so the resume's first batch
+    overwrote the record of the batch a SIGTERM had interrupted, and the restore then had no entry
+    for the twelve files that pass had already rewritten. It reported clean.
+    """
+    names = sorted(str(album.relative_to(root)) for album in batch.albums)
+    return hashlib.sha256("\n".join(names).encode()).hexdigest()[:12]
+
+
+def snapshot_for(staging: Path, root: Path, batch: Batch) -> Path:
+    """Where this batch's way back is written: its key, and its first album for a person to read."""
+    first = batch.albums[0].name[:NAME_LIMIT] if batch.albums else root.name[:NAME_LIMIT]
+    safe = "".join(ch if ch.isalnum() or ch in " -_." else "_" for ch in first).strip(" .") or "batch"
+    return staging / f"batch-{batch_key(root, batch)}-{safe}-snapshot.jsonl"
+
+
+def read_index(path: Path, root: Path | None = None) -> dict[str, Recorded]:
+    """Every batch of the pass, by key, in the order they were recorded. Another root's is not ours."""
     if not path.is_file():
-        return set()
+        return {}
     try:
         got = json.loads(path.read_text())
     except (ValueError, OSError):
-        return set()
+        return {}
     if root is not None and got.get("root") not in (None, str(root), str(root.resolve())):
-        return set()
-    return set(got.get("done") or [])
+        return {}
+    out: dict[str, Recorded] = {}
+    for row in got.get("batches") or []:
+        if isinstance(row, dict) and row.get("key"):
+            one = Recorded.from_dict(row)
+            out[one.key] = one
+    return out
 
 
-def write_done(path: Path, root: Path, done: set[str]) -> None:
+def write_index(path: Path, root: Path, batches: dict[str, Recorded]) -> None:
     tmp = path.with_suffix(".part")
     tmp.write_text(json.dumps({"root": str(root), "at": datetime.now(UTC).isoformat(timespec="seconds"),
-                               "done": sorted(done)}, ensure_ascii=False, indent=1))
+                               "batches": [one.to_dict() for one in batches.values()]},
+                              ensure_ascii=False, indent=1))
     os.replace(tmp, path)
+
+
+def snapshots_of(staging: Path, root: Path | None = None) -> list[Path]:
+    """Every snapshot of the pass, **oldest record last** (R-374, ruling c).
+
+    A restore walks them in this order so that the oldest record of a file has the last word: a
+    snapshot a resume wrote may have recorded files an interrupted run had already replaced, and
+    those are not originals. Where there is no index — a single `--restore` of one file — the caller
+    passes that file and this is not asked.
+    """
+    where = staging if staging.is_dir() else staging.parent
+    index = where / STAGED if staging.is_dir() else staging
+    known = read_index(index, root)
+    out = [where / one.snapshot for one in known.values() if (where / one.snapshot).is_file()]
+    return list(reversed(out))
+
+
+def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
+    """Files in the store of originals that no snapshot names — the last net, checked.
+
+    The store is what makes a restore byte for byte, and `restore` only ever looks in it for a file
+    some snapshot recorded. So a file that is in there and in no snapshot is a file whose way back
+    exists and cannot be found: exactly what the interrupted batch left behind (I-237). It is
+    reported, and a restore that finds one does not report clean.
+    """
+    store = aside_for(root)
+    if not store.is_dir():
+        return []
+    folding = precautions.folds_case(store)
+    known = {name.casefold() if folding else name for name in named}
+    out = []
+    for path in sorted(p for p in store.rglob("*") if p.is_file()):
+        name = str(path.relative_to(store))
+        if (name.casefold() if folding else name) not in known:
+            out.append(name)
+    return out
+
+
+def _owed_folders(staging: Path, root: Path, known: dict[str, Recorded]) -> set[str]:
+    """Every folder a batch that did not finish is still owed, under the root."""
+    out: set[str] = set()
+    for one in known.values():
+        if one.done:
+            continue
+        out.update(one.albums)
+        out.update(one.became)
+        snapshot = staging / one.snapshot
+        if snapshot.is_file():
+            with contextlib.suppress(OSError, ValueError):
+                out.update(territory(precautions.read(snapshot),
+                                     intake.read_made(intake.made_path(snapshot), root,
+                                                      folders=True)))
+    return out
 
 
 def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = None, *,
@@ -189,12 +299,26 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     done.limit = batch_size or max(done.free // SHARE, 1)
     log(says_room(staging, done.limit, done.free, done.filesystem))
 
+    where = staging / STAGED
+    known = read_index(where, root) if resume and not dry_run else {}
+    # **what a batch that did not finish is still owed**, read before anything is skipped. Its own
+    # albums, the folders the pass made for them, and every folder its snapshot recorded a file in —
+    # so a half-renamed album is covered whichever of its two names the share now shows.
+    owed = _owed_folders(staging, root, known)
+    if owed:
+        log(f"  {len(owed)} folder(s) are owed a copy back by a batch that did not finish")
+
     sized = album_sizes(root, source)
-    # **an album that already holds a plan has been taken in**, and the way to bring it to changed
-    # settings is a repair, which needs no staging. Skipping it here is what makes a staged run
-    # idempotent across the renames it does itself: a batch's name cannot survive its own albums
-    # being moved into the scheme, so the record alone would copy everything out a second time.
-    if taken := [album for album, _ in sized if (album / PLAN_FILE).is_file()]:
+    # **an album that already holds a plan was taken in by an earlier pass**, and the way to bring it
+    # to changed settings is a repair, which needs no staging. Skipping it here is what makes a
+    # staged run idempotent across the renames it does itself: a batch's name cannot survive its own
+    # albums being moved into the scheme, so the record alone would copy everything out a second time.
+    # **But a plan file may not say a batch is finished** (R-374, ruling b). Only the index says
+    # that, and a folder a half-done batch is owed is never skipped — reading the share as the answer
+    # is what walked a resume past the batch a SIGTERM had interrupted and left its twelve rewritten
+    # files with no record at all (I-237).
+    if taken := [album for album, _ in sized if (album / PLAN_FILE).is_file()
+                 and str(album.relative_to(root)) not in owed]:
         log(f"  {len(taken)} album(s) are already taken in and are skipped")
         sized = [(album, size) for album, size in sized if album not in set(taken)]
     made = batches(sized, done.limit)
@@ -208,9 +332,7 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(line)
         done.would.append(line)
 
-    where = staging / STAGED
-    finished = read_done(where, root) if resume and not dry_run else set()
-    if finished:
+    if finished := [one for one in known.values() if one.done]:
         log(f"  {len(finished)} batch(es) were done by an earlier run and are skipped")
 
     if dry_run:
@@ -229,15 +351,22 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
 
     staging.mkdir(parents=True, exist_ok=True)
     for n, batch in enumerate(made, 1):
-        name = str(batch.albums[0].relative_to(root))
-        if name in finished:
+        key = batch_key(root, batch)
+        if (already := known.get(key)) and already.done:
             continue
         service.check()
         log(f"batch {n} of {len(made)}: {len(batch.albums)} album(s), {batch.bytes / 1e9:.2f} GB")
-        _one_batch(service, root, batch, choices, staging, done, log)
-        finished.add(name)
-        write_done(where, root, finished)
-        done.done.append(name)
+        snapshot = snapshot_for(staging, root, batch)
+        # **the record of this batch goes in before its copy back, saying it is not done.** That is
+        # what a run stopped mid-flight leaves behind, and it is what the next one reads.
+        known[key] = Recorded(key=key, snapshot=snapshot.name,
+                              albums=[str(album.relative_to(root)) for album in batch.albums])
+        write_index(where, root, known)
+        _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
+        known[key] = replace(known[key], done=True, became=sorted(
+            intake.read_made(intake.made_path(snapshot), root, folders=True)))
+        write_index(where, root, known)
+        done.done.append(str(batch.albums[0].relative_to(root)))
     log(f"{len(done.done)} batch(es) taken in; {done.tracks} track(s); "
         f"{done.copied_out / 1e9:.1f} GB from the share, {done.copied_back / 1e9:.1f} GB back")
     if done.superseded:
@@ -252,8 +381,63 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             "until you remove it")
     if done.snapshots:
         log(f"the way back is {len(done.snapshots)} snapshot(s) in {staging}, one per batch: "
-            f"`noaap take-in {root} --restore <one of them> --apply`")
+            f"`noaap take-in {root} --restore {staging} --apply` puts the whole collection back, "
+            "and one snapshot of them puts one batch back")
     return done
+
+
+@dataclass
+class Restored:
+    """What a restore of a whole staged pass came to."""
+
+    snapshots: list[str] = field(default_factory=list)
+    files: int = 0
+    missing: list[str] = field(default_factory=list)
+    changed: list[str] = field(default_factory=list)
+    lost: list[str] = field(default_factory=list)
+    orphans: list[str] = field(default_factory=list)
+
+    @property
+    def clean(self) -> bool:
+        return not (self.changed or self.lost or self.orphans)
+
+
+def restore_all(root: Path, where: Path, *, apply: bool = False,
+                log: Callable[[str], None] = lambda s: None) -> Restored:
+    """Put the collection back from **every** snapshot of the pass, and then check the store.
+
+    `where` is the staging folder, or the index in it. The snapshots are walked **oldest record
+    last** (`snapshots_of`), so the oldest record of a file has the last word: a snapshot a resume
+    wrote may hold files an interrupted copy back had already replaced, and those are not originals.
+
+    Then the store of originals is read (R-374, ruling c). `precautions.restore` only ever looks in
+    it for a file some snapshot recorded, so a file in there that no snapshot names is a file whose
+    way back exists and cannot be found — which is exactly what the interrupted batch left (I-237).
+    It is named, and the restore does not come back clean.
+    """
+    out = Restored()
+    kept = aside_for(root)
+    named: set[str] = set()
+    for snapshot in snapshots_of(where, root):
+        snap = precautions.read(snapshot)
+        husks = intake.read_made(intake.made_path(snapshot), root, folders=True)
+        got = precautions.restore(
+            snap, root, apply=apply, kept=kept if kept.is_dir() else None,
+            made=intake.read_made(intake.made_path(snapshot), root), folders=husks,
+            pictures=precautions.pictures_for(snapshot),
+            within=territory(snap, husks), log=log)
+        out.snapshots.append(snapshot.name)
+        out.files += len(snap.files)
+        out.missing += got.missing
+        out.changed += list(got.changed)
+        out.lost += list(got.lost)
+        named.update(r.path for r in snap.files)
+        log(f"  {snapshot.name}: {len(snap.files)} file(s) recorded")
+    out.orphans = orphans_in_store(root, named)
+    for name in out.orphans:
+        log(f"  ⚠ {name} is in {aside_for(root)} and no snapshot of this pass names it — "
+            "its way back is there and nothing can find it")
+    return out
 
 
 def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
@@ -272,7 +456,7 @@ def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
 
 
 def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, staging: Path,
-               done: Staged, log: Callable[[str], None]) -> None:
+               done: Staged, log: Callable[[str], None], snapshot: Path | None = None) -> None:
     """Copy out, write down, take in, copy back, remove. Nothing else runs while this does."""
     from .service import Service
 
@@ -288,12 +472,19 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     done.peak_staged = max(done.peak_staged, held)
     log(f"  copied {held / 1e9:.2f} GB to {here}")
 
-    snapshot = staging / f"batch-{len(done.done) + 1}-{root.name}-snapshot.jsonl"
-    if snapshot.exists():
-        snapshot.unlink()       # ours, from a batch that did not finish; the share is intact
-    precautions.take(here, snapshot, log=lambda s: None)
-    was = {r.path: r for r in precautions.read(snapshot).files}
-    log(f"  wrote down {len(was)} file(s)")
+    snapshot = snapshot or snapshot_for(staging, root, batch)
+    # **a snapshot this batch already has is authoritative and is not written again** (R-374, ruling
+    # a). A first version deleted it and took it afresh. On a resume the share may already hold the
+    # files an interrupted copy back replaced, so the staging copy is of *those* — and recording
+    # them would call them the originals, which is the one thing the way back must never say.
+    if snapshot.is_file():
+        was = {r.path: r for r in precautions.read(snapshot).files}
+        log(f"  the way back for this batch was already written down: {snapshot.name}, "
+            f"{len(was)} file(s)")
+    else:
+        precautions.take(here, snapshot, log=lambda s: None)
+        was = {r.path: r for r in precautions.read(snapshot).files}
+        log(f"  wrote down {len(was)} file(s)")
 
     # the pass, unchanged, with the staging copy as its library so the scheme may move folders
     cfg = replace(service.cfg, library_root=here)
@@ -305,15 +496,19 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
 
-    _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders))
     # **the record of what the pass made is rewritten in the share's terms** (R-354 defect 2). The
     # pass wrote it against the staging copy, and `read_made` checks the root a record was written
     # for — rightly, since a record of another root is not this one's — so a restore pointed at the
     # share read nothing and left every plan and cover the pass had made. The paths are already
     # relative and mean the same thing on either side; only the root they are stamped with was wrong.
+    # **Before the copy back, not after it** (R-374). Between the two is where a SIGTERM leaves the
+    # share holding files the pass made and no record of them: the restore put the owner's originals
+    # back from the store and left the plan and the renamed folder standing beside them. A record
+    # naming a file that never reached the share costs nothing — a restore removes what is there.
     intake.write_made(intake.made_path(snapshot), root,
                       intake.read_made(intake.made_path(snapshot), here),
                       intake.read_made(intake.made_path(snapshot), here, folders=True))
+    _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders))
     shutil.rmtree(here)
     # **the batch's snapshot stays, and so does the record of what the pass made.** The share's own
     # untouched file is the way back only until its replacement is verified and the old one removed;
@@ -499,12 +694,21 @@ __all__ = [
     "PART",
     "STAGED",
     "Batch",
+    "Recorded",
+    "Restored",
     "Staged",
     "album_sizes",
+    "aside_for",
+    "batch_key",
     "batches",
     "free_space",
-    "read_done",
+    "orphans_in_store",
+    "read_index",
+    "restore_all",
     "says_room",
+    "snapshot_for",
+    "snapshots_of",
     "take_in_staged",
-    "write_done",
+    "territory",
+    "write_index",
 ]

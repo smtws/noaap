@@ -96,9 +96,40 @@ def test_the_batch_order_is_the_listings_order_so_a_resume_means_something():
 
 def test_a_record_of_another_root_is_not_this_ones(tmp_path):
     where = tmp_path / staged.STAGED
-    staged.write_done(where, tmp_path / "somewhere-else", {"a"})
-    assert staged.read_done(where, tmp_path / "somewhere-else") == {"a"}
-    assert staged.read_done(where, tmp_path / "here") == set()
+    one = staged.Recorded(key="abc", snapshot="batch-abc-a-snapshot.jsonl", albums=["a"], done=True)
+    staged.write_index(where, tmp_path / "somewhere-else", {one.key: one})
+    assert list(staged.read_index(where, tmp_path / "somewhere-else")) == ["abc"]
+    assert staged.read_index(where, tmp_path / "here") == {}
+
+
+def test_a_batchs_name_is_what_it_holds_not_where_it_came_in_the_run(tmp_path):
+    """R-374, ruling a. The snapshot used to be `batch-<n>-…`, and a resume counts from 1 again —
+    so the resume's first batch overwrote the record of the batch a SIGTERM had interrupted."""
+    root = tmp_path / "collection"
+    one = staged.Batch([root / "A Band" / "An Album"], 1)
+    two = staged.Batch([root / "B Band" / "Another"], 1)
+
+    assert staged.batch_key(root, one) != staged.batch_key(root, two)
+    assert staged.batch_key(root, one) == staged.batch_key(root, staged.Batch(list(one.albums), 99)), \
+        "the size it happened to have is not part of what a batch is"
+    names = [staged.snapshot_for(tmp_path / "staging", root, b).name for b in (one, two)]
+    assert len(set(names)) == 2 and all(n.endswith("-snapshot.jsonl") for n in names)
+    assert "An Album" in names[0] and "Another" in names[1], "and a person can read which is which"
+
+
+def test_the_store_tells_on_a_file_no_snapshot_names(tmp_path):
+    """R-374, ruling c: the store is the last net, and a restore must know when it is the only one."""
+    root = tmp_path / "collection"
+    (root / "A Band" / "An Album").mkdir(parents=True)
+    store = staged.aside_for(root) / "A Band" / "An Album"
+    store.mkdir(parents=True)
+    (store / "01 - One.mp3").write_bytes(b"mine")
+    (store / "02 - Two.mp3").write_bytes(b"also mine")
+
+    assert staged.orphans_in_store(root, ["A Band/An Album/01 - One.mp3"]) == \
+        ["A Band/An Album/02 - Two.mp3"]
+    assert staged.orphans_in_store(root, ["A Band/An Album/01 - One.mp3",
+                                          "A Band/An Album/02 - Two.mp3"]) == []
 
 
 # -- the round trip ---------------------------------------------------------------------------
@@ -255,6 +286,89 @@ def test_a_finished_run_leaves_a_way_back(elsewhere, tmp_path):
     assert back.missing == [] and back.changed == []
     assert (elsewhere / "aphelion" / "nocturnes (2003)" / "01 First.opus").is_file()
     assert not (elsewhere / "Aphelion").exists(), "and noaap's folder is gone again"
+
+
+def test_a_batch_stopped_before_its_marker_is_not_walked_past_by_the_resume(elsewhere, tmp_path,
+                                                                             monkeypatch):
+    """The gate's own finding (I-237, R-374). A SIGTERM arrived after a batch's copy back and before
+    anything recorded it as finished. The resume read the share — a plan file beside the album — as
+    "already taken in", walked past that batch, re-planned its own batches from 1, and **overwrote
+    the only snapshot of the twelve files the interrupted pass had rewritten**. The restore then put
+    three batches back, reported clean, and left the fourth album rewritten on the share.
+
+    So: the marker is the index's, written only after the copy back; the snapshot is named by what
+    the batch holds; and a batch with a snapshot and no marker is owed its copy back.
+    """
+    reference = tmp_path / "reference"
+    shutil.copytree(elsewhere, reference)
+    was = _tags_and_picture(reference)
+    staging = tmp_path / "staging"
+
+    real = staged._copy_back
+
+    def and_then_stop(*args, **kw):
+        real(*args, **kw)
+        raise KeyboardInterrupt("as a SIGTERM stops it: after the copy back, before the marker")
+
+    monkeypatch.setattr(staged, "_copy_back", and_then_stop)
+    with pytest.raises(KeyboardInterrupt):
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                              batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+
+    index = staged.read_index(staging / staged.STAGED, elsewhere)
+    assert [one.done for one in index.values()] == [False], "the batch is on record as not finished"
+    interrupted = next(iter(index.values()))
+    assert (elsewhere / "Aphelion" / "Nocturnes" / ".ytalbum.json").is_file(), \
+        "and the share does hold a plan for it, which is what used to be read as 'done'"
+    held = (staging / interrupted.snapshot).read_bytes()
+
+    again = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                  batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert (staging / interrupted.snapshot).read_bytes() == held, \
+        "the interrupted batch's own record is what it was: nothing re-recorded it"
+    assert len(staged.read_index(staging / staged.STAGED, elsewhere)) >= 2, \
+        "and the resume's batches are beside it rather than on top of it"
+    assert again.unverified == []
+
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert got.orphans == [], got.orphans
+    assert got.changed == [] and got.lost == []
+    assert _tags_and_picture(elsewhere) == was, "every tag and every picture as the reference has it"
+    assert list(elsewhere.rglob(".ytalbum.json")) == [], "and no plan of either pass left"
+
+
+def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
+    """One snapshot is one batch; the whole pass is the index. R-374, ruling c."""
+    reference = tmp_path / "reference"
+    shutil.copytree(elsewhere, reference)
+    was = _tags_and_picture(reference)
+    staging = tmp_path / "staging"
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+    assert len(done.snapshots) == 2
+
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert len(got.snapshots) == 2 and got.clean
+    assert _tags_and_picture(elsewhere) == was
+
+
+def test_a_file_in_the_store_that_no_snapshot_names_is_not_a_clean_restore(elsewhere, tmp_path):
+    """The store is the last net, and a restore has to say when it is the only one left."""
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    orphan = staged.aside_for(elsewhere) / "aphelion" / "nocturnes (2003)" / "99 Lost.opus"
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"a file whose way back nothing can find")
+
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert got.orphans == ["aphelion/nocturnes (2003)/99 Lost.opus"]
+    assert not got.clean, "and that is not a clean restore"
 
 
 def test_an_empty_folder_of_the_owners_is_not_tidied_away(elsewhere, tmp_path):
