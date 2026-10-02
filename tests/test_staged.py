@@ -9,8 +9,10 @@ it like many filemanagers do)"*.
 from __future__ import annotations
 
 import errno
+import json
 import os
 import shutil
+import socket
 from dataclasses import replace
 from pathlib import Path
 
@@ -831,6 +833,94 @@ def test_a_restore_takes_the_piece_of_a_file_away_too(already_named, tmp_path):
     assert not piece.exists()
     assert {str(q.relative_to(elsewhere)): q.read_bytes()
             for q in sorted(elsewhere.rglob("*")) if q.is_file()} == was
+
+
+def test_a_second_pass_on_one_collection_is_refused(elsewhere, tmp_path, monkeypatch):
+    """R-390. Nothing stopped two passes on one root, and two staging folders never see each
+    other's index — so the only place a lock means anything is the collection itself. Both would
+    copy the same albums out and write back over each other."""
+    staging = tmp_path / "staging"
+    held: list[Path] = []
+
+    def while_it_holds(service, root, batch, choices, staging_, done, log, snapshot=None):
+        """Another pass arrives while this one is in its first batch."""
+        held.append(staged.lock_path(root))
+        with pytest.raises(staged.Held) as refused:
+            staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                  staging=tmp_path / "somewhere-else", batch_size=1,
+                                  dry_run=False, log=lambda s: None)
+        assert "another take-in is working on" in str(refused.value)
+        assert str(os.getpid()) in str(refused.value), "and says whose pass it is"
+
+    monkeypatch.setattr(staged, "_one_batch", while_it_holds)
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+
+    assert held, "the first pass did hold the collection"
+    assert not held[0].exists(), "and let it go when it was done"
+    assert staged.who_holds(elsewhere) == {}
+
+
+def test_a_dry_run_takes_no_lock(elsewhere, tmp_path):
+    """It writes nothing, so it cannot be in anybody's way."""
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                          staging=tmp_path / "staging", batch_size=1, dry_run=True,
+                          log=lambda s: None)
+
+    assert staged.who_holds(elsewhere) == {}
+
+
+def test_a_lock_left_by_a_dead_pass_of_this_host_is_taken_over(elsewhere, tmp_path):
+    """A signal leaves the lock behind. The kernel is asked whether that pass still exists, and
+    only about this host: a pid from another machine means nothing here."""
+    where = staged.lock_path(elsewhere)
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(json.dumps({"host": socket.gethostname(), "pid": 999_999_999,
+                                 "at": "2026-10-02T00:00:00+00:00", "root": str(elsewhere)}))
+    lines: list[str] = []
+
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                          staging=tmp_path / "staging", batch_size=1, dry_run=False,
+                          log=lines.append)
+
+    assert [line for line in lines if "is gone; taking it over" in line], lines
+    assert staged.who_holds(elsewhere) == {}, "and it is let go at the end"
+
+
+def test_a_lock_from_another_host_is_refused_and_names_the_file(elsewhere, tmp_path):
+    """Its pid means nothing here, so the line says which file to remove by hand."""
+    where = staged.lock_path(elsewhere)
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(json.dumps({"host": "somebody-elses-box", "pid": 12345,
+                                 "at": "2026-10-02T00:00:00+00:00", "root": str(elsewhere)}))
+
+    with pytest.raises(staged.Held) as refused:
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                              staging=tmp_path / "staging", batch_size=1, dry_run=False,
+                              log=lambda s: None)
+
+    assert "somebody-elses-box" in str(refused.value)
+    assert str(where) in str(refused.value), "the file to remove by hand"
+    assert where.is_file(), "and it is left exactly where it is"
+
+
+def test_a_restore_is_refused_while_a_pass_holds_the_collection(elsewhere, tmp_path):
+    """A restore under a live pass would undo what it is doing, file by file (R-390)."""
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    where = staged.lock_path(elsewhere)
+    where.write_text(json.dumps({"host": socket.gethostname(), "pid": os.getpid(),
+                                 "at": "2026-10-02T00:00:00+00:00", "root": str(elsewhere)}))
+
+    with pytest.raises(staged.Held) as refused:
+        staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert "a take-in is working on" in str(refused.value)
+    staged.let_the_lock_go(elsewhere)
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+    assert got.clean, "and it runs once the pass has let go"
 
 
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):

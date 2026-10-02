@@ -33,6 +33,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -47,6 +48,7 @@ STAGED = "noaap-staged.json"     # the index of this pass: one record per batch,
 NAME_LIMIT = 48                  # of the first album's folder name, kept in a snapshot's name
 PART = ".noaap-incoming"         # the suffix a file being copied back wears until it is verified
 ASIDE = "noaap-originals"       # beside the collection: every file the copy back replaces
+LOCK = "take-in.lock"            # in the store: one staged pass per collection at a time
 SHARE = 10                       # the default batch is a tenth of the free space
 
 
@@ -269,6 +271,98 @@ def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
     return out
 
 
+class Held(Exception):
+    """Another pass is working on this collection — said in one line, never as a traceback.
+
+    **Nothing used to stop two passes on one root** (I-265, R-390), and two staging folders never
+    see each other's index, so the only place a lock means anything is the collection itself. Both
+    would copy the same albums out, write back over each other, and each move the other's result
+    aside into the store; the one thing that saved the owner's file was the store refusing to
+    overwrite an entry it already had.
+    """
+
+
+def lock_path(root: Path) -> Path:
+    """Where the one lock for this collection lives: in its own store of originals."""
+    return aside_for(root) / LOCK
+
+
+def who_holds(root: Path) -> dict[str, Any]:
+    """Whose pass holds this collection, as the lock says. Empty when nobody does."""
+    where = lock_path(root)
+    if not where.is_file():
+        return {}
+    try:
+        got = json.loads(where.read_text())
+    except (ValueError, OSError):
+        return {}
+    return got if isinstance(got, dict) else {}
+
+
+def _alive(pid: int) -> bool:
+    """Whether a process of this host is still there. Asked of the kernel, not guessed."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True             # somebody else's process, or one we may not signal: it exists
+    return True
+
+
+def take_the_lock(root: Path, log: Callable[[str], None] = lambda s: None) -> Path:
+    """Hold this collection for one staged pass, or refuse in a line a person can act on.
+
+    Stale is decided by asking the kernel, and only about this host: a pid on another machine means
+    nothing here, so a lock from elsewhere is refused and the line says which file to remove by hand
+    if that pass is known to be dead. A signal leaves the lock behind, which is what the stale rule
+    is for.
+    """
+    where = lock_path(root)
+    held = who_holds(root)
+    if held:
+        mine = held.get("host") == socket.gethostname()
+        if mine and not _alive(int(held.get("pid") or 0)):
+            log(f"the pass that held this collection (pid {held.get('pid')}, started "
+                f"{held.get('at')}) is gone; taking it over")
+        elif mine:
+            raise Held(f"another take-in is working on {root} right now (pid {held.get('pid')}, "
+                       f"started {held.get('at')}). One pass per collection: let it finish, or stop "
+                       "it and run this again.")
+        else:
+            raise Held(f"another take-in is working on {root} right now, from "
+                       f"{held.get('host')} (pid {held.get('pid')}, started {held.get('at')}). One "
+                       f"pass per collection. If that pass is dead, remove {where} by hand and run "
+                       "this again.")
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(json.dumps({"host": socket.gethostname(), "pid": os.getpid(),
+                                 "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                                 "root": str(root)}, ensure_ascii=False, indent=1))
+    return where
+
+
+def let_the_lock_go(root: Path) -> None:
+    """Only ours, and only while it is still ours."""
+    held = who_holds(root)
+    if held.get("host") == socket.gethostname() and held.get("pid") == os.getpid():
+        with contextlib.suppress(OSError):
+            lock_path(root).unlink()
+
+
+def refuse_while_held(root: Path) -> None:
+    """A restore does not take the lock and does not run under a live one (R-390)."""
+    held = who_holds(root)
+    if not held:
+        return
+    if held.get("host") == socket.gethostname() and not _alive(int(held.get("pid") or 0)):
+        return
+    raise Held(f"a take-in is working on {root} right now (from {held.get('host')}, pid "
+               f"{held.get('pid')}, started {held.get('at')}). A restore while it writes would "
+               "undo what it is doing: let it finish or stop it, then restore.")
+
+
 class Stopped(Exception):
     """The run cannot go on — said in one line, never as a traceback.
 
@@ -417,30 +511,36 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         return done
 
     staging.mkdir(parents=True, exist_ok=True)
-    for n, batch in enumerate(made, 1):
-        key = batch_key(root, batch)
-        if (already := known.get(key)) and already.done:
-            continue
-        service.check()
-        log(f"batch {n} of {len(made)}: {len(batch.albums)} album(s), {batch.bytes / 1e9:.2f} GB")
-        snapshot = snapshot_for(staging, root, batch)
-        # **the record of this batch goes in before its copy back, saying it is not done.** That is
-        # what a run stopped mid-flight leaves behind, and it is what the next one reads.
-        known[key] = Recorded(key=key, snapshot=snapshot.name,
-                              albums=[str(album.relative_to(root)) for album in batch.albums])
-        write_index(where, root, known)
-        try:
-            _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
-        except Stopped as e:
-            # the one line, and the run is over. No traceback: there is nothing here a stack says
-            # that the sentence does not.
-            done.stopped = str(e)
-            log(f"⚠ {done.stopped}")
-            return done
-        known[key] = replace(known[key], done=True, became=sorted(
-            intake.read_made(intake.made_path(snapshot), root, folders=True)))
-        write_index(where, root, known)
-        done.done.append(str(batch.albums[0].relative_to(root)))
+    # **one staged pass per collection** (R-390). A dry run has returned above without
+    # taking anything: it writes nothing and so cannot be in anybody's way.
+    take_the_lock(root, log)
+    try:
+        for n, batch in enumerate(made, 1):
+            key = batch_key(root, batch)
+            if (already := known.get(key)) and already.done:
+                continue
+            service.check()
+            log(f"batch {n} of {len(made)}: {len(batch.albums)} album(s), {batch.bytes / 1e9:.2f} GB")
+            snapshot = snapshot_for(staging, root, batch)
+            # **the record of this batch goes in before its copy back, saying it is not done.** That is
+            # what a run stopped mid-flight leaves behind, and it is what the next one reads.
+            known[key] = Recorded(key=key, snapshot=snapshot.name,
+                                  albums=[str(album.relative_to(root)) for album in batch.albums])
+            write_index(where, root, known)
+            try:
+                _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
+            except Stopped as e:
+                # the one line, and the run is over. No traceback: there is nothing here a stack says
+                # that the sentence does not.
+                done.stopped = str(e)
+                log(f"⚠ {done.stopped}")
+                return done
+            known[key] = replace(known[key], done=True, became=sorted(
+                intake.read_made(intake.made_path(snapshot), root, folders=True)))
+            write_index(where, root, known)
+            done.done.append(str(batch.albums[0].relative_to(root)))
+    finally:
+        let_the_lock_go(root)
     log(f"{len(done.done)} batch(es) taken in; {done.tracks} track(s); "
         f"{done.copied_out / 1e9:.1f} GB from the share, {done.copied_back / 1e9:.1f} GB back")
     if done.superseded:
@@ -497,6 +597,10 @@ def restore_all(root: Path, where: Path, *, apply: bool = False,
     way back exists and cannot be found — which is exactly what the interrupted batch left (I-237).
     It is named, and the restore does not come back clean.
     """
+    # **not while a pass is writing** (R-390): a restore then would undo what it is doing, file by
+    # file, and neither would know. The restore takes no lock of its own — it is the thing a person
+    # reaches for when something went wrong — but it refuses to run under a live one.
+    refuse_while_held(root)
     out = Restored()
     kept = aside_for(root)
     named: set[str] = set()
@@ -988,9 +1092,11 @@ def _same(one: Path, two: Path) -> bool:
 
 
 __all__ = [
+    "LOCK",
     "PART",
     "STAGED",
     "Batch",
+    "Held",
     "NoRoom",
     "Recorded",
     "Restored",
@@ -1002,6 +1108,7 @@ __all__ = [
     "batches",
     "free_space",
     "in_bytes",
+    "lock_path",
     "orphans_in_store",
     "read_index",
     "read_wrote",
@@ -1010,6 +1117,8 @@ __all__ = [
     "snapshot_for",
     "snapshots_of",
     "take_in_staged",
+    "take_the_lock",
     "territory",
+    "who_holds",
     "write_index",
 ]

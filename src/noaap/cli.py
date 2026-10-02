@@ -830,7 +830,11 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         # — the run that found this out restored three batches, reported clean, and left the twelve
         # files of a fourth rewritten, because the batch a SIGTERM interrupted had no snapshot left.
         if where.is_dir() or where.name == staged_mod.STAGED:
-            got = staged_mod.restore_all(root, where, apply=args.apply, log=print)
+            try:
+                got = staged_mod.restore_all(root, where, apply=args.apply, log=print)
+            except staged_mod.Held as e:
+                print(f"⚠ {e}")
+                return 1
             print(f"{len(got.snapshots)} snapshot(s), {got.files} file(s) recorded")
             for name in got.missing:
                 print(f"  not there: {name}")
@@ -889,10 +893,15 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
                 "--keep-originals is not for a staged run: the share holds the untouched original of "
                 "every file until its replacement has been copied back and verified, which is a "
                 "better way back than a copy of it")
-        done = staged.take_in_staged(service, root, choices,
-                                     staging=Path(args.staging).expanduser(),
-                                     batch_size=_bytes(args.batch_size), dry_run=not args.apply,
-                                     resume=not args.no_resume, log=print)
+        try:
+            done = staged.take_in_staged(service, root, choices,
+                                         staging=Path(args.staging).expanduser(),
+                                         batch_size=_bytes(args.batch_size), dry_run=not args.apply,
+                                         resume=not args.no_resume, log=print)
+        except staged.Held as e:
+            # one line, no traceback: somebody else's pass is not an error in this one
+            print(f"⚠ {e}")
+            return 1
         return 1 if (done.unverified or done.stopped) else 0
     keep = Path(args.keep_originals).expanduser() if args.keep_originals else None
     done = intake.take_in(service, root, choices, dry_run=not args.apply,

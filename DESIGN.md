@@ -3193,6 +3193,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    of originals and names any file in it that no snapshot of the pass knows. A restore that finds one
    does not report clean. The store is the last net; the restore has to know when it is the only one.
 
+110. ✅ **What a stopped pass leaves, and one pass at a time** (2026-10-02, P84, the gate). Four
+   faults, all found by judging the share **as the pass leaves it** rather than only after the
+   restore — the restore repaired every one of them before anything looked:
+   - **a file only in the store.** A pass stopped between a file's move-aside and its replacement
+     leaves it there and nowhere else; the resume takes the batch from what the share holds now, so
+     the album stays a track short until somebody restores — and a resume is what somebody does
+     instead of restoring. Arithmetic from the share: the first pass copied out 0.077 GB of an
+     album, the resume 0.071, the difference one 6.3 MB track. A re-run now takes every recorded
+     file the share has lost back from the store, and any run, dry or not, says which files of an
+     unfinished batch are only in there.
+   - **its own earlier writes read as somebody else's.** The guard that refuses to overwrite a file
+     changed since the snapshot compares against the pristine record, so the resume named three
+     files it had written itself and refused to touch them. The copy back now records what it
+     verified, file by file, beside the snapshot.
+   - **a piece of a file wearing the in-flight name.** A signal does not run a `finally`. It stayed
+     through the resume, through the restore, to the end. A batch now sweeps those names in its own
+     folders **on both sides** — the first version cleaned only the share, and the copy out had
+     already taken the piece into the staged copy, so the copy back wrote it out again — and the
+     restore sweeps them inside each snapshot's territory.
+   - **nothing stopped two passes on one collection.** Two staging folders never see each other's
+     index, so the lock lives in the collection's own store: host, pid, start time. A second pass is
+     refused by name; a lock whose process is gone **on this host** is taken over, one from another
+     host is refused with the file to remove by hand, because a pid elsewhere means nothing here. A
+     dry run takes none; a restore takes none and refuses under a live one.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

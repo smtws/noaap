@@ -408,6 +408,16 @@ cannot be found, so it is listed and the restore does not report clean.
 restore is pointed at, and nothing in noaap removes it — it stays until you no longer want the way
 back.
 
+**One staged pass per collection.** A run holds a lock in the collection's own store of originals
+(`noaap-originals/<name>/take-in.lock`, with the host, the pid and when it started) and a second run
+on the same collection is refused with a line naming the one that holds it. The lock lives beside the
+collection rather than in a staging folder because two staging folders would never see each other.
+A dry run takes no lock; a restore takes none either but refuses while a live pass holds one, since
+restoring under a run would undo what it is doing file by file. If a signal kills a run the lock
+stays behind: the next run on the same machine asks the kernel whether that process still exists and
+takes the lock over when it does not. A lock left by **another** machine cannot be judged that way,
+so it is refused and the line names the file to remove by hand.
+
 Measured over a real NAS share at 41 MB/s: 2000 tracks took 1 h 40 min, which is about **9 hours for
 eleven thousand** — the collection crosses the wire three times, out, back, and once more to verify
 what landed. A dry run over a share is dearer than it looks (about 2.7 reads of the collection),
