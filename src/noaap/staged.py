@@ -511,7 +511,8 @@ def _owed_folders(staging: Path, root: Path, known: dict[str, Recorded]) -> set[
 
 def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = None, *,
                    staging: Path, batch_size: int | None = None, dry_run: bool = True,
-                   resume: bool = True, log: Callable[[str], None] = lambda s: None) -> Staged:
+                   resume: bool = True, only: Iterable[str] = (),
+                   log: Callable[[str], None] = lambda s: None) -> Staged:
     """Take in a collection that is somewhere else, a batch at a time.
 
     `root` is the collection — a mounted share. `staging` is a folder on **this** machine's own disk,
@@ -553,7 +554,22 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     # **the collection is listed once** (R-410, ruling 8): the sizes, the collision check and the
     # batches all read the same answer.
     refs = intake.album_refs(root, source)
-    sized = album_sizes(root, source, [Path(ref.url) for ref in refs])
+    albums = [Path(ref.url) for ref in refs]
+    chose: list[Path] | None = None
+    if only := list(only):
+        # **a part of the collection, with the whole collection's names** (R-417, point 1): the root
+        # and the library are the collection, so every name and every batch is what the whole pass
+        # would compute — this chooses which albums are in it, and nothing else.
+        albums, empty = intake.under_only(albums, root, only)
+        if empty:
+            done.stopped = f"--only {', '.join(empty)}: no album under that path"
+            log(done.stopped)
+            return done
+        chosen = set(albums)
+        refs = [ref for ref in refs if Path(ref.url) in chosen]
+        chose = [root / Path(value.strip("/")) for value in only]
+        log(intake.says_only(only, albums))
+    sized = album_sizes(root, source, albums)
     # why each folder was passed over, for the section this pass ends with (R-410, ruling 2)
     why_refused: dict[str, str] = {}
     # **no two albums are filed under one name** (R-410, ruling 1), asked once for the whole
@@ -614,7 +630,7 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"their names: {choices.says_names()}")
         # **nothing with audio in it is passed over in silence** (R-410, ruling 2)
         for line in intake.says_not_taken_in(
-                intake.not_taken_in(root, [album for album, _ in sized], why_refused)):
+                intake.not_taken_in(root, [album for album, _ in sized], why_refused, chose)):
             log(line)
             done.would.append(line)
         log("nothing was written, here or on the share. `--apply` does it.")

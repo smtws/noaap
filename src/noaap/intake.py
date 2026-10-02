@@ -33,6 +33,7 @@ from .download import load_plan, relocate, run, save_plan, would_do
 from .enrich import enrich
 from .models import AlbumPlan
 from .plan import safe_name
+from .text import key as text_key
 from .treatment import Treatment
 
 STATE = "take-in.json"      # the suffix; the name is the snapshot's own (see `state_path`)
@@ -90,6 +91,7 @@ class Progress:
     musicbrainz_requests: int = 0
     lrclib_requests: int = 0
     would: list[str] = field(default_factory=list)
+    stopped: str = ""           # the one line a pass that could not start printed (R-417)
 
 
 def state_path(snapshot: Path) -> Path:
@@ -194,6 +196,34 @@ def albums_under(root: Path, source: Any) -> list[Path]:
     return [Path(ref.url) for ref in album_refs(root, source)]
 
 
+def under_only(albums: Iterable[Path], root: Path, only: Iterable[str]) -> tuple[list[Path], list[str]]:
+    """The albums `--only` chooses, and the values that chose nothing (R-417, point 1).
+
+    A value is a path relative to the root — `Crematory`, `Crematory/Act Seven` — and an album is
+    chosen when that path is the album or holds it. Matched component by component through
+    `text_key`, as `adopt --only` and `merge --only` match an artist, so the same spelling works
+    everywhere. **The root and the library stay the collection**, which is the point: every name the
+    scheme gives is the one the whole pass would give.
+    """
+    wanted = [tuple(text_key(part) for part in Path(value.strip("/")).parts) for value in only]
+    chosen: list[Path] = []
+    hit = [False] * len(wanted)
+    for album in albums:
+        parts = tuple(text_key(part) for part in album.relative_to(root).parts)
+        for n, want in enumerate(wanted):
+            if parts[:len(want)] == want:
+                chosen.append(album)
+                hit[n] = True
+                break
+    return chosen, [value for value, found in zip(only, hit, strict=True) if not found]
+
+
+def says_only(only: Iterable[str], chosen: Iterable[Path]) -> str:
+    """`only: Crematory (21 albums)` — the first thing a run of a part of a collection says."""
+    n = len(list(chosen))
+    return "only: " + ", ".join(str(value) for value in only) + f" ({n} album{'s' if n != 1 else ''})"
+
+
 def folder_clashes(refs: Iterable[Any], root: Path) -> dict[str, list[Path]]:
     """`{the one folder: the albums that would all become it}` (R-410, ruling 1).
 
@@ -212,8 +242,8 @@ def folder_clashes(refs: Iterable[Any], root: Path) -> dict[str, list[Path]]:
             if len(folders) > 1 and any(str(f.relative_to(root)) != target for f in folders)}
 
 
-def not_taken_in(root: Path, albums: Iterable[Path],
-                 refused: dict[str, str] | None = None) -> list[tuple[str, str, int]]:
+def not_taken_in(root: Path, albums: Iterable[Path], refused: dict[str, str] | None = None,
+                 under: list[Path] | None = None) -> list[tuple[str, str, int]]:
     """Every folder holding audio that no album of this pass covers, with why and how many (R-410).
 
     A collection of twenty years has corners: a folder named with an ellipsis, a disc folder spelled
@@ -224,36 +254,41 @@ def not_taken_in(root: Path, albums: Iterable[Path],
     """
     covered = set(albums)
     out: list[tuple[str, str, int]] = []
-    for here, dirs, names in os.walk(root):
-        folder = Path(here)
-        dirs.sort()
-        files = [n for n in names if Path(n).suffix.lower() in sources_folder.AUDIO
-                 and not sources_folder.is_hidden_name(n)]
-        if not files:
-            continue
-        rel = folder.relative_to(root)
-        parts = rel.parts
-        # an album folder the pass refused is named here too: it was looked at, and not taken in
-        if folder in covered and str(rel) not in (refused or {}):
-            continue
-        if folder.parent in covered and sources_folder.DISC_FOLDER.fullmatch(folder.name.strip()):
-            continue                                   # a disc of an album that is taken in
-        where = str(rel) if parts else "."
-        if any(sources_folder.is_hidden_name(part) for part in parts):
-            why = "hidden, left alone"
-        elif (said := (refused or {}).get(where)):
-            why = said
-            if inside := [d for d in dirs if not sources_folder.is_hidden_name(d)]:
-                why += f"; it also holds {len(inside)} folder(s) of its own"
-        elif folder.parent in covered:
-            why = f"inside {folder.parent.relative_to(root)}, which is read as one album"
-        elif len(parts) > 2:
-            why = "one level too deep — an album is <artist>/<album> under the collection"
-        elif not parts:
-            why = "loose in the collection, outside any artist folder"
-        else:
-            why = "not read as an album"
-        out.append((where, why, len(files)))
+    walked: set[Path] = set()
+    for start in (under if under is not None else [root]):
+        for here, dirs, names in os.walk(start):
+            folder = Path(here)
+            if folder in walked:
+                continue
+            walked.add(folder)
+            dirs.sort()
+            files = [n for n in names if Path(n).suffix.lower() in sources_folder.AUDIO
+                     and not sources_folder.is_hidden_name(n)]
+            if not files:
+                continue
+            rel = folder.relative_to(root)
+            parts = rel.parts
+            # an album folder the pass refused is named here too: it was looked at, and not taken in
+            if folder in covered and str(rel) not in (refused or {}):
+                continue
+            if folder.parent in covered and sources_folder.DISC_FOLDER.fullmatch(folder.name.strip()):
+                continue                                   # a disc of an album that is taken in
+            where = str(rel) if parts else "."
+            if any(sources_folder.is_hidden_name(part) for part in parts):
+                why = "hidden, left alone"
+            elif said := (refused or {}).get(where):
+                why = said
+                if inside := [d for d in dirs if not sources_folder.is_hidden_name(d)]:
+                    why += f"; it also holds {len(inside)} folder(s) of its own"
+            elif folder.parent in covered:
+                why = f"inside {folder.parent.relative_to(root)}, which is read as one album"
+            elif len(parts) > 2:
+                why = "one level too deep — an album is <artist>/<album> under the collection"
+            elif not parts:
+                why = "loose in the collection, outside any artist folder"
+            else:
+                why = "not read as an album"
+            out.append((where, why, len(files)))
     return sorted(out)
 
 
@@ -267,15 +302,21 @@ def says_not_taken_in(rows: list[tuple[str, str, int]]) -> list[str]:
 
 
 def says_clashes(clashes: dict[str, list[Path]], root: Path) -> list[str]:
-    """One line per set, naming every folder in it."""
-    return [f"⚠ {', '.join(str(f.relative_to(root)) for f in folders)} would all become {target} "
-            "— left as they are"
+    """One line per set, naming every folder in it.
+
+    **It does not say they are the same album** (R-418): the user's Hans Söllner pair is one album
+    split over two folders, track 11 alone in the second, and "would all become X" read as if noaap
+    had found duplicates. What is true is narrower — the scheme would file them under one name, and
+    noaap does not merge folders.
+    """
+    return [f"⚠ {' and '.join(str(f.relative_to(root)) for f in folders)} would be filed under one "
+            f"name, {target}; noaap does not merge folders — left as they are"
             for target, folders in sorted(clashes.items())]
 
 
 def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run: bool = True,
             snapshot: Path | None = None, keep: Path | None = None, resume: bool = True,
-            say_leftovers: bool = True,
+            say_leftovers: bool = True, only: Iterable[str] = (),
             log: Callable[[str], None] = lambda s: None) -> Progress:
     """Adopt every album under `root`, look it up, and bring it to the chosen state.
 
@@ -294,6 +335,18 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     done = Progress()
     refs = album_refs(root, source)
     folders = [Path(ref.url) for ref in refs]
+    chose: list[Path] | None = None
+    if only := list(only):
+        # **a part of the collection, with the whole collection's names** (R-417, point 1)
+        folders, empty = under_only(folders, root, only)
+        if empty:
+            done.stopped = f"--only {', '.join(empty)}: no album under that path"
+            log(done.stopped)
+            return done
+        chosen = set(folders)
+        refs = [ref for ref in refs if Path(ref.url) in chosen]
+        chose = [root / Path(value.strip("/")) for value in only]
+        log(says_only(only, folders))
     log(f"{len(folders)} album folder(s) under {root}")
     log(f"  {choices.says()}")
     # **no two albums are filed under one name** (R-410, ruling 1). Asked before the first move, off
@@ -403,7 +456,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         for folder in precautions.empty_under(root, everything=bool(cfg.remove_empty_folders)):
             log(f"  would remove the empty folder {folder.relative_to(root)}")
         if say_leftovers:
-            for line in says_not_taken_in(not_taken_in(root, folders, why_refused)):
+            for line in says_not_taken_in(not_taken_in(root, folders, why_refused, chose)):
                 log(line)
                 done.would.append(line)
         log("nothing was written. `take-in … --apply` does it.")
@@ -422,7 +475,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         # **the apply says it too** (R-410, ruling 2): the folders that are still their owner's,
         # read after the pass, so a folder it emptied or renamed is not reported as left behind.
         if say_leftovers:
-            for line in says_not_taken_in(not_taken_in(root, albums_under(root, source), why_refused)):
+            for line in says_not_taken_in(
+                    not_taken_in(root, albums_under(root, source), why_refused, chose)):
                 log(line)
     return done
 

@@ -67,7 +67,9 @@ def test_three_folders_that_would_become_one_are_named_and_left_alone(box):
     assert len(warned) == 1, said
     for part in ("Gestern", "Heute", "Morgen"):
         assert f"Gestern war Heute noch Morgen - {part}" in warned[0]
-    assert "would all become Böhse Onkelz/Gestern war Heute noch Morgen" in warned[0]
+    assert "would be filed under one name, Böhse Onkelz/Gestern war Heute noch Morgen" in warned[0]
+    # **and it does not call them the same album** (R-418): two folders may be two halves of one
+    assert "noaap does not merge folders" in warned[0]
     assert "left as they are" in warned[0]
     # and not one of them is planned for: three refused, nothing adopted
     assert done.adopted == 0

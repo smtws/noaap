@@ -181,6 +181,11 @@ def main(argv: list[str] | None = None) -> int:
     ti.add_argument("--names", choices=("keep", "scheme"), default=None,
                     help="keep the collection's own filenames, or rename into noaap's scheme "
                          "(default: what the `rename_adopted` setting says, which is keep)")
+    ti.add_argument("--only", action="append", metavar="PATH",
+                    help="one part of the collection — an artist folder, or an album inside one, "
+                         "as a path under the root; may be given more than once. The root and the "
+                         "library stay the whole collection, so the names are the ones the whole "
+                         "pass would give")
     ti.add_argument("--no-mb", action="store_true", help="skip the MusicBrainz lookup")
     ti.add_argument("--no-lyrics", action="store_true", help="skip the LRCLIB lookup")
     ti.add_argument("--no-cover", action="store_true", help="do not put a cover beside each album")
@@ -903,7 +908,7 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
             done = staged.take_in_staged(service, root, choices,
                                          staging=Path(args.staging).expanduser(),
                                          batch_size=_bytes(args.batch_size), dry_run=not args.apply,
-                                         resume=not args.no_resume, log=print)
+                                         resume=not args.no_resume, only=args.only or (), log=print)
         except staged.Held as e:
             # one line, no traceback: somebody else's pass is not an error in this one
             print(f"⚠ {e}")
@@ -912,11 +917,11 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     keep = Path(args.keep_originals).expanduser() if args.keep_originals else None
     done = intake.take_in(service, root, choices, dry_run=not args.apply,
                           snapshot=Path(args.snapshot).expanduser() if args.snapshot else None,
-                          keep=keep, resume=not args.no_resume, log=print)
+                          keep=keep, resume=not args.no_resume, only=args.only or (), log=print)
     if done.musicbrainz_requests or done.lrclib_requests:
         print(f"{done.musicbrainz_requests} request(s) to MusicBrainz, "
               f"{done.lrclib_requests} to LRCLIB")
-    return 0
+    return 1 if done.stopped else 0
 
 
 def _adopt_undo(adopt_pass, library: Path, root: Path, args: argparse.Namespace) -> int:

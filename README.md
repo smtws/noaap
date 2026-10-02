@@ -333,6 +333,13 @@ noaap take-in /mnt/nas/Music --apply \
 noaap take-in /mnt/nas/Music --restore /mnt/nas/Music-snapshot.jsonl --apply   # the way back
 ```
 
+**One part of a collection at a time.** `--only <path>` takes in an artist folder, or one album
+inside it, named as a path under the root — `--only Crematory`, `--only "Crematory/Act Seven"` — and
+may be given more than once. The root and the library stay the whole collection, so every name the
+scheme gives and every batch it makes are the ones the whole pass would make; the flag chooses which
+albums are in it and nothing else. A path that holds no album stops the run with a line naming it.
+This is how a first run on a collection of twenty years is one artist rather than all of it.
+
 **The names are the library's own setting.** Without `--names`, `rename_adopted` decides — it is
 off, so a collection keeps the names its owner gave it — and the run's first lines say which is in
 force and where that came from. `--names scheme` or `--names keep` overrules it for that run.
