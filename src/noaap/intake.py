@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import adopt as adopt_pass
-from . import precautions, sources
+from . import precautions, sources, sources_folder
 from .download import load_plan, relocate, run, save_plan, would_do
 from .enrich import enrich
 from .models import AlbumPlan
@@ -202,6 +202,60 @@ def folder_clashes(refs: Iterable[Any], root: Path) -> dict[str, list[Path]]:
             if len(folders) > 1 and any(str(f.relative_to(root)) != target for f in folders)}
 
 
+def not_taken_in(root: Path, albums: Iterable[Path],
+                 refused: dict[str, str] | None = None) -> list[tuple[str, str, int]]:
+    """Every folder holding audio that no album of this pass covers, with why and how many (R-410).
+
+    A collection of twenty years has corners: a folder named with an ellipsis, a disc folder spelled
+    `1-3`, a box with an empty first disc, an artist folder inside an artist folder, thirteen mp3s in
+    a `.thumb`. Each of those was passed over without a word — 127 files of the user's own — and the
+    only way to learn of it was to count the plan against the tree by hand. **Nothing with audio in
+    it is silent**: what is not taken in is named, with the reason, in the dry run and the apply.
+    """
+    covered = set(albums)
+    out: list[tuple[str, str, int]] = []
+    for here, dirs, names in os.walk(root):
+        folder = Path(here)
+        dirs.sort()
+        files = [n for n in names if Path(n).suffix.lower() in sources_folder.AUDIO
+                 and not sources_folder.is_hidden_name(n)]
+        if not files:
+            continue
+        rel = folder.relative_to(root)
+        parts = rel.parts
+        # an album folder the pass refused is named here too: it was looked at, and not taken in
+        if folder in covered and str(rel) not in (refused or {}):
+            continue
+        if folder.parent in covered and sources_folder.DISC_FOLDER.fullmatch(folder.name.strip()):
+            continue                                   # a disc of an album that is taken in
+        where = str(rel) if parts else "."
+        if any(sources_folder.is_hidden_name(part) for part in parts):
+            why = "hidden, left alone"
+        elif (said := (refused or {}).get(where)):
+            why = said
+            if inside := [d for d in dirs if not sources_folder.is_hidden_name(d)]:
+                why += f"; it also holds {len(inside)} folder(s) of its own"
+        elif folder.parent in covered:
+            why = f"inside {folder.parent.relative_to(root)}, which is read as one album"
+        elif len(parts) > 2:
+            why = "one level too deep — an album is <artist>/<album> under the collection"
+        elif not parts:
+            why = "loose in the collection, outside any artist folder"
+        else:
+            why = "not read as an album"
+        out.append((where, why, len(files)))
+    return sorted(out)
+
+
+def says_not_taken_in(rows: list[tuple[str, str, int]]) -> list[str]:
+    """The section a pass ends with. Empty when every file is accounted for."""
+    if not rows:
+        return []
+    files = sum(n for _, _, n in rows)
+    return [f"not taken in — {len(rows)} folder(s), {files} audio file(s):"] + [
+        f"  {where} — {why}, {n} file(s)" for where, why, n in rows]
+
+
 def says_clashes(clashes: dict[str, list[Path]], root: Path) -> list[str]:
     """One line per set, naming every folder in it."""
     return [f"⚠ {', '.join(str(f.relative_to(root)) for f in folders)} would all become {target} "
@@ -243,6 +297,10 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             if dry_run:
                 done.would.append(line)
         clashing = {folder for folders_ in found.values() for folder in folders_}
+    # why each folder was passed over, for the section this pass ends with (R-410, ruling 2)
+    why_refused: dict[str, str] = {str(folder.relative_to(root)): "would be filed under a name "
+                                   "another album of yours would get too"
+                                   for folder in clashing}
 
     snapshot = snapshot or precautions.snapshot_for(root)
     state, made_at = state_path(snapshot), made_path(snapshot)
@@ -275,7 +333,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             continue
         # what is in the folder besides its audio, before this pass has written anything into it
         was_beside = beside(album_dir)
-        plan = _adopted(album_dir, root, source, log=log)
+        plan = _adopted(album_dir, root, source, log=log, refused=why_refused)
         if plan is None:
             done.refused.append(where)
             continue
@@ -334,6 +392,10 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             log(f"{asked} album(s) would be asked about at MusicBrainz, {asked_words} at LRCLIB")
         for folder in precautions.empty_under(root, everything=bool(cfg.remove_empty_folders)):
             log(f"  would remove the empty folder {folder.relative_to(root)}")
+        if say_leftovers:
+            for line in says_not_taken_in(not_taken_in(root, folders, why_refused)):
+                log(line)
+                done.would.append(line)
         log("nothing was written. `take-in … --apply` does it.")
     else:
         log(f"{done.adopted} album(s), {done.tracks} track(s) taken in; "
@@ -347,6 +409,11 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         if done.musicbrainz_requests or done.lrclib_requests:
             log(f"{done.musicbrainz_requests} MusicBrainz and {done.lrclib_requests} LRCLIB "
                 "request(s) went out")
+        # **the apply says it too** (R-410, ruling 2): the folders that are still their owner's,
+        # read after the pass, so a folder it emptied or renamed is not reported as left behind.
+        if say_leftovers:
+            for line in says_not_taken_in(not_taken_in(root, albums_under(root, source), why_refused)):
+                log(line)
     return done
 
 
@@ -366,13 +433,17 @@ def _counted(done: Progress, inner: Callable[[Any, str], None]) -> Callable[[Any
     return said
 
 
-def _adopted(album_dir: Path, root: Path, source: Any, log: Callable[[str], None]) -> AlbumPlan | None:
+def _adopted(album_dir: Path, root: Path, source: Any, log: Callable[[str], None],
+             refused: dict[str, str] | None = None) -> AlbumPlan | None:
     """The album's plan: the one that is there, or the one adoption would write."""
     if (plan := load_plan(album_dir)) is not None:
         return plan
     found = adopt_pass.examine(album_dir, source, root)
     if found.plan is None:
         log(f"  {album_dir.name}: {found.refused}")
+        # written down as well as said, so the pass's "not taken in" section can name it (R-410)
+        if refused is not None:
+            refused[str(album_dir.relative_to(root))] = found.refused or "refused"
         return None
     return found.plan
 

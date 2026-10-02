@@ -54,20 +54,30 @@ COVER_STEMS = ("cover", "folder", "front", "album")
 COVER_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
 
 
+def is_hidden_name(name: str) -> bool:
+    """Whether a single path component is meant to be hidden (R-410, ruling 2).
+
+    One leading dot hides: `.thumb`, `.git`, `.Trash-1000`. **Two or more do not** — `...Just
+    Dreaming` and `... Ungehörtes und Unerhörtes` are what two albums in the user's collection are
+    called, and skipping them as hidden left 26 files out of a take-in with nothing said about it.
+    """
+    return name.startswith(".") and not name.startswith("..")
+
+
 def hidden(path: Path) -> bool:
     """A dot-directory anywhere above the file: `.thumb`, `.git`, a sync tool's scratch."""
-    return any(part.startswith(".") for part in path.parts)
+    return any(is_hidden_name(part) for part in path.parts)
 
 
 def audio_files(folder: Path) -> list[Path]:
     """The audio directly in this folder, in name order. Not recursive: a sub-folder is its own
     collection until the grouping rules say otherwise."""
     return sorted(p for p in folder.iterdir()
-                  if p.is_file() and p.suffix.lower() in AUDIO and not p.name.startswith("."))
+                  if p.is_file() and p.suffix.lower() in AUDIO and not is_hidden_name(p.name))
 
 
 def _subfolders(folder: Path) -> list[Path]:
-    return sorted(p for p in folder.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return sorted(p for p in folder.iterdir() if p.is_dir() and not is_hidden_name(p.name))
 
 
 def cover_in(folder: Path) -> Path | None:
@@ -116,8 +126,12 @@ def read_tags(path: Path, one: Any = None) -> dict[str, Any]:
     }.items() if v is not None}
 
 
-# `cd1`, `CD 1`, `1` — all three occur in the reference collection, in three different albums.
-DISC_FOLDER = re.compile(r"(?:cd|disc|disk)?\s*0*(\d{1,2})\Z", re.I)
+# `cd1`, `CD 1`, `1` — all three occur in the reference collection, in three different albums, and
+# so does `1-3` / `2-3` / `3-3`, which is "disc one of three" and used to be read as no disc at all:
+# the album was then found to hold no audio and was passed over in silence, 34 files of it (R-410,
+# ruling 2). What counts is a short name whose first number is the disc; a count after it is noise.
+DISC_FOLDER = re.compile(r"(?:cd|disc|disk)?[\s._-]*0*(\d{1,2})"
+                         r"(?:\s*(?:of|von|von\s+|/|-|–)\s*0*\d{1,2})?\s*\Z", re.I)
 # and one album spells its discs as sibling folders instead: "… [Deluxe Edition] Disc 1|2"
 DISC_SUFFIX = re.compile(r"^(?P<stem>.+?)[\s._-]*(?:cd|disc|disk)[\s._-]*0*(?P<n>\d{1,2})\s*\Z", re.I)
 
@@ -161,6 +175,11 @@ def disc_folders(folder: Path) -> list[tuple[int, Path]]:
         return []
     found = []
     for sub in subs:
+        # **a sub-folder with no audio under it is not a reason to refuse the album** (R-410,
+        # ruling 2). The user's Metallica box has an empty `1` beside a full `2` and `3`, and
+        # "all of them or none" then read the whole set as no discs at all: 15 files, silently.
+        if not any(audio_files(where) for where in (sub, *(w for w in sub.rglob("*") if w.is_dir()))):
+            continue
         number = DISC_FOLDER.fullmatch(sub.name.strip())
         if not number or not audio_files(sub):
             return []

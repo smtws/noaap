@@ -535,6 +535,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             + (" …" if len(names) > 3 else ""))
 
     sized = album_sizes(root, source)
+    # why each folder was passed over, for the section this pass ends with (R-410, ruling 2)
+    why_refused: dict[str, str] = {}
     # **no two albums are filed under one name** (R-410, ruling 1), asked once for the whole
     # collection rather than per batch: two folders that would collide can fall in different batches,
     # and by the time the second one is reached the first has already moved.
@@ -545,6 +547,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             done.would.append(line)
         if clashing := {folder for folders in clashes.values() for folder in folders}:
             sized = [(album, size) for album, size in sized if album not in clashing]
+            why_refused.update({str(folder.relative_to(root)): "would be filed under a name another "
+                                "album of yours would get too" for folder in clashing})
     # **an album that already holds a plan was taken in by an earlier pass**, and the way to bring it
     # to changed settings is a repair, which needs no staging. Skipping it here is what makes a
     # staged run idempotent across the renames it does itself: a batch's name cannot survive its own
@@ -574,7 +578,7 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     if dry_run:
         for n, batch in enumerate(made, 1):
             log(f"batch {n} —")
-            kept = _as_if(service, root, batch, choices, log)
+            kept = _as_if(service, root, batch, choices, log, refused=why_refused, source=source)
             done.tracks += kept
         # **what the store would hold**, which is the disk this asks of the share: every file the
         # pass writes has its original moved there first, so at most one copy of what it touches.
@@ -582,6 +586,11 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"the store of your own originals would hold up to {would / 1e9:.2f} GB in "
             f"{aside_for(root)} — a rename on the share, so nothing crosses the network, and it is "
             "what makes a restore byte for byte")
+        # **nothing with audio in it is passed over in silence** (R-410, ruling 2)
+        for line in intake.says_not_taken_in(
+                intake.not_taken_in(root, [album for album, _ in sized], why_refused)):
+            log(line)
+            done.would.append(line)
         log("nothing was written, here or on the share. `--apply` does it.")
         return done
 
@@ -716,11 +725,13 @@ def restore_all(root: Path, where: Path, *, apply: bool = False,
 
 
 def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
-           log: Callable[[str], None]) -> int:
+           log: Callable[[str], None], refused: dict[str, str] | None = None,
+           source: Any = None) -> int:
     """The dry run of one batch: the pass's own lines, read off the share, writing nothing anywhere."""
     kept = 0
+    source = source if source is not None else sources.get("folder", service.cfg)
     for album in batch.albums:
-        plan = intake._adopted(album, root, sources.get("folder", service.cfg), log=log)
+        plan = intake._adopted(album, root, source, log=log, refused=refused)
         if plan is None:
             continue
         kept += len(plan.tracks)
@@ -833,7 +844,7 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     staged_service = Service(cfg, here, log=lambda s: None, on_track=service.on_track,
                              mb=service.mb, lrclib=service.lrclib)
     got = intake.take_in(staged_service, here, choices, dry_run=False, snapshot=snapshot,
-                         keep=None, resume=False, log=lambda s: None)
+                         keep=None, resume=False, say_leftovers=False, log=lambda s: None)
     done.tracks += got.tracks
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
