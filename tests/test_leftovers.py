@@ -128,3 +128,36 @@ def test_the_staged_dry_run_says_it_too(corners, tmp_path):
     section = [line for line in lines if line.startswith("not taken in")]
     assert len(section) == 1, lines
     assert any("Schandmaul/.thumb" in line for line in lines)
+
+
+def test_a_staged_dry_run_ends_with_the_totals_a_plain_one_prints(corners, tmp_path):
+    """R-410, ruling 6: the batch plan is not an answer to "how many of my files does this touch?"."""
+    lines = []
+    staged.take_in_staged(a_service(corners), corners, QUIET, staging=tmp_path / "staging",
+                          dry_run=True, log=lines.append)
+
+    totals = [line for line in lines if "would be taken in;" in line]
+    assert len(totals) == 1, lines
+    assert "folder(s) refused" in totals[0]
+    files = [line for line in lines if line.startswith("0 file(s) would be renamed")
+             or " file(s) would be renamed" in line]
+    assert len(files) == 1, lines
+    assert "audio file(s) would be rewritten (their tags)" in files[0]
+    assert "album(s) would be asked for a cover" in files[0]
+    assert any(line.startswith("their names:") for line in lines), lines
+
+
+def test_the_staged_totals_count_the_same_things_the_plain_ones_do(corners, tmp_path):
+    """The two passes do the same work, so they must come to the same numbers."""
+    plain, staged_lines = [], []
+    done = intake.take_in(a_service(corners), corners, QUIET, dry_run=True, log=plain.append)
+    staged.take_in_staged(a_service(corners), corners, QUIET, staging=tmp_path / "staging",
+                          dry_run=True, log=staged_lines.append)
+
+    def totals(lines):
+        head = next(line for line in lines if "would be taken in;" in line)
+        files = next(line for line in lines if " file(s) would be renamed" in line)
+        return head, files
+
+    assert totals(plain) == totals(staged_lines)
+    assert f"{done.adopted} album(s), {done.tracks} track(s) would be taken in" in totals(plain)[0]

@@ -115,6 +115,13 @@ class Staged:
     peak_staged: int = 0       # the most this machine held at once
     done: list[str] = field(default_factory=list)
     would: list[str] = field(default_factory=list)
+    # the totals a plain take-in has always printed, which a staged one printed none of (R-410,
+    # ruling 6): what was taken in, what was refused, and what it would come to file by file
+    adopted: int = 0
+    refused: int = 0
+    renamed: int = 0
+    retagged: int = 0
+    covers: int = 0
     # **why the run stopped, in one line a person can act on** (R-378). Set and the run is over; the
     # share is untouched by the batch that could not be staged, and the same command resumes.
     stopped: str = ""
@@ -581,7 +588,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     if dry_run:
         for n, batch in enumerate(made, 1):
             log(f"batch {n} —")
-            kept = _as_if(service, root, batch, choices, log, refused=why_refused, source=source)
+            kept = _as_if(service, root, batch, choices, log, refused=why_refused, source=source,
+                           done=done)
             done.tracks += kept
         # **what the store would hold**, which is the disk this asks of the share: every file the
         # pass writes has its original moved there first, so at most one copy of what it touches.
@@ -589,6 +597,12 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"the store of your own originals would hold up to {would / 1e9:.2f} GB in "
             f"{aside_for(root)} — a rename on the share, so nothing crosses the network, and it is "
             "what makes a restore byte for byte")
+        # **the totals a plain take-in prints** (R-410, ruling 6), in the same words
+        log(f"{done.adopted} album(s), {done.tracks} track(s) would be taken in; "
+            f"{done.refused} folder(s) refused")
+        log(f"{done.renamed} file(s) would be renamed, {done.retagged} audio file(s) would be "
+            f"rewritten (their tags), {done.covers} album(s) would be asked for a cover")
+        log(f"their names: {choices.says_names()}")
         # **nothing with audio in it is passed over in silence** (R-410, ruling 2)
         for line in intake.says_not_taken_in(
                 intake.not_taken_in(root, [album for album, _ in sized], why_refused)):
@@ -729,18 +743,29 @@ def restore_all(root: Path, where: Path, *, apply: bool = False,
 
 def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
            log: Callable[[str], None], refused: dict[str, str] | None = None,
-           source: Any = None) -> int:
+           source: Any = None, done: Staged | None = None) -> int:
     """The dry run of one batch: the pass's own lines, read off the share, writing nothing anywhere."""
     kept = 0
     source = source if source is not None else sources.get("folder", service.cfg)
     for album in batch.albums:
         plan = intake._adopted(album, root, source, log=log, refused=refused)
         if plan is None:
+            if done is not None:
+                done.refused += 1
             continue
         kept += len(plan.tracks)
+        if done is not None:
+            done.adopted += 1
         for line in intake._would(service, plan, album, root, choices,
                                   choices.as_treatment()):
             log(f"  {line}")
+            # **the lines are counted, not only printed** (R-410, ruling 6). A plain take-in ends
+            # with its totals and a staged one ended with nothing, so the only way to learn how many
+            # of eleven thousand files a run would rewrite was to count the log by hand.
+            if done is not None:
+                done.renamed += "would be renamed" in line
+                done.retagged += "would be retagged" in line or "would be rewritten" in line
+                done.covers += line.strip().startswith("a cover would be saved beside")
     return kept
 
 
