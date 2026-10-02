@@ -347,23 +347,28 @@ def test_the_dry_run_counts_every_file_the_pass_rewrites(collection, service, tm
 
     Measured: the dry run said 1896 audio files would be rewritten and the pass then rewrote 2000.
     The lines were all there — the counter only looked for *would be retagged* and missed the 104
-    that said *would be rewritten with the same tag values*, which is a rewrite too.
+    that said *would be rewritten with the same tag values*.
+
+    Those 104 are now a different answer (R-410, ruling 7): a file that already holds every value
+    the plan wants is **not** rewritten, and neither run says it would be. What has to hold either
+    way is that the two agree, and that the files on disk are what the pass claimed.
     """
     # a pass has been here, and the plans it wrote are gone — so every value in every file is
-    # already the one noaap wants and only the record of them is missing. That is the case whose
-    # lines say "would be rewritten with the same tag values", and the one the counter missed.
+    # already the one noaap wants and only the record of them is missing.
     intake.take_in(service, collection, QUIET, dry_run=False, snapshot=tmp_path / "first.jsonl",
                    log=lambda s: None)
     for plan in collection.rglob(".ytalbum.json"):
         plan.unlink()
+    untouched = {p: p.stat().st_mtime_ns for p in sorted(collection.rglob("*.opus"))}
 
     dry = intake.take_in(service, collection, QUIET, dry_run=True, log=lambda s: None)
     real = intake.take_in(service, collection, QUIET, dry_run=False,
                           snapshot=tmp_path / "second.jsonl", log=lambda s: None)
 
-    assert real.retagged == 6, "every file is rewritten, because the plan cannot say it need not be"
+    assert real.retagged == 0, "nothing in these files has to change, so nothing is written"
     assert (dry.renamed, dry.retagged) == (real.renamed, real.retagged), \
         f"dry said {dry.renamed}/{dry.retagged}, the pass did {real.renamed}/{real.retagged}"
+    assert {p: p.stat().st_mtime_ns for p in sorted(collection.rglob("*.opus"))} == untouched
 
 
 def test_a_disc_folder_the_pass_empties_is_removed_and_one_with_anything_in_it_is_not(tmp_path,

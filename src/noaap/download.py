@@ -38,12 +38,16 @@ from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
     audio_quality,
     build_tags,
+    differences,
+    embedded_cover,
     image_mime,
     kept_from_the_file,
     measure,
+    only_padding,
     signature,
     tag_file,
     tags_in,
+    would_write,
 )
 from .treatment import Treatment, renames, retags
 from .trim import apply as apply_trim
@@ -594,20 +598,49 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         for key in kept:                       # what the file already answers better than the plan
             if have.get(key):
                 wanted_tags.pop(key, None)
-        changed = [_change(key, have.get(key), value)
-                   for key, value in wanted_tags.items() if str(have.get(key) or "") != str(value or "")]
+        diffs = differences(have, wanted_tags)
+        changed = [_change(key, have.get(key), wanted_tags[key]) for key in diffs]
         # an adopted album's other fields are left alone, so the dry run must not claim they go
         gone = ([] if plan.adopted else
                 [key for key in have if key not in wanted_tags and key not in kept])
-        if changed or gone:
+        if gone or (diffs and not only_padding(have, wanted_tags, diffs)):
             said.append(f"{track.number:02d} would be retagged: "
                         + "; ".join(changed + [f"{key} would be dropped" for key in gone]))
-        else:
-            # every value in the file is already right and only the record of them is out of date —
-            # the file is still rewritten, so the dry run says so rather than staying silent
-            said.append(f"{track.number:02d} would be rewritten with the same tag values "
-                        f"(the plan's record of them is out of date)")
+        elif cover is not None and embedded_cover(path) != cover:
+            # the tags are right and the picture is not: one line, because it is one write
+            said.append(f"{track.number:02d} would get the album's picture")
+        # **and otherwise nothing is said, because nothing is written** (R-410, ruling 7). This used
+        # to report "would be rewritten with the same tag values (the plan's record of them is out
+        # of date)" and the pass then rewrote the file for the record's sake — 455 files of the
+        # user's collection, each read, copied, replaced and verified to end up as it already was.
     return said
+
+
+def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes | None,
+                   text: str | None, theirs: bool) -> bool:
+    """Whether writing this file would leave it exactly as it is (R-410, ruling 7).
+
+    Asked in the same words as the dry run's, so what one promises the other does: every value the
+    writer would put there is already there — bar a number written with a leading zero, which is
+    noaap's own spelling and not worth a rewrite — and the picture inside the file is the one the
+    album carries. The picture is read only where the tags already agree, so a file that is going
+    to be rewritten anyway is not read twice.
+    """
+    try:
+        have = tags_in(path)
+    except (MutagenError, OSError):
+        return False
+    wanted = would_write(plan, track, text, theirs, have)
+    diffs = differences(have, wanted)
+    if diffs and not only_padding(have, wanted, diffs):
+        return False
+    # **a key the writer would take away is a change too.** Without `keep_unknown` the writer clears
+    # the file and puts `wanted` back, so anything else in there goes — the deleted sidecar whose
+    # `lyrics` tag must follow it is exactly that case, and treating the key as harmless here left
+    # the words in the file after the pass claimed to have removed them.
+    if not theirs and any(key not in wanted for key in have):
+        return False
+    return cover is None or embedded_cover(path) == cover
 
 
 def needs_a_recut(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
@@ -793,11 +826,20 @@ def run(
                     # nothing was written at all — and the first case that turned retagging on lost
                     # a `comment` that had been in the file since 2006.
                     theirs = bool(plan.adopted)
-                    write = lambda f: tag_file(f, plan, track, cover, text, keep_unknown=theirs)  # noqa: E731
-                    track.tagged = (safely(final, write, expect=recorded, log=say) if careful
-                                    else write(final))
-                    save_plan(plan, album_dir)
-                    on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")
+                    # **a file that already says what the plan wants is not rewritten for the sake
+                    # of the record** (R-410, ruling 7). The record is what was stale — a freshly
+                    # adopted album has none at all — and a careful write of an unchanged file is a
+                    # read, a copy, a replace and a digest to end up where it started.
+                    if _already_right(plan, track, final, cover, text, theirs):
+                        track.tagged = signature(plan, track, cover, text)
+                        save_plan(plan, album_dir)
+                        on_track(track, "left")
+                    else:
+                        write = lambda f: tag_file(f, plan, track, cover, text, keep_unknown=theirs)  # noqa: E731
+                        track.tagged = (safely(final, write, expect=recorded, log=say) if careful
+                                        else write(final))
+                        save_plan(plan, album_dir)
+                        on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")
                 elif looked_up or measured or failed_trim or reconciled:
                     save_plan(plan, album_dir)  # the lookup, the length, the owner, or why the trim did not happen
             except (MutagenError, OSError) as e:

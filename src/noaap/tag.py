@@ -494,6 +494,35 @@ def signature(plan: AlbumPlan, track: PlanTrack, cover: bytes | None, lyrics: st
 KEEP_IF_PRESENT = ("lyrics", "musicbrainz_albumid", "musicbrainz_trackid")
 
 
+# the fields whose value is a number, where "01" and "1" say the same thing
+NUMBER_KEYS = ("tracknumber", "tracktotal", "totaltracks", "discnumber", "disctotal", "totaldiscs")
+
+
+def differences(have: dict[str, Any], wanted: dict[str, Any]) -> list[str]:
+    """The keys where the file does not already say what the plan wants."""
+    return [key for key, value in wanted.items() if str(have.get(key) or "") != str(value or "")]
+
+
+def only_padding(have: dict[str, Any], wanted: dict[str, Any], keys: list[str]) -> bool:
+    """Whether every difference is a number the file writes with a leading zero (R-410, ruling 7).
+
+    noaap writes `1` where the file says `01`, and that is the one state the library is in — but it
+    is not a reason to rewrite a file. On the user's collection the unpadding alone would have
+    rewritten thousands of files that are otherwise exactly as noaap wants them.
+    """
+    def same(key: str) -> bool:
+        here = str(have.get(key) or "").split("/")[0].strip()
+        there = str(wanted.get(key) or "").strip()
+        return key in NUMBER_KEYS and here.isdigit() and there.isdigit() and int(here) == int(there)
+    return bool(keys) and all(same(key) for key in keys)
+
+
+def would_write(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown: bool,
+                have: dict[str, Any]) -> dict[str, str]:
+    """The tags the writer would put in this file, given what it already holds."""
+    return _wanted(plan, track, lyrics, keep_unknown, lambda key: have.get(key))
+
+
 def kept_from_the_file(plan: AlbumPlan) -> tuple[str, ...]:
     """The keys a file answers better than the plan does.
 
