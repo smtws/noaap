@@ -384,7 +384,7 @@ def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_
     staging = tmp_path / "staging"
     real_back = staged._copy_back
 
-    def stop_inside(root, here, recorded, done, log, sweep=False):
+    def stop_inside(root, here, recorded, done, log, sweep=False, **kw):
         """Two files back on the share — the plan sorts first — and then the signal."""
         counted = {"n": 0}
         real_copy = shutil.copy2
@@ -397,7 +397,7 @@ def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_
 
         staged.shutil.copy2 = die
         try:
-            real_back(root, here, recorded, done, log, sweep=sweep)
+            real_back(root, here, recorded, done, log, sweep=sweep, **kw)
         finally:
             staged.shutil.copy2 = real_copy
 
@@ -433,7 +433,7 @@ def test_a_file_somebody_else_changed_stays_on_the_share(already_named, tmp_path
     real_back = staged._copy_back
     touched: list[str] = []
 
-    def somebody_else_first(root, here, recorded, done, log, sweep=False):
+    def somebody_else_first(root, here, recorded, done, log, sweep=False, **kw):
         if not touched:
             for name in sorted(recorded):
                 target = root / name
@@ -442,7 +442,7 @@ def test_a_file_somebody_else_changed_stays_on_the_share(already_named, tmp_path
                         fh.write(b"\0" * 64)
                     touched.append(name)
                     break
-        return real_back(root, here, recorded, done, log, sweep=sweep)
+        return real_back(root, here, recorded, done, log, sweep=sweep, **kw)
 
     monkeypatch.setattr(staged, "_copy_back", somebody_else_first)
     done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
@@ -532,7 +532,7 @@ def test_the_batch_that_says_a_file_changed_is_the_batch_it_happened_in(already_
     real_back = staged._copy_back
     touched: list[str] = []
 
-    def somebody_else_first(root, here, recorded, done, log, sweep=False):
+    def somebody_else_first(root, here, recorded, done, log, sweep=False, **kw):
         """Change one of this batch's files on the share, the way another program would."""
         if not touched:
             for name in sorted(recorded):
@@ -542,7 +542,7 @@ def test_the_batch_that_says_a_file_changed_is_the_batch_it_happened_in(already_
                         fh.write(b"\0" * 64)
                     touched.append(name)
                     break
-        return real_back(root, here, recorded, done, log, sweep=sweep)
+        return real_back(root, here, recorded, done, log, sweep=sweep, **kw)
 
     monkeypatch.setattr(staged, "_copy_back", somebody_else_first)
     done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
@@ -692,6 +692,50 @@ def test_a_dry_run_says_which_files_are_only_in_the_store(already_named, tmp_pat
     assert len(said) == 1, lines
     assert "resuming or restoring puts them back" in said[0]
     assert "First.opus" in said[0] or "Hollow.opus" in said[0], said[0]
+
+
+def test_a_resume_after_a_kill_reports_nobody_elses_hand(already_named, tmp_path, monkeypatch):
+    """R-387. The guard that refuses to write over a changed file compares against the *pristine*
+    snapshot, so after a stopped run its own writes looked like a third party's: the resume named
+    three files it had written itself as "changed on the share" and refused to touch them. What the
+    copy back verified is on record, file by file, so the question is answered rather than assumed.
+    """
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    real_back = staged._copy_back
+
+    def stop_after_two(root, here, recorded, done, log, sweep=False, **kw):
+        counted = {"n": 0}
+        real_copy = shutil.copy2
+
+        def die(src, dst, *args, **kw2):
+            counted["n"] += 1
+            if counted["n"] > 2 and "noaap-originals" not in str(dst):
+                raise KeyboardInterrupt("as a signal stops it, partway through the copy back")
+            return real_copy(src, dst, *args, **kw2)
+
+        staged.shutil.copy2 = die
+        try:
+            real_back(root, here, recorded, done, log, sweep=sweep, **kw)
+        finally:
+            staged.shutil.copy2 = real_copy
+
+    monkeypatch.setattr(staged, "_copy_back", stop_after_two)
+    with pytest.raises(KeyboardInterrupt):
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                              batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+    wrote = [staged.read_wrote(q) for q in sorted(staging.glob("*-snapshot.jsonl"))]
+    assert any(wrote), "the stopped run did record what it had written, or this proves nothing"
+
+    lines: list[str] = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lines.append)
+
+    assert done.changed_meanwhile == [], done.changed_meanwhile
+    assert not [line for line in lines if "changed on the share" in line], \
+        "nobody else touched the share, so the run says nobody did"
+    assert done.unverified == []
 
 
 def test_a_resume_with_nothing_missing_says_nothing_about_the_store(elsewhere, tmp_path):

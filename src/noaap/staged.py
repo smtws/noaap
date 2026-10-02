@@ -646,7 +646,8 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     intake.write_made(intake.made_path(snapshot), root,
                       [*was_made, *intake.read_made(intake.made_path(snapshot), here)],
                       [*was_husks, *intake.read_made(intake.made_path(snapshot), here, folders=True)])
-    _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders))
+    _copy_back(root, here, was, done, log, sweep=bool(service.cfg.remove_empty_folders),
+               snapshot=snapshot)
     shutil.rmtree(here)
     # **the batch's snapshot stays, and so does the record of what the pass made.** The share's own
     # untouched file is the way back only until its replacement is verified and the old one removed;
@@ -687,6 +688,43 @@ def aside_for(root: Path) -> Path:
     fixed snapshot name that served two collections, found in P81b.
     """
     return root.parent / ASIDE / root.name
+
+
+def wrote_path(snapshot: Path) -> Path:
+    """Where a batch records what its copy back has written and verified, beside its snapshot."""
+    return snapshot.with_suffix(".wrote.jsonl")
+
+
+def read_wrote(snapshot: Path) -> dict[str, str]:
+    """What an earlier run of this batch put on the share and verified: path -> the file's digest."""
+    where = wrote_path(snapshot)
+    if not where.is_file():
+        return {}
+    out: dict[str, str] = {}
+    for line in where.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("path") and row.get("bytes"):
+            out[str(row["path"])] = str(row["bytes"])
+    return out
+
+
+def note_wrote(snapshot: Path, name: str, digest: str) -> None:
+    """One line per file, appended the moment it is verified — an interruption loses nothing.
+
+    **This is how the pass tells its own earlier work from somebody else's** (R-387). The guard that
+    refuses to write over a file which has changed since the snapshot compares against the
+    *pristine* record, so after a stopped run its own writes looked like a third party's hand: the
+    resume named three files it had written itself as "changed on the share" and refused to touch
+    them. On the user's collection that would be noise in the one place a person must be able to
+    trust.
+    """
+    with wrote_path(snapshot).open("a") as fh:
+        fh.write(json.dumps({"path": name, "bytes": digest}, ensure_ascii=False) + "\n")
 
 
 def _from_the_store(root: Path, here: Path, was: dict[str, Any]) -> list[str]:
@@ -748,7 +786,7 @@ def _move_aside(path: Path, name: str, root: Path, done: Staged) -> bool:
 
 
 def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
-               log: Callable[[str], None], sweep: bool = False) -> None:
+               log: Callable[[str], None], sweep: bool = False, snapshot: Path | None = None) -> None:
     """Put the batch back on the share: **add and replace only, and remove nothing until all of it is
     verified.**
 
@@ -772,6 +810,9 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # were changed on the share while this ran" about a file of the first batch: four batches, four
     # identical lines, one file. The run's total is said once, at the end.
     mine: list[str] = []
+    # **what an earlier run of this batch wrote and verified** (R-387), so the pass can tell its own
+    # hand from a third party's. Empty for a batch running for the first time.
+    wrote = read_wrote(snapshot) if snapshot else {}
     # **the share decides what "the same name" means, so it is asked once and used everywhere here.**
     # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
     # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
@@ -798,6 +839,12 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             # throw away. Named, skipped, and the rest of the batch goes on.
             known = recorded(name)
             if target.is_file() and _moved_on(target, was.get(known) if known else None):
+                # **its own earlier result is not somebody else's change** (R-387). The share's file
+                # differs from the pristine snapshot because a stopped run of this very batch wrote
+                # it; its digest is on record, so this is answered rather than assumed.
+                if wrote.get(name) and bytes_sha(target) == wrote[name]:
+                    verified.add(name)
+                    continue
                 done.changed_meanwhile.append(name)
                 mine.append(name)
                 # by both spellings: the name the staged copy wants and the name the snapshot
@@ -814,8 +861,10 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             shutil.copy2(path, tmp)
             os.replace(tmp, target)          # atomic within the share
             done.copied_back += path.stat().st_size
-            if bytes_sha(target) == bytes_sha(path):
+            if (digest := bytes_sha(target)) == bytes_sha(path):
                 verified.add(name)
+                if snapshot:
+                    note_wrote(snapshot, name, digest)
             else:
                 done.unverified.append(name)
         log(f"  {inside}: back on the share")
@@ -909,6 +958,7 @@ __all__ = [
     "in_bytes",
     "orphans_in_store",
     "read_index",
+    "read_wrote",
     "restore_all",
     "says_room",
     "snapshot_for",
