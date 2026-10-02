@@ -11,6 +11,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -748,6 +749,88 @@ def test_a_resume_with_nothing_missing_says_nothing_about_the_store(elsewhere, t
                           batch_size=1, dry_run=False, log=lines.append)
 
     assert not [line for line in lines if "only in the store of originals" in line]
+
+
+def _as_a_signal_leaves_it(root: Path) -> Path:
+    """Put a piece of a file under the name one wears in flight, in an album of the collection.
+
+    **Placed by hand, and said so.** A real SIGTERM leaves exactly this: the copy had written part of
+    the file beside its target and the process died without running a `finally`. That cannot be had
+    inside one process — anything raisable is caught by the copy's own cleanup, which is the other
+    half of this fix — so the state is constructed and the sweep is what is under test.
+    """
+    album = next(q.parent for q in sorted(root.rglob("*")) if q.suffix == ".opus")
+    piece = album / (next(q for q in sorted(album.iterdir()) if q.suffix == ".opus").name
+                     + staged.PART)
+    piece.write_bytes(b"a piece of a file, as a kill leaves it")
+    return piece
+
+
+def test_a_resume_sweeps_what_a_kill_left_in_flight(already_named, tmp_path):
+    """I-264, on the real share first: the partial file stayed through the resume, through the
+    restore of every batch, to the end — the owner's album holding a piece of a file nobody named."""
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    was = {str(q.relative_to(elsewhere)): q.read_bytes()
+           for q in sorted(elsewhere.rglob("*")) if q.is_file()}
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    piece = _as_a_signal_leaves_it(elsewhere)
+    staged.write_index(staging / staged.STAGED, elsewhere,
+                       {key: replace(one, done=False)
+                        for key, one in staged.read_index(staging / staged.STAGED,
+                                                          elsewhere).items()})
+
+    lines: list[str] = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lines.append)
+
+    assert not piece.exists(), "nothing of the pass's own is left on the share"
+    assert [line for line in lines if "left behind by a run that stopped mid-copy" in line], lines
+    staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+    assert {str(q.relative_to(elsewhere)): q.read_bytes()
+            for q in sorted(elsewhere.rglob("*")) if q.is_file()} == was
+
+
+def test_a_copy_that_raises_leaves_no_file_in_flight(already_named, tmp_path, monkeypatch):
+    """The other half: a share that dies mid-write cleans up after itself, before any resume."""
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    real_copy = shutil.copy2
+    counted = {"n": 0}
+
+    def gone_after_one(src, dst, *args, **kw):
+        counted["n"] += 1
+        if counted["n"] > 1 and "noaap-originals" not in str(dst):
+            Path(dst).write_bytes(Path(src).read_bytes()[:64])
+            raise OSError(5, "Input/output error")
+        return real_copy(src, dst, *args, **kw)
+
+    monkeypatch.setattr(staged.shutil, "copy2", gone_after_one)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert done.stopped, done
+    assert not [q for q in elsewhere.rglob("*") if q.name.endswith(staged.PART)], \
+        "the copy removed its own piece of a file on the way out"
+
+
+def test_a_restore_takes_the_piece_of_a_file_away_too(already_named, tmp_path):
+    """Somebody who restores instead of resuming gets a clean album as well (R-389, point 3)."""
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    was = {str(q.relative_to(elsewhere)): q.read_bytes()
+           for q in sorted(elsewhere.rglob("*")) if q.is_file()}
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    piece = _as_a_signal_leaves_it(elsewhere)
+
+    got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
+
+    assert got.swept == [str(piece.relative_to(elsewhere))], got.swept
+    assert not piece.exists()
+    assert {str(q.relative_to(elsewhere)): q.read_bytes()
+            for q in sorted(elsewhere.rglob("*")) if q.is_file()} == was
 
 
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):

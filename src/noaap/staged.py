@@ -477,6 +477,7 @@ class Restored:
     changed: list[str] = field(default_factory=list)
     lost: list[str] = field(default_factory=list)
     orphans: list[str] = field(default_factory=list)
+    swept: list[str] = field(default_factory=list)      # the pass's own in-flight files, removed
 
     @property
     def clean(self) -> bool:
@@ -513,6 +514,20 @@ def restore_all(root: Path, where: Path, *, apply: bool = False,
         out.changed += list(got.changed)
         out.lost += list(got.lost)
         named.update(r.path for r in snap.files)
+        # **and the pass's own debris goes** (I-264, R-389). A signal killed mid-copy leaves a file
+        # wearing the in-flight suffix, and somebody who restores instead of resuming would be left
+        # with it. Only inside this batch's own territory — the folders its snapshot recorded a file
+        # in and the folders the pass made for them — never a walk of the root (§9, slice 107).
+        for folder in territory(snap, husks):
+            with contextlib.suppress(OSError):
+                for q in sorted((root / folder).iterdir()):
+                    if q.is_file() and q.name.endswith(PART):
+                        name = str(q.relative_to(root))
+                        if apply:
+                            q.unlink()
+                        out.swept.append(name)
+                        log(f"  {name} was left behind by a run that stopped mid-copy and "
+                            + ("is gone" if apply else "would be removed"))
         log(f"  {snapshot.name}: {len(snap.files)} file(s) recorded")
     out.orphans = orphans_in_store(root, named)
     for name in out.orphans:
@@ -567,6 +582,19 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
                 "written back and nothing on the share was touched. The same command resumes."
             ) from e
         done.copied_out += sum(p.stat().st_size for p in inside.rglob("*") if p.is_file())
+    # **this pass's own debris goes before anything else happens** (I-264, R-389). A signal does not
+    # run a `finally`, so a file killed mid-copy stays on the share under the name it wore in flight
+    # — and it stayed through the resume, through the restore, to the end, leaving the owner's album
+    # holding a piece of a file nobody named. `PART` is a suffix nothing but this pass uses, so a
+    # file wearing it inside a folder of this batch is ours and nobody else's.
+    # **Both sides, and in this order.** The copy out has just taken that piece into the staged copy
+    # along with the album, so removing it only from the share would have the copy back write it
+    # straight out again — measured, in the case below.
+    for left in sorted(_in_flight(root, here)):
+        for q in (here / left, root / left):
+            with contextlib.suppress(OSError):
+                q.unlink()
+        log(f"  removed {left}, left behind by a run that stopped mid-copy")
     held = sum(p.stat().st_size for p in here.rglob("*") if p.is_file())
     done.peak_staged = max(done.peak_staged, held)
     log(f"  copied {held / 1e9:.2f} GB to {here}")
@@ -727,6 +755,18 @@ def note_wrote(snapshot: Path, name: str, digest: str) -> None:
         fh.write(json.dumps({"path": name, "bytes": digest}, ensure_ascii=False) + "\n")
 
 
+def _in_flight(root: Path, here: Path) -> set[str]:
+    """Names wearing the in-flight suffix in this batch's folders, on the share and in the copy."""
+    out: set[str] = set()
+    for album in sorted({p.parent for p in here.rglob("*") if p.is_file()}):
+        inside = album.relative_to(here)
+        for where in (album, root / inside):
+            with contextlib.suppress(OSError):
+                out |= {str(inside / q.name) for q in where.iterdir()
+                        if q.is_file() and q.name.endswith(PART)}
+    return out
+
+
 def _from_the_store(root: Path, here: Path, was: dict[str, Any]) -> list[str]:
     """Put back into the staged copy every recorded file the share has lost but the store still has.
 
@@ -858,7 +898,13 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             if known and target.is_file() and _move_aside(target, known, root, done):
                 done.aside.append(known)
             tmp = target.with_name(target.name + PART)
-            shutil.copy2(path, tmp)
+            try:
+                shutil.copy2(path, tmp)
+            except BaseException:
+                # a share that died mid-write leaves nothing of ours behind, even before a resume
+                with contextlib.suppress(OSError):
+                    tmp.unlink()
+                raise
             os.replace(tmp, target)          # atomic within the share
             done.copied_back += path.stat().st_size
             if (digest := bytes_sha(target)) == bytes_sha(path):
