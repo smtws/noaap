@@ -345,3 +345,30 @@ def test_and_once_the_discs_are_assigned_the_totals_follow(tmp_path, one_second_
     discs_for_duplicates(plan, TwoDiscs([["One", "Two"], ["Three", "Four"]]))
 
     assert build_tags(plan, plan.tracks[0])["tracktotal"] == "2"
+
+
+def test_a_release_longer_than_the_folder_is_still_asked(tmp_path, one_second_of_sound):
+    """The user's flattened album holds 18 files of a release of 22; that release is the answer."""
+    from noaap.enrich import discs_for_duplicates
+    _, _, plan = a_plan_of([1, 2, 1, 2], ["One", "Two", "Three", "Four"],
+                           tmp_path, one_second_of_sound)
+
+    said = discs_for_duplicates(plan, TwoDiscs([["One", "Two", "Spare"], ["Three", "Four", "Extra"]]))
+
+    assert "every file matched" in said, said
+    assert {t.disc for t in plan.tracks} == {1, 2}
+
+
+def test_a_title_that_does_not_match_whole_is_not_a_seat(tmp_path, one_second_of_sound):
+    """Measured on the real release of `Early Years`: matching on the title with its brackets
+    stripped seated `Dreams (Deep crowl Mix)` on the plain `Dreams` and the plain `Dreams` on
+    `Dreams (Deep Growl mix)` — every file matched, every seat unique, and the two were swapped."""
+    from noaap.enrich import discs_for_duplicates
+    _, _, plan = a_plan_of([1, 1], ["Dreams", "Dreams (Deep crowl Mix)"],
+                           tmp_path, one_second_of_sound)
+
+    said = discs_for_duplicates(plan, TwoDiscs([["Dreams"], ["Dreams (Deep Growl mix)"]]))
+
+    assert "1 of 2 file(s) matched by their whole title; nothing assigned" in said, said
+    assert "Not matched: Dreams (Deep crowl Mix)" in said
+    assert {t.disc for t in plan.tracks} == {1}, "and nothing was assigned"

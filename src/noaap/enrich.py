@@ -270,6 +270,46 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
     return False
 
 
+def _seatable(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Releases this album's files could be seated on: the same album, **at least as long**.
+
+    `release_candidates` asks "is this the same release?" and wants the counts within one, which is
+    right for enrichment and wrong here: the user's flattened `Early Years` holds 18 files of a
+    release of 22, and that release is exactly the answer to which disc each file is on.
+    """
+    mine = len(plan.tracks)
+    ok = [r for r in releases
+          if key(core(r.get("title", ""))) == key(core(plan.album))
+          and version_markers(r.get("title", "")) == version_markers(plan.album)
+          and artist_matches(plan.albumartist, r.get("artist-credit", []))
+          and int(r.get("track-count") or 0) >= mine]
+    return sorted(ok, key=lambda r: (int(r.get("track-count") or 0) - mine,
+                                     r.get("status") != "Official", -int(r.get("score", 0))))
+
+
+def _seats_by_whole_title(plan: AlbumPlan, release: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """plan index -> the release's track, matched on the **whole** title.
+
+    Not `core`, which strips what is in brackets — and on an album of originals and remixes that is
+    the whole difference between two tracks. Measured against the real release of `Early Years`:
+    with `core`, `Dreams (Deep crowl Mix)` matched the plain `Dreams` and the plain `Dreams` matched
+    `Dreams (Deep Growl mix)` — every file matched, every seat unique, and the two were swapped. A
+    name that does not match whole is not a seat anybody should write a disc number from.
+    """
+    tracks = [{**t, "disc": m.get("position", 1)}
+              for m in release.get("media", []) for t in m.get("tracks", [])]
+    free = list(range(len(tracks)))
+    out: dict[int, dict[str, Any]] = {}
+    for i, mine in enumerate(plan.tracks):
+        want = key(mine.title)
+        for j in free:
+            if key(tracks[j]["title"]) == want:
+                out[i] = tracks[j]
+                free.remove(j)
+                break
+    return out
+
+
 def discs_for_duplicates(plan: AlbumPlan, mb: MusicBrainzAPI) -> str:
     """Ask MusicBrainz what an album whose numbers repeat really is (R-423, point 3).
 
@@ -281,7 +321,7 @@ def discs_for_duplicates(plan: AlbumPlan, mb: MusicBrainzAPI) -> str:
     line says what was found. This is the "pre-run that takes half of them out in advance".
     """
     try:
-        found = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))
+        found = _seatable(plan, mb.search_releases(plan.albumartist, core(plan.album)))
     except MusicBrainzError as e:
         return f"MusicBrainz could not be asked: {e}"
     for cand in found[:RELEASE_LOOKUPS]:
@@ -293,10 +333,12 @@ def discs_for_duplicates(plan: AlbumPlan, mb: MusicBrainzAPI) -> str:
                 + (f", {release['country']}" if release.get("country") else "") \
                 + f", {len(media)} medium(s) of " \
                 + "/".join(str(len(m.get('tracks') or [])) for m in media)
-        matches = match_release_tracks(plan, release)
-        if matches is None or len(matches) != len(plan.tracks):
-            got = 0 if matches is None else len(matches)
-            return f"{where} — {got} of {len(plan.tracks)} file(s) matched by title; nothing assigned"
+        matches = _seats_by_whole_title(plan, release)
+        if len(matches) != len(plan.tracks):
+            missed = [t.title for i, t in enumerate(plan.tracks) if i not in matches]
+            return (f"{where} — {len(matches)} of {len(plan.tracks)} file(s) matched by their whole "
+                    f"title; nothing assigned. Not matched: {', '.join(missed[:3])}"
+                    + (" …" if len(missed) > 3 else ""))
         seats = {(int(m["disc"]), int(m["position"])) for m in matches.values()}
         if len(seats) != len(plan.tracks):
             return f"{where} — two files fall on one position; nothing assigned"
