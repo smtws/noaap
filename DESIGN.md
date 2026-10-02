@@ -3242,9 +3242,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      whitespace, reads numbers its own way, sets the totals and fills what is **empty** — and
      `tidy_adopted_tags`, off by default, is how a library asks for the rest.
    - **a tag can be shorter than the name beside it.** 138 files state exactly thirty characters
-     because that is an ID3v1 field; the file name spells the song out. The name is the record
-     there, and nowhere else. Where a name really is too long, the album artist goes first and the
-     album second, because the folder says both; the title keeps forty characters and an ellipsis.
+     because that is an ID3v1 field, and 69 more carry the same stub in an ID3v2.4 frame; the file
+     name spells the song out. The length is what says it was cut, not the version, and what is
+     taken from the name is **only the part beyond the cut**: a file name cannot hold `/`, `?` or
+     `:`, so taking it whole would write the scheme's substitutes over what the owner typed —
+     `Die Brut (Columbiahalle/Berlin` is not `…halle-Berlin`. Where a name really is too long, the
+     album artist goes first and the album second, because the folder says both; the title keeps
+     forty characters and an ellipsis.
+   - **one album artist per album is the album's.** A track whose own `artist` is somebody else
+     keeps it — `The Metropole Orchestra` plays on Black Symphony and stays there — while the
+     file's `albumartist` becomes the album's, because that is what the field is for.
    - **a file that is already right is not rewritten.** 455 files would have been copied, replaced
      and verified to end up as they were, because the *plan* had no record of their tags. The
      question is asked of the file now, and a leading zero is not an answer that costs a rewrite.

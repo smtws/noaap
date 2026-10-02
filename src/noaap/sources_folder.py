@@ -151,12 +151,28 @@ def _past_a_cut_field(path: Path, tags: Any, out: dict[str, Any]) -> dict[str, A
         tag, named = out.get(key), stated.get(key)
         if not tag or not named or len(tag) not in ID3V1_CUT or len(named) <= len(tag):
             continue
-        # **the name is the tag made safe for a filesystem**, so the two are compared that way:
-        # `Pascal lacht (Karlstorbahnhof/` is in the tag and `…-Heidelberg)` in the name, and a
-        # straight prefix test misses eight of the user's files over one slash (R-410, ruling 4).
-        if named.startswith(tag) or safe_name(named).startswith(safe_name(tag)):
-            out[key] = named
+        if (whole := _carried_on(tag, named, safe_name)) is not None:
+            out[key] = whole
     return out
+
+
+def _carried_on(tag: str, named: str, safe_name: Any) -> str | None:
+    """`tag` with the rest of `named` after it, or None where the name does not continue the tag.
+
+    **The tag's own characters are never replaced** (R-412). A file name cannot hold `/`, `?` or
+    `:`, so the name holds what the scheme put there instead — `Die Brut (Columbiahalle/Berlin` in
+    the tag is `…-Berlin)` in the name — and taking the name whole would write the scheme's
+    substitutes over what the owner typed. What the name is good for is the part beyond where the
+    field ran out, so that is all that is taken from it: the head has to match the tag *made safe
+    the same way*, and the tail is appended to the tag as it stands.
+    """
+    if named.startswith(tag):
+        return named
+    want = safe_name(tag)
+    for cut in range(1, len(named) + 1):      # the first cut that matches: a later one eats a space
+        if safe_name(named[:cut]) == want:
+            return tag + named[cut:]
+    return None
 
 
 # `cd1`, `CD 1`, `1` — all three occur in the reference collection, in three different albums, and

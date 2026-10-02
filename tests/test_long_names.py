@@ -92,6 +92,35 @@ def test_a_stub_in_an_id3v2_frame_is_a_stub_too(tmp_path, one_second_of_mp3):
     assert sources_folder.read_tags(path)["title"] == "Pleasure, Little Treasure - Glitter Mix"
 
 
+@pytest.mark.parametrize(("tag", "named", "whole"), [
+    # the four the reviewer found in the 221 recoveries of the first run (R-412)
+    ("Runnin' / Brazilian Rhyme (Int", "Runnin' - Brazilian Rhyme (Interlude)",
+     "Runnin' / Brazilian Rhyme (Interlude)"),
+    ("Die Brut (Columbiahalle/Berlin", "Die Brut (Columbiahalle-Berlin)",
+     "Die Brut (Columbiahalle/Berlin)"),
+    ("Gewaltberechtigt? (Columbiahal", "Gewaltberechtigt  (Columbiahalle-Berlin)",
+     "Gewaltberechtigt? (Columbiahalle-Berlin)"),
+    ("Principles Of Lust : A. Sadnes", "Principles Of Lust - A. Sadness  B. Find Love",
+     "Principles Of Lust : A. Sadness  B. Find Love"),
+    # and the plain case, where the name holds the tag as it is
+    ("Zyklus Farbenfinsternis - Kapi", "Zyklus Farbenfinsternis - Kapitel 1- Vorboten",
+     "Zyklus Farbenfinsternis - Kapitel 1- Vorboten"),
+    # a name that states something else entirely recovers nothing
+    ("Something Else Entirely", "A Different Song", None),
+])
+def test_a_recovery_keeps_the_tag_s_own_characters(tag, named, whole):
+    """A file name cannot hold `/`, `?` or `:`, so what it holds there is the scheme's substitute.
+
+    Taking the name whole wrote those substitutes over what the owner typed — 16 of the 221 title
+    recoveries over the user's collection. The name is good for one thing: the part beyond where the
+    field ran out (R-412).
+    """
+    from noaap.plan import safe_name
+    from noaap.sources_folder import _carried_on
+
+    assert _carried_on(tag, named, safe_name) == whole
+
+
 def test_a_slash_in_the_tag_is_a_dash_in_the_name(tmp_path, one_second_of_mp3):
     """The name is the tag made safe for a filesystem, so the two are compared that way."""
     import shutil
@@ -106,7 +135,7 @@ def test_a_slash_in_the_tag_is_a_dash_in_the_name(tmp_path, one_second_of_mp3):
     tags.add(TIT2(encoding=3, text=["Pascal lacht (Karlstorbahnhof/"]))
     tags.save(path, v1=0, v2_version=4)
 
-    assert sources_folder.read_tags(path)["title"] == "Pascal lacht (Karlstorbahnhof-Heidelberg)"
+    assert sources_folder.read_tags(path)["title"] == "Pascal lacht (Karlstorbahnhof/Heidelberg)"
 
 
 def test_a_short_tag_is_what_its_owner_wrote(tmp_path, one_second_of_mp3):
