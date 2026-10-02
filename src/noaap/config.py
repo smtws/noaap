@@ -61,42 +61,41 @@ def legacy_config_path() -> Path:
 
 
 def read_path() -> Path:
-    """Where settings are read from: ours, or ytalbum's while ours does not exist.
+    """Where settings are read from. **Ours, and only ours** (R-420).
 
-    Without this a user who renames has no `library_root` and every command answers "set the
-    library first", which is a worse welcome than a one-line notice.
+    It used to fall back to ytalbum's file while ours did not exist, so that a machine which had
+    renamed was not met with "set the library first". Nothing reads that file now: the only
+    installations of it left are this project's own, and `noaap migrate` copies it over — which is
+    what the notice below says, once, to whoever still has one.
     """
-    if config_path().exists() or not legacy_config_path().exists():
-        return config_path()
-    return legacy_config_path()
+    return config_path()
 
 
 def legacy_notice() -> str | None:
-    """One line for whoever is still configured as ytalbum. `noaap migrate` ends it."""
-    if read_path() == config_path():
+    """One line for whoever still has ytalbum's settings file and not ours."""
+    if config_path().exists() or not legacy_config_path().exists():
         return None
-    return (f"settings read from {legacy_config_path()} (ytalbum's). "
-            f"`noaap migrate` copies them to {config_path()}.")
+    return (f"{legacy_config_path()} is still here and is no longer read. "
+            f"`noaap migrate --apply` copies it to {config_path()}.")
 
 
 _said: set[str] = set()
 
 
 def env(name: str) -> str | None:
-    """`NOAAP_<name>`, falling back to ytalbum's `YTALBUM_<name>` and saying so once.
+    """`NOAAP_<name>`. **The old spelling is not read** (R-420).
 
-    Once per name per process: these are read at import time by several modules, and a line per
-    lookup would bury the run in its own notices.
+    It used to fall back to `YTALBUM_<name>` and say so once. Nothing reads that name now; a
+    variable set under it is named in one line the first time it is looked for, so that a machine
+    carrying one is not left wondering why the setting does nothing.
     """
     if (value := os.environ.get(ENV + name)) is not None:
         return value
-    if (value := os.environ.get(LEGACY_ENV + name)) is None:
-        return None
-    if name not in _said:
+    if os.environ.get(LEGACY_ENV + name) is not None and name not in _said:
         _said.add(name)
-        print(f"{LEGACY_ENV}{name} is ytalbum's name for {ENV}{name}; it still works.",
+        print(f"{LEGACY_ENV}{name} is set and is no longer read; the name is {ENV}{name}.",
               file=sys.stderr)
-    return value
+    return None
 
 
 class Refused(ValueError):

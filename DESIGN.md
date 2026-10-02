@@ -6,8 +6,8 @@ Status: draft, 2026-09-22. Replaces `ARCHITECTURE_PLAN.md` (v2) and the v1 tree 
 
 **The program was called `ytalbum` up to and including 0.9.0** (slice 52). §9 and §12 are records of
 what was decided and done on a date, so a command quoted there is spelled the way it was run; the
-rest of this document describes the program as it is now. The plan file on disk is still
-`.ytalbum.json`, which is the format's name and not the program's.
+rest of this document describes the program as it is now. The plan file on disk is `.noaap.json`;
+it was `.ytalbum.json` until 1.30.0, and `noaap migrate` renames the ones an older version wrote.
 
 ## 1. Goal
 
@@ -138,7 +138,7 @@ URL ─► 1 resolve ─► 2 inspect ─► 3 classify ─► 4 enrich ─► 5
    - track level: YT music fields → title parser (§5) → optional MB recording lookup.
 5. **plan(collection, metadata)** → `AlbumPlan`: folder, filenames, tags, cover source,
    list of video ids to download. Written as JSON next to the album
-   (`.ytalbum.json`) — this is also the manifest for incremental re-runs.
+   (`.noaap.json`) — this is also the manifest for incremental re-runs.
 6. **download(plan)** → Opus files, one at a time or small concurrency; each track is
    tagged and moved into place as soon as it finishes (interrupt-safe, v1's good idea).
 7. **tag(file, track)** — mutagen `OggOpus`, cover as `METADATA_BLOCK_PICTURE`.
@@ -224,7 +224,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
 - "Entries in the playlist" and "songs on the album" are different numbers and are
   never stored in the same field.
 - Counters shown in any UI are **computed** from these lists, never maintained by hand.
-- Schema changes bump `schema` and come with a migration of `.ytalbum.json`; there is
+- Schema changes bump `schema` and come with a migration of `.noaap.json`; there is
   never more than one live shape.
 
 ## 7. Tech choices
@@ -282,7 +282,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    channel, `@xxHANDLExx` feat. credit) are by design for the lookup in slice 5.
    Also: `release_year` exists on plain videos too (upload year) — only trusted together
    with an `album` field.
-3. ✅ Incremental re-run from `.ytalbum.json` (Vol. 20 grows → only new tracks). *Done
+3. ✅ Incremental re-run from `.noaap.json` (Vol. 20 grows → only new tracks). *Done
    2026-09-22:* the plan records the auto-derived value of every field; a differing
    value is a user edit and always wins, untouched fields follow better derivations.
    `folder`/`filename` in the plan mean *what is on disk*; wanted names are computed and
@@ -436,7 +436,7 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    so the `LYRICS` comment (`©lyr` on m4a) is written *from* a `.lrc` sidecar rather than
    preserved: the sidecar is the truth, delete it and the tag goes too. That also serves the
    player that matters here — MPD/Volumio has no lyrics tag at all and reads `.lrc`. The text
-   is not kept in `.ytalbum.json` (3946 × ~3 KB would land in every `update` and in the track
+   is not kept in `.noaap.json` (3946 × ~3 KB would land in every `update` and in the track
    index, which is 11 ms today); the plan holds only `lyrics: synced|plain|instrumental|none`
    and the lrclib id, so nothing is ever looked up twice. Two things about lrclib's
    `instrumental` flag, learned from real use: it means *nobody submitted words*, not that the
@@ -1359,10 +1359,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    verbs, the HTTP paths — is a promise slices 48 and 50 had already made keepable. `sources.Source`
    is explicitly outside it; P51–P56 will change its shape.
    **What the program is called, and what a thing on disk is called, are different questions.** The
-   plan file stays `.ytalbum.json`. It is the format's name; renaming it would make every album noaap
-   writes invisible to ytalbum 0.9.0, whose `iter_plans` globs for it — and an invisible album is not
-   merely unreadable, it gets re-fetched into a second folder beside the first. Slice 48 promises a
-   library reads both ways, and this is what that promise costs: a file named after a name.
+   plan file stayed `.ytalbum.json` here: it is the format's name, and renaming it would have made
+   every album noaap writes invisible to ytalbum 0.9.0, whose `iter_plans` globs for it — an
+   invisible album is not merely unreadable, it gets re-fetched into a second folder beside the
+   first. **Overturned in 1.30.0** (R-419): the only installations of 0.9.x left are this project's
+   own, so nothing is reading for that name any more. The file is `.noaap.json`, `noaap migrate`
+   renames the ones already on disk, and a folder that still holds the old name is named in a line
+   rather than read.
    Likewise `.recycle`, `.originals` and `.parts`, which were never branded and did not move.
    **Three things answer to the old name, each read and never written**, so the old spelling fades
    instead of being maintained: the settings file (`~/.config/ytalbum/config.toml`, while ours does

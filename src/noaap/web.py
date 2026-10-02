@@ -74,9 +74,9 @@ log = logging.getLogger(__name__)
 CARD_IDLE = Config.timing_card_idle_seconds
 
 # A write must say it came from our own page rather than from a form on someone else's
-# (§9, slice 24). ytalbum's spelling is still accepted — see the check itself for why.
+# (§9, slice 24). **One spelling** (R-420): the old one was accepted while an installed PWA might
+# still be serving the old page from its own cache, and no such page is left.
 WRITE_HEADER = "X-Noaap"
-LEGACY_WRITE_HEADER = "X-Ytalbum"
 
 STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -1397,9 +1397,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._body = self._read_body()
         if not self.app.allowed_host(self.headers.get("Host")):
             return self._error(HTTPStatus.FORBIDDEN, "host not allowed")
-        # either spelling: an installed PWA serves ytalbum's app.js from its own cache until the
-        # service worker updates, and a 403 on every write is a poor way to learn that.
-        if not any(self.headers.get(name) == "1" for name in (WRITE_HEADER, LEGACY_WRITE_HEADER)) \
+        if self.headers.get(WRITE_HEADER) != "1" \
                 or not (self.headers.get("Content-Type") or "").startswith("application/json"):
             return self._error(HTTPStatus.FORBIDDEN, f"missing {WRITE_HEADER} header or JSON content type")
         url = urlsplit(self.path)

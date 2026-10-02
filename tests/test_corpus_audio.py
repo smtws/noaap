@@ -68,7 +68,7 @@ def _recorded() -> list[dict]:
 
 
 def _plans(root: Path):
-    for path in sorted(root.rglob(".ytalbum.json")):
+    for path in sorted(root.rglob(".noaap.json")):
         try:
             yield path.parent, json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):

@@ -42,6 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import config as config_mod
 from . import intake, precautions, sources
 from .download import PLAN_FILE
 from .precautions import bytes_sha
@@ -570,9 +571,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         # would compute — this chooses which albums are in it, and nothing else.
         albums, empty = intake.under_only(albums, root, only)
         if empty:
-            done.stopped = f"--only {', '.join(empty)}: no album under that path"
-            log(done.stopped)
-            return done
+            # a wrong argument, which this program answers with one sentence and exit 2 (R-421)
+            raise config_mod.Refused(f"--only {', '.join(empty)}: no album under that path")
         chosen = set(albums)
         refs = [ref for ref in refs if Path(ref.url) in chosen]
         chose = [root / Path(value.strip("/")) for value in only]

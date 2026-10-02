@@ -521,15 +521,16 @@ $("#grid").addEventListener("keydown", (e) => {
 // -- one album: view and edit ---------------------------------------------------------
 
 let currentAlbum = null;
-// Per-browser conveniences, nothing the library depends on. Written under our own name and read
-// under ytalbum's as well, once, so a rename does not forget which album you had open or lose the
-// theme you picked. Every access is guarded: private mode makes these throw.
-const LAST = "noaap-last", LAST_WAS = "ytalbum-last";
-const THEME = "noaap-theme", THEME_WAS = "ytalbum-theme";
-function remembered(key, was) {
-  try { return localStorage.getItem(key) ?? localStorage.getItem(was); } catch { return null; }
+// Per-browser conveniences, nothing the library depends on: which album was open, which theme was
+// picked. They were also read under ytalbum's names for one release; nothing reads those now
+// (R-420), and the worst a browser that still holds one loses is a remembered tile. Every access is
+// guarded: private mode makes these throw.
+const LAST = "noaap-last";
+const THEME = "noaap-theme";
+function remembered(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
 }
-let lastAlbumId = remembered(LAST, LAST_WAS);
+let lastAlbumId = remembered(LAST);
 
 // closing the editor hands focus back to the album's tile, so the keyboard keeps working
 function closeAlbum(focusId = currentAlbum?.source_id) {
@@ -2913,7 +2914,7 @@ function applyTheme(theme) {
 }
 
 function savedTheme() {
-  const saved = remembered(THEME, THEME_WAS);
+  const saved = remembered(THEME);
   return saved && THEMES[saved] ? saved : "auto";
 }
 

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import adopt as adopt_pass
+from . import config as config_mod
 from . import precautions, sources, sources_folder
 from .download import load_plan, relocate, run, save_plan, would_do
 from .enrich import enrich
@@ -365,9 +366,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         # **a part of the collection, with the whole collection's names** (R-417, point 1)
         folders, empty = under_only(folders, root, only)
         if empty:
-            done.stopped = f"--only {', '.join(empty)}: no album under that path"
-            log(done.stopped)
-            return done
+            # a wrong argument, which this program answers with one sentence and exit 2 (R-421)
+            raise config_mod.Refused(f"--only {', '.join(empty)}: no album under that path")
         chosen = set(folders)
         refs = [ref for ref in refs if Path(ref.url) in chosen]
         chose = [root / Path(value.strip("/")) for value in only]

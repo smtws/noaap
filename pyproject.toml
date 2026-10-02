@@ -16,8 +16,8 @@ dependencies = [
     "yt-dlp[default]>=2026.8.19",
 ]
 
-# Everything a timing provider needs, and nothing the rest of ytalbum imports. Install it only if
-# you want the `local` provider (or are running `ytalbum timing-serve` for another machine):
+# Everything a timing provider needs, and nothing the rest of noaap imports. Install it only if
+# you want the `local` provider (or are running `noaap timing-serve` for another machine):
 #     uv pip install "noaap[timing]"
 # On a machine without a usable GPU, ask for the small CPU build of torch first — it is ~200 MB
 # against some 4 GB of CUDA libraries, and the aligner runs perfectly well on a processor:
@@ -37,7 +37,7 @@ timing = [
 # It carries a Whisper decoder — **3.09 GB of model on first use** — and is worth it only if you
 # want alignments checked without listening to them, or transcription without a paid provider:
 #     uv pip install "noaap[timing,timing-check]"
-# On CUDA, ctranslate2 wants CUDA 12's libcublas while torch may bring a different one; ytalbum
+# On CUDA, ctranslate2 wants CUDA 12's libcublas while torch may bring a different one; noaap
 # falls back to the processor and says so, and `uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12`
 # puts the GPU back. On a machine without one it is simply slower (about 2x real time).
 timing-check = [
@@ -60,9 +60,9 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     # The end-to-end corpus (tests/test_corpus_audio.py): real audio, real models, minutes not
-    # milliseconds. Opt in with YTALBUM_CORPUS_AUDIO=1; it is skipped otherwise, so `uv run pytest`
+    # milliseconds. Opt in with NOAAP_CORPUS_AUDIO=1; it is skipped otherwise, so `uv run pytest`
     # stays offline and fast.
-    "slow: runs real models on real audio, opt-in via YTALBUM_CORPUS_AUDIO",
+    "slow: runs real models on real audio, opt-in via NOAAP_CORPUS_AUDIO",
 ]
 
 [tool.ruff]

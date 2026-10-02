@@ -18,7 +18,7 @@ from test_web import library, server  # likewise: a real server on a real librar
 
 from noaap import config, user_agent, version
 from noaap.download import PLAN_FILE
-from noaap.web import LEGACY_WRITE_HEADER, WRITE_HEADER
+from noaap.web import WRITE_HEADER
 
 # -- the settings file -----------------------------------------------------------------------------
 
@@ -32,22 +32,25 @@ def dirs(tmp_path, monkeypatch):
     return ours, theirs
 
 
-def test_settings_are_read_from_ytalbums_directory_while_we_have_none(dirs):
+def test_ytalbums_settings_are_not_read_any_more(dirs):
+    """They were, while ours did not exist, so a renamed machine was not met with "set the library
+    first". The only installations of that file left are this project's own (R-420)."""
     ours, theirs = dirs
     theirs.write_text('library_root = "/tmp/somewhere"\nconcurrency = 4\n')
 
-    assert config.read_path() == theirs
-    assert config.load().concurrency == 4, "a machine set up as ytalbum needs no migration to run"
-    assert not ours.exists(), "reading is not writing"
+    assert config.read_path() == ours
+    assert config.load().concurrency != 4, "nothing of theirs decides anything here"
+    assert not ours.exists(), "and reading is still not writing"
 
 
-def test_the_notice_names_the_file_it_read_and_how_to_end_it(dirs):
+def test_the_notice_names_the_file_nothing_reads_and_how_to_end_it(dirs):
     _, theirs = dirs
     theirs.write_text("concurrency = 4\n")
 
     notice = config.legacy_notice()
 
     assert notice and str(theirs) in notice and "noaap migrate" in notice
+    assert "no longer read" in notice
 
 
 def test_our_own_settings_win_and_the_notice_goes_away(dirs):
@@ -81,17 +84,19 @@ def test_with_no_settings_anywhere_the_path_is_ours(dirs):
 # -- the environment variables ---------------------------------------------------------------------
 
 
-def test_ytalbums_variables_still_work_and_say_so_once(monkeypatch, capsys):
+def test_ytalbums_variables_are_not_read_and_are_named_once(monkeypatch, capsys):
+    """They used to work and say so. Now they do nothing and say so — the louder of the two, because
+    a variable that is silently ignored is a setting somebody thinks is in force (R-420)."""
     monkeypatch.setattr(config, "_said", set())
     monkeypatch.delenv("NOAAP_LRCLIB_BASE", raising=False)
     monkeypatch.setenv("YTALBUM_LRCLIB_BASE", "http://127.0.0.1:1/api")
 
-    assert config.env("LRCLIB_BASE") == "http://127.0.0.1:1/api"
-    assert config.env("LRCLIB_BASE") == "http://127.0.0.1:1/api"
+    assert config.env("LRCLIB_BASE") is None
+    assert config.env("LRCLIB_BASE") is None
 
     err = capsys.readouterr().err
     assert err.count("YTALBUM_LRCLIB_BASE") == 1, "once per name, not once per lookup"
-    assert "NOAAP_LRCLIB_BASE" in err, "the notice says what to rename it to"
+    assert "NOAAP_LRCLIB_BASE" in err, "the notice says what the name is"
 
 
 def test_our_own_variable_wins_and_is_silent(monkeypatch, capsys):
@@ -117,13 +122,18 @@ def post(client, header):
                        headers={header: "1", "Content-Type": "application/json"})
 
 
-def test_a_write_is_accepted_under_either_header(server):
-    """An installed PWA keeps serving ytalbum's app.js from its own cache until the service worker
-    updates itself, so for a while the page in front of the user sends the old header."""
+def test_a_write_is_accepted_under_our_header(server):
     _, client = server
 
     assert post(client, WRITE_HEADER).status_code == 202          # queued, which is a write
-    assert post(client, LEGACY_WRITE_HEADER).status_code == 202
+
+
+def test_the_old_header_is_not_accepted_any_more(server):
+    """It was, while an installed PWA might still serve ytalbum's app.js from its own cache. No
+    such page is left, and one spelling is one thing to reason about (R-420)."""
+    _, client = server
+
+    assert post(client, "X-Ytalbum").status_code == 403
 
 
 def test_a_write_with_no_header_is_still_refused_and_the_message_names_ours(server):
@@ -132,7 +142,7 @@ def test_a_write_with_no_header_is_still_refused_and_the_message_names_ours(serv
     refused = client.post("/api/update", content=b"{}", headers={"Content-Type": "application/json"})
 
     assert refused.status_code == 403
-    assert WRITE_HEADER in refused.text and LEGACY_WRITE_HEADER not in refused.text
+    assert WRITE_HEADER in refused.text and "Ytalbum" not in refused.text
 
 
 # -- who we say we are -----------------------------------------------------------------------------
@@ -176,7 +186,7 @@ def test_the_plan_file_keeps_the_name_the_format_was_born_with():
     """Renaming it would make every album this writes invisible to ytalbum 0.9.0 — `iter_plans`
     would find nothing and a re-fetch would build a second folder beside the first. Slice 48 says
     a library stays readable both ways, and this is what that costs: a file named after the name."""
-    assert PLAN_FILE == ".ytalbum.json"
+    assert PLAN_FILE == ".noaap.json"
 
 
 # -- the guard -------------------------------------------------------------------------------------
@@ -202,15 +212,14 @@ def test_what_still_answers_to_the_old_name_is_written_down() -> None:
 
     allowed = {
         "migrate.py":  "the command whose whole subject is ytalbum's machine",
-        "config.py":   "LEGACY, the settings fallback and the YTALBUM_* variables",
+        "config.py":   "LEGACY and LEGACY_ENV: what `migrate` copies from, and the line that names "
+                       "a file or a variable nothing reads any more",
         "systemd.py":  "LEGACY_UNIT: ytalbum's units are reported, never removed",
         "desktop.py":  "LEGACY_APP_ID: its launcher and profile are reported, never removed",
-        "web.py":      "LEGACY_WRITE_HEADER: an installed PWA still sends the old one",
-        "download.py": "PLAN_FILE — the format's name, and it is not moving",
+        "download.py": "OLD_PLAN_FILE: the name `migrate` renames and a pass names, never reads",
         "strays.py":   "prose: why a collection ytalbum named already looks like noaap's own scheme",
-        "cli.py":      "the migrate subcommand, the notice, and the plan file in one message",
-        "app.js":      "the two localStorage keys, read once under the old name",
-        "sw.js":       "a comment only — why the cache name had to change; the literals below are the promise",
+        "cli.py":      "the migrate subcommand and what 0.9.1 could read of a plan",
+        "app.js":      "a comment: the two browser keys were read under the old names for one release",
     }
     saying = sorted(p.name for p in src.rglob("*")
                     if p.is_file() and p.suffix in {".py", ".js", ".mjs", ".html", ".css", ".webmanifest"}
@@ -223,12 +232,10 @@ def test_what_still_answers_to_the_old_name_is_written_down() -> None:
     literals = {m for path in src.rglob("*") if path.is_file() and path.suffix in {".py", ".js", ".mjs"}
                 for m in re.findall(r'"[^"\s]*ytalbum[^"\s]*"', path.read_text(encoding="utf-8"), re.I)}
     assert literals == {
-        '"ytalbum"',        # config.LEGACY, systemd.LEGACY_UNIT, desktop.LEGACY_APP_ID
-        '"YTALBUM_"',       # config.LEGACY_ENV
-        '".ytalbum.json"',  # download.PLAN_FILE
-        '"X-Ytalbum"',      # web.LEGACY_WRITE_HEADER
-        '"ytalbum-last"',   # app.js: which album was open
-        '"ytalbum-theme"',  # app.js: which theme was picked
+        '"ytalbum"',          # config.LEGACY, systemd.LEGACY_UNIT, desktop.LEGACY_APP_ID — what
+                              # `noaap migrate` copies from and reports, and never reads as settings
+        '"YTALBUM_"',         # config.LEGACY_ENV — named in a line, not read (R-420)
+        '".ytalbum.json"',    # download.OLD_PLAN_FILE — renamed by `migrate`, never read
     }, f"a new thing answers to the old name by value: {sorted(literals)}"
 
 

@@ -9,8 +9,8 @@ from: a collection you already have on a disk or a NAS, a folder you drop files 
 SoundCloud or Patreon playlist fetched without re-encoding. A command line does the work; a small web
 app plays the library and lets you fix what the machine got wrong.
 
-It was called **ytalbum** up to 0.9.0; a machine set up as ytalbum keeps working without being told
-anything ([Coming from ytalbum](#coming-from-ytalbum)).
+It was called **ytalbum** up to 0.9.0; `noaap migrate` takes over what such a machine left behind
+([Coming from ytalbum](#coming-from-ytalbum)).
 
 ![The library in the web UI](docs/screenshots/library.jpg)
 
@@ -677,7 +677,7 @@ this rule is cleaned the next time anything saves it.
 published to LRCLIB, its album cannot be seeded to MusicBrainz, and — because a *lookup* also sends a
 title, a creator and a length to somebody else's server — such an album is not looked up at either of
 them at all. It is what one person paid one creator for. If you want one particular album looked up
-anyway, set `"lookups": true` in that album's `.ytalbum.json`; nothing in noaap sets it for you.
+anyway, set `"lookups": true` in that album's `.noaap.json`; nothing in noaap sets it for you.
 
 **What it never does:** fetch anything your tier does not include (that post says so and is skipped, and
 the album goes on), fetch for anybody but you, go near DRM or any access control, or crawl a creator.
@@ -926,15 +926,15 @@ noaap merge ~/Music/other-library --only Dominum --apply   # one artist, both si
 noaap merge ~/Music/other-library --new --apply            # and fetch the albums you do not have
 ```
 
-Each album folder holds a **plan** (`.ytalbum.json`): what the source listed, what each
+Each album folder holds a **plan** (`.noaap.json`): what the source listed, what each
 track should be called, where every value came from, what has been downloaded, and which
 trim points apply. The plan is the only state — delete it and the album is just files;
 keep it and everything is repeatable.
 
-That file name is deliberate. It is the **format's** name, not the program's, so it did not change
-with the rename: a library written by noaap still opens in ytalbum 0.9.0, and one written by ytalbum
-opens here. Renaming it would have made every album invisible to the older program, which would then
-have re-fetched each one into a second folder beside the first.
+It was `.ytalbum.json` until 1.30.0 — the format's name, kept through the rename so that a library
+stayed readable by the older program. That reason is gone with the last installation of it, so the
+file is named after what writes it. `noaap migrate --apply` renames the ones already on disk, and a
+folder that still holds the old name is named in a line by `serve` and `repair` rather than read.
 
 - **Your edits win.** The plan records the value noaap derived. A value that differs from
   it is yours and survives every update; untouched values follow better data when it
@@ -969,7 +969,7 @@ Library/
         ├── …
         ├── My Dark Lullabies - Vol. 1 - … - 01 - Enemy Inside - Lullaby.lrc   # the lyrics
         ├── cover.jpg              # replace it with your own and noaap keeps it
-        ├── .ytalbum.json          # the plan
+        ├── .noaap.json          # the plan
         └── .originals/            # only when trims are in use
 ```
 
@@ -996,7 +996,7 @@ keep.** Nothing else in the tags identifies where the audio came from, and nothi
 
 ### Editing a plan by hand
 
-`noaap plan <url>` writes `.ytalbum.json` and stops. It is ordinary JSON; edit it and run
+`noaap plan <url>` writes `.noaap.json` and stops. It is ordinary JSON; edit it and run
 `noaap download <folder>`.
 
 | field | safe to edit | what happens |
@@ -1569,8 +1569,8 @@ Nothing outside this repository implements it yet; when something does, it gets 
   every YouTube and SoundCloud album keeps `schema: 1`. An older version refuses a schema it does not
   know rather than guessing, so it says so plainly about the adopted ones and reads all the rest.
 - **A library written before 1.6.0 is worth repairing once.** `noaap repair` writes every plan in the
-  shape every version can read, which matters only if an older noaap or ytalbum still opens this
-  library — what exactly was wrong, and on how many albums, is under
+  shape every version can read, which matters only if an older noaap still opens this library —
+  what exactly was wrong, and on how many albums, is under
   [Coming from ytalbum](#coming-from-ytalbum).
 - **YouTube decides the quality of what it fetches.** Opus at 130–160 kbps, lossy, and from
   whatever the uploader provided. No setting can make that better, and a fetched album will never be
@@ -1692,20 +1692,23 @@ nothing here removes them: `~/.config/ytalbum/`, `~/.cache/ytalbum/`, its units,
 removes the units and the launcher; the rest is yours to delete.
 
 **Your music is not touched by any of this.** The library folder, the audio, the covers and the
-`.lrc` files beside them are yours; deleting an album's `.ytalbum.json` leaves plain tagged files.
+`.lrc` files beside them are yours; deleting an album's `.noaap.json` leaves plain tagged files.
 The model caches are torch's and Hugging Face's own, shared with any other program that uses them —
 check before deleting.
 
 ## Coming from ytalbum
 
 
-Nothing has to be done. noaap reads ytalbum's settings file while it has none of its own, accepts
-every `YTALBUM_*` variable, and never touched the library in the first place. Each of those says so
-once, in one line, when it happens.
+**Run `noaap migrate` once.** Up to 1.29.0 noaap read ytalbum's settings file while it had none of
+its own and accepted every `YTALBUM_*` variable; since 1.30.0 it reads neither — the last
+installations of that program are gone — and says so in one line where it finds one.
 
-`noaap migrate` ends the borrowing. It **shows first** — the bare command changes nothing — and
-`--apply` then copies the settings file, any `*.env` beside it and both lookup caches (lyrics and
-MusicBrainz; the second is rate-limited, so copying it is worth a moment). It copies, never moves.
+`noaap migrate` is what ends it. It **shows first** — the bare command changes nothing — and
+`--apply` then renames every `.ytalbum.json` plan in the library and in any watched folder to
+`.noaap.json` (a rename, never a rewrite; a folder holding both names is left alone and said out
+loud), copies the settings file, any `*.env` beside it and both lookup caches (lyrics and
+MusicBrainz; the second is rate-limited, so copying it is worth a moment). It copies, never moves —
+except the plan files, which are renamed where they lie.
 
 Two things it leaves alone unless asked, and one it never touches:
 
@@ -1725,7 +1728,9 @@ One thing to know if you keep both: they default to the same port. `noaap servic
 and stops rather than letting systemd answer "Address already in use" — give it `--port 8766`, or
 stop ytalbum's socket first.
 
-**If you keep opening this library with ytalbum 0.9.1, run `noaap repair` once.** Since `merge` there
+**A library this program has written is no longer readable by ytalbum 0.9.1** — its `iter_plans`
+globs for `.ytalbum.json`, which nothing here writes any more. What follows is why that mattered
+while it did. Since `merge` there
 can be a YouTube album whose chosen copy came from a folder. ytalbum 0.9.1 and noaap 1.1.0 to 1.5.0
 read, play and save such an album without losing anything — but asked to **fetch that track again**
 they ask the wrong source, because they take the copy for the album's own; fetch it with 1.6.0 or

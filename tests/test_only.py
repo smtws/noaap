@@ -15,6 +15,7 @@ from test_collisions import a_service, an_album
 from test_intake import QUIET
 
 from noaap import intake, staged
+from noaap.config import Refused
 
 
 @pytest.fixture
@@ -54,13 +55,11 @@ def test_the_name_is_matched_as_it_reads(two_artists):
 
 
 def test_a_path_that_chooses_nothing_is_refused_by_name(two_artists):
-    said = []
-    done = intake.take_in(a_service(two_artists), two_artists, QUIET, dry_run=True,
-                          only=["Nobody"], log=said.append)
-
-    assert done.stopped == "--only Nobody: no album under that path"
-    assert done.stopped in said
-    assert done.adopted == 0, "nothing is planned when the selection is wrong"
+    """A wrong argument, answered the way this program answers one: a sentence, and exit 2 (R-421)."""
+    with pytest.raises(Refused) as refused:
+        intake.take_in(a_service(two_artists), two_artists, QUIET, dry_run=True,
+                       only=["Nobody"], log=lambda s: None)
+    assert str(refused.value) == "--only Nobody: no album under that path"
 
 
 def test_the_names_are_the_whole_collection_s(two_artists):
@@ -99,8 +98,9 @@ def test_a_staged_run_chooses_the_same_albums(two_artists, tmp_path):
 
 
 def test_a_staged_run_refuses_a_selection_that_chooses_nothing(two_artists, tmp_path):
-    done = staged.take_in_staged(a_service(two_artists), two_artists, QUIET,
-                                 staging=tmp_path / "staging", dry_run=True,
-                                 only=["Nobody"], log=lambda s: None)
-    assert done.stopped == "--only Nobody: no album under that path"
-    assert done.batches == 0
+    with pytest.raises(Refused) as refused:
+        staged.take_in_staged(a_service(two_artists), two_artists, QUIET,
+                              staging=tmp_path / "staging", dry_run=True,
+                              only=["Nobody"], log=lambda s: None)
+    assert str(refused.value) == "--only Nobody: no album under that path"
+    assert not (tmp_path / "staging").exists(), "it is refused before anything is made"
