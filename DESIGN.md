@@ -3218,6 +3218,41 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      host is refused with the file to remove by hand, because a pid elsewhere means nothing here. A
      dry run takes none; a restore takes none and refuses under a live one.
 
+111. ✅ **What a collection's own values are, and what a dry run owes its owner** (2026-10-02, P87).
+   The first dry run over the real collection — 1,310 albums, 16,559 tracks, 2 h 52 min — reported
+   what the pass would do and, read against the tree, what it would not say:
+   - **two albums are never filed under one name.** Three sibling folders of a box set state one
+     album between them; the scheme gives all three the same name, so the first to move would own
+     it and the others would stay. The whole set is named and left as it is, before anything moves.
+     The same inside one folder: `rename` does not overwrite, so two tracks wanting one name left a
+     plan pointing at a file that was never written.
+   - **nothing with audio in it is passed over in silence.** 1,318 folders held audio and 1,310
+     were planned for; the other eight were simply absent from the output. Four were defects in
+     what counts as an album — a name beginning with an ellipsis is a name, `1-3` is disc one of
+     three, an empty disc folder is not a reason to refuse a box, an album one level too deep is
+     still somebody's — and the rest are the owner's own arrangements, now named with a reason and
+     a file count in a section both the dry run and the apply end with.
+   - **the names a take-in gives are the library's setting.** `--names` defaulted to `scheme` while
+     `rename_adopted` defaults to off and the page says so; a plain take-in would have renamed
+     2,847 files. The flag overrides, its absence asks the setting, and the run says which and why.
+   - **an adopted album's values are its owner's.** Title tidying is about video titles. Applied to
+     a folder's tags it took `(Live in Dresden)` out of 108 titles on live albums, left 7 as
+     `Lá í mbealtaine ( - Bonus Track)`, replaced `The Metropole Orchestra` with `Within
+     Temptation`, and would have written `2003` over `2003-01-01` in 336 files. Now noaap trims
+     whitespace, reads numbers its own way, sets the totals and fills what is **empty** — and
+     `tidy_adopted_tags`, off by default, is how a library asks for the rest.
+   - **a tag can be shorter than the name beside it.** 138 files state exactly thirty characters
+     because that is an ID3v1 field; the file name spells the song out. The name is the record
+     there, and nowhere else. Where a name really is too long, the album artist goes first and the
+     album second, because the folder says both; the title keeps forty characters and an ellipsis.
+   - **a file that is already right is not rewritten.** 455 files would have been copied, replaced
+     and verified to end up as they were, because the *plan* had no record of their tags. The
+     question is asked of the file now, and a leading zero is not an answer that costs a rewrite.
+   - **a dry run reads the files once and digests none of them.** 87% of the first run was `ffmpeg`
+     computing a packet digest an adoption never uses, because `_as_if` built a source of its own
+     and lost the flag that switches it off; the collection was also listed three times over. Same
+     output, 6.1× faster on the artist it was measured on.
+
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

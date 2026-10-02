@@ -333,6 +333,31 @@ noaap take-in /mnt/nas/Music --apply \
 noaap take-in /mnt/nas/Music --restore /mnt/nas/Music-snapshot.jsonl --apply   # the way back
 ```
 
+**The names are the library's own setting.** Without `--names`, `rename_adopted` decides — it is
+off, so a collection keeps the names its owner gave it — and the run's first lines say which is in
+force and where that came from. `--names scheme` or `--names keep` overrules it for that run.
+
+**What the files say is what the album is.** A folder's tags were written by somebody; noaap trims
+whitespace, reads numbers its own way, sets the track and disc totals and fills a field that is
+**empty** — and leaves everything else exactly as stated. No `(Live in Dresden)` taken out of a
+title, no artist replaced by the album's, no `2003-01-01` shortened to `2003`, no album renamed
+after its folder. The tidying a fetched album's titles get is a setting of its own,
+`tidy_adopted_tags`, off by default and applied by the next check or repair when you turn it on.
+
+**It never files two albums under one name.** Where two folders would become the same folder — a box
+set whose three parts all state one album — the set is named in one line and left as it is, in the
+dry run and in the apply alike. The same holds inside a folder for two tracks that would be given
+one filename.
+
+**And it names what it does not take in.** Every folder with audio in it that no album of the pass
+covers is listed at the end with the reason and the file count: hidden, one level too deep, refused
+by adoption, inside an album that is read as one album. A folder whose name begins with an ellipsis
+is an album like any other, `1-3` and `CD 1` are both disc folders, and an empty disc folder beside
+two full ones costs nothing.
+
+**A file that already holds what the plan wants is not rewritten** — not even to bring the plan's
+record up to date, and not for a leading zero on a track number.
+
 Each operation can be switched off for that run — `--names keep`, `--no-mb`, `--no-lyrics`,
 `--no-cover`, `--no-embed-cover`, `--no-embed-lyrics`, `--no-tags` — so eleven thousand tracks can be
 taken in quickly and looked up later. **Those switches are about tonight, not about the albums**: what
@@ -455,6 +480,11 @@ restoring under a run would undo what it is doing file by file. If a signal kill
 stays behind: the next run on the same machine asks the kernel whether that process still exists and
 takes the lock over when it does not. A lock left by **another** machine cannot be judged that way,
 so it is refused and the line names the file to remove by hand.
+
+**A dry run reads every album once.** It opens each file for its tags and for what it states today,
+and it digests nothing: the packet digest that ranks two copies of one recording is an ffmpeg pass
+over the whole file, which a run that only wants to adopt never needs. Measured on the user's own
+collection, a staged dry run that did digest everything spent 87% of its time in ffmpeg.
 
 Measured over a real NAS share at 41 MB/s: 2000 tracks took 1 h 40 min, which is about **9 hours for
 eleven thousand** — the collection crosses the wire three times, out, back, and once more to verify
