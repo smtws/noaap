@@ -167,10 +167,16 @@ def says_room(staging: Path, limit: int, free: int, where: str) -> str:
             f"batches of at most {limit / 1e9:.1f} GB")
 
 
-def album_sizes(root: Path, source: Any) -> list[tuple[Path, int]]:
-    """Every album folder under the root with the bytes it holds, in the order a pass would take them."""
+def album_sizes(root: Path, source: Any, albums: list[Path] | None = None) -> list[tuple[Path, int]]:
+    """Every album folder under the root with the bytes it holds, in the order a pass would take them.
+
+    **The listing is handed in where the caller already has it** (R-410, ruling 8). Reading it means
+    opening the first file of every album, which over the user's share costs 157 s for 1,311 of them;
+    doing it again here, and a third time for the collision check, was most of what a dry run spent
+    before it had read a single tag.
+    """
     out = []
-    for album in intake.albums_under(root, source):
+    for album in (albums if albums is not None else intake.albums_under(root, source)):
         out.append((album, sum(p.stat().st_size for p in album.rglob("*") if p.is_file())))
     return out
 
@@ -544,14 +550,17 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             f"restoring puts them back: {', '.join(Path(n).name for n in names[:3])}"
             + (" …" if len(names) > 3 else ""))
 
-    sized = album_sizes(root, source)
+    # **the collection is listed once** (R-410, ruling 8): the sizes, the collision check and the
+    # batches all read the same answer.
+    refs = intake.album_refs(root, source)
+    sized = album_sizes(root, source, [Path(ref.url) for ref in refs])
     # why each folder was passed over, for the section this pass ends with (R-410, ruling 2)
     why_refused: dict[str, str] = {}
     # **no two albums are filed under one name** (R-410, ruling 1), asked once for the whole
     # collection rather than per batch: two folders that would collide can fall in different batches,
     # and by the time the second one is reached the first has already moved.
     if choices.names == "scheme":
-        clashes = intake.folder_clashes(intake.album_refs(root, source), root)
+        clashes = intake.folder_clashes(refs, root)
         for line in intake.says_clashes(clashes, root):
             log(line)
             done.would.append(line)
