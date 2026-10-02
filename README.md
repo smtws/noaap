@@ -3,10 +3,11 @@
 [![tests](https://github.com/smtws/noaap/actions/workflows/tests.yml/badge.svg)](https://github.com/smtws/noaap/actions/workflows/tests.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-6b4fd8)](LICENSE)
 
-**Not Officially An Audio Player.** Turn YouTube playlists into properly tagged albums: the right
-artist and title on every track, album art, MusicBrainz data where it exists, and the audio copied
-without re-encoding. It comes with a command line and a small web app for the library — and with
-SoundCloud, Patreon and a folder you already have as further places music can come from.
+**Not Officially An Audio Player.** noaap keeps a music library in one state — every album properly
+tagged, with its cover, its lyrics and MusicBrainz data where they exist — whatever the music came
+from: a collection you already have on a disk or a NAS, a folder you drop files into, or a YouTube,
+SoundCloud or Patreon playlist fetched without re-encoding. A command line does the work; a small web
+app plays the library and lets you fix what the machine got wrong.
 
 It was called **ytalbum** up to 0.9.0; a machine set up as ytalbum keeps working without being told
 anything ([Coming from ytalbum](#coming-from-ytalbum)).
@@ -15,7 +16,7 @@ anything ([Coming from ytalbum](#coming-from-ytalbum)).
 
 ## Quick start
 
-From nothing to an album you can play. Everything else in this file is optional.
+From nothing to a library you can play. Everything else in this file is optional.
 
 ```sh
 sudo apt install ffmpeg                             # brew install ffmpeg on macOS
@@ -24,15 +25,32 @@ curl -LsSf https://astral.sh/uv/install.sh | sh     # if you do not have uv yet
 git clone https://github.com/smtws/noaap.git && cd noaap
 uv sync                                             # venv, dependencies, and Python 3.14 if you lack it
 
-uv run noaap config --library ~/Music/YouTube       # where albums go, once
-uv run noaap fetch "https://www.youtube.com/playlist?list=…"
-uv run noaap serve                                  # the library at http://localhost:8765
+uv run noaap config --library ~/Music/noaap         # where albums go, once
 ```
 
-That is a working library: tagged files on disk, a cover on each album, lyrics where LRCLIB has them,
-and a page to play and fix them in.
+Then one of two doors — and you can walk through both, into the same library.
 
-Three things you may need, in the order you are likely to meet them:
+**A collection you already have**, on a disk or a mounted share:
+
+```sh
+uv run noaap take-in /mnt/nas/Music                 # says what it would do, writes nothing
+uv run noaap take-in /mnt/nas/Music --apply \
+      --keep-originals ~/noaap-originals            # …and does it
+```
+
+**The dry run first, every time**: it names every album it would touch, and the three precautions
+that make the pass reversible are worth reading before you pass `--apply` — they are in
+[Taking a whole collection in](#taking-a-whole-collection-in). On a share add
+`--staging ~/noaap-staging`, which is both faster and safer there
+([When the collection is on a NAS](#when-the-collection-is-on-a-nas)).
+
+**A playlist**, from YouTube, SoundCloud or Patreon:
+
+```sh
+uv run noaap fetch "https://www.youtube.com/playlist?list=…"    # --dry-run prints the plan only
+```
+
+Three things you may need for YouTube, in the order you are likely to meet them:
 
 - **YouTube starts refusing requests** ("Sign in to confirm you're not a bot"), or a video is
   age-restricted. Both are the same fix — point noaap at a browser you are signed in to:
@@ -42,6 +60,15 @@ Three things you may need, in the order you are likely to meet them:
   small Node server, cloned once — see [Proof-of-origin tokens](#proof-of-origin-tokens).
 - **A JavaScript runtime for yt-dlp** ([Node](https://nodejs.org/) ≥ 20, [deno](https://deno.com/) or
   bun). `noaap config` says whether it found one, along with ffmpeg and the token helper.
+
+Either door ends in the same place, and one command serves it:
+
+```sh
+uv run noaap serve                                  # the library at http://localhost:8765
+```
+
+That is a working library: tagged files on disk, a cover on each album, lyrics where LRCLIB has them,
+and a page to play and fix them in.
 
 To have the web UI always there without a terminal (Linux):
 
@@ -1256,7 +1283,7 @@ one Digital Media medium, the tracklist with the lengths measured from your file
 and an edit note saying where it came from.
 
 **noaap submits nothing and holds no MusicBrainz account.** You are signed in as yourself, you
-check every field — the titles come from YouTube, and MusicBrainz wants releases that were really
+check every field — the titles come from the source, and MusicBrainz wants releases that were really
 released — and you press their button, or you close the tab. It is not offered for a release they
 already have, for a compilation, for somebody's artist playlist, or for an album with nothing
 downloaded; where it is not offered, the head says which of those it was.
@@ -1497,8 +1524,9 @@ Nothing outside this repository implements it yet; when something does, it gets 
   shape every version can read, which matters only if an older noaap or ytalbum still opens this
   library — what exactly was wrong, and on how many albums, is under
   [Coming from ytalbum](#coming-from-ytalbum).
-- **YouTube decides the quality.** Opus at 130–160 kbps, lossy, and from whatever the
-  uploader provided. No setting can make that better, and FLAC it will never be.
+- **YouTube decides the quality of what it fetches.** Opus at 130–160 kbps, lossy, and from
+  whatever the uploader provided. No setting can make that better, and a fetched album will never be
+  FLAC; a collection taken in keeps whatever its own files are.
 - **Some videos have no audio-only stream** (old or low-quality uploads). YouTube also
   withholds the audio formats now and then for videos that do have them, which looks
   identical — so noaap asks twice before believing it, and the dialog says to re-check the

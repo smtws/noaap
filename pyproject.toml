@@ -1,7 +1,7 @@
 [project]
 name = "noaap"
 version = "1.28.1"
-description = "Turn YouTube playlists into properly tagged Opus albums"
+description = "Keeps a music library in one state: tagged albums from collections, folders and playlists"
 authors = [
     { name = "Tordt", email = "info@smt-webservices.de" }
 ]
