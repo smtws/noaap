@@ -893,7 +893,7 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
                                      staging=Path(args.staging).expanduser(),
                                      batch_size=_bytes(args.batch_size), dry_run=not args.apply,
                                      resume=not args.no_resume, log=print)
-        return 1 if done.unverified else 0
+        return 1 if (done.unverified or done.stopped) else 0
     keep = Path(args.keep_originals).expanduser() if args.keep_originals else None
     done = intake.take_in(service, root, choices, dry_run=not args.apply,
                           snapshot=Path(args.snapshot).expanduser() if args.snapshot else None,

@@ -28,6 +28,7 @@ file until step 4 has verified its replacement, which is a stronger way back tha
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
 import os
@@ -110,6 +111,9 @@ class Staged:
     peak_staged: int = 0       # the most this machine held at once
     done: list[str] = field(default_factory=list)
     would: list[str] = field(default_factory=list)
+    # **why the run stopped, in one line a person can act on** (R-378). Set and the run is over; the
+    # share is untouched by the batch that could not be staged, and the same command resumes.
+    stopped: str = ""
     snapshots: list[str] = field(default_factory=list)   # the way back, one per batch, kept
 
 
@@ -265,6 +269,27 @@ def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
     return out
 
 
+class NoRoom(Exception):
+    """The staging filesystem cannot hold this batch — said in one line, never as a traceback.
+
+    The gate's disk-full scenario (R-378): the pass did stop clean and left the share exactly as it
+    was, but what a person read was twelve `[Errno 28]` tuples inside a `shutil.Error` and a stack
+    trace. A copy out that cannot finish is an ordinary answer to an ordinary question — is there
+    room — and the answer belongs in a sentence.
+    """
+
+
+def in_bytes(many: int) -> str:
+    """Bytes a person can read: GB for a batch of music, MB when the number would round to 0.00."""
+    return f"{many / 1e9:.2f} GB" if many >= 1e8 else f"{many / 1e6:.1f} MB"
+
+
+def says_no_room(batch: Batch, free: int, staging: Path, where: str) -> str:
+    return (f"{where} has {in_bytes(free)} free and this batch needs {in_bytes(batch.bytes)} "
+            f"in {staging}. Nothing was copied and nothing on the share was touched. Free some "
+            "space and run the same command again — it carries on where it stopped.")
+
+
 def _owed_folders(staging: Path, root: Path, known: dict[str, Recorded]) -> set[str]:
     """Every folder a batch that did not finish is still owed, under the root."""
     out: set[str] = set()
@@ -362,7 +387,14 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         known[key] = Recorded(key=key, snapshot=snapshot.name,
                               albums=[str(album.relative_to(root)) for album in batch.albums])
         write_index(where, root, known)
-        _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
+        try:
+            _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
+        except NoRoom as e:
+            # the one line, and the run is over. No traceback: there is nothing here a stack says
+            # that the sentence does not.
+            done.stopped = str(e)
+            log(f"⚠ {done.stopped}")
+            return done
         known[key] = replace(known[key], done=True, became=sorted(
             intake.read_made(intake.made_path(snapshot), root, folders=True)))
         write_index(where, root, known)
@@ -371,6 +403,13 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         f"{done.copied_out / 1e9:.1f} GB from the share, {done.copied_back / 1e9:.1f} GB back")
     if done.superseded:
         log(f"{len(done.superseded)} file(s) the scheme replaced were removed from the share")
+    if done.changed_meanwhile:
+        # the run's total, said once (R-379), with the names, because this is the one thing in the
+        # whole pass that somebody else's hand caused and the owner may want to look at it
+        log(f"{len(done.changed_meanwhile)} file(s) were changed on the share by something else "
+            "while this ran and were left exactly as they are: "
+            + ", ".join(done.changed_meanwhile[:3])
+            + (" …" if len(done.changed_meanwhile) > 3 else ""))
     if done.unverified:
         log(f"⚠ {len(done.unverified)} file(s) could not be verified after the copy back — "
             "the share's own file was left in place")
@@ -463,10 +502,30 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     here = staging / "batch"
     if here.exists():
         shutil.rmtree(here)       # our own staging folder from a run that stopped; the share is intact
+    # **asked before the first copy, every batch** (R-378, ruling 2). The filesystem is measured once
+    # at the start of the run and a batch size may be given by hand, and neither knows what is free
+    # *now* — something else on the machine may have filled the disk since, and an explicit
+    # `--batch-size` is a wish rather than a measurement. A batch that cannot fit is refused rather
+    # than attempted: the alternative is the copy out dying partway, which is what it did.
+    free, where = free_space(staging)
+    if batch.bytes > free:
+        raise NoRoom(says_no_room(batch, free, staging, where))
     for album in batch.albums:
         inside = here / album.relative_to(root)
         inside.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(album, inside)
+        try:
+            shutil.copytree(album, inside)
+        except (OSError, shutil.Error) as e:
+            # one line, not a tuple per file. ENOSPC is the one this was built for; anything else the
+            # copy out can raise — a share that went away, a permission — gets its own text and the
+            # same promise, because the batch has not been written back and the share is untouched.
+            left, said = free_space(staging)
+            if _out_of_space(e):
+                raise NoRoom(says_no_room(batch, left, staging, said)) from e
+            raise NoRoom(
+                f"the batch could not be copied to {staging}: {_first_reason(e)}. Nothing was "
+                "written back and nothing on the share was touched. The same command resumes."
+            ) from e
         done.copied_out += sum(p.stat().st_size for p in inside.rglob("*") if p.is_file())
     held = sum(p.stat().st_size for p in here.rglob("*") if p.is_file())
     done.peak_staged = max(done.peak_staged, held)
@@ -615,6 +674,11 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # recorded path that is not. So the pass promised "nothing of theirs was replaced" and removed
     # their file from the album; the store had it, and only a restore put it back (I-247, R-380).
     theirs: set[str] = set()
+    # **and this batch's own list, so the line this batch prints is about this batch** (R-379).
+    # `done` carries the whole run, so counting it there made every later batch repeat "1 file(s)
+    # were changed on the share while this ran" about a file of the first batch: four batches, four
+    # identical lines, one file. The run's total is said once, at the end.
+    mine: list[str] = []
     # **the share decides what "the same name" means, so it is asked once and used everywhere here.**
     # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
     # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
@@ -642,6 +706,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             known = recorded(name)
             if target.is_file() and _moved_on(target, was.get(known) if known else None):
                 done.changed_meanwhile.append(name)
+                mine.append(name)
                 # by both spellings: the name the staged copy wants and the name the snapshot
                 # recorded, which on a folding share can differ in case
                 theirs.add(name)
@@ -661,9 +726,9 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             else:
                 done.unverified.append(name)
         log(f"  {inside}: back on the share")
-    if done.changed_meanwhile:
-        log(f"  {len(done.changed_meanwhile)} file(s) were changed on the share while this ran "
-            "and were left exactly as they are; nothing of theirs was replaced")
+    if mine:
+        log(f"  {len(mine)} file(s) of this batch were changed on the share while it ran and were "
+            "left exactly as they are; nothing of theirs was replaced")
     if done.unverified:
         log(f"  ⚠ {len(done.unverified)} file(s) did not match after the copy — nothing of the "
             "share's own was removed, and every original is still there")
@@ -706,6 +771,26 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
         log(f"  removed the empty folder {folder.relative_to(root)}")
 
 
+def _out_of_space(e: BaseException) -> bool:
+    """Whether this is the disk being full, however the copy wrapped it."""
+    if isinstance(e, OSError) and e.errno == errno.ENOSPC:
+        return True
+    return isinstance(e, shutil.Error) and any(
+        f"[Errno {errno.ENOSPC}]" in str(part) for row in e.args for part in (row if
+                                                                              isinstance(row, (list, tuple))
+                                                                              else [row]))
+
+
+def _first_reason(e: BaseException) -> str:
+    """One reason out of an exception that may carry one per file."""
+    if isinstance(e, shutil.Error) and e.args and e.args[0]:
+        first = e.args[0][0] if isinstance(e.args[0], (list, tuple)) else e.args[0]
+        if isinstance(first, (list, tuple)) and len(first) >= 3:
+            return str(first[2])
+        return str(first)
+    return str(e) or e.__class__.__name__
+
+
 def _same(one: Path, two: Path) -> bool:
     """Whether two paths are the same file, whatever the filesystem thinks a name is."""
     try:
@@ -718,6 +803,7 @@ __all__ = [
     "PART",
     "STAGED",
     "Batch",
+    "NoRoom",
     "Recorded",
     "Restored",
     "Staged",
@@ -726,6 +812,7 @@ __all__ = [
     "batch_key",
     "batches",
     "free_space",
+    "in_bytes",
     "orphans_in_store",
     "read_index",
     "restore_all",

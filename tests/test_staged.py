@@ -8,6 +8,7 @@ it like many filemanagers do)"*.
 
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 from pathlib import Path
@@ -353,15 +354,17 @@ def already_named(tmp_path, one_second_of_sound) -> Path:
     same key and meets its own snapshot, instead of finding a new folder beside the old one.
     """
     root = tmp_path / "share"
-    folder = root / "Aphelion" / "Nocturnes"
-    folder.mkdir(parents=True)
-    for n, title in enumerate(["First", "Second"], 1):
-        path = folder / f"Aphelion - Nocturnes - {n:02d} - {title}.opus"
-        shutil.copy(one_second_of_sound, path)
-        audio = MFile(path)
-        audio["title"], audio["artist"], audio["album"] = [title], ["Aphelion"], ["Nocturnes"]
-        audio["albumartist"], audio["tracknumber"] = ["Aphelion"], [str(n)]
-        audio.save()
+    for artist, album, titles in [("Aphelion", "Nocturnes", ["First", "Second"]),
+                                  ("Bramblewood", "Hollow", ["Hollow", "Rime"])]:
+        folder = root / artist / album
+        folder.mkdir(parents=True)
+        for n, title in enumerate(titles, 1):
+            path = folder / f"{artist} - {album} - {n:02d} - {title}.opus"
+            shutil.copy(one_second_of_sound, path)
+            audio = MFile(path)
+            audio["title"], audio["artist"], audio["album"] = [title], [artist], [album]
+            audio["albumartist"], audio["tracknumber"] = [artist], [str(n)]
+            audio.save()
     return root
 
 
@@ -451,6 +454,107 @@ def test_a_file_somebody_else_changed_stays_on_the_share(already_named, tmp_path
     assert (elsewhere / name).read_bytes().endswith(b"\0" * 64), "with their change in it"
     assert name not in done.superseded, "and the pass does not call it something the scheme replaced"
     assert name not in done.aside
+
+
+def test_a_batch_bigger_than_the_free_space_is_refused_before_the_first_copy(elsewhere, tmp_path,
+                                                                             monkeypatch):
+    """R-378, ruling 2. The filesystem is measured once at the start of a run and the batch size may
+    be given by hand; neither knows what is free when the batch is actually copied."""
+    staging = tmp_path / "staging"
+    was = {str(q.relative_to(elsewhere)): q.read_bytes()
+           for q in sorted(elsewhere.rglob("*")) if q.is_file()}
+    real_space = staged.free_space
+
+    def nearly_full(path: Path) -> tuple[int, str]:
+        free, where = real_space(path)
+        return (free, where) if path != staging else (1 << 10, "/dev/nothing on /nowhere")
+
+    monkeypatch.setattr(staged, "free_space", nearly_full)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=10**9, dry_run=False, log=lambda s: None)
+
+    assert done.stopped, "the run says why it stopped"
+    assert "free" in done.stopped and "needs" in done.stopped
+    assert "run the same command again" in done.stopped, done.stopped
+    assert done.done == [] and done.copied_out == 0, "and nothing was copied out"
+    assert {str(q.relative_to(elsewhere)): q.read_bytes()
+            for q in sorted(elsewhere.rglob("*")) if q.is_file()} == was, \
+        "the share is exactly as it was, byte for byte"
+    assert not (staging / "batch").exists()
+
+
+def test_the_disk_filling_during_the_copy_out_is_one_line_and_not_a_traceback(elsewhere, tmp_path,
+                                                                             monkeypatch):
+    """R-378, ruling 1. `shutil.copytree` raises one tuple per file inside a `shutil.Error`; the
+    gate's scenario ended in a stack trace listing twelve of them. The share was untouched and the
+    pass did stop clean — but a person cannot read that."""
+    staging = tmp_path / "staging"
+    was = {str(q.relative_to(elsewhere)): q.read_bytes()
+           for q in sorted(elsewhere.rglob("*")) if q.is_file()}
+    real_tree = shutil.copytree
+
+    def full_disk(src, dst, *args, **kw):
+        real_tree(src, dst, *args, **kw)       # the files land, then the filesystem says no more
+        raise shutil.Error([(str(src), str(dst), f"[Errno {errno.ENOSPC}] No space left on device")])
+
+    monkeypatch.setattr(staged.shutil, "copytree", full_disk)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert done.stopped and "free" in done.stopped
+    assert "run the same command again" in done.stopped, done.stopped
+    assert "Errno" not in done.stopped and "Traceback" not in done.stopped
+    assert done.done == []
+    assert {str(q.relative_to(elsewhere)): q.read_bytes()
+            for q in sorted(elsewhere.rglob("*")) if q.is_file()} == was
+
+
+def test_any_other_failure_in_the_copy_out_says_its_own_reason(elsewhere, tmp_path, monkeypatch):
+    """Not only ENOSPC: a share that goes away, a permission. One line, its own text, same promise."""
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(staged.shutil, "copytree",
+                        lambda *a, **kw: (_ for _ in ()).throw(PermissionError(13, "Permission denied")))
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert "Permission denied" in done.stopped and "nothing on the share was touched" in done.stopped
+    assert "Traceback" not in done.stopped
+
+
+def test_the_batch_that_says_a_file_changed_is_the_batch_it_happened_in(already_named, tmp_path,
+                                                                        monkeypatch):
+    """R-379. The count lived on the whole run, so every later batch repeated the first batch's line:
+    four batches, four identical sentences, one file. The per-batch line is that batch's; the run
+    says its total once, with the names."""
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    lines: list[str] = []
+    real_back = staged._copy_back
+    touched: list[str] = []
+
+    def somebody_else_first(root, here, recorded, done, log, sweep=False):
+        """Change one of this batch's files on the share, the way another program would."""
+        if not touched:
+            for name in sorted(recorded):
+                target = root / name
+                if target.is_file() and target.suffix.lower() == ".opus":
+                    with target.open("ab") as fh:
+                        fh.write(b"\0" * 64)
+                    touched.append(name)
+                    break
+        return real_back(root, here, recorded, done, log, sweep=sweep)
+
+    monkeypatch.setattr(staged, "_copy_back", somebody_else_first)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lines.append)
+
+    assert touched and done.changed_meanwhile == touched
+    per_batch = [line for line in lines if "file(s) of this batch were changed" in line]
+    assert len(per_batch) == 1, per_batch
+    whole_run = [line for line in lines if "while this ran and were left exactly as they are" in line]
+    assert len(whole_run) == 1 and touched[0] in whole_run[0], whole_run
+    assert (elsewhere / touched[0]).read_bytes().endswith(b"\0" * 64), \
+        "and their change is still there, untouched"
 
 
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
