@@ -535,6 +535,16 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             + (" …" if len(names) > 3 else ""))
 
     sized = album_sizes(root, source)
+    # **no two albums are filed under one name** (R-410, ruling 1), asked once for the whole
+    # collection rather than per batch: two folders that would collide can fall in different batches,
+    # and by the time the second one is reached the first has already moved.
+    if choices.names == "scheme":
+        clashes = intake.folder_clashes(intake.album_refs(root, source), root)
+        for line in intake.says_clashes(clashes, root):
+            log(line)
+            done.would.append(line)
+        if clashing := {folder for folders in clashes.values() for folder in folders}:
+            sized = [(album, size) for album, size in sized if album not in clashing]
     # **an album that already holds a plan was taken in by an earlier pass**, and the way to bring it
     # to changed settings is a repair, which needs no staging. Skipping it here is what makes a
     # staged run idempotent across the renames it does itself: a batch's name cannot survive its own

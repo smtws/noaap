@@ -604,6 +604,21 @@ def safe_name(name: str) -> str:
     return name or "_"
 
 
+def clashing_names(plan: AlbumPlan) -> dict[str, list[PlanTrack]]:
+    """The names two or more of this album's tracks would both be given (R-410, ruling 1).
+
+    A rename that lands on a name another track already took does not happen — `old.rename(new)` is
+    guarded — so the file keeps its name while the plan records the one it did not get. Two tracks
+    wanting one name is the owner's folder telling us something (two files, one number, or a title
+    cut to the same stub), and the answer is to leave the album's names alone and say so.
+    """
+    by: dict[str, list[PlanTrack]] = {}
+    for track in plan.tracks:
+        if track.state == "done":
+            by.setdefault(wanted_filename(plan, track), []).append(track)
+    return {name: tracks for name, tracks in by.items() if len(tracks) > 1}
+
+
 def track_filename(
     albumartist: str, album: str, number: int, artist: str | None, title: str, disc: int | None = None, ext: str = "opus"
 ) -> str:

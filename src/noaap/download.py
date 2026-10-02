@@ -32,7 +32,7 @@ from .lyrics import (
     write_sidecar,
 )
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
-from .plan import refresh_derived, wanted_filename, wanted_folder
+from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folder
 from .precautions import empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
@@ -535,6 +535,12 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     said: list[str] = []
     # what the library is set to want, narrowed by this album's own exceptions (§9, slice 100)
     rename, retag = renames(plan, want), retags(plan, want)
+    # **two tracks that would get one name**: the album keeps its own names, and says which (R-410)
+    if rename and (clashes := clashing_names(plan)):
+        for name, tracks in sorted(clashes.items()):
+            said.append(f"⚠ {', '.join(str(t.number) for t in tracks)} would all be called {name} "
+                        "— the album keeps its own names")
+        rename = False
     # **a cover beside the album is a line of its own** (§9, slice 101). Whether one can be found is
     # the same work as finding it — for an adopted album, reading its files until a picture turns up —
     # so the dry run says what would be asked and does not promise the answer.
@@ -708,6 +714,11 @@ def run(
     parts = album_dir / PARTS_DIR
 
     rename, retag = renames(plan, want), retags(plan, want)
+    # **the same answer the dry run gave** (R-410, ruling 1): where two tracks want one name the
+    # album is not renamed at all, rather than renaming whichever the loop reaches first and
+    # recording a name the other file never got.
+    if rename and clashing_names(plan):
+        rename = False
     if want is not None and not want.cover_embedded:
         cover = None          # the picture stays beside the album, not inside every file
     emptied: set[Path] = set()   # disc folders the renames below take the last file out of

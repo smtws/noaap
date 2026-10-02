@@ -21,7 +21,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +32,7 @@ from . import precautions, sources
 from .download import load_plan, relocate, run, save_plan, would_do
 from .enrich import enrich
 from .models import AlbumPlan
+from .plan import safe_name
 from .treatment import Treatment
 
 STATE = "take-in.json"      # the suffix; the name is the snapshot's own (see `state_path`)
@@ -169,13 +170,48 @@ def write_state(path: Path, root: Path, done: set[str]) -> None:
     os.replace(tmp, path)
 
 
+def album_refs(root: Path, source: Any) -> list[Any]:
+    """Every album folder as the source saw it, in one settled order — the names included.
+
+    The listing already reads the first file of every folder, so what an album calls itself is known
+    before anything is adopted. That is what makes the collision check below cost nothing.
+    """
+    return sorted(source.listing(str(root)), key=lambda ref: ref.url)
+
+
 def albums_under(root: Path, source: Any) -> list[Path]:
     """Every album folder, artist by artist, in one settled order — so a resume is predictable."""
-    return sorted(Path(ref.url) for ref in source.listing(str(root)))
+    return [Path(ref.url) for ref in album_refs(root, source)]
+
+
+def folder_clashes(refs: Iterable[Any], root: Path) -> dict[str, list[Path]]:
+    """`{the one folder: the albums that would all become it}` (R-410, ruling 1).
+
+    Three sibling folders of a box set — `… - Gestern`, `… - Heute`, `… - Morgen` — state one album
+    between them, so the scheme gives all three the same name. Whichever moved first would own the
+    folder and the others would stay where they are, half the box filed and half not, with three
+    plans aimed at one directory. None of them moves: the set is named and left as it is.
+    """
+    want: dict[str, list[Path]] = {}
+    for ref in refs:
+        folder = Path(ref.url)
+        artist = (ref.artist or folder.parent.name).strip()
+        want.setdefault(f"{safe_name(artist)}/{safe_name((ref.title or folder.name).strip())}",
+                        []).append(folder)
+    return {target: folders for target, folders in want.items()
+            if len(folders) > 1 and any(str(f.relative_to(root)) != target for f in folders)}
+
+
+def says_clashes(clashes: dict[str, list[Path]], root: Path) -> list[str]:
+    """One line per set, naming every folder in it."""
+    return [f"⚠ {', '.join(str(f.relative_to(root)) for f in folders)} would all become {target} "
+            "— left as they are"
+            for target, folders in sorted(clashes.items())]
 
 
 def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run: bool = True,
             snapshot: Path | None = None, keep: Path | None = None, resume: bool = True,
+            say_leftovers: bool = True,
             log: Callable[[str], None] = lambda s: None) -> Progress:
     """Adopt every album under `root`, look it up, and bring it to the chosen state.
 
@@ -192,9 +228,21 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     # 43.8 GB from the device and 172 s — the whole collection, for a dry run.
     source.digests = False
     done = Progress()
-    folders = albums_under(root, source)
+    refs = album_refs(root, source)
+    folders = [Path(ref.url) for ref in refs]
     log(f"{len(folders)} album folder(s) under {root}")
     log(f"  {choices.says()}")
+    # **no two albums are filed under one name** (R-410, ruling 1). Asked before the first move, off
+    # the listing that has already been read, so the whole set is named while every one of them is
+    # still where its owner put it.
+    clashing: set[Path] = set()
+    if want.rename_adopted:
+        found = folder_clashes(refs, root)
+        for line in says_clashes(found, root):
+            log(line)
+            if dry_run:
+                done.would.append(line)
+        clashing = {folder for folders_ in found.values() for folder in folders_}
 
     snapshot = snapshot or precautions.snapshot_for(root)
     state, made_at = state_path(snapshot), made_path(snapshot)
@@ -222,6 +270,9 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             continue
         service.check()
         done.albums += 1
+        if album_dir in clashing:
+            done.refused.append(where)
+            continue
         # what is in the folder besides its audio, before this pass has written anything into it
         was_beside = beside(album_dir)
         plan = _adopted(album_dir, root, source, log=log)
