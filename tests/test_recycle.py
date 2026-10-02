@@ -352,6 +352,62 @@ def test_a_number_taken_while_the_track_was_gone_has_the_disc_counted_again(libr
     assert numbers == list(range(1, len(plan.tracks) + 1))
 
 
+def test_where_the_files_state_the_numbers_nobody_elses_number_moves(tmp_path):
+    """P85, from I-284. Since R-373 only the user's own reorder moves a number, so the one way the
+    freed number can be taken while a track sits in the bin is that they dragged a row into the gap.
+    Counting the disc off for that writes a wrong position into an adopted rip: measured on 01, 02,
+    04 of 5, a track whose file says `4/5` came back as 2.
+    """
+    from test_folder_source import encode
+
+    from noaap import adopt, sources
+    from noaap.plan import states_numbers
+
+    def folder():
+        return sources.get("folder", Config())
+
+    album = tmp_path / "A Band" / "A Gapped Album"
+    for n, title in [(1, "One"), (2, "Two"), (4, "Four")]:
+        encode(album / f"{n:02d} - {title}.mp3", title=title, artist="A Band",
+               album="A Gapped Album", album_artist="A Band", track=f"{n}/5")
+    adopt.carry_out(adopt.survey(tmp_path, tmp_path, folder()))
+    s = Service(Config(library_root=tmp_path, musicbrainz=False, lyrics=False), tmp_path,
+                log=lambda x: None)
+    plan = load_plan(album)
+    assert states_numbers(plan), "a folder album: the files are the authority"
+    assert [(t.title, t.number) for t in plan.tracks] == [("One", 1), ("Two", 2), ("Four", 4)]
+
+    one = next(t for t in plan.tracks if t.title == "One")
+    s.delete_track(plan.source_id, one.video_id)
+    meanwhile = load_plan(album)
+    meanwhile.tracks[0].number = 1          # the user drags a row into the gap it left
+    save_plan(meanwhile, album)
+
+    s.restore(entries(tmp_path)[0].id)
+
+    back = {t.title: t.number for t in load_plan(album).tracks}
+    assert back["One"] == 2, "the lowest number still free on its disc"
+    assert back["Two"] == 1 and back["Four"] == 4, "and nobody else's number moved"
+
+
+def test_a_fetched_album_still_counts_the_disc_off_when_the_number_was_taken(library):
+    """The other half: where nothing states a number, the position in the source is all one ever
+    was, so the disc is counted again exactly as before."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    s = service(tmp_path, yt)
+    first = plan.tracks[0]
+    s.delete_track(plan.source_id, first.video_id)
+    meanwhile = load_plan(album_dir)
+    meanwhile.tracks[0].number = 1
+    save_plan(meanwhile, album_dir)
+
+    s.restore(entries(tmp_path)[0].id)
+
+    numbers = [t.number for t in load_plan(album_dir).tracks]
+    assert numbers == list(range(1, len(plan.tracks) + 1)), numbers
+
+
 def test_a_binned_cover_is_called_a_cover(library):
     tmp_path, plan, yt = library
     (tmp_path / plan.folder / "cover.jpg").write_bytes(b"\xff\xd8\xff art")

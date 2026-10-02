@@ -1952,6 +1952,15 @@ class Service:
         save_plan(plan, album_dir)
         return self.execute(plan, album_dir)  # renames and retags the rest
 
+    @staticmethod
+    def _lowest_free(plan: AlbumPlan, track: PlanTrack) -> int:
+        """The lowest number not already used on this track's disc, counting from 1."""
+        taken = {t.number for t in plan.tracks if t is not track and t.disc == track.disc}
+        number = 1
+        while number in taken:
+            number += 1
+        return number
+
     def _bin(self, album_dir: Path, plan: AlbumPlan, track: PlanTrack, reason: str, *,
              audio: Path | None = None, ranking: dict[str, Any] | None = None) -> Path | None:
         """Move a track's files to the bin. Without a library root there is nowhere to put them,
@@ -2150,7 +2159,18 @@ class Service:
                 after[0] if after else (same_disc[-1] + 1 if same_disc else len(plan.tracks)), track)
             if any(t is not track and t.disc == track.disc and t.number == track.number
                    for t in plan.tracks):
-                arrange(plan)   # its number was taken while it was gone: the disc is counted again
+                # **somebody took the number while it was in the bin**, which since R-373 can only be
+                # the user's own reorder. Where the *files* state the numbers (R-375) the disc may not
+                # be counted off for that: measured on an adopted rip of 01, 02, 04, restoring a
+                # track whose file says `4/5` gave it 2. So it takes the lowest number still free on
+                # its disc and **nobody else's number moves**; for an album noaap fetched, where the
+                # position in the source is all a number ever was, the disc is counted again as before.
+                if states_numbers(plan):
+                    track.number = self._lowest_free(plan, track)
+                    self.log(f"{track.title} came back as {track.number:02d}: the number it had was "
+                             "taken while it was in the bin")
+                else:
+                    arrange(plan)
         save_plan(plan, album_dir)
         if not said:
             shutil.rmtree(entry.path, ignore_errors=True)
