@@ -1417,6 +1417,7 @@ and two things can never rename the same album at once.
 | `lyrics_embedded` | `true` | The words in the file's tag, beside the `.lrc`. |
 | `rename_adopted` | `false` | Rename albums taken in where they stood into noaap's scheme. |
 | `retag_adopted` | `false` | Write noaap's tags into them — never removing a field noaap does not model. |
+| `tidy_adopted_tags` | `false` | Off, an adopted album's values mean what they say: no `(Live in Dresden)` taken out of a title, no artist replaced by the album's, no `2003-01-01` shortened to `2003`, and the album's name is the one its files state. On, they get the same tidying a fetched album's titles get, from the next check or repair. |
 | `lyrics` | `true` | Fetch lyrics from lrclib.net (`.lrc` beside the file + `LYRICS` tag). |
 | `concurrency` | `2` | Parallel YouTube requests. More trips the bot check sooner. |
 | `pot_mode` | `"server"` | Token helper: `server` (started on demand), `script`, `off`. |

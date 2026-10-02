@@ -493,6 +493,18 @@ def signature(plan: AlbumPlan, track: PlanTrack, cover: bytes | None, lyrics: st
 # (§9, slice 53) — for a downloaded file there is nothing to lose, so the rule is opt-in.
 KEEP_IF_PRESENT = ("lyrics", "musicbrainz_albumid", "musicbrainz_trackid")
 
+
+def kept_from_the_file(plan: AlbumPlan) -> tuple[str, ...]:
+    """The keys a file answers better than the plan does.
+
+    For an adopted album that includes **`date`** (R-410, ruling 5): a plan carries a year, and the
+    file may carry `2003-01-01` or `2022-06-24`. Writing the year back would throw the month and the
+    day away — 336 files of the user's collection — for a value that says the same thing less well.
+    """
+    if getattr(plan, "adopted", None) and not getattr(plan, "tidy_tags", False):
+        return (*KEEP_IF_PRESENT, "date")
+    return KEEP_IF_PRESENT
+
 ID3_KEYS = {  # Vorbis comment -> ID3 frame. `source` is a TXXX rather than COMM on purpose:
     "title": "TIT2",            # COMM is where people keep their own notes, and this must not
     "artist": "TPE1",           # land on top of one.
@@ -537,7 +549,7 @@ def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown:
     """The tags to write: all of them, or all but the ones this file already answers better."""
     tags = build_tags(plan, track, lyrics)
     if keep_unknown:
-        for key in KEEP_IF_PRESENT:
+        for key in kept_from_the_file(plan):
             if present(key):
                 tags.pop(key, None)
     return tags

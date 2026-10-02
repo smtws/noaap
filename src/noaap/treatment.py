@@ -31,7 +31,7 @@ from typing import Any
 
 # every switch that describes the state an album should be in, in the order a person reads them
 OPERATIONS = ("musicbrainz", "lyrics", "cover_beside", "cover_embedded", "lyrics_embedded",
-              "rename_adopted", "retag_adopted")
+              "rename_adopted", "retag_adopted", "tidy_adopted_tags")
 
 SAYS = {
     "musicbrainz": "looked up at MusicBrainz",
@@ -41,6 +41,7 @@ SAYS = {
     "lyrics_embedded": "the words in the files",
     "rename_adopted": "adopted albums renamed into noaap's scheme",
     "retag_adopted": "adopted albums' tags rewritten",
+    "tidy_adopted_tags": "adopted albums' values tidied as a fetched album's are",
 }
 
 # what a person may except one album from, and what each exception means
@@ -65,6 +66,7 @@ class Treatment:
     lyrics_embedded: bool = True
     rename_adopted: bool = False   # an adopted album keeps its owner's names unless this says otherwise
     retag_adopted: bool = False    # …and its owner's tags
+    tidy_adopted_tags: bool = False  # …and its owner's values mean what they say (R-410, ruling 5)
 
     @staticmethod
     def from_settings(cfg: Any) -> Treatment:

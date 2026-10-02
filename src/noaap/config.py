@@ -142,6 +142,10 @@ class Config:
     lyrics_embedded: bool = True     # the words in the file's tag, beside the .lrc
     rename_adopted: bool = False     # rename an adopted album's files into noaap's scheme
     retag_adopted: bool = False      # and write noaap's tags into them
+    # **what an adopted album's values are read as** (R-410, ruling 5). Off, a folder's tags mean
+    # what they say: no title tidied, no artist replaced by the album's, no date shortened to its
+    # year. On, the tidying a fetched album gets is applied to them too, by the next pass.
+    tidy_adopted_tags: bool = False
     # **whether a pass may clear empty folders that are not of its own making** (§9, slice 104).
     # The user: *"maybe we should make clear empty folders a setting?"*. Off, a pass removes only
     # the folders it emptied itself — which is what stopped it deleting `Der W/Autonomie`, empty
@@ -266,6 +270,7 @@ def load(path: Path | None = None) -> Config:
         lyrics_embedded=bool(data.get("lyrics_embedded", True)),
         rename_adopted=bool(data.get("rename_adopted", False)),
         retag_adopted=bool(data.get("retag_adopted", False)),
+        tidy_adopted_tags=bool(data.get("tidy_adopted_tags", False)),
         remove_empty_folders=bool(data.get("remove_empty_folders", False)),
     )
     if root := data.get("library_root"):

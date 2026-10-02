@@ -942,6 +942,10 @@ export const STATE_SWITCHES = [
    "off by default: a collection taken in keeps the names its owner gave it"],
   ["retag_adopted", "Write noaap's tags into albums taken in where they stood",
    "off by default, and it never removes a field noaap does not model"],
+  ["tidy_adopted_tags", "Tidy the values of albums taken in where they stood",
+   "off by default: what their tags say is what they mean — no `(Live in Dresden)` taken out of a "
+   + "title, no artist replaced by the album's, no `2003-01-01` cut to `2003`. On, they get the "
+   + "same tidying a fetched album does, from the next check or repair"],
 ];
 
 export const EXCEPTION_LABELS = {

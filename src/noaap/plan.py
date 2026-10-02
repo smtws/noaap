@@ -90,6 +90,18 @@ DEFAULT_ORIGINS = {"tags": Provenance.SOURCE_TAGS, "title": Provenance.SOURCE_TI
                    "collection": Provenance.COLLECTION}
 
 
+def tidies(source: Any = None) -> bool:
+    """Whether this source's stated values may be tidied (R-410, ruling 5).
+
+    A video title carries conventions — a label suffix, "(Official Video)", the artist in front of
+    the song — and stripping them is what makes a playlist into an album. **A folder's tags carry
+    none of that**: somebody wrote them, and "Wir sind allein (Live in Dresden)" is the name of that
+    recording, not noise. The folder source answers False unless the library asks for the tidying
+    anyway (`tidy_adopted_tags`); everything else answers True, as it always did.
+    """
+    return bool(getattr(_source(source), "tidy_entries", True))
+
+
 def origins(source: Any = None) -> dict[str, str]:
     """Which provenance names this source's evidence carries (§9, slice 53)."""
     naming = getattr(_source(source), "origins", None)
@@ -206,11 +218,17 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
     entries = usable_entries(collection, source)
     album_prov: dict[str, str] = {}
     named_origin = origins(source)
+    tidy = tidies(source)
 
     if kind == Kind.COMPILATION:
         albumartist = collection.channel or "Various Artists"
         album = compilation_album_title(collection.title, albumartist)
         album_prov = {"albumartist": named_origin["collection"], "album": named_origin["collection"]}
+        # **what the files state is what the album is called** (R-410, ruling 5). A folder of music
+        # by many hands is still an album somebody tagged, and the folder's name is a worse record
+        # of it than the tag in every file.
+        if not tidy and (shared_album := _shared([e.music.album for e in entries])):
+            album, album_prov["album"] = shared_album, named_origin["tags"]
         year = None
     else:
         named = [(a, track_artist(e, source)[1]) for e in entries if (a := named_artist(e, collection, source))]
@@ -242,14 +260,18 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
         if not named and (credited := title_by_artist(title)):
             # the uploader is not the artist, the title credits them: "… by The Editors"
             artist, title, named = credited[0], credited[1], credited[0]
-        if kind != Kind.COMPILATION:
+        if kind != Kind.COMPILATION and tidy:
             # the album's own artist, not the channel handle or the album title read as a name
             # (the guest credit stays on for move_feat, which puts it into the title below)
             stripped = _without_collection_title(artist, collection.title) if named else None
             artist, artist_prov = (stripped, artist_prov) if stripped else (albumartist, named_origin["collection"])
-        title = strip_leading_artist(artist, title)  # "Metallica: Nothing Else Matters"
-        artist, title = move_feat(artist, title)  # guests belong in the title
-        title = strip_self_feat(artist, title)
+        elif kind != Kind.COMPILATION and not named:
+            # **a field that is empty is filled; one that is written is left** (R-410, ruling 5)
+            artist, artist_prov = albumartist, named_origin["collection"]
+        if tidy:
+            title = strip_leading_artist(artist, title)  # "Metallica: Nothing Else Matters"
+            artist, title = move_feat(artist, title)  # guests belong in the title
+            title = strip_self_feat(artist, title)
         tracks.append(
             PlanTrack(
                 video_id=entry.video_id,
@@ -272,7 +294,8 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             )
         )
 
-    drop_album_name(album, tracks)
+    if tidy:
+        drop_album_name(album, tracks)
 
     skipped = [
         {"video_id": e.video_id, "title": e.title, "reason": reason} | ({"transient": True} if e.transient else {})

@@ -376,10 +376,27 @@ def test_an_untagged_album_is_recovered_and_says_where_from(tmp_path, source):
 
     assert plan.albumartist == "Feuerschwanz" and plan.album == "Drachentanz (Live 2008)"
     assert plan.provenance["albumartist"] == Provenance.FILE_NAME
+    assert [t.title for t in plan.tracks] == titles, \
+        "what the names state is what the tracks are called (R-410, ruling 5)"
+    assert all(t.provenance["title"] == Provenance.FILE_NAME for t in plan.tracks)
+
+
+def test_the_album_s_name_is_taken_out_of_the_titles_where_the_library_asks(tmp_path, source):
+    """`tidy_adopted_tags` is what a fetched album gets, applied to a folder's values (R-410)."""
+    from noaap.plan import build_plan
+
+    folder = tmp_path / "Drachentanz (Live 2008)"
+    titles = ["Drachentanz (Live 2008)", "Turnier (Live 2008)", "Der Barbier (Live 2008)",
+              "Das Groupie (Live 2008)", "Der Glöckner (Live 2008)"]
+    for n, title in enumerate(titles, 1):
+        encode(folder / f"Feuerschwanz - Drachentanz (Live 2008) - {n:02d} - {title}.opus")
+    source.tidy_entries = True
+
+    plan = build_plan(source.collection(str(folder)), source=source)
+
     assert [t.title for t in plan.tracks] == ["Drachentanz (Live 2008)", "Turnier", "Der Barbier",
                                               "Das Groupie", "Der Glöckner"], \
         "the album's name comes out of the titles — except the one that *is* it"
-    assert all(t.provenance["title"] == Provenance.FILE_NAME for t in plan.tracks)
 
 
 def test_a_tag_always_beats_the_name(tmp_path, source):

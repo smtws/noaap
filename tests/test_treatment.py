@@ -39,7 +39,9 @@ def test_the_settings_are_the_state_the_library_is_in():
     assert (want.cover_embedded, want.lyrics_embedded) == (True, True)
     # an adopted album keeps its owner's names and tags until the library is told otherwise
     assert (want.rename_adopted, want.retag_adopted) == (False, False)
-    assert want.off() == ["rename_adopted", "retag_adopted"]
+    # …and its owner's values mean what they say (R-410, ruling 5)
+    assert want.tidy_adopted_tags is False
+    assert want.off() == ["rename_adopted", "retag_adopted", "tidy_adopted_tags"]
 
 
 def test_an_album_with_no_exception_is_the_settings():

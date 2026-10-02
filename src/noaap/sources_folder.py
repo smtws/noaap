@@ -321,6 +321,10 @@ class FolderSource:
         # whether every file's packets are digested while reading a folder (§9, slice 101). On for
         # `merge`, which ranks copies against each other; a take-in turns it off and reads tags only.
         self.digests = True
+        # **a folder's tags mean what they say** (R-410, ruling 5). The conventions a video title
+        # carries are not a file's; the owner wrote these. The library may ask for the same tidying
+        # anyway, and then this says so and `build_plan` does it.
+        self.tidy_entries = bool(getattr(cfg, "tidy_adopted_tags", False))
 
     def handles(self, address: str) -> bool:
         if address.startswith(("http://", "https://")):

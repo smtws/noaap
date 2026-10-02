@@ -1725,7 +1725,12 @@ class Service:
                     if t.mb_length and not t.mbid:
                         t.mb_length = None
                 self.log(f"{borrowed} track(s) gave up a length taken from another recording")
-            for t in plan.tracks:
+            # **an adopted album's values are its owner's** (R-410, ruling 5), so none of the
+            # tidying below touches one unless the library asks for it. It used to run over every
+            # album there is, which would have put back at the next repair exactly what a take-in
+            # had just been taught to leave alone.
+            may_tidy = not plan.adopted or bool(getattr(self.cfg, "tidy_adopted_tags", False))
+            for t in plan.tracks if may_tidy else []:
                 if t.provenance.get("artist") == Provenance.SOURCE_TAGS and ", " in t.artist:
                     t.artist = t.auto["artist"] = t.artist.split(", ")[0]  # writers and producers
                 if Provenance.USER in (t.provenance.get("artist"), t.provenance.get("title")):
@@ -1736,16 +1741,17 @@ class Service:
                     t.artist, t.title = artist, title
                     t.auto.update(artist=artist, title=title)
             editable = [t for t in plan.tracks if t.provenance.get("title") != Provenance.USER]
-            if dropped := drop_album_name(plan.album, editable):
+            if may_tidy and (dropped := drop_album_name(plan.album, editable)):
                 self.log(f"{dropped} track title(s) lost the repeated album name")
-            if plan.kind != Kind.COMPILATION and plan.provenance.get("albumartist") in (Provenance.SOURCE_TAGS, Provenance.SOURCE_TITLE):
+            if may_tidy and plan.kind != Kind.COMPILATION and plan.provenance.get("albumartist") in (Provenance.SOURCE_TAGS, Provenance.SOURCE_TITLE):
                 names = [t.artist for t in plan.tracks]
                 if names:
                     plan.albumartist = plan.auto["albumartist"] = max(set(names), key=names.count)
-            self._adopt_track_spelling(plan)  # an album that disagrees with its own tracks
-            self._apply_spelling(plan, decided)
-            if named := set_single_album_name(plan):
-                self.log(f"the single is named after its track: “{named}”")
+            if may_tidy:
+                self._adopt_track_spelling(plan)  # an album that disagrees with its own tracks
+                self._apply_spelling(plan, decided)
+                if named := set_single_album_name(plan):
+                    self.log(f"the single is named after its track: “{named}”")
             # a plan can be right while the folder is not: the album artist was unified
             # earlier without moving anything (fixed 2026-09-24, but the folders remain)
             # **a whole library is converted here** (§9, slice 60, R-207 ruling 2): a plan whose

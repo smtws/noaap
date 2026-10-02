@@ -36,10 +36,10 @@ from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folde
 from .precautions import empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
-    KEEP_IF_PRESENT,
     audio_quality,
     build_tags,
     image_mime,
+    kept_from_the_file,
     measure,
     signature,
     tag_file,
@@ -590,11 +590,15 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
             said.append(f"{track.number:02d} would be retagged — the file cannot be read: {e}")
             continue
         wanted_tags = build_tags(plan, track, text)
+        kept = kept_from_the_file(plan)
+        for key in kept:                       # what the file already answers better than the plan
+            if have.get(key):
+                wanted_tags.pop(key, None)
         changed = [_change(key, have.get(key), value)
                    for key, value in wanted_tags.items() if str(have.get(key) or "") != str(value or "")]
         # an adopted album's other fields are left alone, so the dry run must not claim they go
         gone = ([] if plan.adopted else
-                [key for key in have if key not in wanted_tags and key not in KEEP_IF_PRESENT])
+                [key for key in have if key not in wanted_tags and key not in kept])
         if changed or gone:
             said.append(f"{track.number:02d} would be retagged: "
                         + "; ".join(changed + [f"{key} would be dropped" for key in gone]))
