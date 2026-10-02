@@ -314,6 +314,26 @@ def says_clashes(clashes: dict[str, list[Path]], root: Path) -> list[str]:
             for target, folders in sorted(clashes.items())]
 
 
+def names_against(root: Path, library: Any) -> str:
+    """Why a pass that renames cannot be pointed below its library (R-417, point 2).
+
+    The scheme gives an album `<album artist>/<album>` **under the base it is filed against**, and
+    the two passes do not pick the same base: a staged run hands its inner pass the copy it made, so
+    the base is the take-in root, while the dry run asks the configured library. Measured on a copy:
+    pointed at `…/Musik/Crematory` with the library at `…/Musik`, the staged dry run said no folder
+    would move and the apply made `…/Musik/Crematory/Crematory/Act Seven`; the plain pass has the
+    same flaw the other way, promising a move in the dry run and moving nothing. Neither base is
+    right for an artist folder — the scheme would file the artist inside itself either way — so the
+    pass is refused rather than guessing, and `--only` is how one part of a collection is taken in.
+    """
+    where = Path(str(library)).expanduser()
+    if root.resolve() == where.resolve():
+        return ""
+    return (f"this run renames into noaap's scheme, and the folder it is pointed at is not the "
+            f"library it would name things against: root {root}, library {where}. Point it at "
+            f"{where} — `--only {root.name}` takes in that part of it — or add `--names keep`.")
+
+
 def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run: bool = True,
             snapshot: Path | None = None, keep: Path | None = None, resume: bool = True,
             say_leftovers: bool = True, only: Iterable[str] = (),
@@ -333,6 +353,11 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     # 43.8 GB from the device and 172 s — the whole collection, for a dry run.
     source.digests = False
     done = Progress()
+    # **a pass that renames is refused below its library** (R-417, point 2), before it plans
+    if choices.names == "scheme" and (why := names_against(root, service.library)):
+        done.stopped = why
+        log(why)
+        return done
     refs = album_refs(root, source)
     folders = [Path(ref.url) for ref in refs]
     chose: list[Path] | None = None

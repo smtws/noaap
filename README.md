@@ -333,6 +333,13 @@ noaap take-in /mnt/nas/Music --apply \
 noaap take-in /mnt/nas/Music --restore /mnt/nas/Music-snapshot.jsonl --apply   # the way back
 ```
 
+**A pass that renames is refused below its library.** The scheme files an album under
+`<album artist>/<album>`, and an artist folder is already that — so a take-in pointed at
+`…/Music/Crematory` while the library is `…/Music` has no right answer: measured, the staged apply
+filed the artist inside itself (`…/Music/Crematory/Crematory/Act Seven`) while its own dry run said
+nothing would move, and the plain pass promised a move in the dry run and made none. Both now stop
+before planning, with a line naming the root, the library, `--only` and `--names keep`.
+
 **One part of a collection at a time.** `--only <path>` takes in an artist folder, or one album
 inside it, named as a path under the root — `--only Crematory`, `--only "Crematory/Act Seven"` — and
 may be given more than once. The root and the library stay the whole collection, so every name the

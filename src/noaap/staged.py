@@ -530,6 +530,14 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     # and where that was decided, then what else is on.
     log(f"  {choices.says()}")
 
+    # **a pass that renames is refused below its library** (R-417, point 2), before it plans: a
+    # staged run names albums against the copy it made, which for an artist folder is the artist
+    # folder — and the apply then files the artist inside itself while the dry run says nothing.
+    if choices.names == "scheme" and (why := intake.names_against(root, service.library)):
+        done.stopped = why
+        log(why)
+        return done
+
     where = staging / STAGED
     # **the index is read for every run, and obeyed only by a resuming one.** A dry run writes
     # nothing and skips nothing, but it is the natural thing to run when a collection looks wrong,

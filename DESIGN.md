@@ -3255,6 +3255,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - **a file that is already right is not rewritten.** 455 files would have been copied, replaced
      and verified to end up as they were, because the *plan* had no record of their tags. The
      question is asked of the file now, and a leading zero is not an answer that costs a rewrite.
+   - **one part of a collection, and never by pointing at it.** The first apply on somebody's
+     twenty years is one artist, which `--only <path>` selects while the root and the library stay
+     the collection — so the names are the ones the whole pass would give. Pointing the pass at the
+     artist folder instead has no right answer and was measured to have two wrong ones: the staged
+     apply filed the artist inside itself while its dry run said nothing would move, and the plain
+     pass promised a move its apply never made. A renaming pass below its library is now refused
+     before it plans.
    - **a dry run reads the files once and digests none of them.** 87% of the first run was `ffmpeg`
      computing a packet digest an adoption never uses, because `_as_if` built a source of its own
      and lost the flag that switches it off; the collection was also listed three times over. Same
