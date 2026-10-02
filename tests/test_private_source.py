@@ -195,7 +195,7 @@ def test_a_private_albums_plan_never_holds_a_signed_address(tmp_path):
 
     # …and it holds through a real save
     save_plan(plan, tmp_path)
-    assert "token-hash" not in (tmp_path / ".ytalbum.json").read_text(encoding="utf-8")
+    assert "token-hash" not in (tmp_path / ".noaap.json").read_text(encoding="utf-8")
 
 
 def test_a_plan_written_before_the_rule_is_cleaned_by_the_next_write(tmp_path):

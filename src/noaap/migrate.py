@@ -15,10 +15,11 @@ systemd units, where "show me first" is the only reasonable default.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config, desktop, systemd
+from . import config, desktop, download, systemd
 
 # runtime scratch, not worth carrying: a heartbeat file and the token server's log
 CACHES = ("lyrics.sqlite3", "musicbrainz.sqlite3")
@@ -66,7 +67,51 @@ def removals() -> list[Path]:
     return systemd.legacy_units() + [p for p in desktop.legacy_installed() if p != profile]
 
 
-def run(apply: bool = False, uninstall_old: bool = False) -> list[str]:
+def old_plans(roots: Iterable[Path]) -> list[tuple[Path, str]]:
+    """Every `.ytalbum.json` under these roots, with why it cannot be renamed where that is so.
+
+    The plan file is `.noaap.json` since 1.30.0 (R-419) and nothing reads the old name any more, so
+    an album that still holds one is an album noaap cannot see. This finds them; `run` renames them.
+    """
+    out: list[tuple[Path, str]] = []
+    seen: set[Path] = set()
+    for root in roots:
+        if root is None or not Path(root).is_dir():
+            continue
+        for path in sorted(Path(root).rglob(download.OLD_PLAN_FILE)):
+            if path in seen:
+                continue
+            seen.add(path)
+            beside = path.with_name(download.PLAN_FILE)
+            out.append((path, f"{beside.name} is already there" if beside.exists() else ""))
+    return out
+
+
+def rename_plans(roots: Iterable[Path], apply: bool = False) -> list[str]:
+    """What the sidecars would be called, or what they are called now. One line each, plus a count."""
+    found = old_plans(roots)
+    lines: list[str] = []
+    done = blocked = 0
+    for path, why in found:
+        if why:
+            lines.append(f"left alone: {path} — {why}, so both names are there and neither is this "
+                         "pass's to choose")
+            blocked += 1
+        elif apply:
+            path.rename(path.with_name(download.PLAN_FILE))     # atomic within the folder
+            lines.append(f"renamed {path} → {download.PLAN_FILE}")
+            done += 1
+        else:
+            lines.append(f"would rename {path} → {download.PLAN_FILE}")
+            done += 1
+    if found:
+        lines.append(f"{done} plan file(s) {'renamed' if apply else 'to rename'}"
+                     + (f", {blocked} left alone" if blocked else ""))
+    return lines
+
+
+def run(apply: bool = False, uninstall_old: bool = False, library: Path | None = None,
+        watched: Iterable[Path] = ()) -> list[str]:
     """What was done, or what would be. One line each, for the user to read before saying yes.
 
     The watcher is not part of this in either direction: ytalbum never had one, so there is nothing
@@ -74,6 +119,8 @@ def run(apply: bool = False, uninstall_old: bool = False) -> list[str]:
     (§9, slice 59).
     """
     lines: list[str] = []
+    # **the plan files first**, because every other pass of this program depends on the name
+    lines += rename_plans([p for p in (library, *watched) if p], apply=apply)
     for copy in copies():
         if copy.skip:
             lines.append(f"skipped {copy.dst} — {copy.skip}")

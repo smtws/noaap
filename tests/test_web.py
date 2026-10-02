@@ -471,7 +471,7 @@ def test_library_grid_sorts_by_artist_then_year_then_name(tmp_path, opus_templat
 def test_track_index_lets_the_ui_filter_by_song(library, opus_template):
     app = App(Config(library_root=library), library)
     index = app.track_index()
-    plan = load_plan(next(library.glob("*/*/.ytalbum.json")).parent)
+    plan = load_plan(next(library.glob("*/*/.noaap.json")).parent)
     assert index["fields"] == ["video_id", "artist", "title", "done", "trim_start", "trim_end"]
     assert index["albums"][plan.source_id] == [
         [t.video_id, t.artist, t.title, int(t.state == "done"), t.trim_start, t.trim_end] for t in plan.tracks
@@ -482,7 +482,7 @@ def test_track_index_lets_the_ui_filter_by_song(library, opus_template):
 def test_track_index_version_follows_the_plans(library, opus_template):
     app = App(Config(library_root=library), library)
     before = app.track_index()
-    album_dir = next(library.glob("*/*/.ytalbum.json")).parent
+    album_dir = next(library.glob("*/*/.noaap.json")).parent
     plan = load_plan(album_dir)
     plan.tracks[0].title = "Renamed by hand"
     save_plan(plan, album_dir)

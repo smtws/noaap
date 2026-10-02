@@ -357,7 +357,7 @@ def test_the_dry_run_counts_every_file_the_pass_rewrites(collection, service, tm
     # already the one noaap wants and only the record of them is missing.
     intake.take_in(service, collection, QUIET, dry_run=False, snapshot=tmp_path / "first.jsonl",
                    log=lambda s: None)
-    for plan in collection.rglob(".ytalbum.json"):
+    for plan in collection.rglob(".noaap.json"):
         plan.unlink()
     untouched = {p: p.stat().st_mtime_ns for p in sorted(collection.rglob("*.opus"))}
 
@@ -428,7 +428,7 @@ def test_a_restore_takes_away_what_the_pass_itself_put_there(collection, service
     intake.take_in(service, collection, QUIET, dry_run=False, snapshot=snapshot, log=lambda s: None)
 
     made = intake.read_made(intake.made_path(snapshot), collection)
-    assert made and all(name.endswith(".ytalbum.json") for name in made), made
+    assert made and all(name.endswith(".noaap.json") for name in made), made
     assert len(made) == 3, "one plan per album, and nothing of theirs"
 
     said = []
@@ -441,7 +441,7 @@ def test_a_restore_takes_away_what_the_pass_itself_put_there(collection, service
     done = precautions.restore(precautions.read(snapshot), collection, apply=True, made=made,
                                log=lambda s: None)
     assert sorted(done.removed) == sorted(made)
-    assert not list(collection.rglob(".ytalbum.json")), "the plans are gone"
+    assert not list(collection.rglob(".noaap.json")), "the plans are gone"
     assert theirs.read_bytes() == b"\xff\xd8 their scan", "and what was theirs is untouched"
     assert len(list(collection.rglob("*.opus"))) == 6, "every track still here"
 

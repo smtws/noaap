@@ -191,7 +191,7 @@ def plan_hashes(library: Path) -> dict[str, str]:
     import hashlib
 
     return {str(p.relative_to(library)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(library.glob("*/*/.ytalbum.json"))}
+            for p in sorted(library.glob("*/*/.noaap.json"))}
 
 
 @pytest.mark.parametrize("asked", [{"find_moved": True}, {"strays": True},

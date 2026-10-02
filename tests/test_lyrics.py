@@ -553,7 +553,7 @@ def test_the_signature_notices_lyrics_arriving(tmp_path, yt):
 
 def test_the_plan_round_trips_with_the_new_fields(tmp_path, yt):
     plan, album_dir = album(tmp_path, yt, FakeLyrics())
-    written = json.loads((album_dir / ".ytalbum.json").read_text())
+    written = json.loads((album_dir / ".noaap.json").read_text())
     assert written["tracks"][0]["lyrics"] == "synced"
     assert written["tracks"][0]["lyrics_id"] == 7
 

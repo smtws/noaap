@@ -60,7 +60,7 @@ Run through the real CLI on a two-disc album with a `booklet.jpg` of the owner's
 ```
   put …1-01 - Opening.mp3 back as Aphelion/Live im Winter/CD 1/01 Opening.mp3
   …
-  removed Aphelion/Live im Winter/.ytalbum.json — the pass wrote it
+  removed Aphelion/Live im Winter/.noaap.json — the pass wrote it
 5 file(s) restored, 4 renamed back, 1 of the pass's own removed, 0 whose audio is not what it was
   removed collection-snapshot.take-in.json — the record of a pass that is undone
   removed collection-snapshot.made.json — the record of a pass that is undone
@@ -252,7 +252,7 @@ fold on its own), and the share's test data was put back from the local referenc
 which the CLI does not read, so the library stayed the configured one, `relocate` never ran and no
 album folder was renamed — which made 325 files look misplaced and the cover count read 16 against
 the staged run's 4. Run with the library set to the root, the two agree: 2187 of 2201 shared paths
-byte-identical, the 14 that differ all `.ytalbum.json` (a plan records its own folder and date), and
+byte-identical, the 14 that differ all `.noaap.json` (a plan records its own folder and date), and
 52 more the same file under a differently-cased folder.
 
 ## What is still missing

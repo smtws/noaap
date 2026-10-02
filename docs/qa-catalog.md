@@ -41,7 +41,7 @@ a new result is prepended as the newest row.
 
 ### Safety: use a scratch library, not a backup
 
-An earlier version of this file claimed that copying the `.ytalbum.json` files was enough to
+An earlier version of this file claimed that copying the `.noaap.json` files was enough to
 undo the **M** cases. **It is not.** Those cases rewrite tags inside audio files, rename and
 move files and folders, create and delete `.lrc` sidecars, and cut audio. Restoring only the
 plans would leave the plan describing files that no longer match it — a worse state than the
@@ -105,7 +105,7 @@ is working on the same library — nothing locks them against each other (G5).
   - do: `ytalbum fetch <S3> --dry-run`
   - expect: the plan is printed and nothing is written
   - invariant: the real library's plan and files are untouched
-  - evidence: `.ytalbum.json` mtime before/after
+  - evidence: `.noaap.json` mtime before/after
   - note: the MusicBrainz cache *is* written; that is outside the library
   - **result 2026-09-26:** pass — sorted plan list identical, 269 folders before and after. My first attempt hashed **unsorted** `find` output and reported a phantom write
 
@@ -480,7 +480,7 @@ is working on the same library — nothing locks them against each other (G5).
   - do: start a fetch on the scratch server, then run `ytalbum lyrics --library "$QA"` in a
     terminal against the same album
   - expect (suspected gap): nothing locks the two processes, so the last writer of
-    `.ytalbum.json` wins. Decide between a lock file and documenting the rule
+    `.noaap.json` wins. Decide between a lock file and documenting the rule
   - invariant: whatever is decided, a plan must never be left describing files that do not exist
   - evidence: the plan afterwards against each job's log
 
@@ -539,7 +539,7 @@ is working on the same library — nothing locks them against each other (G5).
     the mark is gone. A reload loses it too
   - invariant: nothing reaches the disk without *save trim* — in every one of those paths the
     plan is byte-identical
-  - evidence: the end handle after each step; `sha1sum` of `.ytalbum.json` throughout
+  - evidence: the end handle after each step; `sha1sum` of `.noaap.json` throughout
   - **result 2026-09-26:** pass — next+previous kept the 31.09 s mark and the plan's sha; replaying the album dropped it. The handle stays *visible* either way (it then marks the track end)
 
 ---
@@ -2924,7 +2924,7 @@ real configuration, read-only where it was real.
   The promise of slice 48 is two-way, so it is checked with the installed older program rather than
   argued. `ytalbum plan --verify` (0.9.0, from its own venv) over the same slice after noaap had
   fetched into it: **4 plans found, 1 byte-identical, 3 would gain default fields, 0 would lose or
-  change anything.** Four found is the part that matters — its `iter_plans` globs `.ytalbum.json`,
+  change anything.** Four found is the part that matters — its `iter_plans` globs `.noaap.json`,
   so the album noaap created is visible to it rather than orphaned.
   - **result:** pass, and this is the whole argument for not renaming the plan file.
 
@@ -5465,7 +5465,7 @@ Measured on a generated library the size of the user's — **250 albums × 19 tr
 | 2026-09-28 | the AW cases re-run (P52b: the deciding margin) | 6 | 1 threshold wrong in the reviewed commit, fixed | The margin, not the floor: 1 kHz is inside Opus's own spread (20 kHz on 219 of the collection's files, 21 on 107), and it decided **37 of 88 replacements** on nothing. At 2 kHz the same 762 pairs read **51 replace, 0 fill, 423 keep, 288 undecided**, 1.93 GB added and 0.22 GB binned, 14 albums touched — and the reviewer predicted 51 before the run. Both candidates now keep what was measured; a replacement records what the binned file's timed words belong to. `--new` / `--only` / `--album` added. 1042 pytest + 95 node. |
 | 2026-09-28 | the AW cases (P52: which copy is better) | 6 | 0 in the design; 3 defects found by using it, all fixed | Two real libraries, 2000 tracks against 3942. Quality is measured, not believed: ten 1 kHz bands per file, and a FLAC made from an Opus reads what that Opus reads. **87% of the collection's 533 24/48 FLACs are band-limited where Opus stops.** Thresholds derived from all 338 Opus files. 762 pairs → 88 replace, 0 fill, 420 keep, 254 undecided on a **1 kHz** margin, corrected to 51 / 0 / 423 / 288 in P52b above. The largest group is 163 undecided lossless-but-identical — about 8 GB that a container-trusting rule would have written for nothing. 1033 pytest + 95 node. |
 | 2026-09-28 | the AV cases (P51: a folder is a source) | 6 | 0 in the design; **8 defects found by using it**, all fixed | The second real provider, built against the user's own 43.8 GB / 2000-file collection. Four defects from the dry run (two tracks lost to a merge on track number alone; three albums refused because a FLAC header's `total_samples = 0` was read as a length; no length at all for those 52 files; YouTube's 30-second intro-card rule applied to folders), one from arithmetic (three multi-disc albums unreachable from the root — 2000 in, 1933 out, 24+22+21 = 67), one from a MusicBrainz pass (the database overruling the files' own tags), two from the first real copy (every file named `.opus` and an mp3; a home path in every file's `source` tag). Final: **132 albums, 2000 tracks from 2000 files**, nothing merged, dropped or unaccounted. 957 pytest + 92 node. |
-| 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.ytalbum.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
+| 2026-09-28 | the AU cases (P50: the rename to noaap) | 6 | 0 in the design; 1 of my own (a test that matched its own temporary directory), 1 in CI (a workflow path the rename missed) | New name, new repository, same history, same library. Seven commits. `.noaap.json` does **not** move — the format's name, not the program's — and `ytalbum plan --verify` from 0.9.0 reads a library noaap fetched into: 4 plans, 0 lost, 0 changed. Three things answer to the old name, read and never written: the settings file, the `YTALBUM_*` variables, the write header. `noaap migrate` copies and never moves; `--uninstall-old` removes only a unit file and a launcher entry. Two live defects fixed: the MusicBrainz user agent named a renamed repository, and both agents claimed version 0.1. Five screenshots retaken, social preview redrawn. 880 pytest + 91 node. |
 | 2026-09-28 | the AT cases (P49: the Source boundary) | 5 | 0 in the design; 2 bugs of my own that only a second provider could reveal, plus 3 leaks the grep guard found | Eight commits, pure refactor. Four required calls; a ref is opaque; failures are types; the classifier asks who owns a collection. A test-only `Shelf` provider drives the whole pipeline, and one album holds tracks from two providers. Live on the disposable copy: `update --dry-run` over real YouTube and one real fetch. 840 pytest + 91 node. |
 | 2026-09-28 | the AS cases (P48: candidates) | 5 | 0 in the software; 1 of my own (a case that asserted a sample rate Opus does not report) | `candidates` / `chosen` / `refused_candidates` on a track, synthesised from `video_id` + `source_override`, which stay **the truth** where a plan disagrees with itself. `plan --verify` over 245 real plans: 0 lost, 0 changed. The library's one real override reads back unchanged. Switch and refuse driven end to end on the disposable copy. 831 pytest + 91 node. |
 | 2026-09-28 | the AR cases extended (P47c) | 2 | 0 | A deleted album is now recoverable as an album: `delete_album` bins the plan and cover as an **album entry** naming its tracks' entries, and restoring one track of a gone album rebuilds the shell first. A re-fetched album merges by video id. An interrupted delete — binning happens before the plan is saved, on purpose — is a **repair**, not a refusal. Both verified on the disposable copy. 811 pytest + 91 node. |

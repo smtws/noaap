@@ -275,14 +275,14 @@ def test_the_pass_takes_only_tracks_with_no_words_a_length_and_no_verdict(album,
 
 def test_a_dry_run_looks_up_counts_and_writes_nothing(album, tmp_path, monkeypatch):
     album_dir, plan, yt = album
-    before = (album_dir / ".ytalbum.json").read_bytes()
+    before = (album_dir / ".noaap.json").read_bytes()
     aligner = FakeAligner(0.95)
     service = pass_service(tmp_path, yt, FakeLrclib(204.4), aligner, monkeypatch)
     lines = logged(service)
 
     service.check_near_lyrics_all(dry_run=True)
 
-    assert (album_dir / ".ytalbum.json").read_bytes() == before, "a dry run wrote to the plan"
+    assert (album_dir / ".noaap.json").read_bytes() == before, "a dry run wrote to the plan"
     assert not any((album_dir / f).suffix == ".lrc" for f in [p.name for p in album_dir.iterdir()])
     said = "\n".join(lines)
     assert "nothing is aligned and nothing is written" in said

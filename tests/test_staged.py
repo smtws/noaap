@@ -324,7 +324,7 @@ def test_a_batch_stopped_before_its_marker_is_not_walked_past_by_the_resume(else
     index = staged.read_index(staging / staged.STAGED, elsewhere)
     assert [one.done for one in index.values()] == [False], "the batch is on record as not finished"
     interrupted = next(iter(index.values()))
-    assert (elsewhere / "Aphelion" / "Nocturnes" / ".ytalbum.json").is_file(), \
+    assert (elsewhere / "Aphelion" / "Nocturnes" / ".noaap.json").is_file(), \
         "and the share does hold a plan for it, which is what used to be read as 'done'"
     held = (staging / interrupted.snapshot).read_bytes()
 
@@ -346,7 +346,7 @@ def test_a_batch_stopped_before_its_marker_is_not_walked_past_by_the_resume(else
     # out again *with* that plan, so its own pass creates nothing and records nothing — and a record
     # rewritten with that emptiness left the owner's album holding a plan for ever. The gate's own
     # SIGTERM run found it: one file in 52 that the oracle still called a difference.
-    assert list(elsewhere.rglob(".ytalbum.json")) == [], "and no plan of either pass left"
+    assert list(elsewhere.rglob(".noaap.json")) == [], "and no plan of either pass left"
 
 
 @pytest.fixture
@@ -410,7 +410,7 @@ def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_
         staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
                               batch_size=1, dry_run=False, log=lambda s: None)
     monkeypatch.undo()
-    made = sorted(elsewhere.rglob(".ytalbum.json"))
+    made = sorted(elsewhere.rglob(".noaap.json"))
     assert made, "the interrupted copy back did put a plan on the share, or this proves nothing"
 
     staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
@@ -418,7 +418,7 @@ def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_
     got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
 
     assert got.clean, (got.changed, got.lost, got.orphans)
-    assert list(elsewhere.rglob(".ytalbum.json")) == [], \
+    assert list(elsewhere.rglob(".noaap.json")) == [], \
         "the plan the interrupted run made is gone, not only the resume's"
     assert _tags_and_picture(elsewhere) == was
 
@@ -1066,7 +1066,7 @@ def test_after_a_staged_run_and_its_restore_the_share_is_the_reference(elsewhere
                             pictures=precautions.pictures_for(snapshot), log=lambda s: None)
 
     assert _tags_and_picture(elsewhere) == was, "every tag and every picture as the reference has it"
-    assert list(elsewhere.rglob(".ytalbum.json")) == [], "and no plan of the pass's left"
+    assert list(elsewhere.rglob(".noaap.json")) == [], "and no plan of the pass's left"
     assert list(elsewhere.rglob("cover.*")) == [elsewhere / "bramblewood" / "hollow" / "cover.jpg"], \
         "the cover that was theirs stays; one the pass fetched goes"
 

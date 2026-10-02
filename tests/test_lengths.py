@@ -76,11 +76,11 @@ def test_only_a_finished_track_with_a_file_is_asked(tmp_path, state, file, expec
 
 def test_a_dry_run_counts_and_writes_nothing(tmp_path):
     library, album_dir, plan = album(tmp_path)
-    before = (album_dir / ".ytalbum.json").read_bytes()
+    before = (album_dir / ".noaap.json").read_bytes()
 
     assert service(library).measure_lengths(plan, album_dir, dry_run=True) == 2
     assert all(t.file_length is None for t in plan.tracks)
-    assert (album_dir / ".ytalbum.json").read_bytes() == before
+    assert (album_dir / ".noaap.json").read_bytes() == before
 
 
 # -- and the passes that have to reach them --------------------------------------------------------
@@ -141,11 +141,11 @@ def test_a_dry_update_writes_nothing(tmp_path, monkeypatch):
     seen = service(library)
     monkeypatch.setattr(type(seen), "fetch", lambda self, *a, **kw: Outcome("ok", plan, album_dir))
     monkeypatch.setattr(type(seen), "_unchanged", lambda self, p: None)
-    before = (album_dir / ".ytalbum.json").read_bytes()
+    before = (album_dir / ".noaap.json").read_bytes()
 
     seen.update_all(report_only=True)
 
-    assert (album_dir / ".ytalbum.json").read_bytes() == before
+    assert (album_dir / ".noaap.json").read_bytes() == before
 
 
 def test_a_length_whose_origin_nobody_recorded_gets_one(tmp_path):

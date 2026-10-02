@@ -182,14 +182,14 @@ def test_verify_reports_and_writes_nothing(tmp_path: Path, capsys: pytest.Captur
     for i, path in enumerate(PLANS[:3]):
         folder = library / f"artist{i}" / f"album{i}"
         folder.mkdir(parents=True)
-        (folder / ".ytalbum.json").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-    before = {p: p.read_bytes() for p in library.rglob(".ytalbum.json")}
+        (folder / ".noaap.json").write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    before = {p: p.read_bytes() for p in library.rglob(".noaap.json")}
 
     assert main(["plan", "--verify", "--library", str(library)]) == 0
     said = capsys.readouterr().out
     assert "3 plan(s):" in said
     assert "0 would lose or change something" in said
-    assert {p: p.read_bytes() for p in library.rglob(".ytalbum.json")} == before, "--verify wrote"
+    assert {p: p.read_bytes() for p in library.rglob(".noaap.json")} == before, "--verify wrote"
 
 
 def test_verify_names_an_unknown_field_and_still_passes(tmp_path: Path,
@@ -199,7 +199,7 @@ def test_verify_names_an_unknown_field_and_still_passes(tmp_path: Path,
     folder = tmp_path / "lib" / "a" / "b"
     folder.mkdir(parents=True)
     source = next(p for p in PLANS if p.stem == "from_a_later_version")
-    (folder / ".ytalbum.json").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    (folder / ".noaap.json").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
     assert main(["plan", "--verify", "--library", str(tmp_path / "lib")]) == 0
     said = capsys.readouterr().out
@@ -215,7 +215,7 @@ def test_verify_fails_loudly_on_a_plan_it_cannot_read(tmp_path: Path,
     folder = tmp_path / "lib" / "a" / "b"
     folder.mkdir(parents=True)
     broken = raw(PLANS[0]) | {"schema": 999}
-    (folder / ".ytalbum.json").write_text(json.dumps(broken), encoding="utf-8")
+    (folder / ".noaap.json").write_text(json.dumps(broken), encoding="utf-8")
 
     assert main(["plan", "--verify", "--library", str(tmp_path / "lib")]) == 1
     assert "cannot be read" in capsys.readouterr().out

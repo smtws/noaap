@@ -73,7 +73,7 @@ def test_partial_data_changes_nothing_on_disk(tmp_path):
     plan = build_plan(vol1())
     album_dir = tmp_path / plan.folder
     save_plan(plan, album_dir)
-    before = (album_dir / ".ytalbum.json").read_text()
+    before = (album_dir / ".noaap.json").read_text()
 
     class BlockedYT:
         cfg = Config(musicbrainz=False)
@@ -90,7 +90,7 @@ def test_partial_data_changes_nothing_on_disk(tmp_path):
     outcome = Service(Config(musicbrainz=False), tmp_path, log=messages.append, yt=BlockedYT()).fetch(plan.source_url)
     assert outcome.blocked and exit_code(outcome) == cli.BLOCKED
     assert any("Nothing was changed" in m for m in messages)
-    assert (album_dir / ".ytalbum.json").read_text() == before
+    assert (album_dir / ".noaap.json").read_text() == before
     assert [p.name for p in tmp_path.iterdir()] == ["My Dark Lullabies"]
 
 
@@ -141,5 +141,5 @@ def test_an_album_of_unusable_videos_is_not_written(tmp_path):
     outcome = service.fetch("https://www.youtube.com/playlist?list=PL1")
     assert outcome.status == "failed"
     assert "nothing to download" in outcome.message and PREMIUM in outcome.message
-    assert list(tmp_path.rglob("*.ytalbum.json")) == []  # and nothing on disk
+    assert list(tmp_path.rglob("*.noaap.json")) == []  # and nothing on disk
     assert list(tmp_path.iterdir()) == []

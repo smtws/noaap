@@ -123,7 +123,7 @@ These are in files already written and cannot be renamed by code alone:
 
 | leak | where | bill |
 |---|---|---|
-| `video_id` | every `.ytalbum.json` track | rename to a neutral ref **or** keep and read as "the YouTube provider's ref". Keeping is cheaper and honest. |
+| `video_id` | every `.noaap.json` track | rename to a neutral ref **or** keep and read as "the YouTube provider's ref". Keeping is cheaper and honest. |
 | `source_url`, `source_id` | every plan | add `provider`, default `"youtube"` when absent |
 | `provenance: "yt_music"` / `"yt_title"` | every edited field in every plan | either keep the strings as historical names, or migrate on load |
 | `channel` | every track | keep; widen the meaning |

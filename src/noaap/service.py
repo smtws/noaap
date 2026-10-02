@@ -34,6 +34,7 @@ from .download import (
     rewritten,
     run,
     save_plan,
+    says_the_old_name,
     would_do,
 )
 from .enrich import enrich
@@ -1694,6 +1695,9 @@ class Service:
         if (strays or find_moved) and not apply:
             dry_run = True
         outcomes = []
+        # **an album this program cannot see is said out loud** (R-419, point 3), never skipped
+        if line := says_the_old_name(self.library):
+            self.log(line)
         lengths = retags = renames = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename

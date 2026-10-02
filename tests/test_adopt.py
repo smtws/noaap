@@ -97,7 +97,7 @@ def test_an_ordinary_pass_leaves_an_adopted_album_exactly_as_it_is(collection, t
 
     assert audio() == before, "not one file renamed, and not one byte written"
     assert digests(collection) == sounds
-    assert (collection / ".ytalbum.json").is_file(), "the plan is ours and is written; nothing else is"
+    assert (collection / ".noaap.json").is_file(), "the plan is ours and is written; nothing else is"
 
 
 def test_the_folder_stays_where_its_owner_put_it(collection, tmp_path):
@@ -461,7 +461,7 @@ def test_one_track_that_cannot_be_given_back_costs_that_track(untagged, tmp_path
     done = adopt.give_back(untagged, plan, tmp_path, log=lambda s: None)
 
     assert done["failed"] == 1
-    assert (untagged / ".ytalbum.json").is_file(), \
+    assert (untagged / ".noaap.json").is_file(), \
         "the plan stays: it is the only record of what the other files were"
 
 

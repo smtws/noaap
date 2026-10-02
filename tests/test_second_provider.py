@@ -126,7 +126,7 @@ def test_update_uses_the_providers_cheap_check(tmp_path, shelf):
 def test_pruning_a_second_providers_album_bins_it_like_any_other(tmp_path, shelf):
     service = service_for(tmp_path, shelf)
     service.fetch("shelf://music")
-    album_dir = next(tmp_path.glob("*/*/.ytalbum.json")).parent
+    album_dir = next(tmp_path.glob("*/*/.noaap.json")).parent
     plan = load_plan(album_dir)
     plan.tracks[0].in_source = False
     save_plan(plan, album_dir)

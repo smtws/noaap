@@ -56,7 +56,10 @@ from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
 
-PLAN_FILE = ".ytalbum.json"
+PLAN_FILE = ".noaap.json"
+# what the plan was called while this program was ytalbum. **Nothing reads it** (R-419): it is here
+# so `noaap migrate` can find one and rename it, and so a pass can say that a folder holds one.
+OLD_PLAN_FILE = ".ytalbum.json"
 PARTS_DIR = ".parts"
 COVER_STEM = "cover"
 ATTEMPTS = 2  # YouTube sporadically answers 403 for a stream URL; a fresh extraction usually works
@@ -331,8 +334,30 @@ def lost_sentence(found: list[tuple[Path, list[str]]]) -> str | None:
     return f"{tracks} track(s) in {len(found)} album(s) are not where their plan says"
 
 
+def plans_of_the_old_name(library: Path | None) -> list[Path]:
+    """Album folders holding `.ytalbum.json` and no `.noaap.json` (R-419, point 3).
+
+    Nothing reads the old name since 1.30.0, so such an album is one this program cannot see. It is
+    never read and never guessed at — it is said out loud, with the command that ends it.
+    """
+    if library is None or not Path(library).is_dir():
+        return []
+    return sorted(path.parent for path in Path(library).rglob(OLD_PLAN_FILE)
+                  if not (path.parent / PLAN_FILE).exists())
+
+
+def says_the_old_name(library: Path | None) -> str:
+    """The one line a pass prints for them, or nothing at all."""
+    found = plans_of_the_old_name(library)
+    if not found:
+        return ""
+    first = ", ".join(str(p.name) for p in found[:3]) + (" …" if len(found) > 3 else "")
+    return (f"⚠ {len(found)} album(s) still hold {OLD_PLAN_FILE} and no {PLAN_FILE} ({first}). "
+            f"Nothing reads that name any more: `noaap migrate --apply` renames them.")
+
+
 def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
-    """Every album folder in the library (<library>/<artist>/<album>/.ytalbum.json)."""
+    """Every album folder in the library (<library>/<artist>/<album>/.noaap.json)."""
     for path in sorted(library.glob(f"*/*/{PLAN_FILE}")):
         try:
             yield path.parent, read_plan(path, path.parent)

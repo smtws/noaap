@@ -374,7 +374,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             case "migrate":
                 from . import migrate
-                for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old):
+                watched = [w.folder for w in cfg.watches]
+                for line in migrate.run(apply=args.apply, uninstall_old=args.uninstall_old,
+                                        library=cfg.library_root, watched=watched):
                     print(line)
                 return 0
             case "delete":
@@ -1022,7 +1024,7 @@ def _fetch(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     if not collection_address(args.url, cfg):
         outcome = service.fetch(args.url, dry=dry, plan_only=args.cmd == "plan", dump=getattr(args, "dump_collection", None))
         if outcome.status == "planned":
-            print(f"\nplan written to {outcome.album_dir}/.ytalbum.json\nedit it, then run: noaap download '{outcome.album_dir}'")
+            print(f"\nplan written to {outcome.album_dir}/.noaap.json\nedit it, then run: noaap download '{outcome.album_dir}'")
         return exit_code(outcome)
 
     if args.cmd == "plan":
@@ -1192,8 +1194,12 @@ def _serve(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     library = _library(args, cfg, required=True)
     if library is None:
         return 2
+    from .download import says_the_old_name
     from .web import serve
 
+    # **an album this program cannot see is said out loud** (R-419, point 3), once, at startup
+    if line := says_the_old_name(library):
+        print(line)
     serve(cfg, library, host=args.host, port=args.port, idle_exit=args.idle_exit)
     return 0
 

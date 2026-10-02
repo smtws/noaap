@@ -83,7 +83,7 @@ def an_album(root: Path, name: str = "An Album", provider: str = "folder"):
 def test_a_path_inside_the_album_is_written_relative_to_it(tmp_path):
     album_dir = an_album(tmp_path)
 
-    written = json.loads((album_dir / ".ytalbum.json").read_text())
+    written = json.loads((album_dir / ".noaap.json").read_text())
 
     assert written["source_id"] == "./" and written["source_url"] == "./"
     assert written["tracks"][0]["video_id"] == "./01 - One.opus"
@@ -114,7 +114,7 @@ def test_a_path_that_is_not_this_album_is_left_exactly_as_it_is(tmp_path):
     plan.tracks[0].video_id = "/somewhere/else/An Album/01 - One.opus"
     save_plan(plan, album_dir)
 
-    written = json.loads((album_dir / ".ytalbum.json").read_text())
+    written = json.loads((album_dir / ".noaap.json").read_text())
     assert written["source_id"] == "/somewhere/else/An Album"
     assert written["tracks"][0]["video_id"] == "/somewhere/else/An Album/01 - One.opus"
 
@@ -136,11 +136,11 @@ def test_an_album_with_no_path_in_it_stays_schema_one_and_byte_identical(tmp_pat
                      cover_url="https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg",
                      folder="A Band/An Album", tracks=[track])
     save_plan(plan, album_dir)
-    was = (album_dir / ".ytalbum.json").read_bytes()
+    was = (album_dir / ".noaap.json").read_bytes()
 
     save_plan(load_plan(album_dir), album_dir)
 
-    assert (album_dir / ".ytalbum.json").read_bytes() == was
+    assert (album_dir / ".noaap.json").read_bytes() == was
     assert json.loads(was)["schema"] == 1
 
 

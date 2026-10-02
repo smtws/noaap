@@ -157,7 +157,7 @@ def test_a_dry_run_changes_nothing(tmp_path):
     import hashlib
 
     library, album_dir, _ = a_library(tmp_path)
-    plan_file = album_dir / ".ytalbum.json"
+    plan_file = album_dir / ".noaap.json"
     before = hashlib.sha256(plan_file.read_bytes()).hexdigest()
 
     rejudge(library)
@@ -193,7 +193,7 @@ def test_the_command_is_dry_by_default_and_says_what_it_found(tmp_path, monkeypa
 
     library, album_dir, _ = a_library(tmp_path)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    before = hashlib.sha256((album_dir / ".ytalbum.json").read_bytes()).hexdigest()
+    before = hashlib.sha256((album_dir / ".noaap.json").read_bytes()).hexdigest()
 
     assert main(["merge", "--rejudge", "--library", str(library)]) == 0
 
@@ -201,7 +201,7 @@ def test_the_command_is_dry_by_default_and_says_what_it_found(tmp_path, monkeypa
     assert "undecided → replace" in said and "A Song" in said
     assert "1 listed copy asked again" in said and "1 would become replace" in said
     assert "nothing was changed" in said
-    assert hashlib.sha256((album_dir / ".ytalbum.json").read_bytes()).hexdigest() == before
+    assert hashlib.sha256((album_dir / ".noaap.json").read_bytes()).hexdigest() == before
 
     assert main(["merge", "--rejudge", "--apply", "--library", str(library)]) == 0
     assert "1 replaced" in capsys.readouterr().out

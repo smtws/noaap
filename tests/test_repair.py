@@ -68,7 +68,7 @@ def test_one_spelling_per_artist(tmp_path, opus_template):
     save_plan(other, tmp_path / "Schandmaul" / "Another Album")
 
     service(tmp_path, opus_template).repair()
-    assert (tmp_path / "Schandmaul" / plan.album / ".ytalbum.json").exists()
+    assert (tmp_path / "Schandmaul" / plan.album / ".noaap.json").exists()
     assert not (tmp_path / "SCHANDMAUL").exists()
 
 
@@ -80,7 +80,7 @@ def test_your_own_artist_name_is_left_alone(tmp_path, opus_template):
 
     tmp_path, plan = library_with(tmp_path, opus_template, mine)
     service(tmp_path, opus_template).repair()
-    assert (tmp_path / "MY BAND" / plan.album / ".ytalbum.json").exists()
+    assert (tmp_path / "MY BAND" / plan.album / ".noaap.json").exists()
 
 
 def test_compilations_keep_their_curator(tmp_path, opus_template):
@@ -157,7 +157,7 @@ def test_repair_moves_an_album_whose_folder_no_longer_matches(tmp_path, opus_tem
 
     service(tmp_path, opus_template).repair()
 
-    assert (tmp_path / "Saltatio Mortis" / plan.album / ".ytalbum.json").exists()
+    assert (tmp_path / "Saltatio Mortis" / plan.album / ".noaap.json").exists()
     assert not (tmp_path / "SALTATIO MORTIS").exists()
 
 

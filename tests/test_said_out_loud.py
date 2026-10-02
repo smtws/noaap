@@ -22,10 +22,10 @@ LINE = "are not where their plan says"
 
 def lose_the_files(album_dir: Path) -> None:
     """A plan that names files nobody can find — what a moved 1.5.0 library looks like."""
-    plan = json.loads((album_dir / ".ytalbum.json").read_text())
+    plan = json.loads((album_dir / ".noaap.json").read_text())
     for track in plan["tracks"]:
         track["filename"] = "somewhere/" + Path(track["filename"]).name
-    (album_dir / ".ytalbum.json").write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
+    (album_dir / ".noaap.json").write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
 
 
 def test_update_ends_with_it(discs, tmp_path, capsys):
