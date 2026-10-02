@@ -31,9 +31,10 @@ from . import adopt as adopt_pass
 from . import config as config_mod
 from . import precautions, sources, sources_folder
 from .download import load_plan, relocate, run, save_plan, would_do
+from .enrich import discs_for_duplicates as enrich_discs
 from .enrich import enrich
 from .models import AlbumPlan
-from .plan import safe_name
+from .plan import duplicate_numbers, safe_name, says_duplicates
 from .text import key as text_key
 from .treatment import Treatment
 
@@ -93,6 +94,8 @@ class Progress:
     lrclib_requests: int = 0
     would: list[str] = field(default_factory=list)
     stopped: str = ""           # the one line a pass that could not start printed (R-417)
+    # albums whose numbers are worth a look: (where, what, the file names) — R-423, point 2
+    needs_a_look: list[tuple[str, str, list[str]]] = field(default_factory=list)
 
 
 def state_path(snapshot: Path) -> Path:
@@ -293,6 +296,30 @@ def not_taken_in(root: Path, albums: Iterable[Path], refused: dict[str, str] | N
     return sorted(out)
 
 
+def a_look_at(plan: Any, where: str) -> tuple[str, str, list[str]] | None:
+    """This album's duplicated numbers, with the files that hold them, or nothing."""
+    odd = says_duplicates(plan)
+    if not odd:
+        return None
+    held = [t for group in duplicate_numbers(plan).values() for t in group]
+    return (where, odd, [t.filename for t in sorted(held, key=lambda t: (t.disc or 1, t.number))])
+
+
+def says_needs_a_look(rows: list[tuple[str, str, list[str]]]) -> list[str]:
+    """The section a pass ends with where an album's numbers are worth a look (R-423, point 2).
+
+    It is a report, not a question: the album has been taken in exactly as it states itself. The
+    user's words — prompting while working is the last choice, and a report afterwards is the first.
+    """
+    if not rows:
+        return []
+    out = [f"needs a look — {len(rows)} album(s):"]
+    for where, what, files in rows:
+        out.append(f"  {where} — {what}")
+        out += [f"    {name}" for name in files]
+    return out
+
+
 def says_not_taken_in(rows: list[tuple[str, str, int]]) -> list[str]:
     """The section a pass ends with. Empty when every file is accounted for."""
     if not rows:
@@ -427,6 +454,16 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             continue
         done.adopted += 1
         done.tracks += len(plan.tracks)
+        if look := a_look_at(plan, where):
+            # **and where the library may ask, MusicBrainz is asked about this one album**
+            # (R-423, point 3): one lookup, and the only thing it may change is which disc a file
+            # is on. Dry run and apply alike, because the dry run has to predict the apply.
+            if choices.musicbrainz and (mb := getattr(service, "mb", None)):
+                said = enrich_discs(plan, mb)
+                done.musicbrainz_requests += 1
+                look = a_look_at(plan, where) or look
+                look = (look[0], f"{look[1]} · MusicBrainz: {said}", look[2])
+            done.needs_a_look.append(look)
         if dry_run:
             done.would.extend(_would(service, plan, album_dir, root, choices, want))
             continue
@@ -480,6 +517,9 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             log(f"{asked} album(s) would be asked about at MusicBrainz, {asked_words} at LRCLIB")
         for folder in precautions.empty_under(root, everything=bool(cfg.remove_empty_folders)):
             log(f"  would remove the empty folder {folder.relative_to(root)}")
+        for line in says_needs_a_look(done.needs_a_look):
+            log(line)
+            done.would.append(line)
         if say_leftovers:
             for line in says_not_taken_in(not_taken_in(root, folders, why_refused, chose)):
                 log(line)
@@ -494,6 +534,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             with contextlib.suppress(OSError):
                 folder.rmdir()
             log(f"  removed the empty folder {folder.relative_to(root)}")
+        for line in says_needs_a_look(done.needs_a_look):
+            log(line)
         if done.musicbrainz_requests or done.lrclib_requests:
             log(f"{done.musicbrainz_requests} MusicBrainz and {done.lrclib_requests} LRCLIB "
                 "request(s) went out")

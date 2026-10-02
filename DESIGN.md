@@ -3265,6 +3265,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      apply filed the artist inside itself while its dry run said nothing would move, and the plain
      pass promised a move its apply never made. A renaming pass below its library is now refused
      before it plans.
+   - **a number that repeats is kept, reported, and asked about.** A folder stating 1–9 twice is
+     the owner's, not a mistake to fix: R-373's rule (of two entries claiming one number the second
+     counts as unnumbered) is for a source that cannot know a number, and applying it to a folder
+     wrote a position into eighteen of the user's files. The user's order of preference —
+     "prompting while working is the last choice; a report afterwards is the first; a pre-run that
+     takes half of them out in advance is better; never drop tracks" — is the whole design: keep
+     what is stated, end with a **needs a look** section (with a hint where every title of one run
+     says "mix"), and where MusicBrainz is asked, let one lookup per such album assign the discs
+     when every file falls on exactly one disc and position. Nothing else of the owner's is touched.
    - **a dry run reads the files once and digests none of them.** 87% of the first run was `ffmpeg`
      computing a packet digest an adoption never uses, because `_as_if` built a source of its own
      and lost the flag that switches it off; the collection was also listed three times over. Same

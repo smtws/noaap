@@ -270,6 +270,46 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
     return False
 
 
+def discs_for_duplicates(plan: AlbumPlan, mb: MusicBrainzAPI) -> str:
+    """Ask MusicBrainz what an album whose numbers repeat really is (R-423, point 3).
+
+    Only for those albums, one release lookup each, and it changes **one thing**: which disc each
+    file is on. Nothing of the owner's values is touched — not a title, not an artist, not a number —
+    because a folder states those and this does not know better (R-410, ruling 5). Where every file
+    falls on exactly one disc and position of one release, the discs are assigned and the album is
+    taken in as the multi-disc set it is; where the match is partial, nothing is assigned and the
+    line says what was found. This is the "pre-run that takes half of them out in advance".
+    """
+    try:
+        found = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))
+    except MusicBrainzError as e:
+        return f"MusicBrainz could not be asked: {e}"
+    for cand in found[:RELEASE_LOOKUPS]:
+        release = mb.release(cand["id"])
+        if not release:
+            continue
+        media = release.get("media") or []
+        where = f"{release['id']}, {release.get('date') or '?'}" \
+                + (f", {release['country']}" if release.get("country") else "") \
+                + f", {len(media)} medium(s) of " \
+                + "/".join(str(len(m.get('tracks') or [])) for m in media)
+        matches = match_release_tracks(plan, release)
+        if matches is None or len(matches) != len(plan.tracks):
+            got = 0 if matches is None else len(matches)
+            return f"{where} — {got} of {len(plan.tracks)} file(s) matched by title; nothing assigned"
+        seats = {(int(m["disc"]), int(m["position"])) for m in matches.values()}
+        if len(seats) != len(plan.tracks):
+            return f"{where} — two files fall on one position; nothing assigned"
+        for i, track in enumerate(plan.tracks):
+            track.disc = int(matches[i]["disc"])
+        plan.tracks.sort(key=lambda t: (t.disc, t.number))
+        refresh_derived(plan)
+        discs = sorted({t.disc for t in plan.tracks})
+        return (f"{where} — every file matched; discs {discs[0]}–{discs[-1]} assigned "
+                f"({', '.join(f'disc {d}: {sum(1 for t in plan.tracks if t.disc == d)} files' for d in discs)})")
+    return "no release matched it at MusicBrainz; nothing assigned"
+
+
 # -- entry point -----------------------------------------------------------------------------
 
 

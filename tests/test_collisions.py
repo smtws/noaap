@@ -27,7 +27,7 @@ from noaap.service import Service
 
 def an_album(folder, titles, *, album, artist, numbers=None, one_second_of_sound):
     """Somebody's own album folder: audio, tags, no plan."""
-    folder.mkdir(parents=True)
+    folder.mkdir(parents=True, exist_ok=True)
     for n, title in enumerate(titles, 1):
         path = folder / f"{numbers[n - 1] if numbers else n:02d} {title.replace('?', '-q')}.opus"
         shutil.copy(one_second_of_sound, path)

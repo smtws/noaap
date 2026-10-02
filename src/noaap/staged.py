@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config as config_mod
-from . import intake, precautions, sources
+from . import enrich, intake, precautions, sources
 from .download import PLAN_FILE
 from .precautions import bytes_sha
 
@@ -120,6 +120,8 @@ class Staged:
     # ruling 6): what was taken in, what was refused, and what it would come to file by file
     adopted: int = 0
     refused: int = 0
+    # albums whose numbers are worth a look (R-423, point 2), carried up from each batch
+    needs_a_look: list[tuple[str, str, list[str]]] = field(default_factory=list)
     renamed: int = 0
     retagged: int = 0
     covers: int = 0
@@ -636,6 +638,9 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"{done.renamed} file(s) would be renamed, {done.retagged} audio file(s) would be "
             f"rewritten (their tags), {done.covers} album(s) would be asked for a cover")
         log(f"their names: {choices.says_names()}")
+        for line in intake.says_needs_a_look(done.needs_a_look):
+            log(line)
+            done.would.append(line)
         # **nothing with audio in it is passed over in silence** (R-410, ruling 2)
         for line in intake.says_not_taken_in(
                 intake.not_taken_in(root, [album for album, _ in sized], why_refused, chose)):
@@ -690,6 +695,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(f"⚠ {len(done.unverified)} file(s) could not be verified after the copy back — "
             "the share's own file was left in place")
     log(f"this machine held at most {done.peak_staged / 1e9:.2f} GB at once")
+    for line in intake.says_needs_a_look(done.needs_a_look):
+        log(line)
     if done.aside:
         log(f"{len(done.aside)} file(s) of yours moved aside into {aside_for(root)} "
             f"({done.moved_aside / 1e9:.2f} GB) — that is the way back, byte for byte, and it stays "
@@ -789,6 +796,12 @@ def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
         kept += len(plan.tracks)
         if done is not None:
             done.adopted += 1
+            if look := intake.a_look_at(plan, str(album.relative_to(root))):
+                if choices.musicbrainz and (mb := getattr(service, "mb", None)):
+                    said = enrich.discs_for_duplicates(plan, mb)
+                    look = intake.a_look_at(plan, str(album.relative_to(root))) or look
+                    look = (look[0], f"{look[1]} · MusicBrainz: {said}", look[2])
+                done.needs_a_look.append(look)
         for line in intake._would(service, plan, album, root, choices,
                                   choices.as_treatment()):
             log(f"  {line}")
@@ -907,6 +920,9 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     got = intake.take_in(staged_service, here, choices, dry_run=False, snapshot=snapshot,
                          keep=None, resume=False, say_leftovers=False, log=lambda s: None)
     done.tracks += got.tracks
+    # the batch was taken in on the staging copy, so what it found is reported against the share
+    done.needs_a_look += [(str((here / where).relative_to(here)), what, files)
+                          for where, what, files in got.needs_a_look]
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
 

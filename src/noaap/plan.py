@@ -173,7 +173,7 @@ def classify(collection: Collection, source: Any = None) -> Kind:
 # -- stages 4+5: metadata and plan ---------------------------------------------------
 
 
-def stated_numbers(entries: Sequence[Entry]) -> list[int]:
+def stated_numbers(entries: Sequence[Entry], keep_duplicates: bool = False) -> list[int]:
     """The number each entry gets: the one it already carries, else the lowest still free on its disc.
 
     Numbering runs within a disc. For a flat source — every entry on disc 1, none of them stating a
@@ -186,7 +186,25 @@ def stated_numbers(entries: Sequence[Entry]) -> list[int]:
     was missing. Of two entries stating the same number on one disc the first in collection order
     keeps it and the other counts as having none; position-counting then fills only numbers free on
     that disc, lowest first.
+
+    **`keep_duplicates` is for a folder** (R-423, point 1). A folder whose files state 1-9 twice is
+    two discs somebody flattened, or two releases in one place; renumbering the second run 10-18
+    writes a position into eighteen of the owner's files that nothing ever said, and the owner asked
+    for the opposite - keep what is there, report it, never prompt and never drop. The names keep
+    the files apart by title; where two would still want one name, that is a collision and the album
+    keeps its own names (R-410, point 1).
     """
+    if keep_duplicates:
+        out_dup: list[int] = []
+        last_dup: dict[int, int] = {}
+        for entry in entries:
+            stated = entry.number if isinstance(entry.number, int) and entry.number > 0 else None
+            if stated is None:
+                stated = last_dup.get(entry.disc, 0) + 1
+            last_dup[entry.disc] = max(last_dup.get(entry.disc, 0), stated)
+            out_dup.append(stated)
+        return out_dup
+
     taken: dict[int, set[int]] = {}
     out: list[int | None] = []
     # every stated number is claimed before anything is counted, so a number stated late in the
@@ -252,7 +270,8 @@ def build_plan(collection: Collection, kind: Kind | None = None, source: Any = N
             album_prov["year"] = named_origin["tags"]
 
     tracks = []
-    numbers = stated_numbers(entries)
+    # **a folder's numbers are kept as stated, duplicates and all** (R-423, point 1)
+    numbers = stated_numbers(entries, keep_duplicates=states_numbers_for(source))
     for entry, number in zip(entries, numbers, strict=True):
         artist, artist_prov = track_artist(entry, source)
         title, title_prov = track_title(entry, source)
@@ -412,6 +431,59 @@ def refresh_derived(plan: AlbumPlan) -> AlbumPlan:
 
 
 FOLDER = "folder"   # the one provider that reads a track's number before anything is fetched
+
+
+# words a title carries when it is another take of the same song. The hint below only ever points
+# at them; what a run of files really is stays MusicBrainz' answer or the owner's (R-424).
+RETAKE_WORDS = ("mix", "remix", "live", "demo", "acoustic", "instrumental", "bonus", "edit",
+                "version")
+
+
+def duplicate_numbers(plan: AlbumPlan) -> dict[tuple[int, int], list[PlanTrack]]:
+    """`{(disc, number): the tracks holding it}`, for every number held more than once."""
+    by: dict[tuple[int, int], list[PlanTrack]] = {}
+    for track in plan.tracks:
+        by.setdefault(((track.disc or 1), track.number), []).append(track)
+    return {key: tracks for key, tracks in sorted(by.items()) if len(tracks) > 1}
+
+
+def _retake_hint(groups: list[list[PlanTrack]]) -> str:
+    """`run 2: every title says "mix"` — where exactly one title per group carries one word."""
+    for word in RETAKE_WORDS:
+        marked = [[t for t in group if word in t.title.lower()] for group in groups]
+        if all(len(m) == 1 for m in marked) and len(groups) > 1:
+            return f'run 2: every title says "{word}"'
+    return ""
+
+
+def says_duplicates(plan: AlbumPlan) -> str | None:
+    """What is odd about this album's numbers, in one line, or nothing (R-423, point 2).
+
+    Never a prompt and never a decision: the album is taken in exactly as it states itself, and this
+    says what a person — or MusicBrainz, where it is asked — would want to look at.
+    """
+    dups = duplicate_numbers(plan)
+    if not dups:
+        return None
+    groups = list(dups.values())
+    runs = max(len(group) for group in groups)
+    numbers = sorted(number for _, number in dups)
+    every = len(dups) * runs == len(plan.tracks) and len({len(g) for g in groups}) == 1
+    whole = every and numbers == list(range(min(numbers), max(numbers) + 1))
+    if whole:
+        what = f"{runs} runs of {min(numbers)}–{max(numbers)} ({len(plan.tracks)} files): discs?"
+    else:
+        what = ", ".join(f"track {number} "
+                         + ("twice" if len(dups[key]) == 2 else f"{len(dups[key])} times")
+                         for key, number in ((key, key[1]) for key in dups))
+    if hint := _retake_hint(groups):
+        what += f" — {hint}"
+    return what
+
+
+def states_numbers_for(source: Any = None) -> bool:
+    """Whether this source knows what number a track carries, asked of the source itself."""
+    return getattr(_source(source), "name", "") == FOLDER
 
 
 def states_numbers(plan: AlbumPlan) -> bool:

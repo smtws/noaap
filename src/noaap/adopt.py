@@ -26,7 +26,7 @@ from .config import Refused
 from .download import COVER_STEM, PLAN_FILE, save_plan
 from .lyrics import rename_sidecar, sidecar_path
 from .models import AlbumPlan
-from .plan import build_plan, wanted_filename
+from .plan import build_plan, says_duplicates, wanted_filename
 from .recycle import bin_file
 from .service import _inside
 from .sources_folder import AUDIO
@@ -99,6 +99,10 @@ def examine(album_dir: Path, source: Any, library: Path) -> Adoption:
     if outside := [t.title for t in plan.tracks if not where.get(t.video_id)]:
         return Adoption(album_dir, refused=f"{len(outside)} file(s) are not inside this folder — "
                                            "adopt the folder that holds them")
+    # **what a person would want to look at**, recorded on the album so the page can show it
+    # later and a pass can report it (R-423, point 2). It decides nothing.
+    if odd := says_duplicates(plan):
+        plan.adopted["needs_a_look"] = odd
     for track in plan.tracks:
         # the file is here and finished: that is what adoption means. Its name is the owner's, and so
         # is the folder it is in — both of which `filename` now carries (§9, slice 61).

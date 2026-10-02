@@ -728,9 +728,11 @@ def test_a_gapped_disc_round_trips_with_its_numbers(gapped, tmp_path):
     assert wrote == ["1/5", "2/5", "4/5"], "and the total the files agreed on stands (R-346)"
 
 
-def test_two_files_claiming_one_number_leave_the_first_holding_it(tmp_path):
-    """R-373: of two entries stating the same number the first in collection order keeps it, the
-    other counts as having none, and position-counting fills what is free, lowest first."""
+def test_two_files_claiming_one_number_both_keep_it(tmp_path):
+    """**Overturned by R-423, point 1.** R-373's rule — the first keeps it, the second counts as
+    unnumbered — is for a source that cannot know a number. A folder does know: two files saying 2
+    are two files that say 2, and the user's answer to what that means is "report it, never
+    renumber". `says_duplicates` is what reports it."""
     album = tmp_path / "A Band" / "Twice Numbered"
     for name, title, n in [("a", "First", 2), ("b", "Second", 2), ("c", "Third", 3)]:
         encode(album / f"{name} - {title}.mp3", title=title, artist="A Band",
@@ -738,7 +740,9 @@ def test_two_files_claiming_one_number_leave_the_first_holding_it(tmp_path):
     plan = build_plan(folder().collection(str(album)), source=folder())
 
     by_title = {t.title: t.number for t in plan.tracks}
-    assert by_title == {"First": 2, "Third": 3, "Second": 1}
+    assert by_title == {"First": 2, "Second": 2, "Third": 3}
+    from noaap.plan import says_duplicates
+    assert says_duplicates(plan) == "track 2 twice"
 
 
 def test_a_disc_that_states_no_number_is_still_counted_from_one(tmp_path):

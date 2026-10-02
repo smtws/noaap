@@ -363,6 +363,17 @@ set whose three parts all state one album — the set is named in one line and l
 dry run and in the apply alike. The same holds inside a folder for two tracks that would be given
 one filename.
 
+**An album whose numbers repeat is taken in as it states itself, and reported.** A folder holding
+two runs of 1–9 is two discs somebody flattened, or two releases in one place; noaap keeps every
+number the files state — nothing renumbered, nothing dropped, nobody asked while the pass runs — and
+ends with a **needs a look** section naming the album, the shape (`2 runs of 1–9 (18 files): discs?`
+or `track 8 twice`), the files, and a hint where the titles give one away
+(`run 2: every title says "mix"`). The same line is recorded on the album, so the page can show it.
+With MusicBrainz on, exactly those albums get one lookup: where every file falls on one disc and
+position of one release, the discs are assigned and the album is taken in as the set it is; where
+the match is partial, nothing is assigned and the line says what was found. Nothing else of the
+owner's values is touched either way.
+
 **And it names what it does not take in.** Every folder with audio in it that no album of the pass
 covers is listed at the end with the reason and the file count: hidden, one level too deep, refused
 by adoption, inside an album that is read as one album. A folder whose name begins with an ellipsis
