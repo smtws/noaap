@@ -924,44 +924,60 @@ def test_a_restore_is_refused_while_a_pass_holds_the_collection(elsewhere, tmp_p
     assert got.clean, "and it runs once the pass has let go"
 
 
-def test_a_share_that_stops_answering_says_so_instead_of_going_quiet(elsewhere, tmp_path,
-                                                                     monkeypatch):
-    """R-384, from I-257. A `soft` CIFS mount retries for about three and a half minutes before it
-    gives up — measured twice on the user's own NAS — and the pass printed nothing in all that time,
-    so a dead NAS looked like a run that had simply stopped.
+def test_a_share_that_goes_quiet_in_the_rename_says_so(elsewhere, tmp_path, monkeypatch):
+    """R-402, and it is why the first version was not enough.
 
-    **The slow call is faked here, and that is said out loud.** Blocking the real share needs
-    `iptables`, which is the reviewer's hand and not mine; what this measures is that a call which
-    does not answer produces the line, and the two real blocks in I-257 and I-276 are what measured
-    the silence this fixes.
+    The reviewer blocked the packets for 59 s while a copy back was in flight and the run said
+    nothing: of the fourteen things a copy back asks of the share, only the write itself was
+    wrapped. The window in which a `.noaap-incoming` file is on the share runs from the write's
+    start to the rename, so `os.replace` is where their block most likely fell — and it was silent.
+
+    **The slow call is faked, and that is deliberate**: blocking the real share needs `iptables`,
+    which is not this session's to place. What the real blocks measured is the silence (I-257,
+    I-276); what this measures is that a call going quiet anywhere in the copy back produces the line.
     """
     staging = tmp_path / "staging"
     lines: list[str] = []
-    real_probe = staged.precautions.folds_case
-
+    real_replace = os.replace
     slow = {"left": 1}
 
-    def slow_probe(where):
-        """The first thing a copy back asks of the share, and where a dead NAS was first felt.
-
-        One batch's probe is slow and the rest are not, so "once per stop" can be told apart from
-        "once per run": each stretch of waiting says it once, and there is one stretch here.
-        """
-        if slow["left"]:
+    def slow_rename(src, dst, **kw):
+        if slow["left"] and str(dst).startswith(str(elsewhere)):
             slow["left"] -= 1
-            time.sleep(0.3)
-        return real_probe(where)
+            time.sleep(0.4)
+        return real_replace(src, dst, **kw)
 
-    monkeypatch.setattr(staged, "SLOW", 0.05)
-    monkeypatch.setattr(staged.precautions, "folds_case", slow_probe)
+    monkeypatch.setattr(staged, "SLOW", 0.1)
+    monkeypatch.setattr(staged.os, "replace", slow_rename)
     staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
                           batch_size=1, dry_run=False, log=lines.append)
 
     waiting = [line for line in lines if "still waiting for" in line]
     assert waiting, lines
-    assert len(waiting) == 1, f"once per stop, not every interval: {waiting}"
-    assert "without an answer" in waiting[0] and "may be gone" in waiting[0]
-    assert str(elsewhere) in waiting[0], "and it names the path it is waiting on"
+    assert len(waiting) == 1, f"once per stretch of waiting, not per tick: {waiting}"
+    assert "with no answer" in waiting[0] and "may be gone" in waiting[0]
+    assert str(elsewhere) in waiting[0], "and it names the file it was working on"
+
+
+def test_a_share_that_goes_quiet_in_the_read_back_says_so(elsewhere, tmp_path, monkeypatch):
+    """The other end of the same file: the digest read that proves what was written."""
+    staging = tmp_path / "staging"
+    lines: list[str] = []
+    real_sha = staged.bytes_sha
+    slow = {"left": 1}
+
+    def slow_digest(path):
+        if slow["left"] and str(path).startswith(str(elsewhere)):
+            slow["left"] -= 1
+            time.sleep(0.4)
+        return real_sha(path)
+
+    monkeypatch.setattr(staged, "SLOW", 0.1)
+    monkeypatch.setattr(staged, "bytes_sha", slow_digest)
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lines.append)
+
+    assert [line for line in lines if "still waiting for" in line], lines
 
 
 def test_a_share_that_answers_at_once_says_nothing_about_waiting(elsewhere, tmp_path):

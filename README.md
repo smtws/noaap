@@ -410,9 +410,11 @@ back.
 
 **When the collection stops answering, the run says so.** A share mounted `soft` retries for about
 three and a half minutes before it gives up — measured twice on the user's NAS — and the pass used to
-print nothing at all in that time, so a dead NAS looked like a run that had wedged. After twenty
-seconds without an answer it says which path it is waiting on, once, and carries on by itself when the
-share answers or gives up.
+print nothing at all in that time, so a dead NAS looked like a run that had wedged. The run watches
+its own **progress**: when no file has got through for twenty seconds it says which one it is working
+on, once, and carries on by itself when the share answers or gives up. Progress rather than any one
+call, because a share can go quiet in the rename, in the read back that proves the copy, in moving
+your original aside or in removing an empty folder, and all of those are as silent as the write.
 
 **One staged pass per collection.** A run holds a lock in the collection's own store of originals
 (`noaap-originals/<name>/take-in.lock`, with the host, the pid and when it started) and a second run

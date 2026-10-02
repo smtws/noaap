@@ -35,6 +35,7 @@ import os
 import shutil
 import socket
 import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -272,40 +273,67 @@ def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
     return out
 
 
-SLOW = 20.0                      # seconds without an answer before the run says it is waiting
+SLOW = 20.0                      # seconds with no progress before the run says it is waiting
 
 
-@contextlib.contextmanager
-def saying_it_waits(what: Path, log: Callable[[str], None], after: float | None = None):
-    """Say, once, that the collection has not answered for a while (R-384, I-257).
+class Waiting:
+    """Say when the collection has gone quiet, measured by **progress** and not by one call.
 
     A `soft` CIFS mount retries for about three and a half minutes before it gives up — measured
-    twice on the user's own NAS: blocked at 02:38:07 and answered at 02:41, blocked at 05:36:33 and
-    answered at 05:40:00. Until then the pass printed nothing at all, so a person watching a dead
-    NAS sees a run that has simply stopped. One line, from a watcher thread, naming the path it is
-    waiting on; the work itself is untouched, because the thing that is slow is the kernel's business
-    and interrupting it would be worse than waiting.
+    twice on the user's NAS — and the pass printed nothing in that time, so a dead share looked like
+    a run that had wedged.
+
+    **The first version wrapped three calls and that was not enough** (R-402). The reviewer blocked
+    the packets for 59 s while a copy back was in flight and the run said nothing: of the fourteen
+    things a copy back asks of the share — `mkdir`, `is_file`, the snapshot's `stat`, the move aside's
+    rename, the write, the `os.replace` into place, the read back for the digest, the superseded
+    `unlink`, the empty-folder `rmdir` — only the write itself was wrapped. A block that lands in any
+    of the others is silent, and the window where a `.noaap-incoming` file is on the share runs from
+    the write's start to the rename, so `os.replace` and the digest read are exactly where their
+    block most likely fell.
+
+    So this watches the work rather than a call: the loop says `beat()` when a file is done, and if
+    nothing has beaten for `SLOW` seconds the line goes out **once**, naming the last thing it was
+    working on. The next beat re-arms it, so a share that goes quiet twice says so twice and one that
+    is merely slow says it once. Nothing is interrupted: what is slow is the kernel's business.
     """
-    # **read when it is used, not when this was defined**: a default argument would freeze `SLOW`
-    # at import, so neither a case nor a later change of mind could move it.
-    wait = SLOW if after is None else after
-    done = threading.Event()
 
-    def watch() -> None:
-        # **once per stop** (R-401). A line every twenty seconds would be its own kind of noise, and
-        # the one thing a person needs is to know the run is waiting on the collection rather than
-        # finished or wedged.
-        if not done.wait(wait):
-            log(f"  … still waiting for {what} ({wait:.0f}s without an answer). The collection may "
-                "be gone; the run carries on by itself when the share answers or gives up.")
+    def __init__(self, log: Callable[[str], None], after: float | None = None) -> None:
+        self.log = log
+        self.after = SLOW if after is None else after
+        self.what: Path | str = ""
+        self.last = time.monotonic()
+        self.said = False
+        self.done = threading.Event()
+        self.thread: threading.Thread | None = None
 
-    thread = threading.Thread(target=watch, daemon=True)
-    thread.start()
-    try:
-        yield
-    finally:
-        done.set()
-        thread.join(timeout=1)
+    def beat(self, what: Path | str | None = None) -> None:
+        """A file finished: the share is answering."""
+        if what is not None:
+            self.what = what
+        self.last = time.monotonic()
+        self.said = False
+
+    def _watch(self) -> None:
+        tick = min(self.after / 4, 1.0)
+        while not self.done.wait(tick):
+            if self.said or time.monotonic() - self.last < self.after:
+                continue
+            self.said = True
+            self.log(f"  … still waiting for {self.what or 'the collection'} "
+                     f"({self.after:.0f}s with no answer). It may be gone; the run carries on by "
+                     "itself when the share answers or gives up.")
+
+    def __enter__(self) -> Waiting:
+        self.last = time.monotonic()
+        self.thread = threading.Thread(target=self._watch, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.done.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1)
 
 
 class Held(Exception):
@@ -706,11 +734,13 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     free, where = free_space(staging)
     if batch.bytes > free:
         raise Stopped(says_no_room(batch, free, staging, where))
+    waiting = Waiting(log)
     for album in batch.albums:
         inside = here / album.relative_to(root)
         inside.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with saying_it_waits(album, log):
+            with waiting:
+                waiting.beat(album)
                 shutil.copytree(album, inside)
         except (OSError, shutil.Error) as e:
             # one line, not a tuple per file. ENOSPC is the one this was built for; anything else the
@@ -969,6 +999,19 @@ def _move_aside(path: Path, name: str, root: Path, done: Staged) -> bool:
 
 def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
                log: Callable[[str], None], sweep: bool = False, snapshot: Path | None = None) -> None:
+    """Put the batch back on the share, with one watchdog over the whole of it (R-402).
+
+    The watchdog is opened here rather than inside, because the work below returns early when a file
+    cannot be verified and a thread left running would go on talking about a share that is no longer
+    being asked anything.
+    """
+    with Waiting(log) as waiting:
+        _writing_back(root, here, was, done, log, waiting, sweep=sweep, snapshot=snapshot)
+
+
+def _writing_back(root: Path, here: Path, was: dict[str, precautions.Recorded], done: Staged,
+                  log: Callable[[str], None], waiting: Waiting, sweep: bool = False,
+                  snapshot: Path | None = None) -> None:
     """Put the batch back on the share: **add and replace only, and remove nothing until all of it is
     verified.**
 
@@ -999,8 +1042,11 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
     # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
     # aside — twelve files of one album in round 1, overwritten with nothing kept.
-    with saying_it_waits(root, log):
-        folding = precautions.folds_case(root)
+    # **one watchdog over the whole of it, beating on progress** (R-402): a share that goes quiet in
+    # the rename, the read back, the move aside or the empty-folder sweep is as silent as one that
+    # goes quiet in the write, and the first version only watched the write.
+    waiting.beat(root)
+    folding = precautions.folds_case(root)
     recorded_by = {name.casefold() if folding else name: name for name in was}
 
     def recorded(name: str) -> str | None:
@@ -1011,6 +1057,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
         for path in sorted(p for p in album.iterdir() if p.is_file()):
             name = str(inside / path.name)
             target = root / name
+            waiting.beat(target)
             target.parent.mkdir(parents=True, exist_ok=True)
             # **the owner's own file is moved aside before it is written over** (R-364). Where the
             # pass did not rename it, the new file lands on the old one and there would be nothing
@@ -1042,8 +1089,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
                 done.aside.append(known)
             tmp = target.with_name(target.name + PART)
             try:
-                with saying_it_waits(target, log):
-                    shutil.copy2(path, tmp)
+                shutil.copy2(path, tmp)
             except BaseException:
                 # a share that died mid-write leaves nothing of ours behind, even before a resume
                 with contextlib.suppress(OSError):
@@ -1057,6 +1103,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
                     note_wrote(snapshot, name, digest)
             else:
                 done.unverified.append(name)
+            waiting.beat(target)       # this one is through: the share is answering
         log(f"  {inside}: back on the share")
     if mine:
         log(f"  {len(mine)} file(s) of this batch were changed on the share while it ran and were "
@@ -1087,6 +1134,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             continue
         if any(_same(old, root / kept) for kept in written):
             continue        # a second line, for a filesystem whose inodes do mean something
+        waiting.beat(old)
         if _move_aside(old, name, root, done):
             done.aside.append(name)
         else:
@@ -1098,6 +1146,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             f"{', '.join(done.superseded[:3])}" + (" …" if len(done.superseded) > 3 else ""))
     # **only the folders this pass emptied**, unless the library is set to clear the owner's too.
     for folder in precautions.empty_under(root, emptied, everything=sweep):
+        waiting.beat(folder)
         with contextlib.suppress(OSError):
             folder.rmdir()
         log(f"  removed the empty folder {folder.relative_to(root)}")
@@ -1154,7 +1203,6 @@ __all__ = [
     "read_index",
     "read_wrote",
     "restore_all",
-    "saying_it_waits",
     "says_room",
     "snapshot_for",
     "snapshots_of",
