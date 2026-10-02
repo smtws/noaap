@@ -532,6 +532,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     # **what this run does, before it does any of it** (R-410, ruling 3): which names the files get
     # and where that was decided, then what else is on.
     log(f"  {choices.says()}")
+    for line in intake.says_lookups_off(service, choices):
+        log(line)
 
     # **a pass that renames is refused below its library** (R-417, point 2), before it plans: a
     # staged run names albums against the copy it made, which for an artist folder is the artist

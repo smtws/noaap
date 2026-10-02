@@ -296,6 +296,21 @@ def not_taken_in(root: Path, albums: Iterable[Path], refused: dict[str, str] | N
     return sorted(out)
 
 
+def says_lookups_off(service: Any, choices: Choices) -> list[str]:
+    """One line per lookup this run wants and cannot make (R-427, point 2).
+
+    The flags say what to do tonight; the settings say whether the client exists at all. Where this
+    run asks for a lookup the library has switched off, that is said once — not promised per album
+    and then not done.
+    """
+    out = []
+    if choices.musicbrainz and not getattr(service, "mb", None):
+        out.append("  lookups off (config): nothing is asked of MusicBrainz")
+    if choices.lyrics and not getattr(service, "lrclib", None):
+        out.append("  lookups off (config): nothing is asked of LRCLIB")
+    return out
+
+
 def a_look_at(plan: Any, where: str) -> tuple[str, str, list[str]] | None:
     """This album's duplicated numbers, with the files that hold them, or nothing."""
     odd = says_duplicates(plan)
@@ -401,6 +416,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         log(says_only(only, folders))
     log(f"{len(folders)} album folder(s) under {root}")
     log(f"  {choices.says()}")
+    for line in says_lookups_off(service, choices):
+        log(line)
     # **no two albums are filed under one name** (R-410, ruling 1). Asked before the first move, off
     # the listing that has already been read, so the whole set is named while every one of them is
     # still where its owner put it.
@@ -600,9 +617,13 @@ def _would(service: Any, plan: AlbumPlan, album_dir: Path, root: Path, choices: 
            want: Treatment) -> list[str]:
     """What this album would get, in the lines the passes themselves print."""
     said = [f"{plan.albumartist} — {plan.album} ({len(plan.tracks)} track(s), {album_dir.relative_to(root)})"]
-    if choices.musicbrainz and service.may_look_up(plan):
+    # **a dry run promises only what the apply can do** (R-427, point 2). A client that does not
+    # exist — the setting is off, whatever this run's flags say — cannot be asked, and saying
+    # "would ask MusicBrainz about 10 track(s)" per album while the pass asks nothing is a false
+    # line. The run says once, at the top, that lookups are off.
+    if choices.musicbrainz and service.may_look_up(plan) and getattr(service, "mb", None):
         said.append(f"  would ask MusicBrainz about {len(plan.tracks)} track(s)")
-    if choices.lyrics and service.may_look_up(plan):
+    if choices.lyrics and service.may_look_up(plan) and getattr(service, "lrclib", None):
         said.append(f"  would ask LRCLIB about {sum(1 for t in plan.tracks if t.lyrics is None)} track(s)")
     cover = service._cover_of(plan, album_dir)
     said += [f"  {line}" for line in would_do(plan, album_dir, cover, service.library, want)]
