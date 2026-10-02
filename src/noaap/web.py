@@ -938,7 +938,10 @@ class App:
                     choices = {key: bool(body.get(key, True)) for key in
                                ("musicbrainz", "lyrics", "cover_beside", "cover_embedded",
                                 "lyrics_embedded", "tags")}
-                    names = "keep" if str(body.get("names")) == "keep" else "scheme"
+                    # the page always sends one; a body without it leaves the answer to the
+                    # setting, which is what `take_in_all` does with None (R-410, ruling 3)
+                    names = ({"keep": "keep", "scheme": "scheme"}.get(str(body.get("names")))
+                             if body.get("names") is not None else None)
                     keep = str(body.get("keep_originals") or "").strip()
                     kept = Path(keep).expanduser() if keep else None
                     if kept is not None and not kept.is_absolute():

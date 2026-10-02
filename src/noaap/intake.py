@@ -44,6 +44,7 @@ class Choices:
     """What this run does. Not recorded anywhere: see the module's last paragraph."""
 
     names: str = "scheme"          # "keep" leaves the collection's own filenames alone
+    names_from: str = ""           # and where that came from, for the line the run opens with
     musicbrainz: bool = True
     lyrics: bool = True
     cover_beside: bool = True
@@ -61,8 +62,17 @@ class Choices:
     def says(self) -> str:
         on = [key for key in ("musicbrainz", "lyrics", "cover_beside", "cover_embedded",
                               "lyrics_embedded", "tags") if getattr(self, key)]
+        return f"{self.says_names()}; " + (", ".join(on) if on else "nothing else")
+
+    def says_names(self) -> str:
+        """Which names this run gives the files, **and where that was decided** (R-410, ruling 3).
+
+        The flag used to default to `scheme` while the setting it mirrors, `rename_adopted`,
+        defaults to off and the page says so. A run without the flag therefore renamed 2,847 files
+        of a collection whose owner had been told renaming was off.
+        """
         names = "their own names" if self.names == "keep" else "noaap's names"
-        return f"{names}; " + (", ".join(on) if on else "nothing else")
+        return f"{names}{f' (from {self.names_from})' if self.names_from else ''}"
 
 
 @dataclass

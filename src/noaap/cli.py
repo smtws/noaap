@@ -178,8 +178,9 @@ def main(argv: list[str] | None = None) -> int:
     ti = sub.add_parser("take-in", help="take a whole collection in and bring every album to one state")
     ti.add_argument("root", help="the folder to take in — a collection of somebody's own")
     ti.add_argument("--apply", action="store_true", help="do it (without this it says what it would do)")
-    ti.add_argument("--names", choices=("keep", "scheme"), default="scheme",
-                    help="keep the collection's own filenames, or rename into noaap's scheme")
+    ti.add_argument("--names", choices=("keep", "scheme"), default=None,
+                    help="keep the collection's own filenames, or rename into noaap's scheme "
+                         "(default: what the `rename_adopted` setting says, which is keep)")
     ti.add_argument("--no-mb", action="store_true", help="skip the MusicBrainz lookup")
     ti.add_argument("--no-lyrics", action="store_true", help="skip the LRCLIB lookup")
     ti.add_argument("--no-cover", action="store_true", help="do not put a cover beside each album")
@@ -883,7 +884,12 @@ def _take_in(args: argparse.Namespace, cfg: config_mod.Config) -> int:
                     print(f"  removed {path.name} — the record of a pass that is undone")
         return 1 if (done.changed or done.lost) else 0
 
-    choices = intake.Choices(names=args.names, musicbrainz=not args.no_mb, lyrics=not args.no_lyrics,
+    # **the flag overrides the setting; without it the setting decides** (R-410, ruling 3). It used
+    # to default to `scheme` while `rename_adopted` defaults to off and the page says "off by
+    # default", so a plain `take-in` renamed a collection whose owner had been told it would not.
+    names = args.names or ("scheme" if cfg.rename_adopted else "keep")
+    choices = intake.Choices(names=names, musicbrainz=not args.no_mb, lyrics=not args.no_lyrics,
+                             names_from="--names" if args.names else "the rename_adopted setting",
                              cover_beside=not args.no_cover, cover_embedded=not args.no_embed_cover,
                              lyrics_embedded=not args.no_embed_lyrics, tags=not args.no_tags)
     if args.staging:

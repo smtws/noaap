@@ -1895,7 +1895,7 @@ class Service:
         self.log(f"{done['adopted']} album(s) adopted, {done['tracks']} track(s)")
         return Outcome("ok", message=f"{done['adopted']} album(s) adopted")
 
-    def take_in_all(self, folder: Path, *, names: str = "scheme", keep: Path | None = None,
+    def take_in_all(self, folder: Path, *, names: str | None = None, keep: Path | None = None,
                     dry_run: bool = True, **switches: bool) -> Outcome:
         """`noaap take-in` from the page: a whole collection to one state (§9, slice 101)."""
         from . import intake
@@ -1904,7 +1904,11 @@ class Service:
             return Outcome("failed", message="no library is configured")
         if why := refuse_folder(folder, self.library, itself=True):
             return Outcome("failed", message=why)
-        choices = intake.Choices(names=names, **{k: bool(v) for k, v in switches.items()})
+        # without an answer the setting decides, as it does on the command line (R-410, ruling 3)
+        chosen = names or ("scheme" if self.cfg.rename_adopted else "keep")
+        choices = intake.Choices(names=chosen, names_from="you" if names else
+                                 "the rename_adopted setting",
+                                 **{k: bool(v) for k, v in switches.items()})
         done = intake.take_in(self, folder, choices, dry_run=dry_run, keep=keep, log=self.log)
         what = (f"{done.adopted} album(s), {done.tracks} track(s)"
                 + (" would be taken in" if dry_run else " taken in"))

@@ -1981,9 +1981,12 @@ function takeInSection() {
                               placeholder: "/mnt/nas/Music", "aria-label": "the folder to take in" });
   const mode = h("select", { class: "take-in-mode" },
     TAKE_IN_MODES.map(([value, text]) => h("option", { value }, text)));
+  // **what is offered is what the library is set to** (R-410, ruling 3): the switch above says
+  // renaming an adopted album is off by default, and this list used to open on "rename" anyway.
+  const renaming = Boolean(state.settings?.state?.rename_adopted);
   const names = h("select", { class: "take-in-names" },
-    h("option", { value: "scheme" }, "rename into noaap's scheme"),
-    h("option", { value: "keep" }, "keep the collection's own names"));
+    h("option", { value: "scheme", selected: renaming }, "rename into noaap's scheme"),
+    h("option", { value: "keep", selected: !renaming }, "keep the collection's own names"));
   const switches = new Map(TAKE_IN_SWITCHES.map(([key]) =>
     [key, h("input", { type: "checkbox", checked: true })]));
   const keep = h("input", { type: "text", class: "take-in-keep", autocomplete: "off", spellcheck: "false",

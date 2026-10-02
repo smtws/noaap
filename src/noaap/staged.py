@@ -512,6 +512,9 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     done.free, done.filesystem = free_space(staging)
     done.limit = batch_size or max(done.free // SHARE, 1)
     log(says_room(staging, done.limit, done.free, done.filesystem))
+    # **what this run does, before it does any of it** (R-410, ruling 3): which names the files get
+    # and where that was decided, then what else is on.
+    log(f"  {choices.says()}")
 
     where = staging / STAGED
     # **the index is read for every run, and obeyed only by a resuming one.** A dry run writes
