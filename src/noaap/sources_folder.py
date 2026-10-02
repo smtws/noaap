@@ -88,6 +88,12 @@ def cover_in(folder: Path) -> Path | None:
     return None
 
 
+ID3V1_FIELD = 30     # bytes, and therefore characters for anything that fits in latin-1
+# …but the field is padded, and a value cut mid-space comes back a character or two short once the
+# padding is stripped: `The Cross Of Changes (Special` is 29. Measured on the user's collection.
+ID3V1_CUT = range(ID3V1_FIELD - 3, ID3V1_FIELD + 1)
+
+
 def read_tags(path: Path, one: Any = None) -> dict[str, Any]:
     """Artist, title, album, album artist, year, track and disc as the file itself states them.
 
@@ -124,28 +130,31 @@ def read_tags(path: Path, one: Any = None) -> dict[str, Any]:
         "albumartist": one("albumartist"), "year": year,
         "tracknumber": number("tracknumber"), "discnumber": number("discnumber"),
     }.items() if v is not None}
-    return _past_id3v1(path, tags, out)
+    return _past_a_cut_field(path, tags, out)
 
 
-def _past_id3v1(path: Path, tags: Any, out: dict[str, Any]) -> dict[str, Any]:
-    """An ID3v1 field is 30 bytes, and the file's own name often holds the rest (R-410, ruling 4).
+def _past_a_cut_field(path: Path, tags: Any, out: dict[str, Any]) -> dict[str, Any]:
+    """A thirty-character tag whose own file name carries on is a cut value (R-410, ruling 4).
 
-    138 files of the user's collection state a title of exactly thirty characters, because that is
-    all the tag can hold — `Zyklus Farbenfinsternis - Kapi`, `Never Let Me Down Again - Aggr` — while
-    the name beside it spells the song out in full. Reading the tag and renaming the file to it threw
-    away what the owner still had: `… - 06 - Zyklus Farbenfinsternis - Kapi.mp3`. Where the name
-    states the same value and carries on, the name is the record; everywhere else the tag stands.
+    An ID3v1 field holds thirty bytes. 138 files of the user's collection state a title exactly that
+    long — `Zyklus Farbenfinsternis - Kapi`, `Never Let Me Down Again - Aggr` — while the name beside
+    them spells the song out in full, and renaming the file to the tag threw away what the owner
+    still had. **The version is not the test**: 69 more files carry the same stub in an ID3v2.4
+    frame, because whatever wrote them copied the v1 value up. What says it was cut is the length —
+    as much as the field holds, give or take the padding that is stripped off it — together with a
+    file name that states the same value and goes on. Anything shorter is what its owner wrote.
     """
-    inner = getattr(tags, "tags", None)
-    # mutagen's easy wrapper hides the version one layer down, and only ID3 has one at all
-    version = getattr(inner, "version", None) or getattr(getattr(inner, "_EasyID3__id3", None),
-                                                         "version", None)
-    if not version or version[0] != 1:
-        return out
+    from .plan import safe_name  # here, so that a module everything imports stays import-free
+
     stated = from_name(path)
     for key in ("title", "artist", "album"):
         tag, named = out.get(key), stated.get(key)
-        if tag and named and len(named) > len(tag) and named.startswith(tag):
+        if not tag or not named or len(tag) not in ID3V1_CUT or len(named) <= len(tag):
+            continue
+        # **the name is the tag made safe for a filesystem**, so the two are compared that way:
+        # `Pascal lacht (Karlstorbahnhof/` is in the tag and `…-Heidelberg)` in the name, and a
+        # straight prefix test misses eight of the user's files over one slash (R-410, ruling 4).
+        if named.startswith(tag) or safe_name(named).startswith(safe_name(tag)):
             out[key] = named
     return out
 
@@ -186,6 +195,26 @@ def from_name(path: Path) -> dict[str, Any]:
                 out["tracknumber"] = int(n)
             return out
     return {}
+
+
+def _past_id3v1_together(tags: list[dict[str, Any]]) -> None:
+    """One folder's values, read as one: a tag cut to thirty characters is the one that goes on.
+
+    `_past_id3v1` recovers what the *file's own name* still holds, and a file whose name does not
+    carry the album keeps the stub — so one folder stated `15 Years After - The dusted Va` in one
+    file and `15 Years After - The dusted Variations` in the other eight, and the album was then
+    two albums and refused as such (R-410, rulings 4 and 5). The folder is the unit: where a value
+    is exactly a field long and another in the same folder goes on from it, they are the same value.
+    """
+    for key in ("album", "artist", "albumartist"):
+        said = {str(row[key]) for row in tags if row.get(key)}
+        for short in [one for one in said if len(one) in ID3V1_CUT]:
+            longer = sorted((one for one in said if one != short and one.startswith(short)),
+                            key=len, reverse=True)
+            if longer:
+                for row in tags:
+                    if row.get(key) == short:
+                        row[key] = longer[0]
 
 
 def disc_folders(folder: Path) -> list[tuple[int, Path]]:
@@ -363,6 +392,7 @@ class FolderSource:
                                  measure(path, digest=self.digests, one=one)))
         if not rows:
             raise sources.NotSupported(f"no audio files in {folder.name!r}")
+        _past_id3v1_together([row[2] for row in rows])
         if all((t.get("tracknumber") or n.get("tracknumber")) for _, _, t, n, _ in rows):
             rows.sort(key=lambda r: (r[0], r[2].get("discnumber") or r[0],
                                      r[2].get("tracknumber") or r[3]["tracknumber"]))

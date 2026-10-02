@@ -73,7 +73,153 @@ def test_the_name_is_read_where_the_tag_was_cut_by_its_format(id3v1_only):
     assert read["artist"] == "Eisregen"
 
 
+def test_a_stub_in_an_id3v2_frame_is_a_stub_too(tmp_path, one_second_of_mp3):
+    """69 files of the user's collection carry the thirty-character value in an ID3v2.4 frame,
+    because whatever wrote them copied the v1 value up. The length is the test, not the version."""
+    import shutil
+
+    from mutagen.id3 import ID3, TIT2
+
+    album = tmp_path / "collection" / "Depeche Mode" / "Never Let Me Down Again"
+    album.mkdir(parents=True)
+    path = album / ("Depeche Mode - Never Let Me Down Again - 04 - "
+                    "Pleasure, Little Treasure - Glitter Mix.mp3")
+    shutil.copy(one_second_of_mp3, path)
+    tags = ID3()
+    tags.add(TIT2(encoding=3, text=["Pleasure, Little Treasure - Gl"]))
+    tags.save(path, v1=0, v2_version=4)
+
+    assert sources_folder.read_tags(path)["title"] == "Pleasure, Little Treasure - Glitter Mix"
+
+
+def test_a_slash_in_the_tag_is_a_dash_in_the_name(tmp_path, one_second_of_mp3):
+    """The name is the tag made safe for a filesystem, so the two are compared that way."""
+    import shutil
+
+    from mutagen.id3 import ID3, TIT2
+
+    album = tmp_path / "collection" / "Goethes Erben" / "live"
+    album.mkdir(parents=True)
+    path = album / "Goethes Erben - live - 02 - Pascal lacht (Karlstorbahnhof-Heidelberg).mp3"
+    shutil.copy(one_second_of_mp3, path)
+    tags = ID3()
+    tags.add(TIT2(encoding=3, text=["Pascal lacht (Karlstorbahnhof/"]))
+    tags.save(path, v1=0, v2_version=4)
+
+    assert sources_folder.read_tags(path)["title"] == "Pascal lacht (Karlstorbahnhof-Heidelberg)"
+
+
+def test_a_short_tag_is_what_its_owner_wrote(tmp_path, one_second_of_mp3):
+    """`Winter` is not a cut `Winter of my soul`: below the field's length the tag means what it says."""
+    import shutil
+
+    from mutagen.id3 import ID3, TIT2
+
+    album = tmp_path / "collection" / "Eisregen" / "Album"
+    album.mkdir(parents=True)
+    path = album / "Eisregen - Album - 01 - Winter of my soul [Demo Version 1996].mp3"
+    shutil.copy(one_second_of_mp3, path)
+    tags = ID3()
+    tags.add(TIT2(encoding=3, text=["Winter"]))
+    tags.save(path, v1=0, v2_version=4)
+
+    assert sources_folder.read_tags(path)["title"] == "Winter"
+
+
 def test_a_tag_the_name_does_not_continue_still_stands(id3v1_only, tmp_path):
     other = id3v1_only.with_name("Eisregen - Farbenfinsternis - 06 - Something Else Entirely.mp3")
     id3v1_only.rename(other)
     assert sources_folder.read_tags(other)["title"] == "Zyklus Farbenfinsternis - Kapi"
+
+
+def test_one_folder_s_cut_tags_are_read_as_one_value(tmp_path, one_second_of_mp3):
+    """A field is thirty bytes; the file whose name does not carry the album keeps the stub.
+
+    One folder of the user's collection then stated two albums — `15 Years After - The dusted Va`
+    and `15 Years After - The dusted Variations` — and adoption refused it as two albums, which is
+    exactly what a folder of two albums should get and exactly wrong here (R-410, rulings 4 and 5).
+    """
+    import shutil
+
+    from mutagen.id3 import ID3, TALB, TIT2, TPE1
+
+    from noaap import sources
+    from noaap.config import Config
+
+    album = tmp_path / "collection" / "Enigma" / "15 Years After - The dusted Variations"
+    album.mkdir(parents=True)
+    for n, (name, stated) in enumerate([
+            ("01 Hello.mp3", "15 Years After - The dusted Va"),          # the name says no more
+            ("Enigma - 15 Years After - The dusted Variations - 02 - The Cild In Us.mp3",
+             "15 Years After - The dusted Va")], 1):                      # …and this one does
+        path = album / name
+        shutil.copy(one_second_of_mp3, path)
+        tags = ID3()
+        tags.add(TIT2(encoding=0, text=[f"Track {n}"]))
+        tags.add(TPE1(encoding=0, text=["Enigma"]))
+        tags.add(TALB(encoding=0, text=[stated]))
+        tags.save(path, v1=2, v2_version=3)
+        ID3(path).delete(path, delete_v1=False, delete_v2=True)
+
+    source = sources.get("folder", Config(library_root=tmp_path / "collection"))
+    source.digests = False
+    collection = source.collection(str(album))
+
+    assert {e.music.album for e in collection.entries} == {"15 Years After - The dusted Variations"}
+
+
+def test_a_value_cut_a_space_short_is_still_a_cut_value(tmp_path, one_second_of_mp3):
+    """The field is padded, so a value cut in a space comes back shorter than thirty once stripped:
+    `The Cross Of Changes (Special` is 29, and the folder it is in states the whole name too."""
+    import shutil
+
+    from mutagen.id3 import ID3, TALB, TIT2
+
+    from noaap import sources
+    from noaap.config import Config
+
+    album = tmp_path / "collection" / "Enigma" / "The Cross Of Changes (Special Edition)"
+    album.mkdir(parents=True)
+    for n, name in enumerate(["01 track.mp3",
+                              "Enigma - The Cross Of Changes (Special Edition) - 02 - Track.mp3"], 1):
+        stated = "The Cross Of Changes (Special"     # all ID3v1 can hold, stripped of its padding
+        path = album / name
+        shutil.copy(one_second_of_mp3, path)
+        tags = ID3()
+        tags.add(TIT2(encoding=0, text=[f"Track {n}"]))
+        tags.add(TALB(encoding=0, text=[stated]))
+        tags.save(path, v1=2, v2_version=3)
+        ID3(path).delete(path, delete_v1=False, delete_v2=True)
+
+    source = sources.get("folder", Config(library_root=tmp_path / "collection"))
+    source.digests = False
+    collection = source.collection(str(album))
+
+    assert {e.music.album for e in collection.entries} == {"The Cross Of Changes (Special Edition)"}
+
+
+def test_a_shorter_name_that_is_not_a_cut_value_is_left_alone(tmp_path, one_second_of_mp3):
+    """Two albums in one folder is a thing that happens, and `Greatest Hits` is not `Greatest Hits II`."""
+    import shutil
+
+    from mutagen.id3 import ID3, TALB, TIT2
+
+    from noaap import sources
+    from noaap.config import Config
+
+    album = tmp_path / "collection" / "Someone" / "mixed"
+    album.mkdir(parents=True)
+    for n, stated in enumerate(["Greatest Hits", "Greatest Hits II"], 1):
+        path = album / f"0{n} track.mp3"
+        shutil.copy(one_second_of_mp3, path)
+        tags = ID3()
+        tags.add(TIT2(encoding=0, text=[f"Track {n}"]))
+        tags.add(TALB(encoding=0, text=[stated]))
+        tags.save(path, v1=2, v2_version=3)
+        ID3(path).delete(path, delete_v1=False, delete_v2=True)
+
+    source = sources.get("folder", Config(library_root=tmp_path / "collection"))
+    source.digests = False
+    collection = source.collection(str(album))
+
+    assert {e.music.album for e in collection.entries} == {"Greatest Hits", "Greatest Hits II"}
