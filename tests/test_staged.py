@@ -600,6 +600,112 @@ def test_the_collection_going_away_partway_through_a_copy_back_is_one_line(elsew
         "and nothing is left on the share under the name a copy in flight wears"
 
 
+def test_a_resume_takes_back_what_only_the_store_still_has(already_named, tmp_path, monkeypatch):
+    """I-260, R-387. A pass stopped between a file's move-aside and its replacement leaves that file
+    only in the store. The resume takes the batch from what the share holds now, so it writes the
+    batch back one file short and the album stays short a track until somebody restores — and a
+    resume is what somebody does instead of restoring.
+
+    Measured on the share before this: the first pass copied out 0.077 GB of an album, the resume
+    0.071, the difference being one 6.3 MB track that was in the store.
+    """
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    was = {str(q.relative_to(elsewhere)): q.read_bytes()
+           for q in sorted(elsewhere.rglob("*")) if q.is_file()}
+    real_back = staged._copy_back
+
+    def stop_after_the_first_move_aside(root, here, recorded, done, log, sweep=False, **kw):
+        """One file moved aside and not replaced, which is the window the fault lives in."""
+        counted = {"n": 0}
+        real_copy = shutil.copy2
+
+        def die(src, dst, *args, **kw):
+            counted["n"] += 1
+            if counted["n"] > 1 and "noaap-originals" not in str(dst):
+                raise KeyboardInterrupt("as a signal stops it, after a move aside")
+            return real_copy(src, dst, *args, **kw)
+
+        staged.shutil.copy2 = die
+        try:
+            real_back(root, here, recorded, done, log, sweep=sweep, **kw)
+        finally:
+            staged.shutil.copy2 = real_copy
+
+    monkeypatch.setattr(staged, "_copy_back", stop_after_the_first_move_aside)
+    with pytest.raises(KeyboardInterrupt):
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                              batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+    lost = [name for name in was if not (elsewhere / name).exists()]
+    assert lost, "the pass did leave a file only in the store, or this proves nothing"
+    assert all((staged.aside_for(elsewhere) / name).is_file() for name in lost)
+
+    lines: list[str] = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lines.append)
+
+    # the data first: the album is whole again, with no restore involved
+    for name in lost:
+        assert (elsewhere / name).is_file(), f"{name} is back in the album, with no restore"
+    assert not [name for name in was if not (elsewhere / name).exists()], \
+        "and the album holds every track it held"
+    said = [line for line in lines if "are back in the batch" in line]
+    assert len(said) == 1, said
+
+
+def test_a_dry_run_says_which_files_are_only_in_the_store(already_named, tmp_path, monkeypatch):
+    """R-388. A pass stopped between a move-aside and its replacement leaves a file only in the
+    store, and until now the only way to learn that was to resume or to restore and compare. The
+    run that a person reaches for when an album looks short is a dry one, so it has to answer."""
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    real_back = staged._copy_back
+
+    def stop_after_the_first_move_aside(root, here, recorded, done, log, sweep=False, **kw):
+        counted = {"n": 0}
+        real_copy = shutil.copy2
+
+        def die(src, dst, *args, **kw2):
+            counted["n"] += 1
+            if counted["n"] > 1 and "noaap-originals" not in str(dst):
+                raise KeyboardInterrupt("as a signal stops it, after a move aside")
+            return real_copy(src, dst, *args, **kw2)
+
+        staged.shutil.copy2 = die
+        try:
+            real_back(root, here, recorded, done, log, sweep=sweep, **kw)
+        finally:
+            staged.shutil.copy2 = real_copy
+
+    monkeypatch.setattr(staged, "_copy_back", stop_after_the_first_move_aside)
+    with pytest.raises(KeyboardInterrupt):
+        staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                              batch_size=1, dry_run=False, log=lambda s: None)
+    monkeypatch.undo()
+
+    lines: list[str] = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=True, log=lines.append)
+
+    said = [line for line in lines if "only in the store of originals" in line]
+    assert len(said) == 1, lines
+    assert "resuming or restoring puts them back" in said[0]
+    assert "First.opus" in said[0] or "Hollow.opus" in said[0], said[0]
+
+
+def test_a_resume_with_nothing_missing_says_nothing_about_the_store(elsewhere, tmp_path):
+    """The other half of R-387: the line is only there when there is something to say."""
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    lines: list[str] = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lines.append)
+
+    assert not [line for line in lines if "only in the store of originals" in line]
+
+
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
     """One snapshot is one batch; the whole pass is the index. R-374, ruling c."""
     reference = tmp_path / "reference"

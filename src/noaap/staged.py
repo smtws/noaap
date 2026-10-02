@@ -299,6 +299,27 @@ def says_no_room(batch: Batch, free: int, staging: Path, where: str) -> str:
             "space and run the same command again — it carries on where it stopped.")
 
 
+def _only_in_the_store(staging: Path, root: Path,
+                       known: dict[str, Recorded]) -> dict[str, list[str]]:
+    """Which recorded files of an unfinished batch the share has lost, by album (R-388)."""
+    store = aside_for(root)
+    if not store.is_dir():
+        return {}
+    out: dict[str, list[str]] = {}
+    for one in known.values():
+        if one.done:
+            continue
+        snapshot = staging / one.snapshot
+        if not snapshot.is_file():
+            continue
+        with contextlib.suppress(OSError, ValueError):
+            for record in precautions.read(snapshot).files:
+                name = record.path
+                if not (root / name).exists() and (store / name).is_file():
+                    out.setdefault(str(Path(name).parent), []).append(name)
+    return {album: sorted(names) for album, names in out.items()}
+
+
 def _owed_folders(staging: Path, root: Path, known: dict[str, Recorded]) -> set[str]:
     """Every folder a batch that did not finish is still owed, under the root."""
     out: set[str] = set()
@@ -334,13 +355,25 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     log(says_room(staging, done.limit, done.free, done.filesystem))
 
     where = staging / STAGED
-    known = read_index(where, root) if resume and not dry_run else {}
+    # **the index is read for every run, and obeyed only by a resuming one.** A dry run writes
+    # nothing and skips nothing, but it is the natural thing to run when a collection looks wrong,
+    # so it must be able to say what an unfinished batch left behind (R-388).
+    seen = read_index(where, root)
+    known = dict(seen) if resume and not dry_run else {}
     # **what a batch that did not finish is still owed**, read before anything is skipped. Its own
     # albums, the folders the pass made for them, and every folder its snapshot recorded a file in —
     # so a half-renamed album is covered whichever of its two names the share now shows.
-    owed = _owed_folders(staging, root, known)
+    owed = _owed_folders(staging, root, seen)
     if owed:
         log(f"  {len(owed)} folder(s) are owed a copy back by a batch that did not finish")
+    # **and what is only in the store is said out loud, dry run or not** (R-388). A pass stopped
+    # between a file's move-aside and its replacement leaves that file only in the store, and until
+    # now the only way to learn that was to resume or to restore and compare. A person looking at
+    # their collection and wondering why an album is short gets the answer from the run itself.
+    for album, names in sorted(_only_in_the_store(staging, root, seen).items()):
+        log(f"  {len(names)} file(s) of {album} are only in the store of originals; resuming or "
+            f"restoring puts them back: {', '.join(Path(n).name for n in names[:3])}"
+            + (" …" if len(names) > 3 else ""))
 
     sized = album_sizes(root, source)
     # **an album that already holds a plan was taken in by an earlier pass**, and the way to bring it
@@ -570,6 +603,9 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
         was = {r.path: r for r in precautions.read(snapshot).files}
         log(f"  the way back for this batch was already written down: {snapshot.name}, "
             f"{len(was)} file(s)")
+        if back := _from_the_store(root, here, was):
+            log(f"  {len(back)} file(s) were only in the store of originals and are back in the "
+                f"batch: {', '.join(back[:3])}" + (" …" if len(back) > 3 else ""))
     else:
         precautions.take(here, snapshot, log=lambda s: None)
         was = {r.path: r for r in precautions.read(snapshot).files}
@@ -651,6 +687,33 @@ def aside_for(root: Path) -> Path:
     fixed snapshot name that served two collections, found in P81b.
     """
     return root.parent / ASIDE / root.name
+
+
+def _from_the_store(root: Path, here: Path, was: dict[str, Any]) -> list[str]:
+    """Put back into the staged copy every recorded file the share has lost but the store still has.
+
+    **The gate's own finding (I-260, R-387).** A pass stopped between a file's move-aside and its
+    replacement leaves that file *only* in the store. A resume takes the batch from what the share
+    holds now, which no longer includes it, so the batch is written back one file short and the
+    owner's album stays short a track until somebody restores — and a resume is what somebody does
+    instead of restoring. Measured on the real share: the first pass copied out 0.077 GB of an
+    album, the resume 0.071, the difference being one 6.3 MB track sitting in the store.
+
+    The store is the authority for exactly these paths: `_move_aside` only ever puts an original
+    there, under the name the snapshot knows it by.
+    """
+    store = aside_for(root)
+    if not store.is_dir():
+        return []
+    out = []
+    for name in sorted(was):
+        if (here / name).exists() or not (store / name).is_file():
+            continue
+        target = here / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(store / name, target)
+        out.append(name)
+    return out
 
 
 def _moved_on(path: Path, recorded: Any) -> bool:
