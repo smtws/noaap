@@ -34,6 +34,7 @@ import json
 import os
 import shutil
 import socket
+import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -269,6 +270,42 @@ def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
         if (name.casefold() if folding else name) not in known:
             out.append(name)
     return out
+
+
+SLOW = 20.0                      # seconds without an answer before the run says it is waiting
+
+
+@contextlib.contextmanager
+def saying_it_waits(what: Path, log: Callable[[str], None], after: float | None = None):
+    """Say, once, that the collection has not answered for a while (R-384, I-257).
+
+    A `soft` CIFS mount retries for about three and a half minutes before it gives up — measured
+    twice on the user's own NAS: blocked at 02:38:07 and answered at 02:41, blocked at 05:36:33 and
+    answered at 05:40:00. Until then the pass printed nothing at all, so a person watching a dead
+    NAS sees a run that has simply stopped. One line, from a watcher thread, naming the path it is
+    waiting on; the work itself is untouched, because the thing that is slow is the kernel's business
+    and interrupting it would be worse than waiting.
+    """
+    # **read when it is used, not when this was defined**: a default argument would freeze `SLOW`
+    # at import, so neither a case nor a later change of mind could move it.
+    wait = SLOW if after is None else after
+    done = threading.Event()
+
+    def watch() -> None:
+        # **once per stop** (R-401). A line every twenty seconds would be its own kind of noise, and
+        # the one thing a person needs is to know the run is waiting on the collection rather than
+        # finished or wedged.
+        if not done.wait(wait):
+            log(f"  … still waiting for {what} ({wait:.0f}s without an answer). The collection may "
+                "be gone; the run carries on by itself when the share answers or gives up.")
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        done.set()
+        thread.join(timeout=1)
 
 
 class Held(Exception):
@@ -673,7 +710,8 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
         inside = here / album.relative_to(root)
         inside.parent.mkdir(parents=True, exist_ok=True)
         try:
-            shutil.copytree(album, inside)
+            with saying_it_waits(album, log):
+                shutil.copytree(album, inside)
         except (OSError, shutil.Error) as e:
             # one line, not a tuple per file. ENOSPC is the one this was built for; anything else the
             # copy out can raise — a share that went away, a permission — gets its own text and the
@@ -961,7 +999,8 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
     # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
     # aside — twelve files of one album in round 1, overwritten with nothing kept.
-    folding = precautions.folds_case(root)
+    with saying_it_waits(root, log):
+        folding = precautions.folds_case(root)
     recorded_by = {name.casefold() if folding else name: name for name in was}
 
     def recorded(name: str) -> str | None:
@@ -1003,7 +1042,8 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
                 done.aside.append(known)
             tmp = target.with_name(target.name + PART)
             try:
-                shutil.copy2(path, tmp)
+                with saying_it_waits(target, log):
+                    shutil.copy2(path, tmp)
             except BaseException:
                 # a share that died mid-write leaves nothing of ours behind, even before a resume
                 with contextlib.suppress(OSError):
@@ -1094,6 +1134,7 @@ def _same(one: Path, two: Path) -> bool:
 __all__ = [
     "LOCK",
     "PART",
+    "SLOW",
     "STAGED",
     "Batch",
     "Held",
@@ -1113,6 +1154,7 @@ __all__ = [
     "read_index",
     "read_wrote",
     "restore_all",
+    "saying_it_waits",
     "says_room",
     "snapshot_for",
     "snapshots_of",

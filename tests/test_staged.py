@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import socket
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -921,6 +922,56 @@ def test_a_restore_is_refused_while_a_pass_holds_the_collection(elsewhere, tmp_p
     staged.let_the_lock_go(elsewhere)
     got = staged.restore_all(elsewhere, staging, apply=True, log=lambda s: None)
     assert got.clean, "and it runs once the pass has let go"
+
+
+def test_a_share_that_stops_answering_says_so_instead_of_going_quiet(elsewhere, tmp_path,
+                                                                     monkeypatch):
+    """R-384, from I-257. A `soft` CIFS mount retries for about three and a half minutes before it
+    gives up — measured twice on the user's own NAS — and the pass printed nothing in all that time,
+    so a dead NAS looked like a run that had simply stopped.
+
+    **The slow call is faked here, and that is said out loud.** Blocking the real share needs
+    `iptables`, which is the reviewer's hand and not mine; what this measures is that a call which
+    does not answer produces the line, and the two real blocks in I-257 and I-276 are what measured
+    the silence this fixes.
+    """
+    staging = tmp_path / "staging"
+    lines: list[str] = []
+    real_probe = staged.precautions.folds_case
+
+    slow = {"left": 1}
+
+    def slow_probe(where):
+        """The first thing a copy back asks of the share, and where a dead NAS was first felt.
+
+        One batch's probe is slow and the rest are not, so "once per stop" can be told apart from
+        "once per run": each stretch of waiting says it once, and there is one stretch here.
+        """
+        if slow["left"]:
+            slow["left"] -= 1
+            time.sleep(0.3)
+        return real_probe(where)
+
+    monkeypatch.setattr(staged, "SLOW", 0.05)
+    monkeypatch.setattr(staged.precautions, "folds_case", slow_probe)
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lines.append)
+
+    waiting = [line for line in lines if "still waiting for" in line]
+    assert waiting, lines
+    assert len(waiting) == 1, f"once per stop, not every interval: {waiting}"
+    assert "without an answer" in waiting[0] and "may be gone" in waiting[0]
+    assert str(elsewhere) in waiting[0], "and it names the path it is waiting on"
+
+
+def test_a_share_that_answers_at_once_says_nothing_about_waiting(elsewhere, tmp_path):
+    """The line is only there when there is something to say."""
+    lines: list[str] = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                          staging=tmp_path / "staging", batch_size=1, dry_run=False,
+                          log=lines.append)
+
+    assert not [line for line in lines if "still waiting for" in line]
 
 
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):

@@ -408,6 +408,12 @@ cannot be found, so it is listed and the restore does not report clean.
 restore is pointed at, and nothing in noaap removes it — it stays until you no longer want the way
 back.
 
+**When the collection stops answering, the run says so.** A share mounted `soft` retries for about
+three and a half minutes before it gives up — measured twice on the user's NAS — and the pass used to
+print nothing at all in that time, so a dead NAS looked like a run that had wedged. After twenty
+seconds without an answer it says which path it is waiting on, once, and carries on by itself when the
+share answers or gives up.
+
 **One staged pass per collection.** A run holds a lock in the collection's own store of originals
 (`noaap-originals/<name>/take-in.lock`, with the host, the pid and when it started) and a second run
 on the same collection is refused with a line naming the one that holds it. The lock lives beside the
