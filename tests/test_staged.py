@@ -416,6 +416,43 @@ def test_a_file_the_interrupted_run_made_is_still_taken_away(already_named, tmp_
     assert _tags_and_picture(elsewhere) == was
 
 
+def test_a_file_somebody_else_changed_stays_on_the_share(already_named, tmp_path, monkeypatch):
+    """I-247, R-380. The pass says it left the file exactly as it is — and then the superseded loop
+    took it off the share, because a file it skipped is not a verified one and that loop claimed
+    every recorded path that was not. The owner's album lost the track they were working on; the
+    store had it, so only a restore brought it back, and a pass that is never restored leaves it gone.
+
+    On a collection already named as the scheme names it, because that is where the guard fires at
+    all: where the pass renames a file, the copy back writes a name the share has not got.
+    """
+    elsewhere = already_named
+    staging = tmp_path / "staging"
+    real_back = staged._copy_back
+    touched: list[str] = []
+
+    def somebody_else_first(root, here, recorded, done, log, sweep=False):
+        if not touched:
+            for name in sorted(recorded):
+                target = root / name
+                if target.is_file() and target.suffix.lower() == ".opus":
+                    with target.open("ab") as fh:
+                        fh.write(b"\0" * 64)
+                    touched.append(name)
+                    break
+        return real_back(root, here, recorded, done, log, sweep=sweep)
+
+    monkeypatch.setattr(staged, "_copy_back", somebody_else_first)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert touched and done.changed_meanwhile == touched, done.changed_meanwhile
+    name = touched[0]
+    assert (elsewhere / name).is_file(), "their file is still in the album, where they left it"
+    assert (elsewhere / name).read_bytes().endswith(b"\0" * 64), "with their change in it"
+    assert name not in done.superseded, "and the pass does not call it something the scheme replaced"
+    assert name not in done.aside
+
+
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
     """One snapshot is one batch; the whole pass is the index. R-374, ruling c."""
     reference = tmp_path / "reference"

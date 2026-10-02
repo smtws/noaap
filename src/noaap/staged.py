@@ -609,6 +609,12 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     way back.
     """
     verified: set[str] = set()
+    # **what this batch refused to write over**, kept so the superseded loop cannot claim it. A file
+    # somebody else changed while the pass ran is skipped and named — and it was then moved off the
+    # share by that loop, because a skipped file is not a verified one and the loop takes every
+    # recorded path that is not. So the pass promised "nothing of theirs was replaced" and removed
+    # their file from the album; the store had it, and only a restore put it back (I-247, R-380).
+    theirs: set[str] = set()
     # **the share decides what "the same name" means, so it is asked once and used everywhere here.**
     # Looking a recorded name up exactly is wrong on a folding share: `Der W/III/x` is not a key of a
     # snapshot that wrote `Der W/iii/x`, and the file about to be written over was therefore not moved
@@ -636,6 +642,11 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
             known = recorded(name)
             if target.is_file() and _moved_on(target, was.get(known) if known else None):
                 done.changed_meanwhile.append(name)
+                # by both spellings: the name the staged copy wants and the name the snapshot
+                # recorded, which on a folding share can differ in case
+                theirs.add(name)
+                if known:
+                    theirs.add(known)
                 log(f"  ⚠ {name} changed on the share since this batch was copied out — "
                     "left exactly as it is")
                 continue
@@ -671,7 +682,7 @@ def _copy_back(root: Path, here: Path, was: dict[str, precautions.Recorded], don
     # it used a symlink on ext4, where the inode really is shared.
     written = sorted(verified)
     emptied: set[Path] = set()
-    for name in sorted(set(was) - verified):
+    for name in sorted(set(was) - verified - theirs):
         old = root / name
         if not old.is_file():
             continue
