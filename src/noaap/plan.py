@@ -619,14 +619,41 @@ def clashing_names(plan: AlbumPlan) -> dict[str, list[PlanTrack]]:
     return {name: tracks for name, tracks in by.items() if len(tracks) > 1}
 
 
+TITLE_FLOOR = 40     # characters of the title a name keeps before anything else is given up
+
+
+def _fits(stem: str, ext: str) -> bool:
+    return len(f"{safe_name(stem)}.{ext}".encode()) <= MAX_NAME_BYTES
+
+
+def _cut(text: str, room: int) -> str:
+    """`text` shortened to fit `room` bytes, on a character boundary."""
+    while len(text.encode()) > max(room, 1):
+        text = text[:-1].rstrip(" .")
+    return text
+
+
 def track_filename(
     albumartist: str, album: str, number: int, artist: str | None, title: str, disc: int | None = None, ext: str = "opus"
 ) -> str:
-    """v1's convention: 'AlbumArtist - Album - [D-]NN - [TrackArtist - ]Title.opus'."""
+    """v1's convention: 'AlbumArtist - Album - [D-]NN - [TrackArtist - ]Title.opus'.
+
+    **What gets shorter when the name is too long is decided here, in order** (R-410, ruling 4),
+    rather than by `safe_name` cutting whatever happens to be at the end — which is always the
+    title, the one part that says which song this is. First the album artist goes, because the
+    folder above already says it; then the album, for the same reason; and only then the title
+    itself, which keeps at least `TITLE_FLOOR` characters and is marked with an ellipsis so that a
+    reader can see it was cut.
+    """
     middle = f"{artist} - {title}" if artist else title
     num = f"{disc}-{number:02d}" if disc else f"{number:02d}"
-    stem = safe_name(f"{albumartist} - {album} - {num} - {middle}")
-    return f"{stem}.{ext}"
+    for stem in (f"{albumartist} - {album} - {num} - {middle}",
+                 f"{album} - {num} - {middle}",
+                 f"{num} - {middle}"):
+        if _fits(stem, ext):
+            return f"{safe_name(stem)}.{ext}"
+    room = MAX_NAME_BYTES - len(f"{safe_name(num)} - ….{ext}".encode())
+    return f"{safe_name(f'{num} - {_cut(middle, max(room, TITLE_FLOOR))}…')}.{ext}"
 
 
 # -- how long the song should be -------------------------------------------------------

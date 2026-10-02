@@ -119,11 +119,35 @@ def read_tags(path: Path, one: Any = None) -> dict[str, Any]:
     if date := one("date"):
         head = date[:4]
         year = int(head) if head.isdigit() else None
-    return {k: v for k, v in {
+    out = {k: v for k, v in {
         "title": one("title"), "artist": one("artist"), "album": one("album"),
         "albumartist": one("albumartist"), "year": year,
         "tracknumber": number("tracknumber"), "discnumber": number("discnumber"),
     }.items() if v is not None}
+    return _past_id3v1(path, tags, out)
+
+
+def _past_id3v1(path: Path, tags: Any, out: dict[str, Any]) -> dict[str, Any]:
+    """An ID3v1 field is 30 bytes, and the file's own name often holds the rest (R-410, ruling 4).
+
+    138 files of the user's collection state a title of exactly thirty characters, because that is
+    all the tag can hold — `Zyklus Farbenfinsternis - Kapi`, `Never Let Me Down Again - Aggr` — while
+    the name beside it spells the song out in full. Reading the tag and renaming the file to it threw
+    away what the owner still had: `… - 06 - Zyklus Farbenfinsternis - Kapi.mp3`. Where the name
+    states the same value and carries on, the name is the record; everywhere else the tag stands.
+    """
+    inner = getattr(tags, "tags", None)
+    # mutagen's easy wrapper hides the version one layer down, and only ID3 has one at all
+    version = getattr(inner, "version", None) or getattr(getattr(inner, "_EasyID3__id3", None),
+                                                         "version", None)
+    if not version or version[0] != 1:
+        return out
+    stated = from_name(path)
+    for key in ("title", "artist", "album"):
+        tag, named = out.get(key), stated.get(key)
+        if tag and named and len(named) > len(tag) and named.startswith(tag):
+            out[key] = named
+    return out
 
 
 # `cd1`, `CD 1`, `1` — all three occur in the reference collection, in three different albums, and
