@@ -439,7 +439,10 @@ back.
 three and a half minutes before it gives up — measured twice on the user's NAS — and the pass used to
 print nothing at all in that time, so a dead NAS looked like a run that had wedged. The run watches
 its own **progress**: when no file has got through for twenty seconds it says which one it is working
-on, once, and carries on by itself when the share answers or gives up. Progress rather than any one
+on, once, and carries on by itself when the share answers or gives up. The line reads
+`… still waiting for <the file> (20s with no answer). It may be gone; the run carries on by itself
+when the share answers or gives up.` — one line per stretch of silence, not one per tick, and the
+next file that gets through arms it again. Progress rather than any one
 call, because a share can go quiet in the rename, in the read back that proves the copy, in moving
 your original aside or in removing an empty folder, and all of those are as silent as the write.
 
