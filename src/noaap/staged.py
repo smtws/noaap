@@ -269,14 +269,23 @@ def orphans_in_store(root: Path, named: Iterable[str]) -> list[str]:
     return out
 
 
-class NoRoom(Exception):
-    """The staging filesystem cannot hold this batch — said in one line, never as a traceback.
+class Stopped(Exception):
+    """The run cannot go on — said in one line, never as a traceback.
 
     The gate's disk-full scenario (R-378): the pass did stop clean and left the share exactly as it
     was, but what a person read was twelve `[Errno 28]` tuples inside a `shutil.Error` and a stack
     trace. A copy out that cannot finish is an ordinary answer to an ordinary question — is there
     room — and the answer belongs in a sentence.
+
+    **And the share can go away too** (I-253, the gate's unmount scenario). The first thing a copy
+    back does is ask the share what it thinks a name is, which writes a probe folder; on an
+    unmounted mount point that is `Errno 13`, and it reached the user as a stack trace through two
+    modules. A collection that is not there is the same kind of answer as a disk that is full.
     """
+
+
+# the name this was born under, when it only meant the staging disk
+NoRoom = Stopped
 
 
 def in_bytes(many: int) -> str:
@@ -389,7 +398,7 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         write_index(where, root, known)
         try:
             _one_batch(service, root, batch, choices, staging, done, log, snapshot=snapshot)
-        except NoRoom as e:
+        except Stopped as e:
             # the one line, and the run is over. No traceback: there is nothing here a stack says
             # that the sentence does not.
             done.stopped = str(e)
@@ -497,8 +506,6 @@ def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
 def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, staging: Path,
                done: Staged, log: Callable[[str], None], snapshot: Path | None = None) -> None:
     """Copy out, write down, take in, copy back, remove. Nothing else runs while this does."""
-    from .service import Service
-
     here = staging / "batch"
     if here.exists():
         shutil.rmtree(here)       # our own staging folder from a run that stopped; the share is intact
@@ -509,7 +516,7 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     # than attempted: the alternative is the copy out dying partway, which is what it did.
     free, where = free_space(staging)
     if batch.bytes > free:
-        raise NoRoom(says_no_room(batch, free, staging, where))
+        raise Stopped(says_no_room(batch, free, staging, where))
     for album in batch.albums:
         inside = here / album.relative_to(root)
         inside.parent.mkdir(parents=True, exist_ok=True)
@@ -521,8 +528,8 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
             # same promise, because the batch has not been written back and the share is untouched.
             left, said = free_space(staging)
             if _out_of_space(e):
-                raise NoRoom(says_no_room(batch, left, staging, said)) from e
-            raise NoRoom(
+                raise Stopped(says_no_room(batch, left, staging, said)) from e
+            raise Stopped(
                 f"the batch could not be copied to {staging}: {_first_reason(e)}. Nothing was "
                 "written back and nothing on the share was touched. The same command resumes."
             ) from e
@@ -530,6 +537,29 @@ def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     held = sum(p.stat().st_size for p in here.rglob("*") if p.is_file())
     done.peak_staged = max(done.peak_staged, held)
     log(f"  copied {held / 1e9:.2f} GB to {here}")
+
+    try:
+        _the_batch(service, root, batch, choices, staging, done, log, snapshot, here)
+    except Stopped:
+        raise
+    except (OSError, shutil.Error) as e:
+        # **the share can go away mid batch** (I-253). Everything from here on touches it — the
+        # folding probe, the snapshot's own reads, every write back — and a mount point that is gone
+        # answers with an errno, which used to reach the user as a stack trace through two modules.
+        # The batch has not been recorded as done, so the same command resumes it; what the copy
+        # back had already written and verified is on the share and is in the snapshot, which is
+        # what a restore needs.
+        raise Stopped(
+            f"the collection at {root} could not be reached: {_first_reason(e)}. The batch it was "
+            "working on is not recorded as finished, so the same command resumes it when the "
+            "collection is there again."
+        ) from e
+
+
+def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, staging: Path,
+               done: Staged, log: Callable[[str], None], snapshot: Path | None, here: Path) -> None:
+    """The rest of one batch: write it down, take it in, copy it back, and remove the staged copy."""
+    from .service import Service
 
     snapshot = snapshot or snapshot_for(staging, root, batch)
     # **a snapshot this batch already has is authoritative and is not written again** (R-374, ruling
@@ -807,6 +837,7 @@ __all__ = [
     "Recorded",
     "Restored",
     "Staged",
+    "Stopped",
     "album_sizes",
     "aside_for",
     "batch_key",

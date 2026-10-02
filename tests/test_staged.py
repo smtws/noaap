@@ -557,6 +557,49 @@ def test_the_batch_that_says_a_file_changed_is_the_batch_it_happened_in(already_
         "and their change is still there, untouched"
 
 
+def test_the_collection_going_away_before_the_first_write_back_is_one_line(elsewhere, tmp_path,
+                                                                           monkeypatch):
+    """I-253, R-382. The share was unmounted while the pass worked, and the first thing a copy back
+    does is ask the share what it thinks a name is — which writes a probe folder. A mount point that
+    is gone answers `Errno 13`, and that reached the user as a stack trace through two modules."""
+    staging = tmp_path / "staging"
+    monkeypatch.setattr(staged.precautions, "folds_case",
+                        lambda where: (_ for _ in ()).throw(
+                            PermissionError(13, "Permission denied")))
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert done.stopped, "the run says why it stopped"
+    assert "could not be reached" in done.stopped and "Permission denied" in done.stopped
+    assert "resumes it when the collection is there again" in done.stopped, done.stopped
+    assert "Traceback" not in done.stopped
+    assert done.done == [], "and no batch is recorded as finished"
+
+
+def test_the_collection_going_away_partway_through_a_copy_back_is_one_line(elsewhere, tmp_path,
+                                                                          monkeypatch):
+    """The other half of the same window: some files are already back and verified when it goes."""
+    staging = tmp_path / "staging"
+    real_copy = shutil.copy2
+    counted = {"n": 0}
+
+    def gone_after_one(src, dst, *args, **kw):
+        counted["n"] += 1
+        if counted["n"] > 1 and "noaap-originals" not in str(dst):
+            raise OSError(5, "Input/output error")
+        return real_copy(src, dst, *args, **kw)
+
+    monkeypatch.setattr(staged.shutil, "copy2", gone_after_one)
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=1, dry_run=False, log=lambda s: None)
+
+    assert done.stopped and "could not be reached" in done.stopped
+    assert "Input/output error" in done.stopped and "Traceback" not in done.stopped
+    assert done.done == []
+    assert not list(elsewhere.rglob(f"*{staged.PART}")), \
+        "and nothing is left on the share under the name a copy in flight wears"
+
+
 def test_a_restore_of_the_staging_folder_puts_every_batch_back(elsewhere, tmp_path):
     """One snapshot is one batch; the whole pass is the index. R-374, ruling c."""
     reference = tmp_path / "reference"
