@@ -533,6 +533,12 @@ class AlbumPlan:
         if len(said) == 1 and (one := said.pop()):
             if one >= highest and not (len(discs) > 1 and one == len(self.tracks)):
                 return one
+        # **where a number repeats on this disc, the count is not the length** (R-425). Eighteen
+        # files numbered 1-9 twice are not a disc of eighteen; what they are is what the "needs a
+        # look" section asks about, and until something answers — an old total every file agrees
+        # on, above, or a disc assignment from MusicBrainz — nothing here invents one.
+        if len({t.number for t in mine}) != len(mine):
+            return 0
         return highest
 
     def own_the_candidates(self) -> None:

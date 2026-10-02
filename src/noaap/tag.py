@@ -378,9 +378,11 @@ def build_tags(plan: AlbumPlan, track: PlanTrack, lyrics: str | None = None) -> 
         "albumartist": plan.albumartist,
         "album": plan.album,
         "tracknumber": str(track.number),
-        "tracktotal": str(on_this_disc),
-        "totaltracks": str(on_this_disc),
     }
+    # **a disc whose numbers repeat has no length yet** (R-425): `disc_length` answers 0, and a
+    # total nobody knows is not written at all rather than guessed from the count.
+    if on_this_disc:
+        tags["tracktotal"] = tags["totaltracks"] = str(on_this_disc)
     # Where the album came from, for whoever opens the file later — worth writing only when it is
     # somewhere they could go. A folder's address is the user's own directory: it identifies the
     # album to nobody, stops being true the moment anything moves, and puts a home path into every
@@ -649,7 +651,9 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     # ID3 carries each number and its total in one frame, so these two are set here rather than by
     # the loop above: `TRCK` as track/of, `TPOS` as disc/of (§9, slice 102).
     on_this_disc = plan.disc_length(track.disc)
-    id3.setall("TRCK", [ID3_FRAMES["TRCK"](encoding=3, text=[f"{track.number}/{on_this_disc}"])])
+    # a length nobody knows yet is left out of the frame rather than written as 0 (R-425)
+    said = f"{track.number}/{on_this_disc}" if on_this_disc else str(track.number)
+    id3.setall("TRCK", [ID3_FRAMES["TRCK"](encoding=3, text=[said])])
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         id3.setall("TPOS", [ID3_FRAMES["TPOS"](encoding=3, text=[f"{track.disc}/{discs}"])])
     if plan.is_compilation:
@@ -674,7 +678,7 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]
-    audio["trkn"] = [(track.number, plan.disc_length(track.disc))]
+    audio["trkn"] = [(track.number, plan.disc_length(track.disc))]   # a 0 total is "not known"
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         audio["disk"] = [(track.disc, discs)]   # the only writer that had the disc total right
     audio["cpil"] = plan.is_compilation

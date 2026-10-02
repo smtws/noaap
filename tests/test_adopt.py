@@ -742,7 +742,7 @@ def test_two_files_claiming_one_number_both_keep_it(tmp_path):
     by_title = {t.title: t.number for t in plan.tracks}
     assert by_title == {"First": 2, "Second": 2, "Third": 3}
     from noaap.plan import says_duplicates
-    assert says_duplicates(plan) == "track 2 twice"
+    assert says_duplicates(plan).startswith("track 2 twice")
 
 
 def test_a_disc_that_states_no_number_is_still_counted_from_one(tmp_path):

@@ -21,6 +21,8 @@ from noaap.config import Config
 from noaap.models import Entry
 from noaap.plan import clashing_names, stated_numbers, wanted_filename
 
+NO_TOTAL = " · no track total is written until this is answered"
+
 
 def entries(numbers, discs=None):
     return [Entry(video_id=str(i), position=i, title=f"t{i}", number=n,
@@ -117,14 +119,14 @@ def test_two_whole_runs_read_as_discs(tmp_path, one_second_of_sound):
     _, _, plan = a_plan_of([1, 2, 3, 1, 2, 3],
                            ["One", "Two", "Three", "Four", "Five", "Six"],
                            tmp_path, one_second_of_sound)
-    assert says_duplicates(plan) == "2 runs of 1–3 (6 files): discs?"
+    assert says_duplicates(plan) == "2 runs of 1–3 (6 files): discs?" + NO_TOTAL
 
 
 def test_one_number_twice_is_said_as_itself(tmp_path, one_second_of_sound):
     from noaap.plan import says_duplicates
     _, _, plan = a_plan_of([1, 2, 2, 3], ["One", "Two", "Also two", "Three"],
                            tmp_path, one_second_of_sound)
-    assert says_duplicates(plan) == "track 2 twice"
+    assert says_duplicates(plan) == "track 2 twice" + NO_TOTAL
 
 
 def test_a_tidy_album_says_nothing(tmp_path, one_second_of_sound):
@@ -141,14 +143,14 @@ def test_the_titles_hint_at_what_the_second_run_is(tmp_path, one_second_of_sound
                            tmp_path, one_second_of_sound)
     said = says_duplicates(plan)
     assert said.startswith("2 runs of 1–2 (4 files): discs?")
-    assert said.endswith('run 2: every title says "mix"')
+    assert 'run 2: every title says "mix"' in said
 
 
 def test_no_hint_where_the_runs_do_not_differ_that_way(tmp_path, one_second_of_sound):
     from noaap.plan import says_duplicates
     _, _, plan = a_plan_of([1, 2, 1, 2], ["Dreams", "Ewigkeit", "Tears of Time", "Medley"],
                            tmp_path, one_second_of_sound)
-    assert says_duplicates(plan) == "2 runs of 1–2 (4 files): discs?"
+    assert says_duplicates(plan) == "2 runs of 1–2 (4 files): discs?" + NO_TOTAL
 
 
 def test_the_section_names_the_album_and_its_files(tmp_path, one_second_of_sound):
@@ -159,7 +161,7 @@ def test_the_section_names_the_album_and_its_files(tmp_path, one_second_of_sound
     section = [line for line in done.would if line.startswith("needs a look")]
     assert section == ["needs a look — 1 album(s):"], done.would
     body = done.would[done.would.index(section[0]) + 1:]
-    assert body[0] == "  A Band/An Album — 2 runs of 1–2 (4 files): discs?"
+    assert body[0] == "  A Band/An Album — 2 runs of 1–2 (4 files): discs?" + NO_TOTAL
     assert len([line for line in body if line.startswith("    ")]) == 4
 
 
@@ -170,7 +172,7 @@ def test_it_is_recorded_on_the_album_for_the_page(tmp_path, one_second_of_sound)
 
     from noaap.download import load_plan
     plan = load_plan(album)
-    assert plan.adopted["needs_a_look"] == "2 runs of 1–2 (4 files): discs?"
+    assert plan.adopted["needs_a_look"] == "2 runs of 1–2 (4 files): discs?" + NO_TOTAL
 
 
 def test_a_staged_run_says_it_too(tmp_path, one_second_of_sound):
@@ -298,3 +300,48 @@ def test_the_pass_asks_only_about_those_albums(tmp_path, one_second_of_sound):
 
     assert asked == ["Twice"], asked
     assert [line for line in done.would if "MusicBrainz: " in line and "every file matched" in line]
+
+
+# -- the total nobody knows (R-425) -----------------------------------------------------------
+
+
+def test_no_total_is_written_where_the_numbers_repeat(tmp_path, one_second_of_sound):
+    """Eighteen files numbered 1-9 twice are not a disc of eighteen, and the count is not an answer."""
+    from noaap.tag import build_tags
+    _, _, plan = a_plan_of([1, 2, 1, 2], ["One", "Two", "Three", "Four"],
+                           tmp_path, one_second_of_sound)
+
+    assert plan.disc_length(1) == 0
+    tags = build_tags(plan, plan.tracks[0])
+    assert "tracktotal" not in tags and "totaltracks" not in tags
+    assert tags["tracknumber"] == "1"
+
+
+def test_the_section_says_why_there_is_none(tmp_path, one_second_of_sound):
+    from noaap.plan import says_duplicates
+    _, _, plan = a_plan_of([1, 2, 1, 2], ["One", "Two", "Three", "Four"],
+                           tmp_path, one_second_of_sound)
+    assert says_duplicates(plan).endswith("· no track total is written until this is answered")
+
+
+def test_a_total_every_file_agrees_on_is_still_kept(tmp_path, one_second_of_sound):
+    """R-346 stands: the files are the only thing that can know a disc whose tracks are not all here."""
+    from noaap.tag import build_tags
+    _, _, plan = a_plan_of([1, 2, 1, 2], ["One", "Two", "Three", "Four"],
+                           tmp_path, one_second_of_sound)
+    for track in plan.tracks:
+        track.adopted_tags = {"TRCK": [f"{track.number}/9"]}
+
+    assert plan.disc_length(1) == 9
+    assert build_tags(plan, plan.tracks[0])["tracktotal"] == "9"
+
+
+def test_and_once_the_discs_are_assigned_the_totals_follow(tmp_path, one_second_of_sound):
+    from noaap.enrich import discs_for_duplicates
+    from noaap.tag import build_tags
+    _, _, plan = a_plan_of([1, 2, 1, 2], ["One", "Two", "Three", "Four"],
+                           tmp_path, one_second_of_sound)
+
+    discs_for_duplicates(plan, TwoDiscs([["One", "Two"], ["Three", "Four"]]))
+
+    assert build_tags(plan, plan.tracks[0])["tracktotal"] == "2"

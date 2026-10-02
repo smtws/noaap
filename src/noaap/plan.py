@@ -478,6 +478,10 @@ def says_duplicates(plan: AlbumPlan) -> str | None:
                          for key, number in ((key, key[1]) for key in dups))
     if hint := _retake_hint(groups):
         what += f" — {hint}"
+    # **and the total nobody knows is said out loud** (R-425): a disc whose numbers repeat has no
+    # length until something answers, so none is written and the line says that is why.
+    if any(plan.disc_length(disc) == 0 for disc, _ in dups):
+        what += " · no track total is written until this is answered"
     return what
 
 
