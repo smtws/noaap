@@ -3280,6 +3280,48 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      output, 6.1× faster on the artist it was measured on.
 
 
+112. ✅ **The last 128 bytes of an mp3 are not the recording** (2026-10-03, P92). The pass over the
+   whole collection stopped an hour in, in a traceback, on
+   `Earth, Wind & Fire - Earth, Wind & Fire - 04 - Fan The Fire.mp3`: the careful write refused
+   because what it had written was not the same recording. It was right by its own measure and wrong
+   about the audio, and five batches never ran.
+   That file, 10,123,878 bytes, ends in a 128-byte ID3v1 `TAG` block. Change nothing but those 128
+   bytes and the decoded PCM differs from **23.186 ms before the end** — one mp3 frame — while
+   staying the same length: its final frame header declares more bytes than there are before the
+   block, so ffmpeg's demuxer hands the block to the **decoder**. mutagen's `save` rewrites an
+   existing block from the v2 frames by default, which NUL-pads what was space-padded. So a digest
+   that exists to be invariant under a retag moved under one. A freshly encoded tone does not do
+   this, which is why the case builds the shape on purpose rather than hoping for it.
+   Three answers, one per ruling:
+   - **An mp3 this program writes ends without a tail** (`id3.save(path, v1=0)`). Nothing is carried
+     over, because nothing is lost: `ID3(path)` reads a trailing block into v2 frames on load,
+     before anything here writes — the `ripped by Sir_Mc_Tod` on 153 of the 187 Crematory originals
+     is in all 153 treated files as `COMM:ID3v1 Comment`, measured on the share. The block itself is
+     30 bytes of latin-1 per field of what ID3v2 holds in any length and any encoding.
+   - **Neither digest ever sees one.** `decoded_sha` and `stream_sha` go through `ffmpeg_audio`,
+     which pipes an mp3 in and leaves a trailing block out of what it feeds. **And an mp3 is always
+     piped, tail or no tail**, because the two routes disagree: over a pipe ffmpeg applies no gapless
+     trimming, so a one-second tone read from its file decodes to 88,200 bytes of PCM and the same
+     bytes piped in give 89,950. Piping while the tail is there and reading once it is gone would be
+     the same bug in other clothes — it would refuse every correct write to a file with a LAME
+     header. Nothing else is ever piped: opus, flac and m4a give the same bytes either way (measured
+     on the user's library) and an mp4's index is at its end, where a pipe cannot reach back to it.
+   - **A refused write leaves one file, never the pass.** `Unsafe` is caught per track: the file on
+     disk is already untouched — that is what the precaution is for — so the track records why, the
+     plan is saved, and the pass goes on to end with a **left untouched** section naming each file
+     and its reason. Ending a six-batch run that had copied 47 GB in a traceback was never the right
+     answer to one file.
+   **And the files already written that way are reached.** 175 of the 187 mp3s of the first batch
+   taken in carry the block 1.31.2 wrote. Nothing in the program could see them: the plan says every
+   track is done, and the tags inside those files are exactly what the plan asked for, so the
+   signature agrees and `repair` skipped the whole album before it ever reached the writer. So the
+   one question that tells them apart — `ends_with_an_id3v1_tail`, 128 bytes, mp3 only — is asked in
+   all four places that would otherwise skip: the retag gate, `_already_right`, `would_do` (so the
+   dry run says `would be rewritten without its ID3v1 tail`) and `repair`'s album-level skip, via
+   `tails_to_drop`. **It is asked only where this program wrote the file's tags** — `tagged` is set
+   only then — so a library that was told to leave adopted albums alone keeps the owner's own tail,
+   128 bytes they have had since 2003, while the block noaap put there comes back off.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

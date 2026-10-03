@@ -33,7 +33,7 @@ from .lyrics import (
 )
 from .models import AlbumPlan, Failure, PlanTrack, Provenance
 from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folder
-from .precautions import empty_under, put_aside, safely
+from .precautions import Unsafe, empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .tag import (
     audio_quality,
@@ -897,6 +897,16 @@ def run(
                         on_track(track, f"lyrics ({track.lyrics})" if looked_up and text else "retagged")
                 elif looked_up or measured or failed_trim or reconciled:
                     save_plan(plan, album_dir)  # the lookup, the length, the owner, or why the trim did not happen
+            except Unsafe as e:
+                # **a refused write leaves one file, never the pass** (R-433, ruling 3). The
+                # precaution has already done its work — the file on disk is untouched — so the one
+                # thing left to decide is what happens next, and ending a six-batch run in a
+                # traceback is not it. The track says why, the plan records it, and the pass goes
+                # on; `left untouched` is counted and named where the run reports.
+                track.error = str(e)
+                save_plan(plan, album_dir)
+                log.warning("%s", e)
+                on_track(track, "left untouched")
             except (MutagenError, OSError) as e:
                 # this file is not what its name says, so nothing can be written to it. One bad
                 # file fails its own track; the rest of the album still runs.

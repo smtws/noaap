@@ -122,6 +122,8 @@ class Staged:
     refused: int = 0
     # albums whose numbers are worth a look (R-423, point 2), carried up from each batch
     needs_a_look: list[tuple[str, str, list[str]]] = field(default_factory=list)
+    # files a refused write left exactly as they are (R-433, ruling 3)
+    left_untouched: list[tuple[str, str]] = field(default_factory=list)
     renamed: int = 0
     retagged: int = 0
     covers: int = 0
@@ -699,6 +701,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     log(f"this machine held at most {done.peak_staged / 1e9:.2f} GB at once")
     for line in intake.says_needs_a_look(done.needs_a_look):
         log(line)
+    for line in intake.says_left_untouched(done.left_untouched):
+        log(line)
     if done.aside:
         log(f"{len(done.aside)} file(s) of yours moved aside into {aside_for(root)} "
             f"({done.moved_aside / 1e9:.2f} GB) — that is the way back, byte for byte, and it stays "
@@ -925,6 +929,7 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     # the batch was taken in on the staging copy, so what it found is reported against the share
     done.needs_a_look += [(str((here / where).relative_to(here)), what, files)
                           for where, what, files in got.needs_a_look]
+    done.left_untouched += got.left_untouched
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
 

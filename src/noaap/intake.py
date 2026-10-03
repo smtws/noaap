@@ -96,6 +96,8 @@ class Progress:
     stopped: str = ""           # the one line a pass that could not start printed (R-417)
     # albums whose numbers are worth a look: (where, what, the file names) — R-423, point 2
     needs_a_look: list[tuple[str, str, list[str]]] = field(default_factory=list)
+    # files a refused write left exactly as they are: (where, why) — R-433, ruling 3
+    left_untouched: list[tuple[str, str]] = field(default_factory=list)
 
 
 def state_path(snapshot: Path) -> Path:
@@ -318,6 +320,17 @@ def a_look_at(plan: Any, where: str) -> tuple[str, str, list[str]] | None:
         return None
     held = [t for group in duplicate_numbers(plan).values() for t in group]
     return (where, odd, [t.filename for t in sorted(held, key=lambda t: (t.disc or 1, t.number))])
+
+
+def says_left_untouched(rows: list[tuple[str, str]]) -> list[str]:
+    """The section a pass ends with where a write was refused (R-433, ruling 3).
+
+    The precaution had already done its work when this list grew: every file in it is exactly as it
+    was. What the run owes the owner is to say which, and why, instead of stopping.
+    """
+    if not rows:
+        return []
+    return [f"left untouched — {len(rows)} file(s):"] + [f"  {where} — {why}" for where, why in rows]
 
 
 def says_needs_a_look(rows: list[tuple[str, str, list[str]]]) -> list[str]:
@@ -553,6 +566,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             log(f"  removed the empty folder {folder.relative_to(root)}")
         for line in says_needs_a_look(done.needs_a_look):
             log(line)
+        for line in says_left_untouched(done.left_untouched):
+            log(line)
         if done.musicbrainz_requests or done.lrclib_requests:
             log(f"{done.musicbrainz_requests} MusicBrainz and {done.lrclib_requests} LRCLIB "
                 "request(s) went out")
@@ -577,6 +592,8 @@ def _counted(done: Progress, inner: Callable[[Any, str], None]) -> Callable[[Any
             done.renamed += 1
         elif what == "retagged" or what.startswith("lyrics ("):
             done.retagged += 1
+        elif what == "left untouched":
+            done.left_untouched.append((track.filename, track.error or "refused"))
         inner(track, what)
     return said
 
