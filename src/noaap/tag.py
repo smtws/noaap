@@ -14,10 +14,12 @@ by all four entry points rather than a condition repeated in each.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import re
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -302,13 +304,70 @@ def decoded_sha(path: Path) -> str | None:
     audio data and that mutagen dropped when noaap tagged the copy. A digest of packets answers "the
     same file, trailing tags and all"; only a decode answers "the same recording".
     """
+    out = ffmpeg_audio(path, "s16le")
+    return hashlib.sha256(out).hexdigest() if out else None
+
+
+def ffmpeg_audio(path: Path, shape: str, copy: bool = False) -> bytes | None:
+    """ffmpeg's audio of this file in `shape`, **without a trailing ID3v1 tag** (R-433, ruling 2).
+
+    The demuxer hands that 128-byte block to the decoder as if it were audio — measured on the
+    user's own `Fan The Fire`, 10,123,878 bytes: change nothing but its last 128 bytes and the
+    decoded PCM differs from 23.186 ms before the end, one mp3 frame, while staying the same length.
+    That is how a digest which exists to be invariant under a retag came to move under one, and how
+    a six-batch pass over the collection ended in a refusal an hour in.
+
+    **An mp3 is therefore always piped in, tail or no tail, and nothing else ever is.** The two
+    routes do not agree on mp3: over a pipe ffmpeg applies no gapless trimming, so a one-second tone
+    read from its file decodes to 88,200 bytes of PCM and the same bytes piped in decode to 89,950.
+    Piping while the tail is there and reading once it is gone would be no digest of the audio at
+    all — it would refuse every correct write to a file with a LAME header, which is this same bug
+    in other clothes. For opus, flac and m4a the two routes agree to the byte (measured on the
+    user's library), and an mp4's index is at its end, so those are read from the file.
+    """
     try:
-        done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
-                               "-f", "s16le", "-"],
-                              capture_output=True, timeout=PATIENCE)
+        how = ["-c", "copy"] if copy else []
+        if path.suffix.lower() != ".mp3":
+            done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
+                                   *how, "-f", shape, "-"], capture_output=True, timeout=PATIENCE)
+            return done.stdout if done.returncode == 0 and done.stdout else None
+        return _piped_without_the_tail(path, shape, how)
     except (OSError, subprocess.SubprocessError):
         return None
-    return hashlib.sha256(done.stdout).hexdigest() if done.returncode == 0 and done.stdout else None
+
+
+def _piped_without_the_tail(path: Path, shape: str, how: list[str] | None = None) -> bytes | None:
+    """The file written to ffmpeg's stdin in chunks, less a trailing ID3v1 block if it has one."""
+    size = path.stat().st_size - (128 if _id3v1_tail(path) else 0)
+    proc = subprocess.Popen(["ffmpeg", "-v", "quiet", "-i", "pipe:0", "-map", "0:a",
+                             *(how or []), "-f", shape, "-"],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    chunks: list[bytes] = []
+
+    def feed() -> None:
+        left = size
+        try:
+            with path.open("rb") as fh:
+                while left > 0 and (block := fh.read(min(1 << 20, left))):
+                    proc.stdin.write(block)
+                    left -= len(block)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with contextlib.suppress(OSError, ValueError):
+                proc.stdin.close()
+
+    writer = threading.Thread(target=feed, daemon=True)
+    writer.start()
+    try:
+        while block := proc.stdout.read(1 << 20):
+            chunks.append(block)
+    finally:
+        proc.stdout.close()
+        proc.wait(timeout=PATIENCE)
+        writer.join(timeout=PATIENCE)
+    out = b"".join(chunks)
+    return out if proc.returncode == 0 and out else None
 
 
 def measure(path: Path) -> tuple[float | None, str | None]:
@@ -664,6 +723,19 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
         id3.setall("APIC", [APIC(encoding=3, mime=mime, type=3, desc="Cover", data=cover)])
     id3.save(path)
     return signature(plan, track, cover, lyrics)
+
+
+def _id3v1_tail(path: Path) -> bytes | None:
+    """The file's 128-byte `TAG` block, or None where there is none."""
+    try:
+        with path.open("rb") as fh:
+            if fh.seek(0, 2) < 128:
+                return None
+            fh.seek(-128, 2)
+            tail = fh.read(128)
+    except OSError:
+        return None
+    return tail if tail[:3] == b"TAG" else None
 
 
 def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,

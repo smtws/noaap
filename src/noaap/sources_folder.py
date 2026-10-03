@@ -20,7 +20,6 @@ from __future__ import annotations
 import datetime as dt
 import re
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +27,11 @@ from . import sources
 from .config import Config
 from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
 from .tag import (
-    PATIENCE,
     audio_length,
     audio_quality,
     decoded_length,
     embedded_cover,
+    ffmpeg_audio,
     measured_length,
 )
 from .tag import (
@@ -315,13 +314,11 @@ def stream_sha(path: Path) -> str | None:
     about a *file*, and because `equal here` implies `equal audio`, which makes it a pre-check in that
     one direction. `tag.decoded_sha` is the identity.
     """
-    try:
-        done = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(path), "-map", "0:a",
-                               "-c", "copy", "-f", "md5", "-"],
-                              capture_output=True, text=True, errors="replace", timeout=PATIENCE)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    out = done.stdout.strip()
+    # **without a trailing ID3v1 tag** (R-433, ruling 2), for the same reason the decoded digest
+    # leaves it out: the demuxer hands that block over as audio data, so the same stream in two
+    # files with different tails reads as two streams.
+    got = ffmpeg_audio(path, "md5", copy=True)
+    out = (got or b"").decode("utf-8", "replace").strip()
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
