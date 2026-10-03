@@ -721,8 +721,30 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
         id3.setall("USLT", [USLT(encoding=3, lang="eng", desc="", text=tags["lyrics"])])
     if cover and (mime := image_mime(cover)):
         id3.setall("APIC", [APIC(encoding=3, mime=mime, type=3, desc="Cover", data=cover)])
-    id3.save(path)
+    # **an mp3 this program writes ends without an ID3v1 tail** (R-434, R-435). mutagen's `save`
+    # defaults to rewriting an existing one from the v2 frames, and ffmpeg's demuxer hands that
+    # 128-byte block to the **decoder** — so the rewrite moved a digest that exists to be invariant
+    # under a retag, and the whole-collection pass stopped in a refusal on its first mp3 whose tail
+    # was not already noaap's own (R-433, ruling 2).
+    # Nothing is lost by dropping it instead. mutagen reads a tail into v2 frames on load, before
+    # anything here is written: the `ripped by Sir_Mc_Tod` on 153 of the Crematory originals is in
+    # all 153 treated files as `COMM:ID3v1 Comment`, measured. The tail itself holds 30 bytes of
+    # latin-1 per field of what ID3v2 holds in any length and any encoding, so it goes whole.
+    id3.save(path, v1=0)
     return signature(plan, track, cover, lyrics)
+
+
+def ends_with_an_id3v1_tail(path: Path) -> bool:
+    """Whether this file still carries a tail a pass of noaap's would now drop (R-434).
+
+    1.31.2 wrote the Crematory batch — 175 of its 187 mp3s — with their ID3v1 block *rewritten*
+    from the v2 frames rather than dropped, so those files sit in a state no version writes now.
+    Nothing else notices: the plan's signature is of what the plan asked for, and the tags inside
+    those files are exactly what it asked for. This is the one question that tells them apart, and
+    `repair` asks it of every mp3 so that the answer reaches the files. 128 bytes per file, and only
+    for the one format that can have one.
+    """
+    return path.suffix.lower() == ".mp3" and _id3v1_tail(path) is not None
 
 
 def _id3v1_tail(path: Path) -> bytes | None:

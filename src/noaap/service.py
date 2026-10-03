@@ -35,6 +35,7 @@ from .download import (
     run,
     save_plan,
     says_the_old_name,
+    tails_to_drop,
     would_do,
 )
 from .enrich import enrich
@@ -1789,9 +1790,12 @@ class Service:
             # clock starting before zero is perfectly tidy, so without this nothing would ever look at
             # those files again — and they are the ones a player begins in their own middle.
             recut = needs_a_recut(plan, album_dir)
+            # **asked before the skip too** (R-434): an album whose mp3s still carry the ID3v1
+            # block 1.31.2 wrote is otherwise perfectly tidy, so nothing else would look at it again.
+            tails = tails_to_drop(plan, album_dir, for_album(self.cfg, plan))
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
-                    and not elsewhere.get("sources") and not recut \
+                    and not elsewhere.get("sources") and not recut and not tails \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"

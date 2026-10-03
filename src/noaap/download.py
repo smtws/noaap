@@ -40,6 +40,7 @@ from .tag import (
     build_tags,
     differences,
     embedded_cover,
+    ends_with_an_id3v1_tail,
     image_mime,
     kept_from_the_file,
     measure,
@@ -605,14 +606,19 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                         if kept.exists() else
                         f"{track.number:02d} starts at {before:.3f} s and cannot be cut again: "
                         "no untouched original is kept beside it")
-        if not retag:
+        path = final if final.exists() else here
+        # **a file 1.31.2 wrote still has its ID3v1 tail** (R-434), and nothing else can see it: the
+        # signature is of what the plan asked for, and that is exactly what the file holds. The
+        # block goes wherever this program wrote the file's tags — `tagged` is set only then — so a
+        # library that leaves adopted albums alone still gets back the state its own writer leaves.
+        tail = ends_with_an_id3v1_tail(path) and (retag or track.tagged is not None)
+        if not retag and not tail:
             continue   # nothing is written into this file: adopted, and the library does not ask
         text = read_sidecar(album_dir, track)
         if want is not None and not want.lyrics_embedded:
             text = None   # the words stay beside the track, not in it
-        if track.tagged == signature(plan, track, cover, text):
+        if track.tagged == signature(plan, track, cover, text) and not tail:
             continue
-        path = final if final.exists() else here
         try:
             have = tags_in(path)
         except (MutagenError, OSError) as e:
@@ -634,11 +640,28 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         elif cover is not None and embedded_cover(path) != cover:
             # the tags are right and the picture is not: one line, because it is one write
             said.append(f"{track.number:02d} would get the album's picture")
+        elif tail:
+            said.append(f"{track.number:02d} would be rewritten without its ID3v1 tail")
         # **and otherwise nothing is said, because nothing is written** (R-410, ruling 7). This used
         # to report "would be rewritten with the same tag values (the plan's record of them is out
         # of date)" and the pass then rewrote the file for the record's sake — 455 files of the
         # user's collection, each read, copied, replaced and verified to end up as it already was.
     return said
+
+
+def tails_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = None) -> int:
+    """How many of this album's files still end in an ID3v1 block this program would now drop.
+
+    Asked by `repair` **before** it skips an album nothing else is wrong with (R-434). 1.31.2 wrote
+    those blocks rather than dropping them — 175 of the 187 mp3s of one batch on the share — and
+    such an album is otherwise perfectly tidy: every track done, every tag what the plan asked for.
+    Without this question no pass would ever look at those files again. 128 bytes per mp3, nothing
+    at all for any other format, and nothing where the album's files are not this program's to write.
+    """
+    retag = retags(plan, want)
+    return sum(1 for t in plan.tracks
+               if t.state == "done" and (retag or t.tagged is not None)
+               and ends_with_an_id3v1_tail(album_dir / t.filename))
 
 
 def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes | None,
@@ -651,6 +674,10 @@ def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes |
     album carries. The picture is read only where the tags already agree, so a file that is going
     to be rewritten anyway is not read twice.
     """
+    # **the tail is a change too** (R-434): the writer would take it away, so a file that still has
+    # one is not already right, however exactly its tags agree.
+    if ends_with_an_id3v1_tail(path):
+        return False
     try:
         have = tags_in(path)
     except (MutagenError, OSError):
@@ -838,13 +865,16 @@ def run(
                 text = update_track(lyrics, plan, track, album_dir, final)
             if want is not None and not want.lyrics_embedded:
                 text = None   # …and the words stay beside the track
+            # the ID3v1 block this program used to rewrite, where this program wrote the tags
+            # (R-434). See `would_do` for why that is the condition.
+            tail = ends_with_an_id3v1_tail(final) and (retag or track.tagged is not None)
             try:
-                if not retag:
+                if not retag and not tail:
                     # nothing is written into this file by any pass (§9, slice 58). The words still
                     # arrive as a sidecar beside it; the tag inside the file is the owner's.
                     if looked_up or measured or failed_trim or reconciled:
                         save_plan(plan, album_dir)
-                elif track.tagged != signature(plan, track, cover, text):
+                elif track.tagged != signature(plan, track, cover, text) or tail:
                     # **an album that came in from somebody's folder keeps the fields we do not
                     # model** (§9, slice 100): replaygain, ISRC, their own comment. Until the library
                     # could be told to retag such an album this never arose — `keep_tags` meant
