@@ -145,6 +145,13 @@ class Config:
     # what they say: no title tidied, no artist replaced by the album's, no date shortened to its
     # year. On, the tidying a fetched album gets is applied to them too, by the next pass.
     tidy_adopted_tags: bool = False
+    # **whether the files this library writes carry a comment at all** (§9, slice 113). The user,
+    # of the 4,873 `ripped by Sir_Mc_Tod` and the `www.NewAlbumReleases.net` in their collection:
+    # *"source descriptions I don't want to carry on"*. Off, a comment is one of the fields noaap
+    # does not model and therefore never touches. On, every pass that writes a file takes the
+    # comment out of it — ID3v2 `COMM` whatever its description, Vorbis `COMMENT` and
+    # `DESCRIPTION`, MP4 `©cmt` — and the dry run counts them first.
+    drop_comments: bool = False
     # **whether a pass may clear empty folders that are not of its own making** (§9, slice 104).
     # The user: *"maybe we should make clear empty folders a setting?"*. Off, a pass removes only
     # the folders it emptied itself — which is what stopped it deleting `Der W/Autonomie`, empty
@@ -270,6 +277,7 @@ def load(path: Path | None = None) -> Config:
         rename_adopted=bool(data.get("rename_adopted", False)),
         retag_adopted=bool(data.get("retag_adopted", False)),
         tidy_adopted_tags=bool(data.get("tidy_adopted_tags", False)),
+        drop_comments=bool(data.get("drop_comments", False)),
         remove_empty_folders=bool(data.get("remove_empty_folders", False)),
     )
     if root := data.get("library_root"):

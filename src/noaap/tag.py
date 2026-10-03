@@ -26,7 +26,7 @@ from typing import Any
 import mutagen
 from mutagen import MutagenError
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, ID3, TCMP, TXXX, USLT, ID3NoHeaderError
+from mutagen.id3 import APIC, COMM, ID3, TCMP, TXXX, USLT, ID3NoHeaderError
 from mutagen.id3 import Frames as ID3_FRAMES
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
@@ -616,8 +616,32 @@ MP4_KEYS = {  # Vorbis comment -> MP4 atom
 }
 
 
+# Where each container keeps a person's own note. `©cmt` is also where noaap writes an m4a's
+# `source`, so a drop happens before the plan's keys go in and noaap's own value survives it.
+VORBIS_COMMENTS = ("comment", "description")
+
+
+def comments_in(path: Path) -> int:
+    """How many comment fields this file really holds — what `drop_comments` would take away.
+
+    **mp3 is read without ID3v1** (R-438, ruling 2): mutagen turns a trailing block into a
+    `COMM:ID3v1 Comment` frame on load, and counting that would report a comment the file's tag does
+    not have. Never raises: a file may hold anything and this is only asked to decide or to report.
+    """
+    try:
+        if kind(path) == "mp3":
+            return len(ID3(path, load_v1=False).getall("COMM"))
+        if kind(path) == "mp4":
+            return len((MP4(path).tags or {}).get("\xa9cmt") or [])
+        tags = _open(path).tags or {}
+        return sum(1 for key in tags.keys() if key.lower() in VORBIS_COMMENTS)
+    except (MutagenError, OSError, ID3NoHeaderError, KeyError):
+        return 0
+
+
 def tag_file(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None = None,
-             lyrics: str | None = None, keep_unknown: bool = False) -> str:
+             lyrics: str | None = None, keep_unknown: bool = False,
+             drop_comments: bool = False) -> str:
     """Write the plan's tags and an embedded cover. Returns the signature.
 
     By default every existing tag goes: what yt-dlp left there is noise, and the plan is the truth.
@@ -627,11 +651,15 @@ def tag_file(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None 
     only the keys the plan asserts are written, and the keys in `KEEP_IF_PRESENT` are left alone
     where the file already has a value.
 
+    **`drop_comments=True` is the one thing a write takes away rather than leaves** (§9, slice 113,
+    R-438): the library's setting, for a collection whose files carry somebody else's `ripped by`
+    and `www.…net`. Nothing else about a field this program does not model ever changes.
+
     The signature is of what the plan asked for, not of what was written, so a value deliberately
     left alone does not make the file look permanently out of date.
     """
     writer = {"mp4": _tag_mp4, "flac": _tag_vorbis, "mp3": _tag_id3, "opus": _tag_vorbis}[kind(path)]
-    return writer(path, plan, track, cover, lyrics, keep_unknown)
+    return writer(path, plan, track, cover, lyrics, keep_unknown, drop_comments)
 
 
 def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown: bool,
@@ -646,7 +674,8 @@ def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown:
 
 
 def _tag_vorbis(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
-                lyrics: str | None = None, keep_unknown: bool = False) -> str:
+                lyrics: str | None = None, keep_unknown: bool = False,
+                drop_comments: bool = False) -> str:
     """Opus and FLAC: the same comment names, two different ways to carry a picture."""
     audio = FLAC(path) if kind(path) == "flac" else OggOpus(path)
     old_tags = dict(audio.tags or {})
@@ -657,6 +686,9 @@ def _tag_vorbis(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | No
             audio.pop(key, None)
     else:
         audio.delete()  # drop whatever yt-dlp/ffmpeg or an earlier run put there
+    if drop_comments:
+        for key in [k for k in audio.keys() if k.lower() in VORBIS_COMMENTS]:
+            del audio[key]
     for key, value in tags.items():
         audio[key] = [value]
 
@@ -685,10 +717,15 @@ def _picture(data: bytes, mime: str) -> Picture:
 
 
 def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
-             lyrics: str | None = None, keep_unknown: bool = False) -> str:
+             lyrics: str | None = None, keep_unknown: bool = False,
+             drop_comments: bool = False) -> str:
     """MP3. ID3 has a frame per field and two of ours have no frame of their own."""
     try:
-        id3 = ID3(path)
+        # **read without ID3v1** (R-438, ruling 2). mutagen turns a trailing block into v2 frames on
+        # load — a `COMM:ID3v1 Comment` and, where the tag had none, a `TDRC` — and `save` then
+        # writes them into the ID3v2 tag. That is how 175 files on the share came to hold a comment
+        # frame their owner never put there. The tail goes (R-434); nothing of it is moved inwards.
+        id3 = ID3(path, load_v1=False)
     except ID3NoHeaderError:  # a file with no tag block at all is normal, not a failure
         id3 = ID3()
 
@@ -700,6 +737,8 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     tags = _wanted(plan, track, lyrics, keep_unknown, present)
     if not keep_unknown:
         id3.delete()
+    if drop_comments:
+        id3.delall("COMM")              # every description, theirs and any an older version wrote
     for key, frame in ID3_KEYS.items():
         if key not in tags:
             continue
@@ -726,10 +765,13 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     # 128-byte block to the **decoder** — so the rewrite moved a digest that exists to be invariant
     # under a retag, and the whole-collection pass stopped in a refusal on its first mp3 whose tail
     # was not already noaap's own (R-433, ruling 2).
-    # Nothing is lost by dropping it instead. mutagen reads a tail into v2 frames on load, before
-    # anything here is written: the `ripped by Sir_Mc_Tod` on 153 of the Crematory originals is in
-    # all 153 treated files as `COMM:ID3v1 Comment`, measured. The tail itself holds 30 bytes of
-    # latin-1 per field of what ID3v2 holds in any length and any encoding, so it goes whole.
+    # Nothing of it is moved inwards either (R-438, ruling 2). mutagen reads a tail into v2 frames
+    # on load and `save` writes them, so the first version of this left the block's 30 characters
+    # behind as a `COMM:ID3v1 Comment` — which is how 175 files on the share came to hold a comment
+    # frame their owner never put there. The user, shown the measurement (4,873 `ripped by
+    # Sir_Mc_Tod` in one batch): *"source descriptions I don't want to carry on"*. So the read is
+    # `load_v1=False` above, and every field the block holds is a 30-byte latin-1 copy of what the
+    # ID3v2 tag already carries in any length and any encoding.
     id3.save(path, v1=0)
     return signature(plan, track, cover, lyrics)
 
@@ -761,7 +803,8 @@ def _id3v1_tail(path: Path) -> bytes | None:
 
 
 def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
-             lyrics: str | None = None, keep_unknown: bool = False) -> str:
+             lyrics: str | None = None, keep_unknown: bool = False,
+             drop_comments: bool = False) -> str:
     """Same tags for the .m4a files (audio copied out of a combined stream)."""
     audio = MP4(path)
     old_cover = audio.tags.get("covr") if audio.tags else None
@@ -769,6 +812,8 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
                    lambda key: (audio.tags or {}).get(MP4_KEYS.get(key, "")))
     if not keep_unknown:
         audio.delete()
+    if drop_comments:
+        audio.pop("\xa9cmt", None)      # before the loop: noaap's own `source` lives in this atom
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]
@@ -811,9 +856,13 @@ def _logical_keys() -> tuple[str, ...]:
     return tuple(build_tags(plan, one, "words"))
 
 
-VORBIS_KEYS = _logical_keys()
+VORBIS_KEYS = (*_logical_keys(), *VORBIS_COMMENTS)
 # the three ID3 frames and four MP4 atoms the writers set outside their key maps
-ID3_EXTRA = ("TRCK", "TCMP", "USLT")
+# **`COMM` and the Vorbis comment are keys this program writes** — since `drop_comments`, which
+# takes them away (§9, slice 113). Before that they were nobody's but the owner's, so the record
+# fingerprinted them under `tags_outside_ours` and had no value to put back; a restore after a drop
+# would have reported every file's comment as lost and been right. Here, the record keeps them.
+ID3_EXTRA = ("TRCK", "TCMP", "USLT", "COMM")
 MP4_EXTRA = ("trkn", "disk", "cpil")
 WRITES = {
     "opus": VORBIS_KEYS,
@@ -840,6 +889,15 @@ def raw_tags(path: Path) -> dict[str, Any]:
         for key in keys:
             found = audio.tags.getall(key) if audio.tags else []
             if not found:
+                continue
+            if key == "COMM":   # an empty list here is "the tag really holds none", not silence
+                # **every description, not the first.** A file may hold `COMM::XXX` beside
+                # `COMM:iTunNORM:eng`, and a record of one of them is a restore that silently drops
+                # the other. The language goes in too, because the frame is not the same frame
+                # without it. Those mutagen makes out of an ID3v1 block are not in the tag at all
+                # (R-438, ruling 2) and are not recorded as if they were.
+                out[key] = [[f.desc, f.lang, [str(v) for v in f.text]]
+                            for f in _comm_frames(path)]
                 continue
             frame = found[0]
             out[key] = str(frame.text) if key == "USLT" else [str(v) for v in frame.text]
@@ -922,7 +980,16 @@ def restore_tags(path: Path, values: dict[str, Any]) -> bool:
 
 def _restore_one(audio: Any, path: Path, key: str, want: Any) -> bool:
     """One key back to what it was, or gone. True when the file had to change."""
+    # **a record that says nothing about the comment is not evidence the file had none.** The undo's
+    # rule is "what the record does not have is removed", and it was written when the comment was
+    # nobody's but the owner's and never recorded at all (§9, slice 113). Every record taken before
+    # this is silent about it, so an absent key leaves the file's comment where it is; a record that
+    # really saw none says so with an empty list, and that does remove one.
+    if want is None and (key == "COMM" or str(key).lower() in VORBIS_COMMENTS):
+        return False
     if kind(path) == "mp3":
+        if key == "COMM":
+            return _restore_comments(audio, want)
         had = audio.tags.getall(key)
         if want is None:
             if not had:
@@ -947,6 +1014,26 @@ def _restore_one(audio: Any, path: Path, key: str, want: Any) -> bool:
     if now is not None and _plain(now) == _plain(want):
         return False
     audio.tags[key] = want if isinstance(want, list) else [want]
+    return True
+
+
+def _comm_frames(path: Path) -> list[Any]:
+    """This file's `COMM` frames as its ID3v2 tag really holds them, without ID3v1 (R-438)."""
+    try:
+        return list(ID3(path, load_v1=False).getall("COMM"))
+    except (MutagenError, OSError, ID3NoHeaderError):
+        return []
+
+
+def _restore_comments(audio: Any, want: Any) -> bool:
+    """Every recorded `COMM` frame back, with its description and language, or none at all."""
+    rows = [[str(d), str(lang), [str(v) for v in text]] for d, lang, text in (want or [])]
+    had = [[f.desc, f.lang, [str(v) for v in f.text]] for f in audio.tags.getall("COMM")]
+    if had == rows:
+        return False
+    audio.tags.delall("COMM")
+    for desc, lang, text in rows:
+        audio.tags.add(COMM(encoding=3, lang=lang or "eng", desc=desc, text=text))
     return True
 
 

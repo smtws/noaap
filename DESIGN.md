@@ -3293,11 +3293,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    that exists to be invariant under a retag moved under one. A freshly encoded tone does not do
    this, which is why the case builds the shape on purpose rather than hoping for it.
    Three answers, one per ruling:
-   - **An mp3 this program writes ends without a tail** (`id3.save(path, v1=0)`). Nothing is carried
-     over, because nothing is lost: `ID3(path)` reads a trailing block into v2 frames on load,
-     before anything here writes — the `ripped by Sir_Mc_Tod` on 153 of the 187 Crematory originals
-     is in all 153 treated files as `COMM:ID3v1 Comment`, measured on the share. The block itself is
-     30 bytes of latin-1 per field of what ID3v2 holds in any length and any encoding.
+   - **An mp3 this program writes ends without a tail** (`id3.save(path, v1=0)`). The block itself
+     is 30 bytes of latin-1 per field of what ID3v2 holds in any length and any encoding. The first
+     version of this carried its comment inwards, because `ID3(path)` reads a trailing block into v2
+     frames on load and `save` writes them: the `ripped by Sir_Mc_Tod` on 153 of the 187 Crematory
+     originals is in all 153 treated files on the share as `COMM:ID3v1 Comment`, measured — a frame
+     their owner never put there. Slice 113 is what the user decided about that.
    - **Neither digest ever sees one.** `decoded_sha` and `stream_sha` go through `ffmpeg_audio`,
      which pipes an mp3 in and leaves a trailing block out of what it feeds. **And an mp3 is always
      piped, tail or no tail**, because the two routes disagree: over a pipe ffmpeg applies no gapless
@@ -3321,6 +3322,43 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `tails_to_drop`. **It is asked only where this program wrote the file's tags** — `tagged` is set
    only then — so a library that was told to leave adopted albums alone keeps the owner's own tail,
    128 bytes they have had since 2003, while the block noaap put there comes back off.
+
+113. ✅ **The comment is the one field a write takes away** (2026-10-03, P92b). Slice 112 ended with
+   a question rather than an answer: the tail goes, and what about the 30 characters in it? Measured
+   on the first batch staged out of the collection — 3,972 files, read-only, one tag read each:
+   2,993 carry a comment (mp3 2,779 of 2,937; flac 202 of 610; opus 12 of 425), and of 41 distinct
+   texts one accounts for 4,873 values — `ripped by Sir_Mc_Tod` — with `www.NewAlbumReleases.net`
+   48 times and `Encoded by EasyTAG` 12. The user, shown that: *"source descriptions I don't want to
+   carry on"*.
+   - **`drop_comments` is a setting, off by default**, in `OPERATIONS` with the rest of the state the
+     library is in, and on the settings page with them. On, every pass that writes a file takes the
+     comment out of it — ID3v2 `COMM` whatever its description, Vorbis `COMMENT` and `DESCRIPTION`,
+     MP4 `©cmt` — and the check counts them first (`N comment(s) would be dropped`). It is the only
+     field a write removes rather than leaves; everything else this program does not model is still
+     untouched, which is what slice 53 is for.
+   - **It is the library's state, not a flag of one run.** A take-in's switches say what to do
+     tonight (slice 100) and are recorded nowhere, so `take_in` reads this one from the settings
+     instead of from its `Choices`. And it applies only where the file is written at all: an adopted
+     album the library does not retag is not opened to take one field out of it.
+   - **Like the tail, it is invisible to the signature** — the plan never asserted a comment, so a
+     file full of somebody else's `ripped by` looks done. `comments_in` (one tag read, and 0 for
+     anything it cannot read) is asked in the retag gate, in `_already_right`, in `would_do` and in
+     `repair`'s album-level skip through `comments_to_drop`, exactly as `ends_with_an_id3v1_tail` is.
+   - **It is therefore in the record, and a restore gives it back.** `COMM` and the Vorbis
+     `COMMENT`/`DESCRIPTION` were keys nobody here wrote, so the snapshot kept a *fingerprint* of
+     each under `tags_outside_ours` and had no value to put back; a restore after a drop would have
+     reported every file's comment as lost and been right. They are in `WRITES` now, recorded
+     verbatim — `COMM` **per description and language**, because a file may hold `COMM::XXX` beside
+     `COMM:iTunNORM:eng` and a record of the first is a restore that silently drops the second.
+     And because every record taken before this is silent about the comment, silence is not read as
+     "there was none": an absent key leaves the file's comment alone, and a record that really saw
+     none says so with an empty list.
+   - **And nothing of the tail is moved inwards, whatever the setting says.** `ID3(path)` turns a
+     trailing block into v2 frames on load and `save` writes them, which is how 175 files on the
+     share came to hold a `COMM:ID3v1 Comment` their owner never put there. The read is now
+     `load_v1=False`, so the block is gone and no part of it is written anywhere. `©cmt` also holds
+     an m4a's `source`, so the drop happens before the plan's keys go in and noaap's own value
+     survives it.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

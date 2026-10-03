@@ -299,7 +299,7 @@ test("every switch of the library's state has a label and a sentence", () => {
   const keys = STATE_SWITCHES.map(([key]) => key);
   assert.deepEqual(keys, ["musicbrainz", "lyrics", "cover_beside", "cover_embedded",
                           "lyrics_embedded", "rename_adopted", "retag_adopted",
-                          "tidy_adopted_tags"]);
+                          "tidy_adopted_tags", "drop_comments"]);
   for (const [, title, help] of STATE_SWITCHES) {
     assert.ok(title.length > 4 && help.length > 10);
   }

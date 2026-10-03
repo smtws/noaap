@@ -63,9 +63,12 @@ def test_a_snapshot_records_every_file_and_what_it_said(collection, tmp_path):
     one = snap.files[0]
     assert one.size > 0 and one.mtime_ns > 0 and one.audio and one.how == "decoded"
     assert one.tags["title"] == ["First"], "the keys a pass here could overwrite, verbatim"
-    assert "comment" in one.others, "and a fingerprint of every key of theirs that it could not"
-    assert one.others["comment"] not in ("", None)
-    assert "comment" not in one.tags, "their own field is not ours to hold a copy of"
+    # **their comment is one of those keys since `drop_comments`** (§9, slice 113): a setting takes
+    # it away, so the record keeps the value and not a fingerprint of it.
+    assert one.tags["comment"] == ["ripped by me in 2006, track 1"]
+    assert "encoder" in one.others, "and a fingerprint of every key of theirs that it could not"
+    assert one.others["encoder"] not in ("", None)
+    assert "encoder" not in one.tags, "a field nothing here writes is not ours to hold a copy of"
 
 
 def test_a_snapshot_never_overwrites_one_that_is_there(collection, tmp_path):
@@ -212,20 +215,42 @@ def test_the_room_it_would_take_is_said_before_it_is_taken(collection, tmp_path)
     assert "GB" in said and str(tmp_path / "originals") in said
 
 
-def test_a_field_of_theirs_that_a_pass_dropped_is_named(collection, tmp_path):
-    """The snapshot cannot put their own `comment` back — nothing here writes it, so nothing here
-    keeps a copy — but it holds a fingerprint, so a pass that dropped one is found out."""
+def test_their_comment_is_put_back_because_a_setting_can_take_it(collection, tmp_path):
+    """`drop_comments` removes it (§9, slice 113), so the record holds the value and the restore
+    gives it back — where before it could only name it as lost."""
     snap = precautions.read(precautions.take(collection, tmp_path / "snap.jsonl"))
     path = collection / snap.files[0].path
 
-    def wipe(tmp: Path) -> None:      # what a writer with `keep_unknown=False` would do to it
+    def wipe(tmp: Path) -> None:      # what a pass with the setting on does to it
         audio = MFile(tmp)
         del audio["comment"]
         audio.save()
 
     precautions.safely(path, wipe)
+    assert "comment" not in MFile(path)
+
     done = precautions.restore(snap, collection, apply=True)
-    assert done.lost == [f"{snap.files[0].path}: comment"]
+
+    assert MFile(path)["comment"] == ["ripped by me in 2006, track 1"]
+    assert done.lost == []
+    assert done.changed == [], "the recording itself is untouched, which is the other question"
+
+
+def test_a_field_of_theirs_that_a_pass_dropped_is_named(collection, tmp_path):
+    """The snapshot cannot put a key back that nothing here writes — it keeps no copy — but it
+    holds a fingerprint of each, so a pass that dropped one is found out and said out loud."""
+    snap = precautions.read(precautions.take(collection, tmp_path / "snap.jsonl"))
+    path = collection / snap.files[0].path
+    assert "encoder" in snap.files[0].others
+
+    def wipe(tmp: Path) -> None:
+        audio = MFile(tmp)
+        del audio["encoder"]
+        audio.save()
+
+    precautions.safely(path, wipe)
+    done = precautions.restore(snap, collection, apply=True)
+    assert done.lost == [f"{snap.files[0].path}: encoder"]
     assert done.changed == [], "the recording itself is untouched, which is the other question"
 
 

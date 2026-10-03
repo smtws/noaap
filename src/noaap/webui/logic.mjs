@@ -946,6 +946,10 @@ export const STATE_SWITCHES = [
    "off by default: what their tags say is what they mean — no `(Live in Dresden)` taken out of a "
    + "title, no artist replaced by the album's, no `2003-01-01` cut to `2003`. On, they get the "
    + "same tidying a fetched album does, from the next check or repair"],
+  ["drop_comments", "No comment in the files this library writes",
+   "off by default, and the only field a write takes away rather than leaves. On, every pass that "
+   + "writes a file removes its comment — a ripper's `ripped by …`, a release site's address — in "
+   + "whichever way the format keeps one. The check counts them before anything goes"],
 ];
 
 export const EXCEPTION_LABELS = {

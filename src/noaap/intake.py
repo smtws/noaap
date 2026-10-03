@@ -22,7 +22,7 @@ import contextlib
 import json
 import os
 from collections.abc import Callable, Iterable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -401,8 +401,11 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     writes nothing at all, not even the snapshot.
     """
     choices = choices or Choices()
-    want = choices.as_treatment()
     cfg = service.cfg
+    # **`drop_comments` is the library's state, not a choice of this run** (R-438, ruling 1). The
+    # flags of a take-in say what to do tonight (§9, slice 100); what the files this library writes
+    # hold is a setting, and the take-in is the first pass that writes them.
+    want = replace(choices.as_treatment(), drop_comments=bool(getattr(cfg, "drop_comments", False)))
     source = sources.get("folder", cfg)
     # **an adoption does not rank copies, so it does not digest every file** (§9, slice 101). Measured
     # on the user's own collection: with the digests, reading 2000 files to say what would happen cost

@@ -6,8 +6,8 @@ written was not the same recording. It was right by its own measure and wrong ab
 file ends in a 128-byte ID3v1 `TAG` block, and mutagen's `save` rewrites the block from the v2
 frames by default — NUL-padding what was space-padded — while ffmpeg's demuxer hands the block to
 the **decoder**. `tests/test_identity.py` holds the digests' half of the answer; this file holds the
-writer's: the block goes whole, nothing of it is lost, and the files already written with one
-rewritten are reached.
+writer's: the block goes whole, nothing of it is moved into the ID3v2 tag, and the files already
+written with one rewritten are reached. `tests/test_drop_comments.py` is the comment's own half.
 """
 
 from __future__ import annotations
@@ -101,26 +101,31 @@ def test_a_file_that_never_had_one_is_left_without_one(tmp_path, one_second_of_m
     assert _id3v1_tail(where / plan.tracks[0].filename) is None
 
 
-def test_the_tails_comment_is_in_the_v2_tag_after_it_goes(album):
-    """Why the tail can go without asking the owner: mutagen has already saved what it holds.
+def test_nothing_of_the_tail_is_moved_into_the_v2_tag(album):
+    """The tail goes and nothing of it goes inwards (R-438, ruling 2).
 
-    `ID3(path)` reads a trailing block into v2 frames on load — a `COMM:ID3v1 Comment` and, where
-    there was none, a `TDRC` — so the comment is in the tag before this program writes anything, and
-    an adopted album keeps the frames it did not put there. Measured on the user's own files: 153 of
-    the 187 Crematory originals carry `ripped by Sir_Mc_Tod` in the tail, and all 153 carry it as
-    `COMM:ID3v1 Comment` in the treated copy on the share.
+    `ID3(path)` makes a `COMM:ID3v1 Comment` frame out of the block on load and `save` writes it, so
+    the first version of this dropped the tail and left its 30 characters behind in ID3v2 — which is
+    how 175 files on the share came to hold a comment frame their owner never put there. The user's
+    answer to the measurement was that those source descriptions are not to be carried on, so the
+    read is `load_v1=False` and the block is simply gone. `tests/test_drop_comments.py` holds the
+    other half.
     """
     root, where = album
     plan = a_plan(root, where)
     one = where / plan.tracks[0].filename
+    assert [str(f) for f in ID3(one).getall("COMM")] == [THEIRS], "mutagen offers it on load"
 
     tag_file(one, plan, plan.tracks[0], None, None, keep_unknown=True)
 
     assert _id3v1_tail(one) is None
-    assert [str(f) for f in ID3(one).getall("COMM")] == [THEIRS]
+    assert ID3(one, load_v1=False).getall("COMM") == []
 
 
-def test_a_comment_frame_of_their_own_is_not_touched_either(tmp_path, one_second_of_mp3):
+def test_a_comment_frame_of_their_own_is_not_touched(tmp_path, one_second_of_mp3):
+    """What the tail's going does not reach: a `COMM` frame really in the ID3v2 tag. That is a tag,
+    and an adopted album's tags are kept unless the library asks otherwise (`drop_comments`).
+    """
     root = tmp_path / "collection"
     where = their_album(root, ["One"], one_second_of_mp3, comm="from my own vinyl")
     plan = a_plan(root, where)
@@ -128,7 +133,7 @@ def test_a_comment_frame_of_their_own_is_not_touched_either(tmp_path, one_second
 
     tag_file(one, plan, plan.tracks[0], None, None, keep_unknown=True)
 
-    assert sorted(str(f) for f in ID3(one).getall("COMM")) == ["from my own vinyl", THEIRS]
+    assert [str(f) for f in ID3(one, load_v1=False).getall("COMM")] == ["from my own vinyl"]
     assert _id3v1_tail(one) is None
 
 
