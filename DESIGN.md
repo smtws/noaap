@@ -3360,6 +3360,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      an m4a's `source`, so the drop happens before the plan's keys go in and noaap's own value
      survives it.
 
+114. ✅ **A record is one line, and only a newline ends it** (2026-10-03, P92c). The whole-collection
+   pass stopped an hour into batch 4 — exit 1, a traceback — reading back the snapshot it had just
+   written, before it had touched the share: `line 1475: Unterminated string`. `precautions.take`
+   writes one record per `\n` and nothing else; `read` split the file with `str.splitlines()`, which
+   also breaks on `\x0b \x0c \x1c \x1d \x1e \x85`, U+2028 and U+2029. One file of the user's,
+   `Samsas Traum/Heiliges Herz/2/… 01 - Intro.mp3`, carries Windows-Media
+   `PRIV:WM/WMCollectionID:…` frames whose descriptions are raw binary, one byte of which is
+   **U+0085** — and a tag key is a key in the `others` map, so it goes into the line. Measured on
+   that snapshot: 2957 records by `"\n"`, 2980 pieces by `splitlines()`.
+   Both readers of a `.jsonl` this program writes now split on `"\n"`. `staged.read_wrote` had the
+   same defect and the worse failure: it skips a line it cannot parse **in silence**, so it would
+   have forgotten a file it had already copied back and verified, and the copy back would have done
+   it again. (`"".split("\n")` is `[""]` rather than `[]`, so the empty-snapshot guard asks about
+   the first line instead of the list.)
+   All five snapshots on disk read back under the new reader with the count each one recorded:
+   Crematory 306, batch 1 4536, batch 2 4053, batch 3 2695, batch 4 2955.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

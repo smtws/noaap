@@ -243,9 +243,19 @@ def take(root: Path, out: Path | None = None, log: Callable[[str], None] = lambd
 
 
 def read(path: Path) -> Snapshot:
-    """A snapshot back from its file. A line that cannot be read stops the whole thing."""
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if not lines:
+    """A snapshot back from its file. A line that cannot be read stops the whole thing.
+
+    **Split on `"\n"`, never with `splitlines()`** (§9, slice 114). `take` writes one record per
+    newline and nothing else; `splitlines()` also breaks on `\x0b \x0c \x1c \x1d \x1e \x85`,
+    U+2028 and U+2029, and a tag key may hold any of them. `Samsas Traum/Heiliges Herz/2/… 01 -
+    Intro.mp3` in the user's collection carries Windows-Media `PRIV:WM/WMCollectionID:…` frames whose
+    descriptions are raw binary, one byte of which is **U+0085** — so its record was cut in half and
+    the whole-collection pass stopped an hour into batch 4 reading back the snapshot it had just
+    written. Measured on that file: 2957 records by `"\n"`, 2980 pieces by `splitlines()`.
+    """
+    lines = path.read_text(encoding="utf-8").split("\n")
+    # `"".split("\n")` is `[""]`, not `[]`, so emptiness is asked of the first line and not of the list
+    if not lines or not lines[0].strip():
         raise Unsafe(f"{path} is empty")
     head = json.loads(lines[0])
     if not head.get("noaap_snapshot"):

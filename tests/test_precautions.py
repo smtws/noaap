@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from mutagen import File as MFile
 
-from noaap import precautions
+from noaap import precautions, tag
 from noaap.precautions import Unsafe
 
 
@@ -604,3 +604,71 @@ def test_which_empty_folders_may_go_is_a_setting(tmp_path):
     assert set(everything) == {root / "theirs", root / "ours"}, everything
     assert root not in everything, "never the root"
     assert not any("holds something" in str(p) for p in everything), "never one that holds anything"
+
+
+# -- a record is one line, and only a newline ends it (§9, slice 114) ----------------------------
+
+HERE = Path(__file__).parent
+
+
+def test_a_tag_key_holding_0x85_does_not_cut_the_record_in_two(tmp_path, one_second_of_mp3):
+    """The stop of 2026-10-03, an hour into batch 4 of the collection.
+
+    `take` writes one record per `\\n`; `read` split with `str.splitlines()`, which also breaks on
+    `\\x0b \\x0c \\x1c \\x1d \\x1e \\x85`, U+2028 and U+2029. A file of the user's carries
+    Windows-Media `PRIV:WM/WMCollectionID:…` frames whose descriptions are raw binary, one byte of
+    which is U+0085 — so its record was cut in half and the pass died reading back the snapshot it
+    had just written, before it had touched the share.
+    """
+    from mutagen.id3 import ID3, PRIV
+
+    collection = tmp_path / "collection"
+    album = collection / "A Band" / "An Album"
+    album.mkdir(parents=True)
+    path = album / "01 One.mp3"
+    shutil.copy(one_second_of_mp3, path)
+    tags = ID3()
+    tags.add(PRIV(owner="WM/WMCollectionID\x85\x98\x8e", data=b"\x01\x02\x03"))
+    tags.save(path, v1=0)
+    assert any("\x85" in key for key in tag.tags_outside_ours(path)), "the fixture's own premise"
+
+    out = precautions.take(collection, tmp_path / "snap.jsonl")
+    assert len(out.read_text(encoding="utf-8").splitlines()) == 3, \
+        "splitlines() sees three pieces where there are two records"
+
+    snap = precautions.read(out)
+
+    assert [r.path for r in snap.files] == ["A Band/An Album/01 One.mp3"]
+    assert any("\x85" in key for key in snap.files[0].others)
+
+
+def test_the_real_record_that_stopped_the_pass_reads_back(tmp_path):
+    """The record itself, from the batch-4 snapshot, with its path and root made neutral and every
+    byte of its tag keys kept. `splitlines()` makes two fragments of it; `split("\\n")` one record.
+    """
+    kept = HERE / "data" / "a-snapshot-with-0x85-in-a-tag-key.jsonl"
+    text = kept.read_text(encoding="utf-8")
+    assert len(text.split("\n")[1].splitlines()) == 2, "the line splitlines() would cut"
+
+    snap = precautions.read(kept)
+
+    assert len(snap.files) == 1
+    one = snap.files[0]
+    assert one.path == "A Band/An Album/01 One.mp3"
+    assert one.size == 4106368 and one.how == "decoded" and one.audio
+    assert sum(1 for key in one.others if "\x85" in key) == 1
+
+
+def test_what_a_batch_already_wrote_back_is_not_forgotten_over_one_such_line(tmp_path):
+    """`read_wrote` skips a line it cannot parse, in silence, so the same split would make it forget
+    a file it had copied back and verified — and the copy back would do it again."""
+    from noaap import staged
+
+    snapshot = tmp_path / "batch-snapshot.jsonl"
+    rows = [json.dumps({"path": "A Band/An Album/01 One.mp3", "bytes": "abc"}),
+            json.dumps({"path": "A Band/An Album/02 Two\x85.mp3", "bytes": "def"}, ensure_ascii=False)]
+    staged.wrote_path(snapshot).write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    back = staged.read_wrote(snapshot)
+
+    assert back == {"A Band/An Album/01 One.mp3": "abc", "A Band/An Album/02 Two\x85.mp3": "def"}

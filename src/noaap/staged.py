@@ -1006,7 +1006,10 @@ def read_wrote(snapshot: Path) -> dict[str, str]:
     if not where.is_file():
         return {}
     out: dict[str, str] = {}
-    for line in where.read_text().splitlines():
+    # **`split("\n")`, not `splitlines()`** — the same reason as `precautions.read` (§9, slice 114),
+    # and worse here: a cut record is skipped in silence, so this would forget a file it had copied
+    # back and verified. One record per newline is what writes it.
+    for line in where.read_text().split("\n"):
         if not line.strip():
             continue
         try:
