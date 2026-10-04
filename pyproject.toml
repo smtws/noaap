@@ -1,6 +1,6 @@
 [project]
 name = "noaap"
-version = "1.33.2"
+version = "1.34.0"
 description = "Keeps a music library in one state: tagged albums from collections, folders and playlists"
 authors = [
     { name = "Tordt", email = "info@smt-webservices.de" }
