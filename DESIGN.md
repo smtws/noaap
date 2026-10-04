@@ -3600,6 +3600,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    slice 53's promise holds for a copy as much as for a fetch: **a deluxe edition never quietly
    grows the album that is already here.**
 
+129. ✅ **A case-only tie goes to the spelling most of the library holds** (2026-10-04, P97).
+   Slice 126 let `repair` unify a case-only artist spelling, and the first check of it over the
+   library would have changed **55 albums across 6 artists**: `Umbra et Imago` (23 albums) rewritten
+   to follow `Umbra Et Imago` (4), `Subway to Sally` (22) to follow `Subway To Sally` (1). Both are
+   the artists' own spelling, in the lowercase German particle.
+   `spelling_rank` ended in `(len(name), name)` — and two casings of one name are the same length,
+   so **plain alphabetical order decided**, where `'E' (0x45) < 'e' (0x65)` makes Title Case win
+   every time. The rank had no notion of how many albums held a spelling. It was slice 23's rank and
+   it had never been reached on this library, because `_apply_spelling` sits behind
+   `tidy_adopted_tags`; slice 126 is what exposed it.
+   So the count comes after USER, MusicBrainz and the case penalties, and before the alphabet. On
+   the user's library: `Umbra et Imago` and `Subway to Sally` stand, `Die Legende von Nord` (1) still
+   follows `Von` (4), `DOMINUM` still wins on MusicBrainz over five albums spelled `Dominum`, and
+   `Miracle of Sound` (1 against 1) still falls to the alphabet.
+   **And the count is never evidence.** The user: *"such stuff should follow MusicBrainz, not
+   numbers"*. A spelling that wins on count alone is marked `by count; MusicBrainz not asked` in the
+   plan and named as such in the check, so a later lookup replaces it without argument; every choice
+   says its basis — user, MusicBrainz, count or alphabet — because a choice nobody can account for
+   is not one a reader can disagree with.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

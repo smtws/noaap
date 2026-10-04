@@ -399,15 +399,24 @@ class Service:
         `track_spelling`'s guards hold, which is MusicBrainz evidence.
         """
         candidates: dict[str, dict[str, set[str | None]]] = {}
+        # **how many albums hold each spelling**, which is the tie-break the alphabet used to win
+        # (§9, slice 129). Counted per album, not per candidate: the spelling an album's own tracks
+        # carry is MusicBrainz evidence and is a candidate, never a vote.
+        held: dict[str, dict[str, int]] = {}
         for _, plan in iter_plans(self.library) if self.library and self.library.exists() else []:
             key = text_key(plan.albumartist)
             for name, source in ((plan.albumartist, plan.provenance.get("albumartist")), (track_spelling(plan), Provenance.MB)):
                 if name:
                     candidates.setdefault(key, {}).setdefault(name, set()).add(source)
+            held.setdefault(key, {})[plan.albumartist] = held.get(key, {}).get(plan.albumartist, 0) + 1
         decided: dict[str, tuple[str, set[str | None]]] = {}
+        self._spelling_counts = held
+        self._spelling_basis = {}
         for key, names in candidates.items():
-            best = min(names, key=lambda n: spelling_rank(n, names[n]))
+            counts = held.get(key, {})
+            best = min(names, key=lambda n: spelling_rank(n, names[n], counts.get(n, 0)))
             decided[key] = (best, names[best])
+            self._spelling_basis[key] = spelling_basis(best, names[best], names, counts)
         return decided
 
     def _apply_spelling(self, plan: AlbumPlan, decided: dict[str, tuple[str, set[str | None]]]) -> None:
@@ -445,7 +454,17 @@ class Service:
             return ""       # a different name, not a different casing: that is `_apply_spelling`'s
         was, plan.albumartist = plan.albumartist, chosen[0]
         plan.auto["albumartist"] = chosen[0]
-        return f"{was!r} -> {chosen[0]!r}"
+        basis = getattr(self, "_spelling_basis", {}).get(text_key(chosen[0]), "alphabet")
+        # **a spelling chosen by count says so, in the plan** (R-479, point 1). The user:
+        # "such stuff should follow MusicBrainz, not numbers" — so the count is recorded as the weak
+        # ground it is, and a later pass that asks MusicBrainz replaces it without argument.
+        if basis == "count":
+            plan.provenance["albumartist"] = Provenance.SOURCE_TAGS
+            plan.adopted = dict(plan.adopted or {})
+            plan.adopted["spelling"] = "by count; MusicBrainz not asked"
+        elif isinstance(plan.adopted, dict):
+            plan.adopted.pop("spelling", None)
+        return f"{was!r} -> {chosen[0]!r} ({basis})"
 
     def _settle_artist(self, plan: AlbumPlan) -> None:
         """The artist this fetch writes: the album's own tracks first, then the library's spelling.
@@ -2595,16 +2614,51 @@ def track_spelling(plan: AlbumPlan) -> str | None:
     return common
 
 
-def spelling_rank(name: str, sources: set[str | None]) -> tuple[bool, bool, bool, bool, int, str]:
-    """How good a spelling is: what someone chose, then MusicBrainz, then case, then length."""
+def spelling_rank(name: str, sources: set[str | None],
+                  albums: int = 0) -> tuple[bool, bool, bool, bool, int, int, str]:
+    """How good a spelling is: what someone chose, then MusicBrainz, then case, then **how many
+    albums hold it**, then length, then the alphabet.
+
+    **The count comes before the alphabet** (§9, slice 129, R-478). Two casings of one name are the
+    same length, so the last word used to go to `name` — and `'E' < 'e'`, so Title Case always won.
+    On the user's library that chose `Umbra Et Imago` (4 albums) over `Umbra et Imago` (23) and
+    `Subway To Sally` (1) over `Subway to Sally` (22): the artists' own spelling, in the lowercase
+    German particle, rewritten to follow a handful of files that disagreed.
+    **And the count is never evidence, only a tie-break** — the user: *"such stuff should follow
+    MusicBrainz, not numbers"*. So USER and MusicBrainz still come first, the case penalties still
+    come before it, and a spelling that wins on count alone is marked as such by its caller so a
+    later lookup can replace it.
+    """
     return (
         Provenance.USER not in sources,  # a spelling someone chose themselves
         Provenance.MB not in sources,  # then one MusicBrainz confirmed
         name.isupper(),  # then mixed case over a shouting channel name
         name.islower(),
+        -albums,  # then the one most of the library already uses
         len(name),
         name,
     )
+
+
+def spelling_basis(name: str, sources: set[str | None], names: dict[str, set[str | None]],
+                   counts: dict[str, int] | None = None) -> str:
+    """Why this spelling won: `user`, `MusicBrainz`, `count` or `alphabet` (R-479, point 2).
+
+    Said in the check and written into the plan, because a choice nobody can account for is not a
+    choice a reader can disagree with — and because `count` is the one basis a later MusicBrainz
+    lookup is meant to overrule.
+    """
+    if Provenance.USER in sources:
+        return "user"
+    if Provenance.MB in sources:
+        return "MusicBrainz"
+    rivals = [n for n in names if n != name]
+    if not rivals:
+        return "the only spelling"
+    counts = counts or {}
+    if counts.get(name, 0) > max((counts.get(n, 0) for n in rivals), default=0):
+        return "count"
+    return "alphabet"
 
 
 def placed(tracks: list[PlanTrack], was_on: dict[str, int], typed: dict[str, int]) -> list[PlanTrack]:

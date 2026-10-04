@@ -144,3 +144,87 @@ def test_one_album_of_one_spelling_is_left_alone(tmp_path, one_second_of_sound):
 
     assert artists(root) == ["Die Legende von Nord"]
     assert not [line for line in said if "elsewhere in the library" in line], said
+
+
+# -- which spelling wins, and on what ground (§9, slice 129; R-478, R-479) -----------------------
+
+
+def test_the_spelling_most_albums_hold_wins_a_case_only_tie():
+    """`Umbra et Imago` is in 23 albums of the user's library and `Umbra Et Imago` in 4. Two casings
+    of one name are the same length, so the last word used to go to the alphabet — and `'E' < 'e'`,
+    so Title Case always won: the rule would have rewritten the 23 to follow the 4."""
+    from noaap.service import spelling_rank
+
+    names = {"Umbra et Imago": set(), "Umbra Et Imago": set()}
+    counts = {"Umbra et Imago": 23, "Umbra Et Imago": 4}
+    best = min(names, key=lambda n: spelling_rank(n, names[n], counts[n]))
+
+    assert best == "Umbra et Imago"
+
+
+def test_musicbrainz_still_beats_the_count():
+    """The user: "such stuff should follow MusicBrainz, not numbers". `DOMINUM` is in 2 albums and
+    `Dominum` in 5, and MusicBrainz says the first — so the count never gets a say."""
+    from noaap.models import Provenance
+    from noaap.service import spelling_rank
+
+    names = {"DOMINUM": {Provenance.MB}, "Dominum": {"file_tags"}}
+    counts = {"DOMINUM": 2, "Dominum": 5}
+    best = min(names, key=lambda n: spelling_rank(n, names[n], counts[n]))
+
+    assert best == "DOMINUM"
+
+
+def test_a_spelling_someone_chose_beats_everything():
+    from noaap.models import Provenance
+    from noaap.service import spelling_rank
+
+    names = {"umbra et imago": {Provenance.USER}, "Umbra et Imago": {Provenance.MB}}
+    counts = {"umbra et imago": 1, "Umbra et Imago": 40}
+    assert min(names, key=lambda n: spelling_rank(n, names[n], counts[n])) == "umbra et imago"
+
+
+def test_the_alphabet_is_the_last_word_and_only_that():
+    """`Miracle of Sound` and `Miracle Of Sound` are one album each: nothing else can decide."""
+    from noaap.service import spelling_rank
+
+    names = {"Miracle of Sound": set(), "Miracle Of Sound": set()}
+    counts = {"Miracle of Sound": 1, "Miracle Of Sound": 1}
+    assert min(names, key=lambda n: spelling_rank(n, names[n], counts[n])) == "Miracle Of Sound"
+
+
+def test_the_basis_is_named():
+    from noaap.models import Provenance
+    from noaap.service import spelling_basis
+
+    both = {"Umbra et Imago": set(), "Umbra Et Imago": set()}
+    counts = {"Umbra et Imago": 23, "Umbra Et Imago": 4}
+    assert spelling_basis("Umbra et Imago", set(), both, counts) == "count"
+    assert spelling_basis("Umbra Et Imago", set(), both, {"Umbra et Imago": 1,
+                                                          "Umbra Et Imago": 1}) == "alphabet"
+    assert spelling_basis("DOMINUM", {Provenance.MB}, {"DOMINUM": set(), "Dominum": set()}) \
+        == "MusicBrainz"
+    assert spelling_basis("x", {Provenance.USER}, {"x": set(), "y": set()}) == "user"
+    assert spelling_basis("only", set(), {"only": set()}) == "the only spelling"
+
+
+def test_a_count_chosen_spelling_is_marked_for_a_later_lookup(tmp_path, one_second_of_sound):
+    """R-479, point 1: the count is weak ground, so the plan says so and a pass that asks
+    MusicBrainz may replace it without argument."""
+    root = tmp_path / "collection"
+    for album in ("One", "Two", "Three"):
+        an_album(root, "Umbra et Imago", album, ["A"], one_second_of_sound)
+    an_album(root, "Umbra Et Imago", "Four", ["A"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = said.append
+    service.repair()
+
+    assert artists(root) == ["Umbra et Imago"], "the three win, not the one"
+    named = [line for line in said if "elsewhere in the library" in line]
+    assert named and "(count)" in named[0], said
+    moved = load_plan(root / "Umbra et Imago" / "Four")
+    assert moved is not None
+    assert (moved.adopted or {}).get("spelling") == "by count; MusicBrainz not asked"
