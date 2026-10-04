@@ -3401,11 +3401,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    where a part's own leading dots sit in the middle and survive. So `Crematory/...Just Dreaming`
    came out as the folder `Just Dreaming` holding files called
    `Crematory - ...Just Dreaming - 01 - Heaven's Throat.mp3`, and `Fly  (Single)` as the folder
-   `Fly (Single)` holding `Crematory - Fly  (Single) - 01 - ….mp3`. Every part — album artist,
-   album, track artist, title — is sanitised before the stem is assembled, so the name a folder gets
-   and the name the files in it get are made the same way. Only the ends of a part go: `Mr. Hurley`
-   and the inner dots of `A.C.A.B.` are part of the name, and an album called `Freitag der 13.` now
+   `Fly (Single)` holding `Crematory - Fly  (Single) - 01 - ….mp3` (the doubled space was already
+   collapsed by the whole-stem pass; the dots were not). The **album artist and the album** are
+   sanitised before the stem is assembled, because those two are what the folders above the file are
+   called. Only the ends go: `Mr. Hurley` keeps its dot, and an album called `Freitag der 13.` now
    loses its trailing dot in the file names as its folder always did.
+   **The title and the track artist are not touched**, and the first version of this got that wrong:
+   the repair check over the collection showed it renaming two files to take an ellipsis out of a
+   *song's* name — `Crematory - Illusions - 11 - ... Just Dreaming.mp3`. A song called
+   `... Just Dreaming` is called that; the rule is about the parts that name a folder.
 
 117. ✅ **The room is what is free once a stopped run's copy is out of it** (2026-10-04, P91). A
    batch's size limit is a tenth of what is free, and a batch's identity is what it holds — so

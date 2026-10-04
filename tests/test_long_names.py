@@ -282,7 +282,7 @@ def test_a_trailing_space_goes_from_the_album_and_the_artist():
         == "Tanzwut - Herz aus Stein - 02 - Nein Nein.mp3"
 
 
-def test_only_the_ends_of_a_part_are_stripped():
+def test_only_the_ends_of_the_album_and_the_artist_are_stripped():
     """A dot inside a name is part of it — `Mr. Hurley`, `A.C.A.B.` — and only the ends go.
 
     The trailing dot of the *last* part was already lost before this, because the whole stem was
@@ -295,6 +295,16 @@ def test_only_the_ends_of_a_part_are_stripped():
         == "A Band - Freitag der 13 - 03 - Schrei.mp3", "and now the album's too"
 
 
-def test_the_part_that_is_only_dots_does_not_vanish_into_nothing():
+def test_a_songs_own_ellipsis_is_not_taken_out_of_its_name():
+    """The repair check found the first version of this renaming two of the user's files to take an
+    ellipsis out of a *title*: `Crematory - Illusions - 11 - ... Just Dreaming.mp3`. The rule is
+    about the two parts that name a folder; a song called `... Just Dreaming` is called that."""
+    assert track_filename("Crematory", "Illusions", 11, None, "... Just Dreaming", ext="mp3") \
+        == "Crematory - Illusions - 11 - ... Just Dreaming.mp3"
+    assert track_filename("A Band", "An Album", 1, "...And Oceans", "One", ext="mp3") \
+        == "A Band - An Album - 01 - ...And Oceans - One.mp3"
+
+
+def test_an_album_that_is_only_dots_does_not_vanish_into_nothing():
     name = track_filename("A Band", "...", 4, None, "One", ext="mp3")
     assert name == "A Band - _ - 04 - One.mp3", "safe_name's own answer for an empty name"
