@@ -1348,3 +1348,55 @@ def test_two_collections_under_one_parent_do_not_share_a_store(tmp_path, one_sec
     for which in ("Music", "Live"):
         kept = staged.aside_for(share / which) / "Aphelion" / "Nocturnes" / "01 First.opus"
         assert kept.read_bytes() == was[which], f"{which} kept its own file, not the other's"
+
+
+# -- the room, measured without a stopped run's copy in it (§9, slice 117; R-455, item 3) --------
+
+
+def test_a_stopped_runs_staged_copy_is_out_of_the_way_before_the_room_is_measured(elsewhere, tmp_path):
+    """The real resume: 499.8 GB free read as 449.8 because the stopped run's 47 GB copy was still
+    on the disk, so the cap was 45.0 GB instead of 50.0, six batches became seven, and the key of
+    the batch that had stopped matched nothing in the index.
+    """
+    staging = tmp_path / "staging"
+    stale = staging / "batch"
+    stale.mkdir(parents=True)
+    (stale / "left over.bin").write_bytes(b"x" * 4_000_000)
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=10_000_000, dry_run=False, log=said.append)
+
+    assert not stale.exists(), "it is gone before the room is read"
+    assert [line for line in said if "removed a stopped run's staged copy" in line], said
+    assert done.tracks == 5
+
+
+def test_a_dry_run_counts_that_copy_as_free_rather_than_removing_it(elsewhere, tmp_path):
+    """A dry run writes nothing — so it says the number the apply will see instead of making it."""
+    staging = tmp_path / "staging"
+    stale = staging / "batch"
+    stale.mkdir(parents=True)
+    (stale / "left over.bin").write_bytes(b"x" * 4_000_000)
+    plain, _ = staged.free_space(staging)
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=None, dry_run=True, log=said.append)
+
+    assert stale.is_dir() and (stale / "left over.bin").is_file(), "nothing was written"
+    assert done.free >= plain + 4_000_000
+    assert [line for line in said if "is counted as free" in line], said
+
+
+def test_with_no_stale_copy_the_room_is_simply_what_is_free(elsewhere, tmp_path):
+    staging = tmp_path / "staging"
+    plain, where = staged.free_space(staging)
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=10_000_000, dry_run=True, log=said.append)
+
+    assert done.filesystem == where
+    assert abs(done.free - plain) < 5_000_000_000, "the same filesystem, read twice"
+    assert not [line for line in said if "staged copy" in line]

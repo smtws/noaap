@@ -3407,6 +3407,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    and the inner dots of `A.C.A.B.` are part of the name, and an album called `Freitag der 13.` now
    loses its trailing dot in the file names as its folder always did.
 
+117. ✅ **The room is what is free once a stopped run's copy is out of it** (2026-10-04, P91). A
+   batch's size limit is a tenth of what is free, and a batch's identity is what it holds — so
+   measuring while a stopped run's staged copy is still on the disk changes the batching and with it
+   every key. Measured on the real resume: 499.8 GB free read as 449.8, the cap 50.0 GB as 45.0, six
+   batches became seven, and the snapshot of the batch that had stopped could not be reused, because
+   no batch held the same albums any more. The run had to be stopped and started again with
+   `--batch-size 50G` to get back to the batching the stopped run had used.
+   The copy belongs to a run that is over and `_one_batch` deletes it anyway, so it goes **before**
+   the room is read. A dry run writes nothing, so there its size is added back instead — the same
+   number, and it makes the dry run's plan the one the apply will follow.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

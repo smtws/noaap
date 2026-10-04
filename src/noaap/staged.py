@@ -528,7 +528,7 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     source = sources.get("folder", service.cfg)
     source.digests = False
     done = Staged()
-    done.free, done.filesystem = free_space(staging)
+    done.free, done.filesystem = _room_without_the_stale_copy(staging, dry_run, log)
     done.limit = batch_size or max(done.free // SHARE, 1)
     log(says_room(staging, done.limit, done.free, done.filesystem))
     # **what this run does, before it does any of it** (R-410, ruling 3): which names the files get
@@ -819,6 +819,36 @@ def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
                 done.retagged += "would be retagged" in line or "would be rewritten" in line
                 done.covers += line.strip().startswith("a cover would be saved beside")
     return kept
+
+
+def _room_without_the_stale_copy(staging: Path, dry_run: bool,
+                                 log: Callable[[str], None]) -> tuple[int, str]:
+    """How much room there is for a batch, **once a stopped run's staged copy is out of the way**
+    (§9, slice 117, R-455 item 3).
+
+    A batch's size limit is a tenth of what is free, and a batch's identity is what it holds — so
+    measuring while a stopped run's 47 GB copy is still on the disk gave a smaller limit, a different
+    batching, and keys that matched nothing in the index. Measured on the real resume: 499.8 GB free
+    became 449.8, the cap 50.0 GB became 45.0, and six batches became seven, so the snapshot of the
+    batch that had stopped could not be reused. The copy belongs to a run that is over; this one is
+    about to delete it anyway, in `_one_batch`.
+
+    A dry run writes nothing, so there it is not removed — its size is added back instead, which is
+    the same number and makes the dry run's plan the one the apply will follow.
+    """
+    here = staging / "batch"
+    if not here.is_dir():
+        return free_space(staging)
+    held = sum(p.stat().st_size for p in here.rglob("*") if p.is_file())
+    if dry_run:
+        free, where = free_space(staging)
+        log(f"  a stopped run's staged copy holds {held / 1e9:.2f} GB in {here} and is counted as "
+            "free: the run that resumes removes it before it copies anything")
+        return free + held, where
+    shutil.rmtree(here)
+    log(f"  removed a stopped run's staged copy from {here} ({held / 1e9:.2f} GB) — the share is "
+        "untouched by it, and the room below is what is left without it")
+    return free_space(staging)
 
 
 def _one_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, staging: Path,
