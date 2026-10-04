@@ -3457,6 +3457,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    this anyway. The dry run has always paid that cost. A refused folder is named with its reason, is
    not in any batch, and the run's `refused` total counts it.
 
+121. ✅ **Windows Media's library ids go on the comment's terms** (2026-10-04, P91). `PRIV` frames
+   whose owner begins `WM/` — `WMCollectionID`, `WMContentID`, `MediaClassPrimaryID` — are a media
+   player's own ids, written into the file by something that is not this program and meaning nothing
+   outside it. One of them is also what stopped the collection's pass: its *description* is raw
+   binary and held a `\x85`, which cut a snapshot record in two (slice 114). The user, asked:
+   *"i would, but not necessarily other users"*.
+   So `drop_wm_frames`, off by default, with everything `drop_comments` has (slice 113): in
+   `OPERATIONS` and on the settings page; read from the library's state rather than a take-in's
+   flags; applied only where the file is written at all; counted by the dry run
+   (`N Windows Media frame(s) would be dropped`); asked in the retag gate, `_already_right`,
+   `would_do` and `repair`'s album skip through `wm_frames_to_drop`. Only mp3 has them, and a `PRIV`
+   of somebody else's — `PeakValue` — is a tag like any other and stays.
+   **And the record keeps them**, owner and bytes per frame, so a restore puts them back; their
+   descriptions never reach a key. `getall` hands frames back in hash order, so the record and the
+   comparison are both sorted — otherwise a restore rewrites a file it has nothing to change in.
+   An older record is silent about `PRIV`, and silence is not "there were none": an absent key leaves
+   the file's frames alone, and an empty list is how a record says it really saw none.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

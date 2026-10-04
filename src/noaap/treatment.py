@@ -31,7 +31,8 @@ from typing import Any
 
 # every switch that describes the state an album should be in, in the order a person reads them
 OPERATIONS = ("musicbrainz", "lyrics", "cover_beside", "cover_embedded", "lyrics_embedded",
-              "rename_adopted", "retag_adopted", "tidy_adopted_tags", "drop_comments")
+              "rename_adopted", "retag_adopted", "tidy_adopted_tags", "drop_comments",
+              "drop_wm_frames")
 
 SAYS = {
     "musicbrainz": "looked up at MusicBrainz",
@@ -43,6 +44,7 @@ SAYS = {
     "retag_adopted": "adopted albums' tags rewritten",
     "tidy_adopted_tags": "adopted albums' values tidied as a fetched album's are",
     "drop_comments": "no comment in the files this library writes",
+    "drop_wm_frames": "no Windows Media library ids in them either",
 }
 
 # what a person may except one album from, and what each exception means
@@ -69,6 +71,7 @@ class Treatment:
     retag_adopted: bool = False    # …and its owner's tags
     tidy_adopted_tags: bool = False  # …and its owner's values mean what they say (R-410, ruling 5)
     drop_comments: bool = False    # the one field a write takes away rather than leaves (R-438)
+    drop_wm_frames: bool = False   # …and a media player's own ids, on the same terms (R-455)
 
     @staticmethod
     def from_settings(cfg: Any) -> Treatment:
@@ -163,6 +166,14 @@ def retags(plan: Any, want: Treatment | None) -> bool:
     return bool(want and want.retag_adopted)
 
 
+def drops_wm_frames(plan: Any, want: Treatment | None) -> bool:
+    """Whether a write to this album's files takes Windows Media's `PRIV` frames out of them.
+
+    The same condition as the comment's: only where the file is written at all.
+    """
+    return bool(want and want.drop_wm_frames) and retags(plan, want)
+
+
 def drops_comments(plan: Any, want: Treatment | None) -> bool:
     """Whether a write to this album's files takes the comment out of them (R-438, ruling 1).
 
@@ -176,6 +187,7 @@ def known_fields() -> tuple[str, ...]:
     return tuple(f.name for f in fields(Treatment))
 
 
-__all__ = ["EXCEPTIONS", "OPERATIONS", "SAYS", "Treatment", "drops_comments", "exceptions_of",
+__all__ = ["EXCEPTIONS", "OPERATIONS", "SAYS", "Treatment", "drops_comments",
+           "drops_wm_frames", "exceptions_of",
            "for_album", "held_back", "known_fields", "renames", "retags", "says_exceptions",
            "with_exception"]

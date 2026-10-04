@@ -630,7 +630,8 @@ def test_a_tag_key_holding_0x85_does_not_cut_the_record_in_two(tmp_path, one_sec
     tags = ID3()
     tags.add(PRIV(owner="WM/WMCollectionID\x85\x98\x8e", data=b"\x01\x02\x03"))
     tags.save(path, v1=0)
-    assert any("\x85" in key for key in tag.tags_outside_ours(path)), "the fixture's own premise"
+    # the byte is in the frame's *owner*, which the record keeps verbatim since slice 121
+    assert any("\x85" in f.owner for f in tag._priv_frames(path)), "the fixture's own premise"
 
     out = precautions.take(collection, tmp_path / "snap.jsonl")
     assert len(out.read_text(encoding="utf-8").splitlines()) == 3, \
@@ -639,7 +640,7 @@ def test_a_tag_key_holding_0x85_does_not_cut_the_record_in_two(tmp_path, one_sec
     snap = precautions.read(out)
 
     assert [r.path for r in snap.files] == ["A Band/An Album/01 One.mp3"]
-    assert any("\x85" in key for key in snap.files[0].others)
+    assert any("\x85" in owner for owner, _ in snap.files[0].tags["PRIV"])
 
 
 def test_the_real_record_that_stopped_the_pass_reads_back(tmp_path):

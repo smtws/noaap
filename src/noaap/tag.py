@@ -26,7 +26,7 @@ from typing import Any
 import mutagen
 from mutagen import MutagenError
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, COMM, ID3, TCMP, TXXX, USLT, ID3NoHeaderError
+from mutagen.id3 import APIC, COMM, ID3, PRIV, TCMP, TXXX, USLT, ID3NoHeaderError
 from mutagen.id3 import Frames as ID3_FRAMES
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
@@ -621,6 +621,25 @@ MP4_KEYS = {  # Vorbis comment -> MP4 atom
 VORBIS_COMMENTS = ("comment", "description")
 
 
+WM_OWNER = "WM/"          # Windows Media's own `PRIV` owners: WMCollectionID, WMContentID, …
+
+
+def wm_frames_in(path: Path) -> int:
+    """How many Windows-Media `PRIV` frames this file holds — what `drop_wm_frames` would remove.
+
+    Only mp3 has them. Their *descriptions* are raw binary, which is how one of them stopped the
+    collection's pass: a `\x85` in a `PRIV:WM/WMCollectionID:…` key cut a snapshot record in two
+    (§9, slice 114). Never raises: this is asked to decide or to report.
+    """
+    if kind(path) != "mp3":
+        return 0
+    try:
+        return sum(1 for f in ID3(path, load_v1=False).getall("PRIV")
+                   if str(getattr(f, "owner", "")).startswith(WM_OWNER))
+    except (MutagenError, OSError, ID3NoHeaderError, KeyError):
+        return 0
+
+
 def comments_in(path: Path) -> int:
     """How many comment fields this file really holds — what `drop_comments` would take away.
 
@@ -641,7 +660,7 @@ def comments_in(path: Path) -> int:
 
 def tag_file(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None = None,
              lyrics: str | None = None, keep_unknown: bool = False,
-             drop_comments: bool = False) -> str:
+             drop_comments: bool = False, drop_wm_frames: bool = False) -> str:
     """Write the plan's tags and an embedded cover. Returns the signature.
 
     By default every existing tag goes: what yt-dlp left there is noise, and the plan is the truth.
@@ -659,7 +678,7 @@ def tag_file(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None 
     left alone does not make the file look permanently out of date.
     """
     writer = {"mp4": _tag_mp4, "flac": _tag_vorbis, "mp3": _tag_id3, "opus": _tag_vorbis}[kind(path)]
-    return writer(path, plan, track, cover, lyrics, keep_unknown, drop_comments)
+    return writer(path, plan, track, cover, lyrics, keep_unknown, drop_comments, drop_wm_frames)
 
 
 def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown: bool,
@@ -675,7 +694,7 @@ def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown:
 
 def _tag_vorbis(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
                 lyrics: str | None = None, keep_unknown: bool = False,
-                drop_comments: bool = False) -> str:
+                drop_comments: bool = False, drop_wm_frames: bool = False) -> str:
     """Opus and FLAC: the same comment names, two different ways to carry a picture."""
     audio = FLAC(path) if kind(path) == "flac" else OggOpus(path)
     old_tags = dict(audio.tags or {})
@@ -718,7 +737,7 @@ def _picture(data: bytes, mime: str) -> Picture:
 
 def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
              lyrics: str | None = None, keep_unknown: bool = False,
-             drop_comments: bool = False) -> str:
+             drop_comments: bool = False, drop_wm_frames: bool = False) -> str:
     """MP3. ID3 has a frame per field and two of ours have no frame of their own."""
     try:
         # **read without ID3v1** (R-438, ruling 2). mutagen turns a trailing block into v2 frames on
@@ -739,6 +758,10 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
         id3.delete()
     if drop_comments:
         id3.delall("COMM")              # every description, theirs and any an older version wrote
+    if drop_wm_frames:
+        for frame in [f for f in id3.getall("PRIV")
+                      if str(getattr(f, "owner", "")).startswith(WM_OWNER)]:
+            del id3[frame.HashKey]      # a player's library ids, by their own owner
     for key, frame in ID3_KEYS.items():
         if key not in tags:
             continue
@@ -804,7 +827,7 @@ def _id3v1_tail(path: Path) -> bytes | None:
 
 def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
              lyrics: str | None = None, keep_unknown: bool = False,
-             drop_comments: bool = False) -> str:
+             drop_comments: bool = False, drop_wm_frames: bool = False) -> str:
     """Same tags for the .m4a files (audio copied out of a combined stream)."""
     audio = MP4(path)
     old_cover = audio.tags.get("covr") if audio.tags else None
@@ -862,7 +885,7 @@ VORBIS_KEYS = (*_logical_keys(), *VORBIS_COMMENTS)
 # takes them away (§9, slice 113). Before that they were nobody's but the owner's, so the record
 # fingerprinted them under `tags_outside_ours` and had no value to put back; a restore after a drop
 # would have reported every file's comment as lost and been right. Here, the record keeps them.
-ID3_EXTRA = ("TRCK", "TCMP", "USLT", "COMM")
+ID3_EXTRA = ("TRCK", "TCMP", "USLT", "COMM", "PRIV")
 MP4_EXTRA = ("trkn", "disk", "cpil")
 WRITES = {
     "opus": VORBIS_KEYS,
@@ -889,6 +912,13 @@ def raw_tags(path: Path) -> dict[str, Any]:
         for key in keys:
             found = audio.tags.getall(key) if audio.tags else []
             if not found:
+                continue
+            if key == "PRIV":
+                # **owner and data, per frame** (§9, slice 121): `drop_wm_frames` removes some of
+                # them, so the record must be able to put them back. The data is bytes, so it is
+                # hexed; the *description* of such a frame is raw binary and is what cut a snapshot
+                # record in two (slice 114), which is why none of it reaches a key.
+                out[key] = [[f.owner, f.data.hex()] for f in _priv_frames(path)]
                 continue
             if key == "COMM":   # an empty list here is "the tag really holds none", not silence
                 # **every description, not the first.** A file may hold `COMM::XXX` beside
@@ -985,11 +1015,13 @@ def _restore_one(audio: Any, path: Path, key: str, want: Any) -> bool:
     # nobody's but the owner's and never recorded at all (§9, slice 113). Every record taken before
     # this is silent about it, so an absent key leaves the file's comment where it is; a record that
     # really saw none says so with an empty list, and that does remove one.
-    if want is None and (key == "COMM" or str(key).lower() in VORBIS_COMMENTS):
+    if want is None and (key in ("COMM", "PRIV") or str(key).lower() in VORBIS_COMMENTS):
         return False
     if kind(path) == "mp3":
         if key == "COMM":
             return _restore_comments(audio, want)
+        if key == "PRIV":
+            return _restore_priv(audio, want)
         had = audio.tags.getall(key)
         if want is None:
             if not had:
@@ -1017,6 +1049,28 @@ def _restore_one(audio: Any, path: Path, key: str, want: Any) -> bool:
     return True
 
 
+def _priv_frames(path: Path) -> list[Any]:
+    """This file's `PRIV` frames as its ID3v2 tag holds them, without ID3v1."""
+    try:
+        return list(ID3(path, load_v1=False).getall("PRIV"))
+    except (MutagenError, OSError, ID3NoHeaderError):
+        return []
+
+
+def _restore_priv(audio: Any, want: Any) -> bool:
+    """Every recorded `PRIV` frame back, with its owner and its bytes, or none at all."""
+    # **order is mutagen's, not the file's**, so the comparison and the record are both sorted:
+    # `getall` hands these back in hash order and a restore must not rewrite a file over that.
+    rows = sorted([str(owner), bytes.fromhex(str(data))] for owner, data in (want or []))
+    had = sorted([f.owner, f.data] for f in audio.tags.getall("PRIV"))
+    if had == rows:
+        return False
+    audio.tags.delall("PRIV")
+    for owner, data in rows:
+        audio.tags.add(PRIV(owner=owner, data=data))
+    return True
+
+
 def _comm_frames(path: Path) -> list[Any]:
     """This file's `COMM` frames as its ID3v2 tag really holds them, without ID3v1 (R-438)."""
     try:
@@ -1027,8 +1081,8 @@ def _comm_frames(path: Path) -> list[Any]:
 
 def _restore_comments(audio: Any, want: Any) -> bool:
     """Every recorded `COMM` frame back, with its description and language, or none at all."""
-    rows = [[str(d), str(lang), [str(v) for v in text]] for d, lang, text in (want or [])]
-    had = [[f.desc, f.lang, [str(v) for v in f.text]] for f in audio.tags.getall("COMM")]
+    rows = sorted([str(d), str(lang), [str(v) for v in text]] for d, lang, text in (want or []))
+    had = sorted([f.desc, f.lang, [str(v) for v in f.text]] for f in audio.tags.getall("COMM"))
     if had == rows:
         return False
     audio.tags.delall("COMM")

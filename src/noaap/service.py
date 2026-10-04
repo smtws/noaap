@@ -37,6 +37,7 @@ from .download import (
     save_plan,
     says_the_old_name,
     tails_to_drop,
+    wm_frames_to_drop,
     would_do,
 )
 from .enrich import enrich
@@ -1796,7 +1797,8 @@ class Service:
             # perfectly tidy — so without this nothing would look at those files again.
             want_here = for_album(self.cfg, plan)
             tails = tails_to_drop(plan, album_dir, want_here) \
-                or comments_to_drop(plan, album_dir, want_here)
+                or comments_to_drop(plan, album_dir, want_here) \
+                or wm_frames_to_drop(plan, album_dir, want_here)
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not tails \

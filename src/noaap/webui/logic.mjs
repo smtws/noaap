@@ -950,6 +950,10 @@ export const STATE_SWITCHES = [
    "off by default, and the only field a write takes away rather than leaves. On, every pass that "
    + "writes a file removes its comment — a ripper's `ripped by …`, a release site's address — in "
    + "whichever way the format keeps one. The check counts them before anything goes"],
+  ["drop_wm_frames", "No Windows Media library ids in them either",
+   "off by default. `PRIV` frames whose owner begins `WM/` are a media player's own library ids — "
+   + "`WMCollectionID`, `WMContentID`, `MediaClassPrimaryID` — written by something that is not "
+   + "noaap and meaning nothing outside it. Only mp3 has them, and the check counts them first"],
 ];
 
 export const EXCEPTION_LABELS = {

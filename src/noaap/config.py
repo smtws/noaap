@@ -152,6 +152,13 @@ class Config:
     # comment out of it — ID3v2 `COMM` whatever its description, Vorbis `COMMENT` and
     # `DESCRIPTION`, MP4 `©cmt` — and the dry run counts them first.
     drop_comments: bool = False
+    # **whether Windows Media's own bookkeeping goes with it** (§9, slice 121). `PRIV` frames whose
+    # owner begins `WM/` — `WM/WMCollectionID`, `WM/WMContentID`, `WM/MediaClassPrimaryID` and kin —
+    # are a media player's library ids, written into the file by something that is not this program
+    # and means nothing outside it. One of them is also what stopped the collection's pass: its
+    # description is raw binary and held a `\x85`. The user: *"i would, but not necessarily other
+    # users"*, so off by default like the comment.
+    drop_wm_frames: bool = False
     # **whether a pass may clear empty folders that are not of its own making** (§9, slice 104).
     # The user: *"maybe we should make clear empty folders a setting?"*. Off, a pass removes only
     # the folders it emptied itself — which is what stopped it deleting `Der W/Autonomie`, empty
@@ -278,6 +285,7 @@ def load(path: Path | None = None) -> Config:
         retag_adopted=bool(data.get("retag_adopted", False)),
         tidy_adopted_tags=bool(data.get("tidy_adopted_tags", False)),
         drop_comments=bool(data.get("drop_comments", False)),
+        drop_wm_frames=bool(data.get("drop_wm_frames", False)),
         remove_empty_folders=bool(data.get("remove_empty_folders", False)),
     )
     if root := data.get("library_root"):

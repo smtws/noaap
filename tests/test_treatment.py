@@ -43,7 +43,9 @@ def test_the_settings_are_the_state_the_library_is_in():
     assert want.tidy_adopted_tags is False
     # …and their comment stays in their files until the library asks for it to go (R-438, ruling 1)
     assert want.drop_comments is False
-    assert want.off() == ["rename_adopted", "retag_adopted", "tidy_adopted_tags", "drop_comments"]
+    assert want.drop_wm_frames is False
+    assert want.off() == ["rename_adopted", "retag_adopted", "tidy_adopted_tags", "drop_comments",
+                          "drop_wm_frames"]
 
 
 def test_an_album_with_no_exception_is_the_settings():

@@ -49,9 +49,10 @@ from .tag import (
     signature,
     tag_file,
     tags_in,
+    wm_frames_in,
     would_write,
 )
-from .treatment import Treatment, drops_comments, renames, retags
+from .treatment import Treatment, drops_comments, drops_wm_frames, renames, retags
 from .trim import apply as apply_trim
 from .trim import original_path, starts_before_zero
 from .trim import signature as trim_signature
@@ -567,6 +568,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     # what the library is set to want, narrowed by this album's own exceptions (§9, slice 100)
     rename, retag = renames(plan, want), retags(plan, want)
     drop = drops_comments(plan, want)
+    drop_wm = drops_wm_frames(plan, want)
     # **two tracks that would get one name**: the album keeps its own names, and says which (R-410)
     if rename and (clashes := clashing_names(plan)):
         for name, tracks in sorted(clashes.items()):
@@ -617,12 +619,14 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         # **and the comment the library asks to be rid of** (R-438, ruling 1), which the signature
         # cannot see either: the plan never asserted a comment, so a file holding one looks done.
         comments = comments_in(path) if drop else 0
+        wm = wm_frames_in(path) if drop_wm else 0
         if not retag and not tail:
             continue   # nothing is written into this file: adopted, and the library does not ask
         text = read_sidecar(album_dir, track)
         if want is not None and not want.lyrics_embedded:
             text = None   # the words stay beside the track, not in it
-        if track.tagged == signature(plan, track, cover, text) and not tail and not comments:
+        if track.tagged == signature(plan, track, cover, text) and not tail and not comments \
+                and not wm:
             continue
         try:
             have = tags_in(path)
@@ -642,12 +646,14 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         if gone or (diffs and not only_padding(have, wanted_tags, diffs)):
             said.append(f"{track.number:02d} would be retagged: "
                         + "; ".join(changed + [f"{key} would be dropped" for key in gone]
-                                    + ([f"{comments} comment(s) would be dropped"] if comments else [])))
+                                    + ([f"{comments} comment(s) would be dropped"] if comments else [])
+                                    + ([f"{wm} Windows Media frame(s) would be dropped"] if wm else [])))
         elif cover is not None and embedded_cover(path) != cover:
             # the tags are right and the picture is not: one line, because it is one write
             said.append(f"{track.number:02d} would get the album's picture")
-        elif tail or comments:
+        elif tail or comments or wm:
             why = ([f"{comments} comment(s) would be dropped"] if comments else []) \
+                + ([f"{wm} Windows Media frame(s) would be dropped"] if wm else []) \
                 + (["without its ID3v1 tail"] if tail else [])
             said.append(f"{track.number:02d} would be rewritten: " + ", ".join(why))
         # **and otherwise nothing is said, because nothing is written** (R-410, ruling 7). This used
@@ -684,8 +690,16 @@ def comments_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = 
     return sum(comments_in(album_dir / t.filename) for t in plan.tracks if t.state == "done")
 
 
+def wm_frames_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = None) -> int:
+    """How many Windows-Media `PRIV` frames a write would take out of this album's files, or 0."""
+    if not drops_wm_frames(plan, want):
+        return 0
+    return sum(wm_frames_in(album_dir / t.filename) for t in plan.tracks if t.state == "done")
+
+
 def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes | None,
-                   text: str | None, theirs: bool, drop: bool = False) -> bool:
+                   text: str | None, theirs: bool, drop: bool = False,
+                   drop_wm: bool = False) -> bool:
     """Whether writing this file would leave it exactly as it is (R-410, ruling 7).
 
     Asked in the same words as the dry run's, so what one promises the other does: every value the
@@ -697,7 +711,8 @@ def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes |
     # **the tail is a change too** (R-434), and so is a comment the library asks to be rid of
     # (R-438): the writer would take either away, so a file that still holds one is not already
     # right, however exactly its tags agree.
-    if ends_with_an_id3v1_tail(path) or (drop and comments_in(path)):
+    if ends_with_an_id3v1_tail(path) or (drop and comments_in(path)) \
+            or (drop_wm and wm_frames_in(path)):
         return False
     try:
         have = tags_in(path)
@@ -824,7 +839,7 @@ def run(
     parts = album_dir / PARTS_DIR
 
     rename, retag = renames(plan, want), retags(plan, want)
-    drop = drops_comments(plan, want)
+    drop, drop_wm = drops_comments(plan, want), drops_wm_frames(plan, want)
     # **the same answer the dry run gave** (R-410, ruling 1): where two tracks want one name the
     # album is not renamed at all, rather than renaming whichever the loop reaches first and
     # recording a name the other file never got.
@@ -892,13 +907,14 @@ def run(
             # signature, so without these two questions a file that holds one is never looked at.
             tail = ends_with_an_id3v1_tail(final) and (retag or track.tagged is not None)
             comments = comments_in(final) if drop else 0
+            wm = wm_frames_in(final) if drop_wm else 0
             try:
                 if not retag and not tail:
                     # nothing is written into this file by any pass (§9, slice 58). The words still
                     # arrive as a sidecar beside it; the tag inside the file is the owner's.
                     if looked_up or measured or failed_trim or reconciled:
                         save_plan(plan, album_dir)
-                elif track.tagged != signature(plan, track, cover, text) or tail or comments:
+                elif track.tagged != signature(plan, track, cover, text) or tail or comments or wm:
                     # **an album that came in from somebody's folder keeps the fields we do not
                     # model** (§9, slice 100): replaygain, ISRC, their own comment. Until the library
                     # could be told to retag such an album this never arose — `keep_tags` meant
@@ -909,13 +925,13 @@ def run(
                     # of the record** (R-410, ruling 7). The record is what was stale — a freshly
                     # adopted album has none at all — and a careful write of an unchanged file is a
                     # read, a copy, a replace and a digest to end up where it started.
-                    if _already_right(plan, track, final, cover, text, theirs, drop):
+                    if _already_right(plan, track, final, cover, text, theirs, drop, drop_wm):
                         track.tagged = signature(plan, track, cover, text)
                         save_plan(plan, album_dir)
                         on_track(track, "left")
                     else:
                         write = lambda f: tag_file(f, plan, track, cover, text, keep_unknown=theirs,  # noqa: E731
-                                                   drop_comments=drop)
+                                                   drop_comments=drop, drop_wm_frames=drop_wm)
                         track.tagged = (safely(final, write, expect=recorded, log=say) if careful
                                         else write(final))
                         save_plan(plan, album_dir)
