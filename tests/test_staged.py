@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 from mutagen import File as MFile
 
-from noaap import intake, precautions, staged
+from noaap import intake, precautions, sources, staged
 from noaap.config import Config
 from noaap.service import Service
 
@@ -1505,7 +1505,6 @@ def test_a_refused_folder_is_named_with_its_reason(elsewhere, tmp_path, one_seco
              and "different albums by their own tags" in line]
     assert named, said
     assert [line for line in said if line == "1 folder(s) refused:"], said
-    assert [line for line in said if "refused Spotify:" in line], "and in the batch, as it happens"
     assert done.adopted == 2, "the two real albums still came in"
 
 
@@ -1534,3 +1533,54 @@ def test_the_totals_are_the_sum_of_the_batches(elsewhere, tmp_path):
 
     assert done.batches == 2 and done.adopted == 2 and done.refused == 0
     assert done.renamed == 5 and done.retagged == 5
+
+
+# -- and it is not copied out at all (§9, slice 120; R-455, item 6) ------------------------------
+
+
+def test_a_refused_folder_makes_no_round_trip(elsewhere, tmp_path, one_second_of_sound):
+    """`Spotify` on the user's share went out over the wire, onto this disk, into a snapshot and
+    back — and came home with every file's mtime new and a copy of itself in the store of originals.
+    The user's word for that folder was that it is not to be touched.
+    """
+    mixed = elsewhere / "Spotify"
+    mixed.mkdir()
+    for n, (artist, album) in enumerate([("Schandmaul", "Der Teufel"), ("In Extremo", "Sternhagel"),
+                                         ("Snow Patrol", "Chasing Cars")], 1):
+        path = mixed / f"1-0{n}. {album} - {artist}.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"], audio["artist"], audio["album"] = [album], [artist], [f"{artist} Album"]
+        audio.save()
+    before = {str(p.relative_to(elsewhere)): (p.read_bytes(), p.stat().st_mtime_ns)
+              for p in sorted(mixed.rglob("*")) if p.is_file()}
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=False, log=said.append)
+
+    assert [line for line in said if "are refused and are not copied out" in line], said
+    assert {str(p.relative_to(elsewhere)): (p.read_bytes(), p.stat().st_mtime_ns)
+            for p in sorted(mixed.rglob("*")) if p.is_file()} == before, \
+        "not one byte and not one mtime"
+    aside = staged.aside_for(elsewhere)
+    assert not (aside / "Spotify").exists(), "and nothing of it in the store of originals"
+    assert done.adopted == 2 and done.refused == 1
+
+
+def test_an_album_already_taken_in_is_not_examined_again(elsewhere, tmp_path):
+    """The probe costs one tag read per folder, so it is not asked of a folder that is skipped
+    anyway — an album with a plan of its own was taken in by an earlier pass."""
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=10_000_000, dry_run=False, log=lambda s: None)
+    source = sources.get("folder", Config(library_root=elsewhere))
+    source.digests = False
+
+    albums = sorted(p.parent for p in elsewhere.rglob(staged.PLAN_FILE))
+    assert len(albums) == 2, "both albums were taken in"
+
+    asked = staged.would_refuse(elsewhere, albums, source, lambda s: None)
+
+    assert asked == {}, "each holds a plan of its own, so neither is examined"

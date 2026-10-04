@@ -3445,6 +3445,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    silence was made by the plain pass only; the staged one was told `say_leftovers=False` and never
    said it afterwards either.
 
+120. ✅ **A folder no pass will adopt is not copied out** (2026-10-04, P91). A refusal was found on
+   the staging copy — which is *after* the folder has been read over the wire, written to this disk,
+   recorded in a snapshot and written back. So `Spotify`, 23 loose tracks of 18 artists that nothing
+   here will ever adopt, made the whole round trip and came home with every file's mtime new and a
+   copy of itself in the store of originals. The user's word for that folder was that it is not to
+   be touched. Nothing of its content changed — sha256 proved that afterwards — but a byte-identical
+   file written back is still a write.
+   `would_refuse` asks the share before the batches are made: one `adopt.examine` per folder, and
+   only for folders with no plan file of their own, since an album already taken in is skipped before
+   this anyway. The dry run has always paid that cost. A refused folder is named with its reason, is
+   not in any batch, and the run's `refused` total counts it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

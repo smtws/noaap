@@ -42,6 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import adopt as adopt_pass
 from . import config as config_mod
 from . import enrich, intake, precautions, sources
 from .download import PLAN_FILE
@@ -637,6 +638,16 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     # that, and a folder a half-done batch is owed is never skipped — reading the share as the answer
     # is what walked a resume past the batch a SIGTERM had interrupted and left its twelve rewritten
     # files with no record at all (I-237).
+    # **a folder no pass will adopt is not copied out at all** (R-455, item 6), asked of the share
+    # before the batches are made rather than discovered on the copy.
+    if refuses := would_refuse(root, [album for album, _ in sized
+                                      if str(album.relative_to(root)) not in why_refused], source,
+                               log):
+        why_refused.update(refuses)
+        sized = [(album, size) for album, size in sized
+                 if str(album.relative_to(root)) not in refuses]
+        done.refused += len(refuses)
+        log(f"  {len(refuses)} folder(s) are refused and are not copied out")
     if taken := [album for album, _ in sized if (album / PLAN_FILE).is_file()
                  and str(album.relative_to(root)) not in owed]:
         log(f"  {len(taken)} album(s) are already taken in and are skipped")
@@ -829,6 +840,32 @@ def restore_all(root: Path, where: Path, *, apply: bool = False,
     for name in out.orphans:
         log(f"  ⚠ {name} is in {aside_for(root)} and no snapshot of this pass names it — "
             "its way back is there and nothing can find it")
+    return out
+
+
+def would_refuse(root: Path, albums: Iterable[Path], source: Any,
+                 log: Callable[[str], None]) -> dict[str, str]:
+    """Which of these folders adoption refuses, asked of the **share** before anything is copied
+    (§9, slice 120, R-455 item 6).
+
+    A refusal used to be found on the staging copy, which is after the folder has been read over the
+    wire, written to this disk, snapshotted, and written back — so `Spotify`, 23 loose tracks of 18
+    artists that no pass will ever adopt, made the round trip and came back with every file's mtime
+    new and a copy of itself in the store of originals. The user's word for that folder was that it
+    is not to be touched.
+
+    One `adopt.examine` per folder, and only for folders with no plan file of their own — an album
+    already taken in is skipped before this. The dry run pays the same cost and always has.
+    """
+    out: dict[str, str] = {}
+    for album in albums:
+        if (album / PLAN_FILE).is_file():
+            continue
+        found = adopt_pass.examine(album, source, root)
+        if found.plan is None:
+            where = str(album.relative_to(root))
+            out[where] = found.refused or "refused"
+            log(f"  {where}: {out[where]} — not copied out")
     return out
 
 
