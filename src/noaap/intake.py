@@ -86,6 +86,11 @@ class Progress:
     tracks: int = 0
     adopted: int = 0
     refused: list[str] = field(default_factory=list)
+    # **and why, per album** (R-455, item 5). The staged pass hands `take_in` a log that goes
+    # nowhere — the lines are about the staging copy — so every refusal reason was discarded and a
+    # run that took in 159 of 160 albums said nothing about the one. 1311 albums in and the only way
+    # to learn which was refused, and for what, was to run `adopt.examine` over the share by hand.
+    why_refused: dict[str, str] = field(default_factory=dict)
     renamed: int = 0
     retagged: int = 0
     covers: int = 0
@@ -449,6 +454,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
     why_refused: dict[str, str] = {str(folder.relative_to(root)): "would be filed under a name "
                                    "another album of yours would get too"
                                    for folder in clashing}
+    # the same dict the sections below read, so a caller whose log goes nowhere still has the reasons
+    done.why_refused = why_refused
 
     snapshot = snapshot or precautions.snapshot_for(root)
     state, made_at = state_path(snapshot), made_path(snapshot)

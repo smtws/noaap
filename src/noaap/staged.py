@@ -124,6 +124,10 @@ class Staged:
     needs_a_look: list[tuple[str, str, list[str]]] = field(default_factory=list)
     # files a refused write left exactly as they are (R-433, ruling 3)
     left_untouched: list[tuple[str, str]] = field(default_factory=list)
+    # **and why each folder was refused** (R-455, item 5), carried up from each batch so the run can
+    # end with the sections a plain pass ends with. Without it a staged apply took in 159 of 160
+    # albums and said nothing at all about the one.
+    why_refused: dict[str, str] = field(default_factory=dict)
     renamed: int = 0
     retagged: int = 0
     covers: int = 0
@@ -730,6 +734,20 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
         log(line)
     for line in intake.says_left_untouched(done.left_untouched):
         log(line)
+    # **the sections a plain pass ends with** (R-455, item 5): what was refused and what, having
+    # audio in it, no album of this pass covered. Read against the share after the pass, so a folder
+    # it renamed or emptied is not reported as left behind, exactly as the plain apply does it.
+    if done.refused:
+        log(f"{done.refused} folder(s) refused:")
+        for where, why in sorted(done.why_refused.items()):
+            log(f"  {where}: {why}")
+    if not dry_run and not done.stopped:
+        source = sources.get("folder", service.cfg)
+        source.digests = False
+        for line in intake.says_not_taken_in(
+                intake.not_taken_in(root, intake.albums_under(root, source), done.why_refused,
+                                    [root / name for name in only] if only else None)):
+            log(line)
     if done.aside:
         log(f"{len(done.aside)} file(s) of yours moved aside into {aside_for(root)} "
             f"({done.moved_aside / 1e9:.2f} GB) — that is the way back, byte for byte, and it stays "
@@ -987,8 +1005,17 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     done.needs_a_look += [(str((here / where).relative_to(here)), what, files)
                           for where, what, files in got.needs_a_look]
     done.left_untouched += got.left_untouched
+    done.adopted += got.adopted
+    done.refused += len(got.refused)
+    done.renamed += got.renamed
+    done.retagged += got.retagged
+    done.why_refused.update(got.why_refused)
     log(f"  taken in: {got.adopted} album(s), {got.tracks} track(s), "
         f"{got.renamed} renamed, {got.retagged} rewritten")
+    # **the per-album reason, said where the run can see it** (R-455, item 5). `take_in`'s own log
+    # goes nowhere here, because its lines are about the staging copy; these are about the share.
+    for where in got.refused:
+        log(f"  refused {where}: {got.why_refused.get(where, 'refused')}")
 
     # **the record of what the pass made is rewritten in the share's terms** (R-354 defect 2). The
     # pass wrote it against the staging copy, and `read_made` checks the root a record was written

@@ -3430,6 +3430,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    and `_owed_folders` ignores it — which is what keeps a dry run's plan the same as the apply's,
    since a dry run writes nothing and drops nothing.
 
+119. ✅ **A staged apply ends where a plain one does** (2026-10-04, P91). The pass over the user's
+   collection took in **159 of 160** albums in one batch and said nothing at all about the one. The
+   reason: `_the_batch` hands `intake.take_in` a log that goes nowhere — rightly, since its lines are
+   about the staging copy — so every per-album refusal reason was discarded, and `Staged.adopted`,
+   `refused`, `renamed` and `retagged` were fields nobody added to. 1311 albums in, and the only way
+   to learn which folder was refused and for what was to run `adopt.examine` over the share by hand:
+   `Spotify`, 23 loose tracks of 18 artists, `18 different albums by their own tags`.
+   So `Progress.why_refused` carries the reasons out of `take_in` whether anything read its log or
+   not; each batch logs its own refusals in the share's terms and adds its totals to the run's; and
+   the run ends with the sections a plain pass ends with — **refused**, with a line per folder, and
+   **not taken in**, read against the share after the pass so a folder it renamed or emptied is not
+   reported as left behind. Slice 111's promise that nothing with audio in it is passed over in
+   silence was made by the plain pass only; the staged one was told `say_leftovers=False` and never
+   said it afterwards either.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

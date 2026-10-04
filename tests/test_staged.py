@@ -1474,3 +1474,63 @@ def test_an_unfinished_batch_that_does_have_a_snapshot_is_still_owed(elsewhere, 
                           batch_size=1, dry_run=False, log=said.append)
 
     assert [line for line in said if "are owed a copy back" in line], said
+
+
+# -- the staged apply ends where the plain one does (§9, slice 119; R-455, item 5) ---------------
+
+
+def test_a_refused_folder_is_named_with_its_reason(elsewhere, tmp_path, one_second_of_sound):
+    """`Spotify` on the user's share: 23 loose tracks of 18 different artists at the root of a
+    folder, refused as `18 different albums by their own tags`. The staged apply took in 159 of 160
+    albums and said nothing about the one — `take_in`'s log goes nowhere there, because its lines
+    are about the staging copy, so every reason was discarded.
+    """
+    mixed = elsewhere / "Spotify"
+    mixed.mkdir()
+    for n, (artist, album) in enumerate([("Schandmaul", "Der Teufel"), ("In Extremo", "Sternhagel"),
+                                         ("Snow Patrol", "Chasing Cars")], 1):
+        path = mixed / f"1-0{n}. {album} - {artist}.opus"
+        shutil.copy(one_second_of_sound, path)
+        audio = MFile(path)
+        audio["title"], audio["artist"], audio["album"] = [album], [artist], [f"{artist} Album"]
+        audio.save()
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=10_000_000,
+                                 dry_run=False, log=said.append)
+
+    assert done.refused == 1, said
+    named = [line for line in said if line.startswith("  Spotify:")
+             and "different albums by their own tags" in line]
+    assert named, said
+    assert [line for line in said if line == "1 folder(s) refused:"], said
+    assert [line for line in said if "refused Spotify:" in line], "and in the batch, as it happens"
+    assert done.adopted == 2, "the two real albums still came in"
+
+
+def test_the_run_ends_with_what_was_not_taken_in(elsewhere, tmp_path, one_second_of_sound):
+    """Nothing with audio in it is passed over in silence — the plain pass's promise (R-410),
+    which a staged run made to nobody because it was told `say_leftovers=False` and never said it
+    itself afterwards."""
+    stray = elsewhere / "aphelion" / "nocturnes (2003)" / ".thumb"
+    stray.mkdir(parents=True, exist_ok=True)
+    shutil.copy(one_second_of_sound, stray / "hidden.opus")
+
+    said = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                          staging=tmp_path / "staging", batch_size=10_000_000,
+                          dry_run=False, log=said.append)
+
+    section = [line for line in said if "not taken in" in line]
+    assert section, said
+
+
+def test_the_totals_are_the_sum_of_the_batches(elsewhere, tmp_path):
+    """`adopted`, `refused`, `renamed` and `retagged` were on `Staged` and counted by nobody."""
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET,
+                                 staging=tmp_path / "staging", batch_size=1,
+                                 dry_run=False, log=lambda s: None)
+
+    assert done.batches == 2 and done.adopted == 2 and done.refused == 0
+    assert done.renamed == 5 and done.retagged == 5
