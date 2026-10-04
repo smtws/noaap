@@ -45,10 +45,10 @@ from typing import Any
 from . import adopt as adopt_pass
 from . import config as config_mod
 from . import intake, precautions, sources
-from .download import PLAN_FILE
+from .download import PLAN_FILE, STAGED_INDEX, load_plan, point_at, save_plan
 from .precautions import bytes_sha
 
-STAGED = "noaap-staged.json"     # the index of this pass: one record per batch, beside the staging
+STAGED = STAGED_INDEX            # the index of this pass: one record per batch, beside the staging
 NAME_LIMIT = 48                  # of the first album's folder name, kept in a snapshot's name
 PART = ".noaap-incoming"         # the suffix a file being copied back wears until it is verified
 ASIDE = "noaap-originals"       # beside the collection: every file the copy back replaces
@@ -1040,6 +1040,18 @@ def _the_batch(service: Any, root: Path, batch: Batch, choices: intake.Choices, 
     got = intake.take_in(staged_service, here, choices, dry_run=False, snapshot=snapshot,
                          keep=None, resume=False, say_leftovers=False, log=lambda s: None)
     done.tracks += got.tracks
+    # **the plan records the album's own folder on the share, not the copy it was taken in from**
+    # (§9, slice 125). The pass runs against the staging copy, so the folder provider recorded that
+    # copy's path as `source_id`, `source_url` and `cover_url` — 154 plans of the user's collection
+    # name a folder that was deleted when the run ended. What the plain pass records is the share's
+    # folder; a staged one records the same thing, here, before the copy back carries the plan over.
+    # **asked of where the plan is now, not where the album came from.** The pass relocates an album
+    # into the scheme before saving its plan, so the folder the batch named may not exist any more —
+    # and a first version of this looked there, found nothing, and re-pointed none of the albums that
+    # were renamed, which are exactly the ones that needed it (all 154 on the share).
+    for found in sorted(here.rglob(PLAN_FILE)):
+        if (plan := load_plan(found.parent)) and point_at(plan, root / found.parent.relative_to(here)):
+            save_plan(plan, found.parent)
     # the batch was taken in on the staging copy, so what it found is reported against the share
     done.needs_a_look += [(str((here / where).relative_to(here)), what, files)
                           for where, what, files in got.needs_a_look]

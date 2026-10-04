@@ -31,6 +31,7 @@ from .download import (
     load_plan,
     lost_files,
     needs_a_recut,
+    point_at,
     relocate,
     rewritten,
     run,
@@ -1700,7 +1701,7 @@ class Service:
         # **an album this program cannot see is said out loud** (R-419, point 3), never skipped
         if line := says_the_old_name(self.library):
             self.log(line)
-        lengths = retags = renames = 0
+        lengths = retags = renames = pointed = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
@@ -1797,6 +1798,16 @@ class Service:
             # that is otherwise tidy is still tidy and is skipped like any other (§9, slice 124).
             discs = bool(self._look_at_the_discs(plan, album_dir, dry_run))
             want_here = for_album(self.cfg, plan)
+            # **a plan that says its album is somewhere it is not is re-pointed** (§9, slice 125),
+            # before the skip: a cover address under a staging folder that no longer exists cannot be
+            # read, and an album it keeps out of the skip is an album nothing ever finishes with.
+            repointed = point_at(plan, album_dir)
+            if repointed:
+                self.log(f"  {'would be' if dry_run else ''} re-pointed at its own folder "
+                         f"(its plan named {album_dir.name!r} elsewhere)")
+                pointed += 1
+                if not dry_run:
+                    save_plan(plan, album_dir)
             # **and the one question that cannot drift from the apply: what would the apply do?**
             # (§9, slice 124). Eleven conditions guessed at this and none of them asked whether a
             # *file* would be renamed or retagged — so slice 116's renames reached only the albums
@@ -1815,6 +1826,7 @@ class Service:
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not discs and not would \
+                    and not repointed \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
@@ -1853,6 +1865,9 @@ class Service:
             # "will this write into my audio files?" (§9, slice 85)
             self.log(f"{renames} file(s) would be renamed and {retags} audio file(s) would be "
                      "rewritten (their tags)")
+        if pointed:
+            log_it = "would be re-pointed" if dry_run else "re-pointed"
+            self.log(f"{pointed} plan(s) {log_it} at their own album folder")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
         if self.library and self.library.is_dir():
             # **removing them is the setting; saying they are there is not** (§9, slice 104, 115).

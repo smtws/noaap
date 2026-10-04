@@ -65,6 +65,9 @@ PLAN_FILE = ".noaap.json"
 OLD_PLAN_FILE = ".ytalbum.json"
 PARTS_DIR = ".parts"
 COVER_STEM = "cover"
+#: the index a staged pass keeps beside its staging folder. Named here rather than imported from
+#: `staged`, which imports this module (§9, slice 125).
+STAGED_INDEX = "noaap-staged.json"
 ATTEMPTS = 2  # YouTube sporadically answers 403 for a stream URL; a fresh extraction usually works
 RETRY_DELAY = 5
 
@@ -667,6 +670,63 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         # of date)" and the pass then rewrote the file for the record's sake — 455 files of the
         # user's collection, each read, copied, replaced and verified to end up as it already was.
     return said
+
+
+def points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
+    """Whether this folder-sourced plan says its album is somewhere it is not (§9, slice 125).
+
+    A staged take-in runs the ordinary pass against the **staging copy**, so the folder provider
+    recorded that copy's path: 154 plans on the user's share name
+    `~/noaap-nas-run/staging/batch/<album>` as their `source_id`, `source_url` and `cover_url`, and
+    that folder was deleted when the run ended. The cover is beside the album anyway, so nothing was
+    lost — but a cover address that cannot be read keeps its album out of every skip for ever (slice
+    124), and a source that names a folder nobody will ever see again is simply not true.
+
+    Only ever a folder-sourced plan, and only where the path **is gone or is a staging folder's**: a
+    fetched album's `source_url` is a URL, and an album taken in from a folder somewhere else keeps
+    pointing at that folder — `repair --find-moved` exists to follow it when it moves, and a first
+    version of this overwrote what that had just found.
+    """
+    if plan.provider != "folder":
+        return False
+    here = str(album_dir)
+    for value in (plan.source_id, plan.source_url, plan.cover_url):
+        said = str(value or "")
+        if not said.startswith("/") or said.startswith(here):
+            continue
+        where = Path(said)
+        if not where.exists() or _under_a_staging_folder(where):
+            return True
+    return False
+
+
+def _under_a_staging_folder(path: Path) -> bool:
+    """Whether a staged pass's own index sits at or above this path (§9, slice 125).
+
+    The copy a staged run takes in from lives beside its index, so the index is what says "this is a
+    staging folder" — no name is assumed, and a folder of the owner's called `batch` is not one.
+    """
+    for folder in (path, *path.parents):
+        if (folder / STAGED_INDEX).is_file():
+            return True
+    return False
+
+
+def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
+    """Say where this album is: its own folder, and the cover beside it. True when anything changed.
+
+    What the plain pass records, which is what a staged one should have recorded (§9, slice 125).
+    """
+    if not points_elsewhere(plan, album_dir):
+        return False
+    was = (plan.source_id, plan.source_url, plan.cover_url)
+    plan.source_id = plan.source_url = str(album_dir)
+    if str(plan.cover_url or "").startswith("/"):
+        # beside the album if it is there; otherwise the folder itself, which is the address the
+        # provider gives for "the picture is inside one of the files"
+        beside = next((q for q in sorted(album_dir.glob(f"{COVER_STEM}.*"))), None)
+        plan.cover_url = str(beside or album_dir)
+    return (plan.source_id, plan.source_url, plan.cover_url) != was
 
 
 def tails_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = None) -> int:

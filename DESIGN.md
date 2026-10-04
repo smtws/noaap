@@ -3533,6 +3533,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    to look — is ignored by the skip (`MAYBE_COVER`), or an album with no cover beside it is never
    skipped again. A cover that really can be had says where from, and that does keep the album.
 
+125. ✅ **A plan says where its album is** (2026-10-04, P95). A staged take-in runs the ordinary pass
+   against the **staging copy**, so the folder provider recorded that copy's path: **154 plans** on
+   the user's share name `~/noaap-nas-run/staging/batch/<album>` as their `source_id`, `source_url`
+   and `cover_url`, and that folder was deleted when the run ended. Nothing was lost — the cover is
+   beside the album — but a cover address that cannot be read is something `would_do` reports for
+   ever, so **49 albums** could never be skipped again (slice 124), and a source naming a folder
+   nobody will see again is simply not true.
+   The staged pass now records the share's own folder, which is what the plain pass records, and
+   `repair` re-points a folder-sourced plan whose local paths are **gone or a staging folder's**,
+   counted as `N plan(s) re-pointed`. Not merely "not the album's own folder": an album taken in from
+   a folder somewhere else keeps pointing at that folder, and `repair --find-moved` exists to follow
+   it when it moves — the first version of this overwrote what that had just found, and its own case
+   said so. A staging folder is recognised by the **index** a staged pass keeps beside it, so no name
+   is assumed and a folder of the owner's called `batch` is not one. A fetched album's `source_url`
+   is a URL and is never touched (`provider` is what says which).
+   **It needs the rename to reproduce**, and the first version of both the fix and its case missed
+   that. The provider records the folder it read; `intake` then relocates the album into the scheme
+   and saves the plan in the *new* folder, and nothing updated the address recorded before the move.
+   Where the folder already matched the scheme there was no move and the path came out right — so a
+   case built on such an album passed with the fix removed, and a fix that looked for the plan in
+   the folder the batch had named found nothing at all. All 154 are albums the scheme renamed
+   (`asp` → `ASP` and kin), and the pass now asks of where each plan **is**.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
