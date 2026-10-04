@@ -31,8 +31,7 @@ from . import adopt as adopt_pass
 from . import config as config_mod
 from . import precautions, sources, sources_folder
 from .download import load_plan, relocate, run, save_plan, would_do
-from .enrich import discs_for_duplicates as enrich_discs
-from .enrich import enrich
+from .enrich import discs_for_duplicates, enrich
 from .models import AlbumPlan
 from .plan import duplicate_numbers, safe_name, says_duplicates
 from .text import key as text_key
@@ -327,6 +326,33 @@ def a_look_at(plan: Any, where: str) -> tuple[str, str, list[str]] | None:
     return (where, odd, [t.filename for t in sorted(held, key=lambda t: (t.disc or 1, t.number))])
 
 
+def ask_about_the_discs(plan: Any, where: str, mb: Any,
+                       look: tuple[str, str, list[str]] | None = None
+                       ) -> tuple[tuple[str, str, list[str]] | None, str]:
+    """One MusicBrainz lookup for an album whose numbers repeat (§9, slice 123; R-423, point 3).
+
+    **The one place that asks**, so a take-in, an update and a repair ask the same question of the
+    same albums and clear the flag the same way. Before this, only a take-in asked — and a take-in
+    skips an album that already holds a plan, so `Crematory/Early Years` (18 files, two runs of
+    1 to 9) could never be asked again by anything: the answer existed and nothing could fetch it.
+
+    Returns what to report, and the line. Where every file falls on exactly one disc and position of
+    one release, the discs are assigned, `says_duplicates` then has nothing to say, the flag the
+    adoption wrote comes off, and the album's totals follow from its real disc lengths. Where the
+    match is partial, nothing is assigned and the line carries the release it looked at and what did
+    not match — a report, never a question.
+    """
+    said = discs_for_duplicates(plan, mb)
+    again = a_look_at(plan, where)
+    if again is None:
+        # the discs are assigned: the numbers no longer repeat, so this album is not "to look at"
+        if isinstance(getattr(plan, "adopted", None), dict):
+            plan.adopted.pop("needs_a_look", None)
+        return None, said
+    first = look or again
+    return (first[0], f"{first[1]} · MusicBrainz: {said}", first[2]), said
+
+
 def says_left_untouched(rows: list[tuple[str, str]]) -> list[str]:
     """The section a pass ends with where a write was refused (R-433, ruling 3).
 
@@ -501,11 +527,18 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             # (R-423, point 3): one lookup, and the only thing it may change is which disc a file
             # is on. Dry run and apply alike, because the dry run has to predict the apply.
             if choices.musicbrainz and (mb := getattr(service, "mb", None)):
-                said = enrich_discs(plan, mb)
+                look, said = ask_about_the_discs(plan, where, mb, look)
                 done.musicbrainz_requests += 1
-                look = a_look_at(plan, where) or look
-                look = (look[0], f"{look[1]} · MusicBrainz: {said}", look[2])
-            done.needs_a_look.append(look)
+                if look is None:
+                    # **assigned, so it leaves the "needs a look" section — and is still said**
+                    # (R-462). A disc assignment is the one thing this lookup may change, and a
+                    # change nobody is told about is not better than no change.
+                    line = f"  {where}: discs assigned from MusicBrainz — {said}"
+                    log(line)
+                    if dry_run:
+                        done.would.append(line)
+            if look:
+                done.needs_a_look.append(look)
         if dry_run:
             done.would.extend(_would(service, plan, album_dir, root, choices, want))
             continue

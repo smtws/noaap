@@ -637,6 +637,7 @@ class Service:
         skipped = lengths = 0
         for i, (album_dir, plan) in enumerate(albums, 1):
             self.log(f"=== [{i}/{len(albums)}] {plan.albumartist} — {plan.album}")
+            self._look_at_the_discs(plan, album_dir, report_only)
             if not deep and (unchanged := self._unchanged(plan)):
                 skipped += 1
                 self.log(f"  unchanged ({unchanged}) — nothing to do")
@@ -1792,6 +1793,9 @@ class Service:
             # clock starting before zero is perfectly tidy, so without this nothing would ever look at
             # those files again — and they are the ones a player begins in their own middle.
             recut = needs_a_recut(plan, album_dir)
+            # **asked before the skip** (§9, slice 123): an album whose numbers repeat is otherwise
+            # perfectly tidy, and the lookup that can settle its discs was the take-in's alone.
+            discs = bool(self._look_at_the_discs(plan, album_dir, dry_run))
             # **asked before the skip too** (R-434, R-438): an album whose mp3s still carry the
             # ID3v1 block 1.31.2 wrote, or a comment the library asks to be rid of, is otherwise
             # perfectly tidy — so without this nothing would look at those files again.
@@ -1801,7 +1805,7 @@ class Service:
                 or wm_frames_to_drop(plan, album_dir, want_here)
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
-                    and not elsewhere.get("sources") and not recut and not tails \
+                    and not elsewhere.get("sources") and not recut and not tails and not discs \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
@@ -1943,6 +1947,31 @@ class Service:
         what = (f"{done.adopted} album(s), {done.tracks} track(s)"
                 + (" would be taken in" if dry_run else " taken in"))
         return Outcome("ok", message=what)
+
+    def _look_at_the_discs(self, plan: AlbumPlan, album_dir: Path, dry_run: bool) -> str:
+        """Ask MusicBrainz which disc each file of this album is on, where its numbers repeat.
+
+        **Asked by `repair` and `update` as well as by a take-in** (§9, slice 123, R-462). It used to
+        be the take-in's alone — and a take-in skips an album that already holds a plan, so
+        `Crematory/Early Years` (18 files, two runs of 1 to 9) could not be asked again by anything
+        once it was in. One lookup, only for such an album, and the discs are the only thing it may
+        change; `intake.ask_about_the_discs` is the one place that decides and clears the flag.
+        """
+        from . import intake
+
+        where = str(album_dir.relative_to(self.library)) if self.library else album_dir.name
+        if not intake.a_look_at(plan, where):
+            return ""
+        if not (self.cfg.musicbrainz and may_look_up(self.cfg, plan) and (mb := self.mb)):
+            return ""
+        look, said = intake.ask_about_the_discs(plan, where, mb)
+        if look is None:
+            self.log(f"  discs {'would be' if dry_run else ''} assigned from MusicBrainz — {said}")
+            if not dry_run:
+                save_plan(plan, album_dir)
+            return said
+        self.log(f"  the numbers repeat and MusicBrainz did not settle it: {said}")
+        return said
 
     def set_exception(self, source_id: str, key: str, on: bool) -> Outcome:
         """Except this album from one of the library's operations, or stop excepting it.

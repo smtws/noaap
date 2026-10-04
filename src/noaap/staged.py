@@ -44,7 +44,7 @@ from typing import Any
 
 from . import adopt as adopt_pass
 from . import config as config_mod
-from . import enrich, intake, precautions, sources
+from . import intake, precautions, sources
 from .download import PLAN_FILE
 from .precautions import bytes_sha
 
@@ -885,11 +885,13 @@ def _as_if(service: Any, root: Path, batch: Batch, choices: intake.Choices,
         if done is not None:
             done.adopted += 1
             if look := intake.a_look_at(plan, str(album.relative_to(root))):
+                where = str(album.relative_to(root))
                 if choices.musicbrainz and (mb := getattr(service, "mb", None)):
-                    said = enrich.discs_for_duplicates(plan, mb)
-                    look = intake.a_look_at(plan, str(album.relative_to(root))) or look
-                    look = (look[0], f"{look[1]} · MusicBrainz: {said}", look[2])
-                done.needs_a_look.append(look)
+                    look, said = intake.ask_about_the_discs(plan, where, mb, look)
+                    if look is None:
+                        log(f"  {where}: discs assigned from MusicBrainz — {said}")
+                if look:
+                    done.needs_a_look.append(look)
         for line in intake._would(service, plan, album, root, choices,
                                   choices.as_treatment()):
             log(f"  {line}")

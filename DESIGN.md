@@ -3494,6 +3494,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    what the pass itself emptied. That is slice 115's case — a renamed album's `.thumb` — and it is
    untouched by this.
 
+123. ✅ **The lookup that settles an album's discs is not the take-in's alone** (2026-10-04, P93).
+   `Crematory/Early Years` on the user's share is 18 files numbered 1 to 9 twice, every title of the
+   second run saying "mix". Slice 111 gave a take-in one MusicBrainz lookup for such an album, which
+   may change one thing: which disc each file is on. But a take-in **skips an album that already
+   holds a plan**, so once the album was in, nothing could ask again — the answer existed at
+   MusicBrainz and no pass could fetch it. The repair that fixed 32 albums could not touch it.
+   `intake.ask_about_the_discs` is now the one place that decides, and `repair` and `update` ask it
+   too, **before** the skip that passes a tidy album by — the same shape as `needs_a_recut` and
+   `tails_to_drop`. Where every file falls on exactly one disc and position of one release the discs
+   are assigned, the album's numbers no longer repeat, the flag the adoption wrote comes off, and the
+   totals follow from the real disc lengths (slice 102's `disc_length`, which answered 0 while the
+   numbers repeated — R-425). Where the match is partial nothing is assigned, the flag stays, and the
+   line carries the release it looked at and what did not match.
+   **An assignment leaves the "needs a look" section and is still said.** The first version simply
+   dropped the line once the discs were known, which would have made the one change this lookup is
+   allowed to make the one change nobody is told about.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -299,7 +299,10 @@ def test_the_pass_asks_only_about_those_albums(tmp_path, one_second_of_sound):
     done = intake.take_in(service, root, looked, dry_run=True, log=lambda s: None)
 
     assert asked == ["Twice"], asked
-    assert [line for line in done.would if "MusicBrainz: " in line and "every file matched" in line]
+    # assigned, so the album leaves the "needs a look" section — and the run still says what it did
+    assert [line for line in done.would
+            if "discs assigned from MusicBrainz" in line and "every file matched" in line], done.would
+    assert not done.needs_a_look, "nothing left to look at once the discs are known"
 
 
 # -- the total nobody knows (R-425) -----------------------------------------------------------
