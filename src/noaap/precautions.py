@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .sources_folder import AUDIO, stream_sha
+from .sources_folder import AUDIO, is_hidden_name, stream_sha
 from .tag import (
     decoded_sha,
     decoder,
@@ -621,8 +621,16 @@ def empty_under(root: Path, only: Iterable[Path] = (), everything: bool = False)
     collection and never touched by us. The root itself is never a candidate and nothing outside it
     ever is; `rmdir` still decides, so a folder that holds anything at all stays.
     """
+    # **a hidden folder is the filesystem's, not the library's** (§9, slice 122). The sweep over the
+    # whole root offered `.Trash-1000` and its three empty subfolders for removal on the user's
+    # share — the NAS's own trash, the folder the backup deliberately excluded. One dot hides and
+    # two do not (`...Just Dreaming` is an album), and nothing under a hidden folder is the library's
+    # either. A `.thumb` *inside* an album stays removable: it reaches `empty_under` through `only`,
+    # because the pass itself emptied it, and never through this sweep.
     if everything:
-        found = {p for p in root.rglob("*") if p.is_dir()}
+        found = {p for p in root.rglob("*")
+                 if p.is_dir() and not any(is_hidden_name(part)
+                                           for part in p.relative_to(root).parts)}
     else:
         # **every folder up to the root, not just the immediate parent.** A chain of empties is one
         # folder deep only by luck: an album the scheme renamed may leave `Artist/Album/CD1/.thumb`
@@ -650,6 +658,8 @@ def empty_under(root: Path, only: Iterable[Path] = (), everything: bool = False)
         # once `.thumb` went. 91 of them on the user's share after the collection came in — every one
         # an album whose folder the scheme renamed and whose `.thumb` the pass took away. Deepest
         # first is what makes this exact: a folder's children have been decided before it is asked.
+        # **and a folder does not become empty by taking a hidden one away** (R-458). Only the
+        # folders this list really removes count towards its emptiness.
         if not inside or inside <= going:
             out.append(folder)
             going.add(folder)

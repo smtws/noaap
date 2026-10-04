@@ -3479,6 +3479,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    An older record is silent about `PRIV`, and silence is not "there were none": an absent key leaves
    the file's frames alone, and an empty list is how a record says it really saw none.
 
+122. ✅ **A hidden folder is the filesystem's, not the library's** (2026-10-04, P91). The repair check
+   over the collection, with `remove_empty_folders` on, offered these for removal:
+   `.Trash-1000/expunged`, `.Trash-1000/info`, `.Trash-1000/files`, `.Trash-1000` — the NAS's own
+   trash at the root of the collection, the one folder the backup deliberately excluded. Its three
+   subfolders happened to be empty, and slice 115's rule (a folder whose only contents are folders
+   the same list takes away is empty too) then collapsed the whole chain. Nothing applied; the check
+   is what caught it, which is what a check is for.
+   So the sweep — and only the sweep, `everything=True` — skips any folder with a hidden component
+   in its path: one dot hides, two do not (`...Just Dreaming` is an album). A folder that would be
+   empty only once something hidden went is therefore not empty either, because what is skipped is
+   never on the list that decides it.
+   **A `.thumb` inside an album still goes**, by the one route that is this program's own: `only`,
+   what the pass itself emptied. That is slice 115's case — a renamed album's `.thumb` — and it is
+   untouched by this.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

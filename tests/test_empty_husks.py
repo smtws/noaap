@@ -141,7 +141,7 @@ def test_repair_names_the_husks_when_the_setting_is_off(tmp_path, one_second_of_
     an_album_with_a_thumb(root, "A Band", "An Album", ["One"], one_second_of_mp3)
     intake.take_in(a_service(root), root, QUIET, dry_run=False, log=lambda s: None)
     husk = root / "A Band" / "husk"
-    (husk / ".thumb").mkdir(parents=True)
+    husk.mkdir(parents=True)
 
     said = []
     service = a_service(root)
@@ -163,11 +163,56 @@ def test_repair_removes_them_when_the_library_asks(tmp_path, one_second_of_mp3):
     an_album_with_a_thumb(root, "A Band", "An Album", ["One"], one_second_of_mp3)
     intake.take_in(a_service(root), root, QUIET, dry_run=False, log=lambda s: None)
     husk = root / "A Band" / "husk"
-    (husk / ".thumb").mkdir(parents=True)
+    husk.mkdir(parents=True)
 
     cfg = Config(library_root=root, musicbrainz=False, lyrics=False, remove_empty_folders=True)
     said = []
     Service(cfg, root, log=said.append).repair()
 
-    assert not husk.exists(), "and its `.thumb` with it, in one pass"
+    assert not husk.exists()
     assert [line for line in said if "removed the empty folder" in line]
+
+
+# -- and the sweep is not the filesystem's to tidy (§9, slice 122; R-458) -----------------------
+
+
+def test_the_trash_folder_of_the_share_survives_a_repair(tmp_path, one_second_of_mp3):
+    """The check over the user's collection offered `.Trash-1000` and its three empty subfolders for
+    removal — the NAS's own trash, the one folder the backup deliberately excluded. One dot hides,
+    and nothing hidden is the library's to take away.
+    """
+    root = tmp_path / "collection"
+    an_album_with_a_thumb(root, "A Band", "An Album", ["One"], one_second_of_mp3)
+    intake.take_in(a_service(root), root, QUIET, dry_run=False, log=lambda s: None)
+    trash = root / ".Trash-1000"
+    for name in ("expunged", "info", "files"):
+        (trash / name).mkdir(parents=True)
+
+    cfg = Config(library_root=root, musicbrainz=False, lyrics=False, remove_empty_folders=True)
+    said = []
+    Service(cfg, root, log=said.append).repair()
+
+    assert trash.is_dir() and sorted(p.name for p in trash.iterdir()) == ["expunged", "files", "info"]
+    assert not [line for line in said if "Trash" in line], said
+
+
+def test_the_sweep_leaves_a_hidden_folder_and_what_holds_only_one(tmp_path):
+    root = tmp_path / "collection"
+    (root / "A Band" / "An Album" / ".thumb").mkdir(parents=True)
+    (root / ".sync" / "scratch").mkdir(parents=True)
+
+    out = precautions.empty_under(root, everything=True)
+
+    assert out == [], "nothing hidden, and nothing that is empty only because something hidden went"
+
+
+def test_a_thumb_the_pass_itself_emptied_still_goes(tmp_path):
+    """The one route a hidden folder goes by: `only` — what this pass emptied is this pass's to
+    clear, which is what takes the `.thumb` of a renamed album with it."""
+    root = tmp_path / "collection"
+    thumb = root / "A Band" / "An Album" / ".thumb"
+    thumb.mkdir(parents=True)
+
+    out = precautions.empty_under(root, [thumb])
+
+    assert out == [thumb, thumb.parent, root / "A Band"]
