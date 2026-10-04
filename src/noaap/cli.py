@@ -327,8 +327,10 @@ def main(argv: list[str] | None = None) -> int:
                             print(f"  {plan.albumartist} — {plan.album} ({len(tracks)} track(s))")
                         print("nothing was fetched. `--new --apply` does it.")
                     else:
-                        got = merge_pass.take_new(found, lambda url: service.fetch(url), log=print)
-                        print(f"{got['taken']} album(s) fetched, {got['held']} already here and left alone")
+                        got = merge_pass.take_new(found, lambda url: service.fetch(url),
+                                                  library=service.library, log=print)
+                        print(f"{got['copied']} album(s) copied, {got['fetched']} fetched, "
+                              f"{got['held']} already here and left alone")
                 return 0
             case "take-in":
                 return _take_in(args, cfg)

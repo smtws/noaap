@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from noaap.download import save_plan
+from noaap.download import PLAN_FILE, save_plan
 from noaap.merge import Survey, describe, report, survey, unpaired_albums
 from noaap.models import AlbumPlan, Kind, PlanTrack
+from noaap.plan import wanted_folder
 from noaap.ranking import Facts, Judgement, Verdict
 from noaap.spectrum import Spectrum
 
@@ -450,7 +451,8 @@ def test_new_fetches_the_albums_this_library_lacks(tmp_path):
     done = take_new(found, lambda url: asked.append(url) or type("O", (), {"status": "ok"})())
 
     assert asked == ["x://Intake"], "by the ordinary path, once per album"
-    assert done == {"taken": 1, "held": 0}
+    assert done == {"taken": 1, "held": 0, "copied": 0, "fetched": 1}, \
+        "no library given, so nothing could be copied and the fetch is the path"
 
 
 def test_an_album_already_here_is_counted_as_held_not_extended(tmp_path):
@@ -464,7 +466,7 @@ def test_an_album_already_here_is_counted_as_held_not_extended(tmp_path):
 
     done = take_new(found, lambda url: type("O", (), {"status": "held"})())
 
-    assert done == {"taken": 0, "held": 1}
+    assert done == {"taken": 0, "held": 1, "copied": 0, "fetched": 0}
 
 
 def test_the_report_names_the_albums_not_just_the_tracks(tmp_path):
@@ -678,3 +680,97 @@ def test_a_replacement_in_an_adopted_album_keeps_the_owners_name(tmp_path):
     assert (album_dir / "the owner called it this.flac").is_file()
     assert load_plan(album_dir).tracks[0].filename == "the owner called it this.flac"
     assert not (album_dir / "A Band - Album - 01 - One.flac").exists(), "noaap's name stays out"
+
+
+# -- and an album already on this disk is copied, not downloaded again (§9, slice 128; R-474) ----
+
+
+def test_an_album_on_disk_is_copied_rather_than_fetched(tmp_path):
+    """The user's own case: 211 albums, 12.5 GB, every one of them a folder on this machine.
+    Fetching them would download what is already here and depend on the videos still being up."""
+    from noaap.merge import take_new
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    album_dir = next(p.parent for p in (tmp_path / "source").rglob(PLAN_FILE))
+    (album_dir / "words.lrc").write_text("[00:00.00] la")
+    found = survey(source, target, judge=fixed(Verdict.KEEP))
+    asked: list[str] = []
+
+    done = take_new(found, lambda url: asked.append(url) or type("O", (), {"status": "ok"})(),
+                    library=tmp_path / "target")
+
+    assert asked == [], "nothing was downloaded"
+    assert done == {"taken": 1, "held": 0, "copied": 1, "fetched": 0}
+    landed = [p for p in (tmp_path / "target").rglob("*") if p.is_file()]
+    assert any(p.name == PLAN_FILE for p in landed), "the plan came with it"
+    assert any(p.suffix == ".lrc" for p in landed), "and the sidecars"
+
+
+def test_the_source_library_is_only_read(tmp_path):
+    from noaap.merge import take_new
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    library(tmp_path / "target", plan_with("Album", "One"))
+    before = {str(p.relative_to(tmp_path / "source")): p.read_bytes()
+              for p in sorted((tmp_path / "source").rglob("*")) if p.is_file()}
+    found = survey(source, tmp_path / "target", judge=fixed(Verdict.KEEP))
+
+    take_new(found, lambda url: None, library=tmp_path / "target")
+
+    assert {str(p.relative_to(tmp_path / "source")): p.read_bytes()
+            for p in sorted((tmp_path / "source").rglob("*")) if p.is_file()} == before
+
+
+def test_a_target_that_exists_is_never_written_into(tmp_path):
+    """A deluxe edition never quietly grows the album that is here — the copy keeps that promise."""
+    from noaap.download import load_plan
+    from noaap.merge import copy_album
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    album_dir = next(p.parent for p in (tmp_path / "source").rglob(PLAN_FILE))
+    plan = load_plan(album_dir)
+    target = tmp_path / "target"
+    (target / wanted_folder(plan)).mkdir(parents=True)
+    (target / wanted_folder(plan) / "theirs.opus").write_bytes(b"somebody else's")
+
+    said = []
+    assert copy_album(album_dir, plan, target, log=said.append) is None
+    assert [line for line in said if "already here" in line], said
+    assert (target / wanted_folder(plan) / "theirs.opus").read_bytes() == b"somebody else's"
+
+
+def test_a_check_says_where_it_would_go_and_copies_nothing(tmp_path):
+    from noaap.download import load_plan
+    from noaap.merge import copy_album
+
+    library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    album_dir = next(p.parent for p in (tmp_path / "source").rglob(PLAN_FILE))
+    plan = load_plan(album_dir)
+    target = tmp_path / "target"
+
+    said = []
+    where = copy_album(album_dir, plan, target, log=said.append, apply=False)
+
+    assert where == target / wanted_folder(plan)
+    assert not where.exists()
+    assert [line for line in said if "would be copied to" in line], said
+
+
+def test_an_album_whose_folder_is_gone_is_still_fetched(tmp_path):
+    """What `--new` meant before, and still means for an album nobody has on disk."""
+    import shutil as sh
+
+    from noaap.merge import take_new
+
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    found = survey(source, target, judge=fixed(Verdict.KEEP))
+    sh.rmtree(next(p.parent for p in (tmp_path / "source").rglob(PLAN_FILE)))
+    asked: list[str] = []
+
+    done = take_new(found, lambda url: asked.append(url) or type("O", (), {"status": "ok"})(),
+                    library=tmp_path / "target")
+
+    assert asked == ["x://Intake"]
+    assert done["fetched"] == 1 and done["copied"] == 0

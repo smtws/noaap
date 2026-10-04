@@ -3587,6 +3587,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - **And a cover file that is no picture at all is said out loud, once** — an html consent page
      saved as a cover, a truncated download — and left exactly as it is.
 
+128. ✅ **An album already on this disk is copied, not downloaded again** (2026-10-04, P96).
+   `merge --new` took in the albums the library lacks by calling `fetch` on each one's source URL —
+   the right answer for an album nobody has, and the wrong one for the user's case: **211 albums,
+   12.5 GB**, every one of them a folder on this machine with its plan and its `.lrc` sidecars beside
+   it. Fetching them would download what was already there and depend on the videos still being up.
+   That is why I-344 proposed copying them by hand and the merge did not do it.
+   Now `take_new` copies where the album's folder can be read, under the scheme's name, everything in
+   it — audio, plan, sidecars, cover — and the album is a library album the moment it lands; the
+   source library is read and nothing else, as a merge promises. Where the folder is gone, `fetch`
+   runs, which is what the flag meant before. A target that exists is never written into, because
+   slice 53's promise holds for a copy as much as for a fetch: **a deluxe edition never quietly
+   grows the album that is already here.**
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

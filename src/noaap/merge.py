@@ -20,7 +20,7 @@ from pathlib import Path
 from .download import iter_plans, save_plan
 from .models import AlbumPlan, Candidate, PlanTrack
 from .pairing import How, Pair, Pairing, Side, pair, sides
-from .plan import wanted_filename
+from .plan import wanted_filename, wanted_folder
 from .ranking import LOSSLESS, Facts, Judgement, Verdict, consider, judge, reference_length, untouchable
 from .recycle import bin_track
 from .service import _inside
@@ -337,22 +337,58 @@ def unpaired_albums(found: Survey) -> dict[Path, list[Side]]:
     return out
 
 
-def take_new(found: Survey, fetch: Callable[[str], object],
-             log: Callable[[str], None] = lambda s: None) -> dict[str, int]:
-    """Fetch the albums this library does not have, by the ordinary path.
+def take_new(found: Survey, fetch: Callable[[str], object], library: Path | None = None,
+             log: Callable[[str], None] = lambda s: None, apply: bool = True) -> dict[str, int]:
+    """Take in the albums this library does not have: **copied where they are already here**.
 
-    Nothing special happens here: each one goes through `fetch`, which already refuses to touch an
-    album whose artist and name are in the library and says how many titles overlap instead
-    (§9, slice 53). **A deluxe edition never quietly grows the album that is already here.**
+    An album of the other library is a folder on this disk, with its plan and its sidecars beside it.
+    Fetching it again downloads what is already there and depends on the video still being up — and
+    the user's own case was 211 albums and 12.5 GB (§9, slice 128). So where the album's folder can
+    be read, it is **copied** into this library under the scheme's name, plan and all, and the album
+    is a library album the moment it lands. Only where the folder is gone does `fetch` run, which is
+    what the flag meant before and still means for an album nobody has on disk.
+
+    A target that exists is never written into: `fetch` already refuses to touch an album whose
+    artist and name are in the library and says how many titles overlap instead (§9, slice 53), and
+    a copy must keep that promise — **a deluxe edition never quietly grows the album that is here.**
     """
-    done = {"taken": 0, "held": 0}
+    done = {"taken": 0, "held": 0, "copied": 0, "fetched": 0}
     for album_dir, tracks in sorted(unpaired_albums(found).items()):
         plan = tracks[0].plan
         log(f"  {plan.albumartist} — {plan.album} ({len(tracks)} track(s) this library lacks)")
+        if library is not None and album_dir.is_dir():
+            where = copy_album(album_dir, plan, library, log=log, apply=apply)
+            if where is not None:
+                done["copied"] += 1
+                done["taken"] += 1
+                continue
+            done["held"] += 1
+            continue
         outcome = fetch(plan.source_url)
         status = getattr(outcome, "status", "")
         done["held" if status == "held" else "taken"] += 1
+        done["fetched"] += status != "held"
     return done
+
+
+def copy_album(album_dir: Path, plan: AlbumPlan, library: Path,
+               log: Callable[[str], None] = lambda s: None, apply: bool = True) -> Path | None:
+    """Copy one album folder into `library` under the scheme's name. None where it is not copied.
+
+    Everything in the folder comes: the audio, the plan, the `.lrc` sidecars, the cover. The source
+    folder is **read and nothing else** — a merge never writes to the library it takes from.
+    """
+    target = library / wanted_folder(plan)
+    if target.exists():
+        log(f"    {target.relative_to(library)} is already here — left alone")
+        return None
+    if not apply:
+        log(f"    would be copied to {target.relative_to(library)}")
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(album_dir, target)
+    log(f"    copied to {target.relative_to(library)}")
+    return target
 
 
 # -- judging again, on the numbers already recorded (§9, slice 78) -----------------------------------
