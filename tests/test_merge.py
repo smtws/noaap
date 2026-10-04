@@ -727,7 +727,7 @@ def test_a_target_that_exists_is_never_written_into(tmp_path):
     from noaap.download import load_plan
     from noaap.merge import copy_album
 
-    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
+    library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere"))
     album_dir = next(p.parent for p in (tmp_path / "source").rglob(PLAN_FILE))
     plan = load_plan(album_dir)
     target = tmp_path / "target"
