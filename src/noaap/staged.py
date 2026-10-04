@@ -497,15 +497,31 @@ def _only_in_the_store(staging: Path, root: Path,
     return {album: sorted(names) for album, names in out.items()}
 
 
+def nothing_written_down(staging: Path, known: dict[str, Recorded]) -> list[Recorded]:
+    """Batches recorded as unfinished whose snapshot was never written (§9, slice 118, R-455 item 4).
+
+    The record goes in **before** the copy out, saying the batch is not done; the snapshot is written
+    after it, once the copy is here. A run killed in between leaves an entry with no snapshot — and
+    nothing on the share, because nothing is written back until the snapshot exists. Such an entry
+    owes the share nothing, and reading it as owing is what made a resume take 301 finished albums
+    out of the share again: `owed` covers them, and a folder that is owed is never skipped however
+    plainly its plan file says it was taken in.
+    """
+    return [one for one in known.values()
+            if not one.done and not (staging / one.snapshot).is_file()]
+
+
 def _owed_folders(staging: Path, root: Path, known: dict[str, Recorded]) -> set[str]:
     """Every folder a batch that did not finish is still owed, under the root."""
     out: set[str] = set()
     for one in known.values():
         if one.done:
             continue
+        snapshot = staging / one.snapshot
+        if not snapshot.is_file():
+            continue        # nothing was written down, so nothing was written back
         out.update(one.albums)
         out.update(one.became)
-        snapshot = staging / one.snapshot
         if snapshot.is_file():
             with contextlib.suppress(OSError, ValueError):
                 out.update(territory(precautions.read(snapshot),
@@ -550,6 +566,17 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
     # nothing and skips nothing, but it is the natural thing to run when a collection looks wrong,
     # so it must be able to say what an unfinished batch left behind (R-388).
     seen = read_index(where, root)
+    # **an entry with no snapshot owes nothing, and does not stay** (R-455, item 4). It is a run
+    # killed between the record and the snapshot; the share has nothing of it.
+    if orphans := nothing_written_down(staging, seen):
+        for one in orphans:
+            log(f"  a batch of {len(one.albums)} album(s) was recorded as unfinished and never "
+                f"written down ({one.snapshot} is not there){'' if dry_run else ' — dropped'}: "
+                "nothing of it reached the collection")
+        if not dry_run:
+            seen = {key: one for key, one in seen.items()
+                    if one not in orphans}
+            write_index(where, root, seen)
     known = dict(seen) if resume and not dry_run else {}
     # **what a batch that did not finish is still owed**, read before anything is skipped. Its own
     # albums, the folders the pass made for them, and every folder its snapshot recorded a file in —

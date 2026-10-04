@@ -3418,6 +3418,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the room is read. A dry run writes nothing, so there its size is added back instead — the same
    number, and it makes the dry run's plan the one the apply will follow.
 
+118. ✅ **An index entry with no snapshot owes nothing** (2026-10-04, P91). The record of a batch goes
+   in **before** the copy out, saying it is not done (slice 109); the snapshot is written after it,
+   once the copy is here. A run killed in between leaves an entry with no snapshot — and nothing on
+   the share, because nothing is written back until the snapshot exists.
+   Reading such an entry as owing is what made a resume take **301 finished albums** out of the
+   share again: `owed` covered them, and a folder that is owed is never skipped however plainly its
+   plan file says it was taken in (slice 109's rule, which is right for a batch that *did* get that
+   far). The resume reported 830 plan files on the share and skipped 529. So an entry whose snapshot
+   is not there is dropped from the index with a line saying nothing of it reached the collection,
+   and `_owed_folders` ignores it — which is what keeps a dry run's plan the same as the apply's,
+   since a dry run writes nothing and drops nothing.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

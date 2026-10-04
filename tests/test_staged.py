@@ -1400,3 +1400,77 @@ def test_with_no_stale_copy_the_room_is_simply_what_is_free(elsewhere, tmp_path)
     assert done.filesystem == where
     assert abs(done.free - plain) < 5_000_000_000, "the same filesystem, read twice"
     assert not [line for line in said if "staged copy" in line]
+
+
+# -- an entry with no snapshot owes nothing (§9, slice 118; R-455, item 4) -----------------------
+
+
+def test_an_entry_whose_snapshot_was_never_written_owes_nothing_and_is_dropped(elsewhere, tmp_path):
+    """The resume that took 301 finished albums out of the share again.
+
+    The record goes in before the copy out; the snapshot is written after it. A run killed in
+    between leaves an entry with no snapshot — and nothing on the share, because nothing is written
+    back until the snapshot exists. Reading it as owed made every album of that batch unskippable,
+    plan file or no plan file.
+    """
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=10_000_000, dry_run=False, log=lambda s: None)
+    index = staging / staged.STAGED
+    killed = staged.Recorded(key="deadbeefcafe", snapshot="batch-deadbeefcafe-gone-snapshot.jsonl",
+                             albums=sorted(str(p.relative_to(elsewhere))
+                                           for p in elsewhere.iterdir() if p.is_dir()), done=False)
+    known = staged.read_index(index, elsewhere)
+    known[killed.key] = killed
+    staged.write_index(index, elsewhere, known)
+    assert staged.nothing_written_down(staging, known) == [killed]
+
+    said = []
+    done = staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                                 batch_size=10_000_000, dry_run=False, log=said.append)
+
+    assert [line for line in said if "never written down" in line and "dropped" in line], said
+    assert "deadbeefcafe" not in staged.read_index(index, elsewhere)
+    assert not [line for line in said if "are owed a copy back" in line]
+    assert done.albums == 0 and done.tracks == 0, "and the albums are skipped as taken in"
+
+
+def test_a_dry_run_names_such_an_entry_and_leaves_the_index_alone(elsewhere, tmp_path):
+    staging = tmp_path / "staging"
+    staging.mkdir(parents=True)
+    index = staging / staged.STAGED
+    killed = staged.Recorded(key="deadbeefcafe", snapshot="batch-deadbeefcafe-gone-snapshot.jsonl",
+                             albums=["aphelion/nocturnes (2003)"], done=False)
+    staged.write_index(index, elsewhere, {killed.key: killed})
+
+    said = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=10_000_000, dry_run=True, log=said.append)
+
+    named = [line for line in said if "never written down" in line]
+    assert named and "dropped" not in named[0], said
+    assert "deadbeefcafe" in staged.read_index(index, elsewhere)
+    # and the dry run's plan is the apply's: nothing is owed, so nothing of that batch is held back
+    assert not [line for line in said if "are owed a copy back" in line], said
+    assert staged._owed_folders(staging, elsewhere, staged.read_index(index, elsewhere)) == set()
+
+
+def test_an_unfinished_batch_that_does_have_a_snapshot_is_still_owed(elsewhere, tmp_path):
+    """The guard this must not break: a batch stopped *after* its snapshot is owed a copy back, and
+    reading the share as the answer is what walked a resume past it (R-374, ruling b)."""
+    staging = tmp_path / "staging"
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=lambda s: None)
+    index = staging / staged.STAGED
+    known = staged.read_index(index, elsewhere)
+    first = sorted(known)[0]
+    known[first] = replace(known[first], done=False)
+    staged.write_index(index, elsewhere, known)
+
+    assert staged.nothing_written_down(staging, known) == [], "its snapshot is there"
+
+    said = []
+    staged.take_in_staged(_service(tmp_path, elsewhere), elsewhere, QUIET, staging=staging,
+                          batch_size=1, dry_run=False, log=said.append)
+
+    assert [line for line in said if "are owed a copy back" in line], said
