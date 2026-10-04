@@ -420,6 +420,33 @@ class Service:
         self.log(f"artist spelled '{chosen[0]}' elsewhere in the library — using that")
         self._adopt(plan, chosen[0], chosen[1])
 
+    def one_spelling_per_artist(self, plan: AlbumPlan,
+                                decided: dict[str, tuple[str, set[str | None]]]) -> str:
+        """Give this album the library's spelling where the difference is **case alone**.
+
+        Outside `tidy_adopted_tags`, and that is the whole point (§9, slice 126). `_apply_spelling`
+        is gated behind it — rightly, since reading a folder's tags as a video title's is what slice
+        111 forbids — so an adopted album kept its own spelling and the library grew two artist
+        folders for one artist. Measured on the share after the merge: `Die Legende Von Nord` holds
+        four albums and `Die Legende von Nord` holds `Angst im Dunkeln`, whose own tags say `von`.
+        On a case-sensitive filesystem those are two artists, two folders and two places to look.
+
+        Only case: `Die Legende von Nord` against `Die Legende Von Nord`, never `JBO` against
+        `J.B.O.`. Nothing of what the tag *says* changes, only how it is cased — and the album's own
+        spelling still counted as a candidate for the decision, so the one the library keeps may well
+        be this album's. A spelling the user chose is never touched.
+        """
+        if plan.provenance.get("albumartist") == Provenance.USER:
+            return ""
+        chosen = decided.get(text_key(plan.albumartist))
+        if not chosen or chosen[0] == plan.albumartist:
+            return ""
+        if chosen[0].casefold() != plan.albumartist.casefold():
+            return ""       # a different name, not a different casing: that is `_apply_spelling`'s
+        was, plan.albumartist = plan.albumartist, chosen[0]
+        plan.auto["albumartist"] = chosen[0]
+        return f"{was!r} -> {chosen[0]!r}"
+
     def _settle_artist(self, plan: AlbumPlan) -> None:
         """The artist this fetch writes: the album's own tracks first, then the library's spelling.
 
@@ -1701,7 +1728,7 @@ class Service:
         # **an album this program cannot see is said out loud** (R-419, point 3), never skipped
         if line := says_the_old_name(self.library):
             self.log(line)
-        lengths = retags = renames = pointed = 0
+        lengths = retags = renames = pointed = cased = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
@@ -1754,6 +1781,12 @@ class Service:
                 names = [t.artist for t in plan.tracks]
                 if names:
                     plan.albumartist = plan.auto["albumartist"] = max(set(names), key=names.count)
+            # **one spelling per artist, whatever the library asks of adopted albums** (§9, slice
+            # 126): a case-only difference is two folders on a case-sensitive share, and nothing of
+            # what the tag says changes. The rest of the spelling work stays behind `tidy_adopted_tags`.
+            if said := self.one_spelling_per_artist(plan, decided):
+                self.log(f"  the artist is spelled {said} elsewhere in the library — using that")
+                cased += 1
             if may_tidy:
                 self._adopt_track_spelling(plan)  # an album that disagrees with its own tracks
                 self._apply_spelling(plan, decided)
@@ -1865,6 +1898,9 @@ class Service:
             # "will this write into my audio files?" (§9, slice 85)
             self.log(f"{renames} file(s) would be renamed and {retags} audio file(s) would be "
                      "rewritten (their tags)")
+        if cased:
+            self.log(f"{cased} album(s) {'would be' if dry_run else 'were'} given the library's "
+                     "spelling of their artist")
         if pointed:
             log_it = "would be re-pointed" if dry_run else "re-pointed"
             self.log(f"{pointed} plan(s) {log_it} at their own album folder")

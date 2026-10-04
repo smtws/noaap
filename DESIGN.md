@@ -3556,6 +3556,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the folder the batch had named found nothing at all. All 154 are albums the scheme renamed
    (`asp` → `ASP` and kin), and the pass now asks of where each plan **is**.
 
+126. ✅ **One spelling per artist, even for an album taken in as it stood** (2026-10-04, P96).
+   Measured on the share after the merge: `Die Legende Von Nord` held four albums and
+   `Die Legende von Nord` held `Angst im Dunkeln`, whose own tags say `von`. On a case-sensitive
+   filesystem those are two artists, two folders and two places to look — and `repair` had moved the
+   four and left the fifth, which is what slice 23 exists to prevent.
+   The cause: `_apply_spelling` is gated behind `tidy_adopted_tags`, rightly, because reading a
+   folder's tags the way a video title is read is what slice 111 forbids. But a **case-only**
+   difference is not a reading of anything. Nothing of what the tag says changes, only how it is
+   cased, and the album's own spelling still counted as a candidate for the library's decision — so
+   the spelling that wins may well be this album's. `one_spelling_per_artist` runs outside the
+   setting, reports per album, and the rest of the spelling work stays behind it: `JBO` against
+   `J.B.O.` is a different name and not this rule's business. A spelling the user chose is untouched.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
