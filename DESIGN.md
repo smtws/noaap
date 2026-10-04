@@ -3396,6 +3396,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    The case needed the **staged** pass to reproduce: a plain take-in renames the folder in place and
    leaves nothing behind, and the first version of the case passed with the fix removed.
 
+116. ✅ **A folder and the names under it say the same thing** (2026-10-04, P91). `safe_name` strips
+   `" ."` from the ends of what it is given, and `track_filename` gave it the whole assembled stem —
+   where a part's own leading dots sit in the middle and survive. So `Crematory/...Just Dreaming`
+   came out as the folder `Just Dreaming` holding files called
+   `Crematory - ...Just Dreaming - 01 - Heaven's Throat.mp3`, and `Fly  (Single)` as the folder
+   `Fly (Single)` holding `Crematory - Fly  (Single) - 01 - ….mp3`. Every part — album artist,
+   album, track artist, title — is sanitised before the stem is assembled, so the name a folder gets
+   and the name the files in it get are made the same way. Only the ends of a part go: `Mr. Hurley`
+   and the inner dots of `A.C.A.B.` are part of the name, and an album called `Freitag der 13.` now
+   loses its trailing dot in the file names as its folder always did.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

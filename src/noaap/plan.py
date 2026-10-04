@@ -744,6 +744,14 @@ def track_filename(
     itself, which keeps at least `TITLE_FLOOR` characters and is marked with an ellipsis so that a
     reader can see it was cut.
     """
+    # **every part is sanitised the way the folder's name is** (§9, slice 116, R-455 item 2).
+    # `safe_name` strips " ." from the ends of what it is given, and it used to be given the whole
+    # assembled stem — so an album whose name begins with dots lost them in its *folder* and kept
+    # them in every *file*: `Crematory/Just Dreaming/Crematory - ...Just Dreaming - 01 - ….mp3` on
+    # the user's share. The same for a doubled space inside a name: the folder read `Fly (Single)`
+    # and the files `Fly  (Single)`. The folder and the names under it now say the same thing.
+    albumartist, album, title = safe_name(albumartist), safe_name(album), safe_name(title)
+    artist = safe_name(artist) if artist else None
     middle = f"{artist} - {title}" if artist else title
     num = f"{disc}-{number:02d}" if disc else f"{number:02d}"
     for stem in (f"{albumartist} - {album} - {num} - {middle}",

@@ -16,7 +16,7 @@ import pytest
 from mutagen.id3 import ID3, TALB, TIT2, TPE1
 
 from noaap import sources_folder
-from noaap.plan import MAX_NAME_BYTES, TITLE_FLOOR, track_filename
+from noaap.plan import MAX_NAME_BYTES, TITLE_FLOOR, safe_name, track_filename
 
 
 def test_a_name_that_fits_is_left_alone():
@@ -252,3 +252,49 @@ def test_a_shorter_name_that_is_not_a_cut_value_is_left_alone(tmp_path, one_seco
     collection = source.collection(str(album))
 
     assert {e.music.album for e in collection.entries} == {"Greatest Hits", "Greatest Hits II"}
+
+
+# -- the folder and the names under it say the same thing (§9, slice 116; R-455, item 2) ---------
+
+
+def test_an_album_whose_name_begins_with_dots_loses_them_in_the_file_names_too():
+    """`Crematory/...Just Dreaming` on the user's share: the folder came out `Just Dreaming` and
+    every file kept `Crematory - ...Just Dreaming - 01 - …`.
+
+    `safe_name` strips " ." from the ends of what it is given, and it was given the whole assembled
+    stem — where the album's dots sit in the middle and survive.
+    """
+    assert safe_name("...Just Dreaming") == "Just Dreaming"
+    assert track_filename("Crematory", "...Just Dreaming", 1, None, "Heaven's Throat", ext="mp3") \
+        == "Crematory - Just Dreaming - 01 - Heaven's Throat.mp3"
+
+
+def test_a_doubled_space_inside_a_name_is_collapsed_the_same_way():
+    """`Crematory/Fly  (Single)`: folder `Fly (Single)`, files `Fly  (Single)`."""
+    assert safe_name("Fly  (Single)") == "Fly (Single)"
+    assert track_filename("Crematory", "Fly  (Single)", 1, None, "Fly", ext="mp3") \
+        == "Crematory - Fly (Single) - 01 - Fly.mp3"
+
+
+def test_a_trailing_space_goes_from_the_album_and_the_artist():
+    """`Subway to Sally/Post Mortem ` and `Tanzwut/Herz aus Stein ` are both on the share."""
+    assert track_filename("Tanzwut ", "Herz aus Stein ", 2, None, "Nein Nein", ext="mp3") \
+        == "Tanzwut - Herz aus Stein - 02 - Nein Nein.mp3"
+
+
+def test_only_the_ends_of_a_part_are_stripped():
+    """A dot inside a name is part of it — `Mr. Hurley`, `A.C.A.B.` — and only the ends go.
+
+    The trailing dot of the *last* part was already lost before this, because the whole stem was
+    stripped and the title is what ends it; `Tanzwut/Freitag der 13.` is the album side of the same
+    thing, and its folder on the share has been `Freitag der 13` all along.
+    """
+    assert track_filename("A Band", "An Album", 3, "Mr. Hurley", "A.C.A.B.", ext="mp3") \
+        == "A Band - An Album - 03 - Mr. Hurley - A.C.A.B.mp3"
+    assert track_filename("A Band", "Freitag der 13.", 3, None, "Schrei", ext="mp3") \
+        == "A Band - Freitag der 13 - 03 - Schrei.mp3", "and now the album's too"
+
+
+def test_the_part_that_is_only_dots_does_not_vanish_into_nothing():
+    name = track_filename("A Band", "...", 4, None, "One", ext="mp3")
+    assert name == "A Band - _ - 04 - One.mp3", "safe_name's own answer for an empty name"
