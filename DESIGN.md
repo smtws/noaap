@@ -3511,6 +3511,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    dropped the line once the discs were known, which would have made the one change this lookup is
    allowed to make the one change nobody is told about.
 
+124. ✅ **What a repair skips is decided by asking what it would do** (2026-10-04, P94). The repair
+   check over the collection reported 25 albums and only **four** held a real change — and three of
+   those four had never been applied by any repair: `Mono Inc. — Head Under Water` (13 files to
+   rename by slice 116), `Nightwish — Human. :II: Nature.` (17 files and a cover) and
+   `Schandmaul — Sinnfonie`, whose 66 files said three discs where the album has four. They surfaced
+   by accident, because slice 123's disc lookup happened to un-skip their albums.
+   The skip asked eleven questions — misplaced, borrowed, measured, stale, refound, strays, moved
+   sources, recuts, tails, comments, Windows Media frames — and not one of them asked whether a
+   **file** would be renamed or retagged. So slice 116's renames reached only albums that failed the
+   skip for some *other* reason: `Mono Inc. — Temple Of The Torn` was renamed because it still
+   carried ID3v1 tails, and `Head Under Water`, which had none, was walked past.
+   It now asks `would_do` — the same list the dry run prints and `run` then carries out, so the
+   answer cannot drift from the apply — and skips only where it has nothing to say. That subsumes the
+   tails, comments and frames questions, which were three conditions guessing at one.
+   **Two things the question needs to be right about.** A *partial* disc match changes nothing, so it
+   no longer keeps its album: reported, then skipped like any other tidy album — 21 of the
+   collection's 25 duplicate-number albums would otherwise have had a full pass on every repair for
+   ever. And the one line `would_do` emits that promises nothing — "a cover would be saved beside the
+   album **if** a picture can be found in its files", where the album's own files are the only place
+   to look — is ignored by the skip (`MAYBE_COVER`), or an album with no cover beside it is never
+   skipped again. A cover that really can be had says where from, and that does keep the album.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

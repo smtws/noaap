@@ -552,6 +552,12 @@ def _captions_cost(found: dict[str, Any]) -> str:
 SHOWN = 60
 
 
+#: the one line `would_do` ends with that promises nothing — the picture may not be in there at all.
+#: A caller deciding whether an album needs a pass at all has to be able to tell it from the rest
+#: (§9, slice 124), or an album with no cover beside it is never skipped again.
+MAYBE_COVER = " if a picture can be found in its files"
+
+
 def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
              library: Path | None = None, want: Treatment | None = None) -> list[str]:
     """Everything `run(..., download=False)` would change about this album, one line each.
@@ -581,7 +587,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     if want is not None and want.cover_beside and cover is None:
         if address := _cover_addresses(plan, album_dir):
             said.append("a cover would be saved beside the album"
-                        + (" if a picture can be found in its files" if address[0] == str(album_dir)
+                        + (MAYBE_COVER if address[0] == str(album_dir)
                            else f" from {address[0]}"))
     if want is not None and not want.cover_embedded:
         cover = None

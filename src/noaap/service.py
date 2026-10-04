@@ -23,9 +23,9 @@ from typing import Any
 from . import sources
 from .config import Config
 from .download import (
+    MAYBE_COVER,
     PARTS_DIR,
     PLAN_FILE,
-    comments_to_drop,
     find_plan,
     iter_plans,
     load_plan,
@@ -36,8 +36,6 @@ from .download import (
     run,
     save_plan,
     says_the_old_name,
-    tails_to_drop,
-    wm_frames_to_drop,
     would_do,
 )
 from .enrich import enrich
@@ -1795,17 +1793,28 @@ class Service:
             recut = needs_a_recut(plan, album_dir)
             # **asked before the skip** (§9, slice 123): an album whose numbers repeat is otherwise
             # perfectly tidy, and the lookup that can settle its discs was the take-in's alone.
+            # Only an *assignment* keeps the album here: a partial match changes nothing, so an album
+            # that is otherwise tidy is still tidy and is skipped like any other (§9, slice 124).
             discs = bool(self._look_at_the_discs(plan, album_dir, dry_run))
-            # **asked before the skip too** (R-434, R-438): an album whose mp3s still carry the
-            # ID3v1 block 1.31.2 wrote, or a comment the library asks to be rid of, is otherwise
-            # perfectly tidy — so without this nothing would look at those files again.
             want_here = for_album(self.cfg, plan)
-            tails = tails_to_drop(plan, album_dir, want_here) \
-                or comments_to_drop(plan, album_dir, want_here) \
-                or wm_frames_to_drop(plan, album_dir, want_here)
+            # **and the one question that cannot drift from the apply: what would the apply do?**
+            # (§9, slice 124). Eleven conditions guessed at this and none of them asked whether a
+            # *file* would be renamed or retagged — so slice 116's renames reached only the albums
+            # that failed the skip for some other reason. `Mono Inc. — Temple Of The Torn` was
+            # renamed because it still had ID3v1 tails; `Mono Inc. — Head Under Water` had none and
+            # was skipped, and so were `Nightwish — Human. :II: Nature.` and the four discs of
+            # `Schandmaul — Sinnfonie` whose files said three. Found only because the disc lookup
+            # above happened to un-skip them. `would_do` is what the dry run already prints and what
+            # `run` then does, so asking it here is the same answer by construction.
+            # It also subsumes the three questions that were asked here one by one — a tail to drop,
+            # a comment, a Windows Media frame — because `would_do` prints a line for each.
+            would = [line for line in
+                     would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library,
+                              want_here)
+                     if MAYBE_COVER not in line]   # that one promises nothing (§9, slice 124)
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
-                    and not elsewhere.get("sources") and not recut and not tails and not discs \
+                    and not elsewhere.get("sources") and not recut and not discs and not would \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
@@ -1814,8 +1823,7 @@ class Service:
                 # **the dry run names what the real run would do to the files** (§9, slice 85). It used
                 # to stop here, so renames and retags — which happen inside `run` below — were never
                 # mentioned: the user was told no audio file would be touched and 376 were rewritten.
-                want = for_album(self.cfg, plan)
-                would = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library, want)
+                want = want_here
                 if stopped := held_back(self.cfg, plan):
                     self.log(f"  this album is excepted from: {', '.join(stopped)}")
                 for line in would:
@@ -1970,8 +1978,11 @@ class Service:
             if not dry_run:
                 save_plan(plan, album_dir)
             return said
+        # **a partial match is reported and changes nothing** (§9, slice 124), so it returns nothing:
+        # an album the lookup could not settle is as tidy as it was, and keeping it out of the skip
+        # for that would have given 21 albums of the collection a full pass on every repair for ever.
         self.log(f"  the numbers repeat and MusicBrainz did not settle it: {said}")
-        return said
+        return ""
 
     def set_exception(self, source_id: str, key: str, on: bool) -> Outcome:
         """Except this album from one of the library's operations, or stop excepting it.
