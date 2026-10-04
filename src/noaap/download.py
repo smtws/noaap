@@ -1145,9 +1145,18 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
     A cover the user put there is always used. One we saved ourselves is replaced once a
     better source is known (e.g. the Cover Art Archive after MusicBrainz matched).
     """
-    existing = next((p for p in sorted(album_dir.glob(f"{COVER_STEM}.*")) if image_mime(p.read_bytes())), None)
+    beside = sorted(album_dir.glob(f"{COVER_STEM}.*"))
+    existing = next((p for p in beside if image_mime(p.read_bytes())), None)
+    # **a cover file this program cannot read is said out loud, once** (§9, slice 127). Three albums
+    # of the user's keep a GIF or a BMP in a file called `cover.jpg`; those two are pictures now, so
+    # what is left here is a file that is no picture at all — an html consent page saved as a cover,
+    # a truncated download — and silently writing another beside it is not the answer.
+    if not existing:
+        for q in beside:
+            log.warning("%s is not a picture this program can read, and is left as it is", q)
     if existing:
         data = existing.read_bytes()
+        existing = _named_for_what_it_is(existing, data)
         ours = plan.cover_fetched.get("sha1") == _sha1(data)
         if ours and (square := square_if_padded(data)):  # saved before covers were squared
             existing.unlink()
@@ -1232,6 +1241,31 @@ def _download_cover(url: str, source: Source, why: list[str] | None = None) -> t
         if image_mime(data):
             return url, data
     return None
+
+
+def _named_for_what_it_is(path: Path, data: bytes) -> Path:
+    """A cover file renamed to the suffix its own bytes say, where the two disagree (§9, slice 127).
+
+    `cover.jpg` holding a GIF is three albums of the user's. The picture is theirs and is kept
+    exactly as it is; only the name is corrected, and only where the target is free — a `cover.gif`
+    already beside it is somebody's decision and not this function's to overwrite.
+    """
+    want = image_mime(data)
+    if not want:
+        return path
+    ext = want.split("/")[1].replace("jpeg", "jpg")
+    if path.suffix.lower() == f".{ext}":
+        return path
+    target = path.with_name(f"{path.stem}.{ext}")
+    if target.exists():
+        return path
+    try:
+        path.rename(target)
+    except OSError as e:
+        log.warning("could not rename %s to %s: %s", path.name, target.name, e)
+        return path
+    log.info("%s is a %s and is now called %s", path.name, want, target.name)
+    return target
 
 
 def _save_cover(plan: AlbumPlan, album_dir: Path, url: str, data: bytes) -> bytes:

@@ -128,14 +128,53 @@ def reading(path: Path) -> Reading:
     return Reading(path)
 
 
+#: what a tag may carry. ID3's `APIC`, Vorbis' picture block and MP4's `covr` are read by players
+#: that know jpeg and png and little else, so anything further is converted before it goes in
+#: (§9, slice 127).
+EMBEDDABLE = ("image/jpeg", "image/png")
+
+
 def image_mime(data: bytes) -> str | None:
+    """What this picture is, by its own first bytes — never by the name it was given.
+
+    **gif and bmp are pictures too** (§9, slice 127). Three albums of the user's keep their cover in
+    a file called `cover.jpg` that is a GIF or a BMP; without these two the program saw no cover
+    there at all, reported one as missing on every pass, and would have written another beside it.
+    """
     if data.startswith(b"\xff\xd8"):
         return "image/jpeg"
     if data.startswith(b"\x89PNG"):
         return "image/png"
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:2] == b"BM":
+        return "image/bmp"
     return None
+
+
+def as_jpeg(data: bytes) -> bytes | None:
+    """This picture as a jpeg, for a tag that may only hold one (§9, slice 127).
+
+    Already jpeg or png: itself, untouched — a png is embeddable and converting it would cost
+    quality for nothing. Anything else Pillow can open becomes a jpeg; anything it cannot is None,
+    and the caller says so rather than writing a picture no player will show.
+    """
+    if (mime := image_mime(data)) in EMBEDDABLE:
+        return data
+    if mime is None:
+        return None
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        out = BytesIO()
+        Image.open(BytesIO(data)).convert("RGB").save(out, format="JPEG", quality=92)
+        return out.getvalue()
+    except Exception:          # a picture that will not convert is not a failure, it is a report
+        return None
 
 
 def audio_length(path: Path, one: Reading | None = None) -> float | None:
@@ -712,14 +751,14 @@ def _tag_vorbis(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | No
         audio[key] = [value]
 
     if kind(path) == "flac":
-        if cover and (mime := image_mime(cover)):
+        if cover and (shown := as_jpeg(cover)) and (mime := image_mime(shown)):
             audio.clear_pictures()
-            audio.add_picture(_picture(cover, mime))
+            audio.add_picture(_picture(shown, mime))
         audio.save()
         return signature(plan, track, cover, lyrics)
 
-    if cover and (mime := image_mime(cover)):
-        audio[PICTURE_KEY] = [base64.b64encode(_picture(cover, mime).write()).decode("ascii")]
+    if cover and (shown := as_jpeg(cover)) and (mime := image_mime(shown)):
+        audio[PICTURE_KEY] = [base64.b64encode(_picture(shown, mime).write()).decode("ascii")]
     elif old_picture and cover is None:
         audio[PICTURE_KEY] = old_picture
     audio.save()
@@ -781,8 +820,8 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
         id3.setall("TCMP", [TCMP(encoding=3, text=["1"])])
     if "lyrics" in tags:
         id3.setall("USLT", [USLT(encoding=3, lang="eng", desc="", text=tags["lyrics"])])
-    if cover and (mime := image_mime(cover)):
-        id3.setall("APIC", [APIC(encoding=3, mime=mime, type=3, desc="Cover", data=cover)])
+    if cover and (shown := as_jpeg(cover)) and (mime := image_mime(shown)):
+        id3.setall("APIC", [APIC(encoding=3, mime=mime, type=3, desc="Cover", data=shown)])
     # **an mp3 this program writes ends without an ID3v1 tail** (R-434, R-435). mutagen's `save`
     # defaults to rewriting an existing one from the v2 frames, and ffmpeg's demuxer hands that
     # 128-byte block to the **decoder** — so the rewrite moved a digest that exists to be invariant
@@ -844,7 +883,7 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         audio["disk"] = [(track.disc, discs)]   # the only writer that had the disc total right
     audio["cpil"] = plan.is_compilation
-    if cover and (mime := image_mime(cover)) in ("image/jpeg", "image/png"):
+    if cover and (shown := as_jpeg(cover)) and (mime := image_mime(shown)) in EMBEDDABLE:
         fmt = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG
         audio["covr"] = [MP4Cover(cover, imageformat=fmt)]
     elif old_cover and cover is None:

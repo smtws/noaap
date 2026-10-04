@@ -80,10 +80,16 @@ def test_unknown_cover_bytes_are_not_embedded(opus_file):
 
 
 def test_image_mime():
+    """What a picture is, by its own first bytes. **gif and bmp are pictures too** (§9, slice 127):
+    three albums of the user's keep their cover in a `cover.jpg` that is a GIF or a BMP, and while
+    those two were unknown the program saw no cover there and reported one missing on every pass."""
     assert image_mime(JPEG) == "image/jpeg"
     assert image_mime(b"\x89PNG\r\n") == "image/png"
     assert image_mime(b"RIFF\0\0\0\0WEBPVP8 ") == "image/webp"
-    assert image_mime(b"GIF89a") is None
+    assert image_mime(b"GIF89a") == "image/gif"
+    assert image_mime(b"GIF87a") == "image/gif"
+    assert image_mime(b"BM6S\x07\x00") == "image/bmp"
+    assert image_mime(b"<html>consent page</html>") is None
 
 
 def test_cover_candidates_prefer_maxres():

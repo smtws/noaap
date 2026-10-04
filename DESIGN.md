@@ -3569,6 +3569,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    setting, reports per album, and the rest of the spelling work stays behind it: `JBO` against
    `J.B.O.` is a different name and not this rule's business. A spelling the user chose is untouched.
 
+127. ✅ **A picture is what its bytes say** (2026-10-04, P96). The repair check named three albums as
+   wanting a cover — `Cyndi Lauper/To Memphis With Love Live`, `Marilyn Manson/Dead To The World
+   Tour`, `Wolfsheim/Dreaming Apes` — each already holding a `cover.jpg`. The ruling supposed the
+   address was being read as unfetched; it was not. The first file is a **BMP** and the other two are
+   **GIFs**, and `image_mime` knew jpeg, png and webp only — so noaap saw no cover there at all, said
+   one was missing on every pass, and would have written another beside it. The line was true; what
+   was wrong was the reading of a picture. **A premise handed down is still a claim**, and this one
+   cost nothing only because the check is read-only.
+   So gif and bmp are pictures. Three things follow:
+   - **A tag gets a jpeg.** `APIC`, the Vorbis picture block and `covr` are read by players that know
+     jpeg and png, so `as_jpeg` converts anything else before it goes in and leaves a jpeg or a png
+     alone — converting a png would cost quality for nothing.
+   - **The file beside the album is called what it is.** `cover.jpg` holding a GIF becomes
+     `cover.gif`; the picture is the owner's and is kept byte for byte, only the name is corrected,
+     and a `cover.gif` already there is somebody's decision and is never overwritten.
+   - **And a cover file that is no picture at all is said out loud, once** — an html consent page
+     saved as a cover, a truncated download — and left exactly as it is.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
