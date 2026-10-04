@@ -3377,6 +3377,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    All five snapshots on disk read back under the new reader with the count each one recorded:
    Crematory 306, batch 1 4536, batch 2 4053, batch 3 2695, batch 4 2955.
 
+115. ✅ **A folder a rename emptied is this program's own litter** (2026-10-04, P91). After the
+   collection came in, **91 empty album folders** stood on the share — every one an album whose
+   folder the scheme renamed and whose `.thumb` the pass took away: `Subway to Sally/bastard` beside
+   `BASTARD` with its 15 files, `mcmxcv` beside `MCMXCV`. The backup shows 14 files under `bastard`
+   before the pass, so the pass emptied that directory and left it standing.
+   One line of `empty_under` did it: emptiness was asked of every candidate **before a single one
+   was removed**, so deepest-first order decided nothing. `bastard` was asked while its `.thumb` was
+   still inside, answered "not empty", and stayed once `.thumb` went. Now a folder whose only
+   contents are folders the same list already takes away counts as empty too, and the candidates are
+   **every** folder up to the root rather than the immediate parent — a chain is one deep only by
+   luck, and `Artist/Album/CD1/.thumb` is four. `rmdir` still decides, so a folder holding anything
+   of anybody's stays, and an artist folder with another album in it is not touched.
+   **And `repair` names them whatever the setting says.** Removing the owner's empty folders is
+   `remove_empty_folders` (slice 104) and stays off by default; but a folder a rename left behind is
+   not the owner's, and 91 of them went unmentioned by every pass. So they are always counted and
+   named, and the setting decides only whether they also go.
+   The case needed the **staged** pass to reproduce: a plain take-in renames the folder in place and
+   leaves nothing behind, and the first version of the case passed with the fix removed.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -624,16 +624,35 @@ def empty_under(root: Path, only: Iterable[Path] = (), everything: bool = False)
     if everything:
         found = {p for p in root.rglob("*") if p.is_dir()}
     else:
-        found = {p for p in only} | {p.parent for p in only}
-    out = []
+        # **every folder up to the root, not just the immediate parent.** A chain of empties is one
+        # folder deep only by luck: an album the scheme renamed may leave `Artist/Album/CD1/.thumb`
+        # and all three above it. `rmdir` still decides, and a folder holding anything stays.
+        found = set()
+        for folder in only:
+            here = folder
+            while here != root and root in here.parents:
+                found.add(here)
+                here = here.parent
+            found.add(folder)
+    out: list[Path] = []
+    going: set[Path] = set()
     for folder in sorted(found, key=lambda p: -len(p.parts)):
         if folder == root or root not in folder.parents or not folder.is_dir():
             continue
         try:
-            if not any(folder.iterdir()):
-                out.append(folder)
+            inside = set(folder.iterdir())
         except OSError:
             continue
+        # **a folder whose only contents are folders this list already takes away is empty too**
+        # (§9, slice 115). Emptiness used to be asked of every candidate before a single one was
+        # removed, and deepest-first order then decided nothing: `Subway to Sally/bastard` was asked
+        # while its `.thumb` was still in it, said "not empty", and stayed behind as an empty husk
+        # once `.thumb` went. 91 of them on the user's share after the collection came in — every one
+        # an album whose folder the scheme renamed and whose `.thumb` the pass took away. Deepest
+        # first is what makes this exact: a folder's children have been decided before it is asked.
+        if not inside or inside <= going:
+            out.append(folder)
+            going.add(folder)
     return out
 
 

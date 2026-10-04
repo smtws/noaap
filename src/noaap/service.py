@@ -1840,16 +1840,26 @@ class Service:
             self.log(f"{renames} file(s) would be renamed and {retags} audio file(s) would be "
                      "rewritten (their tags)")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
-        if self.cfg.remove_empty_folders and self.library:
-            # **only because the library is set to** (§9, slice 104). Off, a pass clears the folders
-            # it emptied itself and leaves the owner's alone; on, these go too, and the dry run names
-            # every one before anything is removed.
-            for folder in empty_under(self.library, everything=True):
-                self.log(f"  {'would remove' if dry_run else 'removed'} the empty folder "
-                         f"{folder.relative_to(self.library)}")
-                if not dry_run:
-                    with contextlib.suppress(OSError):
-                        folder.rmdir()
+        if self.library and self.library.is_dir():
+            # **removing them is the setting; saying they are there is not** (§9, slice 104, 115).
+            # Off, a pass clears only the folders it emptied itself and leaves the owner's alone —
+            # but an empty folder a *rename* left behind is this program's own litter, and the user
+            # found 91 of them on the share after the collection came in. So they are always named,
+            # and `remove_empty_folders` decides whether they also go.
+            sweep = bool(self.cfg.remove_empty_folders)
+            empty = empty_under(self.library, everything=True)
+            for folder in empty:
+                if sweep:
+                    self.log(f"  {'would remove' if dry_run else 'removed'} the empty folder "
+                             f"{folder.relative_to(self.library)}")
+                    if not dry_run:
+                        with contextlib.suppress(OSError):
+                            folder.rmdir()
+            if empty and not sweep:
+                self.log(f"{len(empty)} empty folder(s) are under the library and were left alone "
+                         "(`remove_empty_folders` is off): "
+                         + ", ".join(str(f.relative_to(self.library)) for f in empty[:3])
+                         + (" …" if len(empty) > 3 else ""))
         return outcomes
 
     # -- taking a folder in (§9, slice 92) -----------------------------------------------
