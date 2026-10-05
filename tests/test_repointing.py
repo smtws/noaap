@@ -561,3 +561,29 @@ def test_update_takes_the_same_option(tmp_path, one_second_of_sound):
 
     assert said[0] == "only: B Band/Three (1 album)", said[:2]
     assert not [line for line in said if "A Band" in line], said
+
+
+def test_a_track_whose_audio_is_another_candidates_keeps_its_own_id(tmp_path, one_second_of_sound):
+    """R-485, found on the library before any apply. 68 tracks of the user's are an owner's mp3 that
+    a pass superseded with a YouTube opus: `video_id` names the mp3, which is gone, and `filename` is
+    the opus. Pointing the id at the opus would claim the owner's file is a recording from somewhere
+    else — and it rewrote the `youtube_id` tag of 68 of the user's audio files to say so."""
+    from noaap.download import tracks_elsewhere
+
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    plan = load_plan(album)
+    track = plan.tracks[0]
+    assert track.filename.endswith(".opus") and (album / track.filename).is_file()
+    # the owner's copy was an mp3; a pass took the YouTube opus and the mp3 is gone
+    owners = album / "A Band - An Album - 01 - One.mp3"
+    assert not owners.exists()
+    track.video_id = str(owners)
+    track.source_override = "HcUgtsm2wwY"
+    track.sync_candidates()
+    assert track.effective_id != track.video_id
+
+    assert tracks_elsewhere(plan, album) == []
+    assert point_at(plan, album) is False
+    assert plan.tracks[0].video_id == str(owners), "the owner's copy, as it was"

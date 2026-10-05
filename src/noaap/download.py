@@ -745,6 +745,13 @@ def tracks_elsewhere(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
         said = str(track.video_id or "")
         if not said.startswith("/") or not track.filename:
             continue
+        if track.effective_id != track.video_id:
+            # **the file beside the plan has to be this id's file** (R-485). Where a pass or a person
+            # took another candidate, `filename` is that one's — 68 tracks of the user's library are
+            # an owner's mp3 superseded by a YouTube opus — and `video_id` is what the owner's copy
+            # was, which `adopted_name` says too. Pointing it at the opus would claim the owner's
+            # file is a recording from somewhere else. It is gone; saying so is the truth.
+            continue
         here = album_dir / track.filename
         if not here.is_file() or Path(said) == here:
             continue    # nothing to point at, or already pointing at it

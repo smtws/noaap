@@ -3637,6 +3637,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    its `Candidate`, a `source_override` and a refusal naming the same path move with it, one
    candidate is kept per ref, and `source_state["ids"]` follows so the cheap skip still recognises
    the source.
+   **And the file beside the plan has to be that id's file** (R-485, caught by the check before any
+   apply). The first rule compared `video_id` with `album_dir/filename` and never asked whose file
+   that is. For **68 tracks in 14 albums** it is not the id's: the owner's mp3 was superseded by a
+   YouTube opus, so `source_override` holds a video id, `filename` is the opus, and `video_id` is the
+   mp3 — gone, as `adopted_name` records too. The rule pointed the owner's id at a recording from
+   somewhere else, and because noaap writes a track's id into its file, the check offered to write
+   that claim into 68 of the user's audio files (`youtube_id` differs from character 102 of 105).
+   So only where `effective_id == video_id`: 4,018 tracks in 376 albums, and **no audio file is
+   rewritten by a re-point at all** — a bookkeeping fix that reaches into somebody's files is not a
+   bookkeeping fix. The first case written for this passed with the fix removed, which means it did
+   not reproduce it; the one that stands needs the owner's `.mp3` gone, the `.opus` beside it, and an
+   override set.
    **And the pass that moves an album re-points it.** The question is asked before the skip, which
    is before `relocate` moves the folder and before `run` renames the files — so `repair --apply`
    over the share moved 15 folders and left 13 plans naming the folder they had just left; a second
