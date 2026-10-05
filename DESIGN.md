@@ -3945,15 +3945,22 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    something else is left to try" — and only the second one is a fallback.
 
 145. ✅ **A lookup that fits nothing says what it weighed** (2026-10-05, P108 item 2).
-   Measured over the first 517 albums of the user's library: **168 found no release, and 111 of those
-   are a release MusicBrainz has** — refused over a handful of song names. `Alice Cooper/Dragontown`
-   is the shape: nine candidates pass the name filter, every one of them the right twelve tracks, and
+   Measured over 639 albums of the user's library: **425 matched (66%), 177 found no release (28%),
+   37 were skipped as unchanged and never looked up at all (6%)**. Of 60 of those 177 examined one by
+   one, **47 have no usable candidate** (the search answers with nothing, or with releases under
+   other titles), and **5 have a candidate at 60–79%** of its titles — those five are what a looser
+   bar would take. `Alice Cooper/Dragontown` is that shape: nine candidates pass the name filter, every one of them the right twelve tracks, and
    each is refused because **8 of 12 titles fit where 10 are needed** (`Somewhere` against `Somewhere
    in the Jungle`, `Sister Sarah` against `Sister Sara`, `Just Wanna Be God` against `I Just Wanna Be
    God`, `I Am The Sentinel` against `The Sentinel`). What the pass printed was `MusicBrainz: 0/0
    tracks matched` — not a word about the nine releases it had just weighed. The user's conclusion,
    that identification "only works when MusicBrainz has no similar albums", was a fair reading of
    that silence.
+   **Two numbers reported for this were wrong and are corrected here.** "168 found no release"
+   counted the 37 albums the cheap check skipped as though they had been looked up and refused; and
+   "111 of them are a release MusicBrainz has" was a guess read off the *album names*, not a
+   measurement — measured, it is about one in twelve. A count inferred from a naming pattern is not a
+   count, and saying it like one sent the next package after the wrong cause.
    So every candidate the search returned is recorded on the plan with its shape and, for the ones
    actually opened, how near it came: **`rel-2 'Dragontown' (2001, DE) 12 track(s) — 8 of 10 titles
    fitted`**. All nine for the cost of the three that are opened, because the search's own answer
@@ -3962,6 +3969,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    it is cleared the moment something does fit, because then there is nothing for a person to decide.
    **A refusal is a finding, and a finding nobody can see is a silence.** The rule here is the same
    one as slice 133's: the pass knew exactly why it gave up, and kept it to itself.
+
+146. ✅ **A folder that is one disc of a set is matched against one disc** (2026-10-05, P108 item 3).
+   **39 of the first 517 albums** of the user's library are one disc kept as its own folder:
+   `Requiembryo (CD 1)`, `Horror Vacui (CD1)`, `The Better Life [Deluxe Edition] Disc 1`,
+   `Interim Works Compendium (CD 2)`. No release is called that.
+   And the name was not even the problem for most of them: `core` already strips a *bracketed*
+   marker, so the search had always asked the right question — `Requiembryo (CD 1)` returned six
+   releases, one with a matching title, and **0 passed the filter**, because its 28 tracks are the
+   2-CD set against 13 files. What the second ask buys is dropping the count test; for an
+   *unbracketed* marker (`… Disc 1`) it also really changes the question.
+   **A disc is recognised by its length, then by its titles.** The share alone is wrong in both
+   directions, and both were measured: at 80% it seated `ASP/Requiembryo (CD 2)` — seven files that
+   are the *tail* of a 15-track medium — as six tracks of disc 2 and one of disc 1, renumbered;
+   demanding all of them then refused `The Better Life Disc 1`, which really is that 11-track disc
+   with two song names spelled differently. So the medium must be the folder's own length (±1), and
+   then the ordinary title bar decides. The marker says which medium to try first and is not
+   evidence enough to refuse the album: a folder labelled `CD 1` whose files are disc 2 still finds
+   disc 2.
+   A marker is read only at the end of the name and only with a digit — `Teil V` is somebody's
+   title (`Der schwarze Schmetterling, Teil V` is a release), `Vol. 1 - Heavy Sleeping` is an album's
+   own name, and a bare trailing number is far too little to go on.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

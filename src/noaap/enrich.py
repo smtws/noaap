@@ -55,6 +55,28 @@ def core(title: str) -> str:
     return title.strip(" -–—")
 
 
+# **a disc or part marker in an album's own name** (§9, slice 146). 39 of the first 517 albums of
+# the user's library are one disc of a set kept as its own folder: `Requiembryo (CD 1)`,
+# `Horror Vacui (CD1)`, `The Better Life [Deluxe Edition] Disc 1`, `Zaubererbruder … 1`. No release
+# is called that, so the search either returns nothing or returns the whole set, whose track count
+# the filter then rejects. Bracketed or not, at the end of the name, and a number is required: an
+# album really called `Disintegration` keeps its name, and `Teil` without a number is somebody's
+# title (`Der schwarze Schmetterling, Teil V` is a release, not a disc marker).
+_DISC_MARKER = re.compile(
+    r"[\s,._-]*[(\[]?\s*(?:cd|disc|disk|dis[ck]o|part|pt|teil|vol(?:ume)?)\s*\.?\s*(\d{1,2})\s*[)\]]?\s*$",
+    re.IGNORECASE)
+
+
+def disc_in_name(album: str) -> tuple[str, int] | None:
+    """`('Requiembryo', 1)` for `Requiembryo (CD 1)`, or None where the name says no such thing."""
+    if not (m := _DISC_MARKER.search(album or "")):
+        return None
+    rest = album[:m.start()].strip(" -–—,._([")
+    if not rest:
+        return None             # the whole name was the marker: it names nothing to search for
+    return rest, int(m.group(1))
+
+
 def feat_text(title: str) -> str:
     """Everything that names featured artists, e.g. '(feat. @xxFEUERSCHWANZxx)' -> 'xxfeuerschwanzxx'."""
     found = [g for g in _GROUP.findall(title) if _FEAT.search(g + " ")]
@@ -201,15 +223,24 @@ def _country_rank(country: str | None) -> int:
     return COUNTRY_ORDER.index(country) if country in COUNTRY_ORDER else len(COUNTRY_ORDER)
 
 
-def release_candidates(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def release_candidates(plan: AlbumPlan, releases: list[dict[str, Any]], title: str | None = None,
+                       any_count: bool = False) -> list[dict[str, Any]]:
+    """The releases worth opening for this album.
+
+    `title` asks under another name than the album's own — what slice 146 needs when the folder is
+    called `Requiembryo (CD 1)` and no release is. `any_count` drops the track-count test with it,
+    because one disc of a set never has the set's count and only opening the release can say which
+    medium fits.
+    """
     n = len(plan.tracks)
+    want = title if title is not None else plan.album
     ok = [
         r
         for r in releases
-        if key(core(r.get("title", ""))) == key(core(plan.album))
-        and version_markers(r.get("title", "")) == version_markers(plan.album)
+        if key(core(r.get("title", ""))) == key(core(want))
+        and version_markers(r.get("title", "")) == version_markers(want)
         and artist_matches(plan.albumartist, r.get("artist-credit", []))
-        and abs(int(r.get("track-count") or 0) - n) <= 1
+        and (any_count or abs(int(r.get("track-count") or 0) - n) <= 1)
     ]
     return sorted(
         ok,
@@ -223,8 +254,24 @@ def release_candidates(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[
     )
 
 
+def media_of(release: dict[str, Any], only: int | None = None) -> list[list[dict[str, Any]]]:
+    """This release's media as lists of tracks, each carrying its own disc number (§9, slice 146).
+
+    With `only`, that medium first and the rest behind it: a folder called `CD 1` says which disc it
+    means and is usually right, but a marker somebody typed is not evidence enough to refuse the
+    album when another medium is the one that fits.
+    """
+    media = [[{**t, "disc": int(m.get("position", n))} for t in m.get("tracks", [])]
+             for n, m in enumerate(release.get("media", []), 1)]
+    if only is None:
+        return media
+    mine = [one for one in media if one and one[0]["disc"] == only]
+    return mine + [one for one in media if one not in mine]
+
+
 def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
-                         pinned: bool = False) -> dict[int, dict[str, Any]] | None:
+                         pinned: bool = False,
+                         medium: int | None = None) -> dict[int, dict[str, Any]] | None:
     """plan track index -> MB track (with 'disc' added), or None if too few tracks match.
 
     **A pinned release is only asked about the plan's own tracks** (§9, slice 137). The second test
@@ -233,7 +280,28 @@ def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
     that holds one disc of two legitimately answers for half of it: `Night is Calling` is 13 files
     against `84dfc64c`'s 13 + 13, which the release-side test rejects by design.
     """
-    mb_tracks = [{**t, "disc": m.get("position", 1)} for m in release.get("media", []) for t in m.get("tracks", [])]
+    if medium is not None:
+        # **one medium at a time** (§9, slice 146): the files are one disc of a set, so they are
+        # matched against one disc and are not asked to account for the whole release.
+        for one in media_of(release, only=medium):
+            # **a disc is recognised by its length, then by its titles** (§9, slice 146). The share
+            # alone is the wrong test both ways: at 80% it seated `ASP/Requiembryo (CD 2)` — seven
+            # files that are the *tail* of a 15-track medium — as six tracks of disc 2 and one of
+            # disc 1, renumbered; demanding all of them then refused `The Better Life Disc 1`, which
+            # really is that 11-track disc with two song names spelled differently. So the medium
+            # must be the length of the folder, and then the usual title bar decides.
+            if abs(len(one) - len(plan.tracks)) > 1:
+                continue
+            if (got := _seat(plan, one, pinned=True)) is not None:
+                return got
+        return None
+    mb_tracks = [t for one in media_of(release) for t in one]
+    return _seat(plan, mb_tracks, pinned=pinned)
+
+
+def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
+          pinned: bool = False) -> dict[int, dict[str, Any]] | None:
+    """plan track index -> one of `mb_tracks`, or None if too few fit."""
     unused = list(range(len(mb_tracks)))
     matches: dict[int, dict[str, Any]] = {}
     for i, t in enumerate(plan.tracks):
@@ -314,24 +382,31 @@ def offered_from(cand: dict[str, Any], release: dict[str, Any] | None = None,
 
 
 def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
+    which: int | None = None     # the medium a folder's own disc marker names (§9, slice 146)
     if pinned := pinned_release(plan):
         # **a pin is not a guess, so it is not searched for and not voted on** (slice 137)
         candidates = [{"id": pinned}]
         every = candidates
     else:
         every = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))
+        if not every and (said := disc_in_name(plan.album)):
+            # **the folder is one disc of a set** (§9, slice 146): no release is called
+            # `Requiembryo (CD 1)`, so ask for `Requiembryo` and let one medium answer.
+            bare, which = said
+            every = release_candidates(plan, mb.search_releases(plan.albumartist, core(bare)),
+                                       title=bare, any_count=True)
         candidates = every[:RELEASE_LOOKUPS]
     looked: dict[str, dict[str, Any]] = {c["id"]: offered_from(c) for c in every}
     for cand in candidates:
         release = mb.release(cand["id"])
         if release:
-            matches = match_release_tracks(plan, release, pinned=bool(pinned))
+            matches = match_release_tracks(plan, release, pinned=bool(pinned), medium=which)
             mb_tracks = [t for m in release.get("media", []) for t in m.get("tracks", [])]
             looked[cand["id"]] = offered_from(cand, release,
                                               matched=len(matches or {}) or _fits(plan, mb_tracks),
                                               needed=math.ceil(MIN_TRACK_MATCH * len(plan.tracks)))
-        if not release or (matches := match_release_tracks(plan, release,
-                                                           pinned=bool(pinned))) is None:
+        if not release or (matches := match_release_tracks(plan, release, pinned=bool(pinned),
+                                                           medium=which)) is None:
             continue
         rg = release.get("release-group") or cand.get("release-group") or {}
         plan.offered = []      # something fitted, so there is nothing left for a person to choose
