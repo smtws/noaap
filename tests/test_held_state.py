@@ -191,3 +191,53 @@ def test_a_sweep_that_was_asked_for_measures_it(library):
     assert held.missing["measured"], "and it says when it was taken"
     assert app.state()["settings"]["missing"]["tracks"] == 1
 
+
+# -- a cover or a track never waits behind a rescan (R-499 item 4) -------------------------------
+
+
+def test_a_cover_does_not_wait_for_a_rescan(library):
+    """A page load fires one cover request per card. None of them may queue behind a walk, so they
+    are answered from what is held even while the model is stale.
+
+    Counted **per thread**: the rescan a stale model is owed happens on the scanner's thread, which
+    is the whole point — what must not happen is the walk being done by the request.
+    """
+    import threading
+
+    import pytest
+
+    app = an_app(library)
+    first = app.state()["albums"][0]["id"]
+    app.library_changed()            # the model is stale, and a rescan is due
+
+    mine = threading.current_thread()
+    walked = []
+    real = type(library).glob
+
+    def counting(self, pattern):
+        if threading.current_thread() is mine:
+            walked.append(pattern)
+        return real(self, pattern)
+
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(type(library), "glob", counting)
+        assert app.album(first) is not None
+        app.cover(first)
+
+    assert walked == ["cover.*"], walked   # one listing of that album's own folder, and no walk
+
+
+def test_nothing_is_read_while_the_walker_holds_its_lock(library):
+    """The walk's lock is the walker's alone: a reader never takes it, so a rescan over a slow
+    filesystem cannot stop a track from playing."""
+    app = an_app(library)
+    first = app.state()["albums"][0]["id"]
+
+    app._rescanning.acquire()        # as if a walk were in progress
+    try:
+        start = time.monotonic()
+        assert app.album(first) is not None
+        assert app.state()["albums"]
+        assert time.monotonic() - start < 1.0
+    finally:
+        app._rescanning.release()

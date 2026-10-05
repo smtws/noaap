@@ -408,6 +408,18 @@ class App:
         self._keep_watching()
         return self._held
 
+    def held_now(self) -> Held:
+        """What is held this instant, and **never a walk** (§9, slice 139, R-499 item 4).
+
+        For the requests that carry bytes — a cover, a track's audio. A page load fires one cover
+        request per card, and none of them may wait behind a rescan: they are answered from whatever
+        the last walk found, and an id the walk has not seen yet is looked up on its own below.
+        """
+        if not self._held.at:
+            self.rescan()           # nothing is held at all, so there is nothing else to answer from
+        self._keep_watching()
+        return self._held
+
 
     def _keep_watching(self) -> None:
         if self._scanner is None or not self._scanner.is_alive():
@@ -553,7 +565,9 @@ class App:
         """
         if not self.library.exists():
             return None
-        held = self.held()
+        # **what is held, never a fresh walk** (R-499 item 4): a cover or a track must not queue
+        # behind a rescan, and an id this model has not seen is looked up by itself just below.
+        held = self.held_now()
         album_dir = held.index.get(source_id)
         if album_dir is None or not album_dir.is_dir():
             # not in what is held: the album may be newer than the last walk, so look once
