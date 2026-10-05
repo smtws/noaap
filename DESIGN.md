@@ -3991,6 +3991,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    title (`Der schwarze Schmetterling, Teil V` is a release), `Vol. 1 - Heavy Sleeping` is an album's
    own name, and a bare trailing number is far too little to go on.
 
+147. ✅ **Which of several fitting releases this album is** (2026-10-05, P108 item 4).
+   `enrich_release` took the **first** candidate that fitted, so the choice was whatever order the
+   search happened to return. On the user's library that is not a hypothetical: `Dragontown` has nine
+   editions, `Fate Of Norns` eight, `E.I.N.S` four. Now every candidate it can afford to open is
+   weighed and the best wins — **most of its titles matched, then official over a promo or a
+   bootleg, then the earliest date**, with the id settling anything still equal so the answer never
+   depends on a search's ordering. A reissue is the same record and the first pressing is the one to
+   name.
+   The budget is unchanged: three releases opened, and the rest listed for a person by slice 145
+   rather than fetched. A pinned release is not ranked against anything (slice 137).
+   **How much this moves, measured before building it:** of 639 albums, 425 already matched and 177
+   did not; of 60 of those 177 examined one by one, **47 have no usable candidate at all** and 5 have
+   one at 60–79% of its titles. So this slice decides between editions where several already fit —
+   worth having, and it is not what the 177 are waiting for. `release_candidates` also already sorts
+   by date, so first-fit often picked the earliest anyway; what only the ranking can do is weigh how
+   well each release *fits*, which the sort cannot know because it has opened none of them. The case
+   written for the date was therefore passing either way until it was made to say so.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

@@ -344,6 +344,19 @@ def carry_the_pin(existing: AlbumPlan, fresh: AlbumPlan) -> str | None:
     return pin
 
 
+def release_rank(cand: dict[str, Any], release: dict[str, Any],
+                 matches: dict[int, dict[str, Any]]) -> tuple[Any, ...]:
+    """Which of several fitting releases this album is: best first (§9, slice 147).
+
+    **Most of its titles matched**, then an official release over a promo or a bootleg, then the
+    earliest date — a reissue is the same record and the first pressing is the one to name. The id
+    breaks a remaining tie so the answer does not depend on the order a search happened to return.
+    """
+    official = (cand.get("status") or release.get("status")) == "Official"
+    when = str(cand.get("date") or release.get("date") or "9999")
+    return (-len(matches), not official, when, str(cand.get("id") or ""))
+
+
 def says_offer(one: dict[str, Any]) -> str:
     """One candidate in a line, as the log and the panel both say it (§9, slice 145)."""
     where = ", ".join(x for x in (one.get("date"), one.get("country")) if x)
@@ -397,17 +410,23 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
                                        title=bare, any_count=True)
         candidates = every[:RELEASE_LOOKUPS]
     looked: dict[str, dict[str, Any]] = {c["id"]: offered_from(c) for c in every}
+    # **every candidate is weighed, and the best one wins** (§9, slice 147). It used to take the
+    # first that fitted, and the search's own order put an unofficial or a much later edition in
+    # front of the release the album actually is — the choice was the sort of the search result.
+    fits: list[tuple[tuple[Any, ...], dict[str, Any], dict[str, Any], dict[int, dict[str, Any]]]] = []
     for cand in candidates:
         release = mb.release(cand["id"])
-        if release:
-            matches = match_release_tracks(plan, release, pinned=bool(pinned), medium=which)
-            mb_tracks = [t for m in release.get("media", []) for t in m.get("tracks", [])]
-            looked[cand["id"]] = offered_from(cand, release,
-                                              matched=len(matches or {}) or _fits(plan, mb_tracks),
-                                              needed=math.ceil(MIN_TRACK_MATCH * len(plan.tracks)))
-        if not release or (matches := match_release_tracks(plan, release, pinned=bool(pinned),
-                                                           medium=which)) is None:
+        if not release:
             continue
+        matches = match_release_tracks(plan, release, pinned=bool(pinned), medium=which)
+        flat = [t for one in media_of(release) for t in one]
+        looked[cand["id"]] = offered_from(cand, release,
+                                          matched=len(matches or {}) or _fits(plan, flat),
+                                          needed=math.ceil(MIN_TRACK_MATCH * len(plan.tracks)))
+        if matches is not None:
+            fits.append((release_rank(cand, release, matches), cand, release, matches))
+    if fits:
+        _, cand, release, matches = min(fits, key=lambda f: f[0])
         rg = release.get("release-group") or cand.get("release-group") or {}
         plan.offered = []      # something fitted, so there is nothing left for a person to choose
         _set(plan, "album", release["title"])
