@@ -3842,6 +3842,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    with every cover behind them — and a slow answer is *waited for*, with a ceiling far above the
    staleness bound, rather than shown as a server that went down.
 
+140. ✅ **A card gets a thumbnail, not the cover** (2026-10-05, P104).
+   Measured on the user's library over NFS, 1,221 covers beside their albums, **before anything was
+   changed**: a first view of forty cost 1.07 s, 27 ms each — **not a stall**. What it did cost was
+   bytes nobody could see: a card is `10.5rem`, about **168 px**, and it was sent the cover as it
+   stands, 65 KiB on average and 220 KiB at worst, 2.67 MB for one view and about **82 MB** for the
+   whole grid. The file crossed NFS, crossed the connection, and the browser then scaled it down.
+   That measurement is why this slice is small. The page already asked only for the cards in view
+   (slice 90's `IntersectionObserver`) and `/api/cover` was already cacheable, so there was nothing
+   to fix there — the honest finding was reported as such and the work narrowed to the one thing the
+   numbers showed.
+   So `?thumb=1` serves a 336 px JPEG — twice the card, so it is still sharp on a dense screen —
+   kept on the **local** disk under the cache directory, keyed by the cover's path, **size and
+   mtime**: a replaced cover is a new key and the old entry is simply never asked for again, so
+   nothing has to be invalidated. The panel and the player ask without it, because they show the
+   picture large. A cover already no bigger than a thumbnail is sent as it is rather than re-encoded,
+   and **nothing here can fail a request**: a cache that cannot be written or read falls through to
+   the cover itself.
+   After: **65 KiB → 24 KiB per card**, 2.67 MB → 0.98 MB for a first view, 18 ms → 10 ms warm, and
+   the whole grid **82 MB → 30 MB**, for 0.73 MB of cache per forty albums.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

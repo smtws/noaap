@@ -60,3 +60,34 @@ def _fit(start: int, lo: int, hi: int, side: int, total: int) -> int:
     start = min(start, lo)
     start = max(start, hi - side)
     return min(max(start, 0), total - side)
+
+
+# -- thumbnails for the grid (§9, slice 140) ------------------------------------------------------
+#
+# Measured on the user's library over NFS, 1,221 covers beside their albums: a card is **10.5rem
+# wide, about 168 px**, and it was sent the cover as it stands — **65 KiB on average, 220 KiB at
+# worst**, 2.67 MB for one view of forty and about **82 MB** for the whole grid. Not a stall (27 ms
+# each) but bytes nobody can see: the file crosses NFS, crosses the HTTP connection, and is then
+# scaled down to a thumb's size by the browser.
+
+THUMB_SIDE = 336        # about twice the card's width, so it is still sharp on a 2× screen
+THUMB_QUALITY = 78
+
+
+def thumbnail(data: bytes, side: int = THUMB_SIDE) -> tuple[bytes, str] | None:
+    """`data` scaled to fit `side`, as JPEG — or None where it is no bigger than that already.
+
+    None rather than a re-encode: a cover that is already small gains nothing from being passed
+    through an encoder, and a JPEG round trip is never free.
+    """
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:
+        return None
+    if max(img.size) <= side:
+        return None
+    img.thumbnail((side, side), Image.LANCZOS)
+    out = io.BytesIO()
+    img.convert("RGB").save(out, "JPEG", quality=THUMB_QUALITY, optimize=True)
+    return out.getvalue(), "image/jpeg"

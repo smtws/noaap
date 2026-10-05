@@ -40,6 +40,8 @@ import httpx
 from . import config as config_mod
 from . import running_from, sources, user_agent
 from .config import Config
+from .cover import THUMB_SIDE
+from .cover import thumbnail as make_thumbnail
 from .download import COVER_STEM, PLAN_FILE, iter_plans, load_plan, read_plan
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
 from .mb import WEB as MB_WEB
@@ -628,16 +630,52 @@ class App:
                              lambda s: s.sync_lyrics(source_id), target=source_id)
         return plan
 
-    def cover(self, source_id: str) -> tuple[bytes, str, float] | None:
-        """The album's cover, its type, and when the file was last written (§9, slice 90)."""
+    def cover(self, source_id: str, thumb: bool = False) -> tuple[bytes, str, float] | None:
+        """The album's cover, its type, and when the file was last written (§9, slice 90).
+
+        With `thumb`, a thumbnail for the grid instead — kept on the local disk, so the cover crosses
+        NFS once and never again while the file is unchanged (§9, slice 140).
+        """
         found = self.album(source_id)
         if not found:
             return None
         for path in sorted(found[0].glob(f"{COVER_STEM}.*")):
+            try:
+                about = path.stat()
+            except OSError:
+                continue
+            if thumb and (small := self._thumb_file(path, about)):
+                return small[0], small[1], about.st_mtime
             data = path.read_bytes()
             if mime := image_mime(data):
-                return data, mime, path.stat().st_mtime
+                return data, mime, about.st_mtime
         return None
+
+    def _thumb_file(self, path: Path, about: os.stat_result) -> tuple[bytes, str] | None:
+        """The cached thumbnail of this cover, making it first if need be (§9, slice 140).
+
+        **Keyed by where the file is and what it was when we read it** — its size and its mtime —
+        so a cover that is replaced gets a new key and the old entry is simply never asked for
+        again. Nothing here fails a request: a cache that cannot be written or read falls through to
+        the cover itself.
+        """
+        key = hashlib.sha1(f"{path}:{about.st_size}:{about.st_mtime_ns}:{THUMB_SIDE}".encode()).hexdigest()[:20]
+        where = config_mod.cache_dir() / "thumbs" / f"{key}.jpg"
+        with contextlib.suppress(OSError):
+            if where.is_file():
+                return where.read_bytes(), "image/jpeg"
+        data = path.read_bytes()
+        if not image_mime(data):
+            return None
+        made = make_thumbnail(data)
+        if made is None:
+            return None            # already no bigger than a thumbnail: send the file itself
+        with contextlib.suppress(OSError):
+            where.parent.mkdir(parents=True, exist_ok=True)
+            tmp = where.with_suffix(".part")
+            tmp.write_bytes(made[0])
+            tmp.replace(where)     # whole or absent, never half a picture
+        return made
 
     def lyrics(self, source_id: str, video_id: str) -> dict[str, Any] | None:
         """The lyrics of one track, read from the `.lrc` beside it (that file is the original)."""
@@ -1512,7 +1550,9 @@ class _Handler(BaseHTTPRequestHandler):
                 plan = self.app.album_view(q.get("id", ""))
                 return self._json(self.app.with_links(plan)) if plan else self._error(HTTPStatus.NOT_FOUND, "no such album")
             case "/api/cover":
-                cover = self.app.cover(q.get("id", ""))
+                # `thumb=1` is the grid's: a card is 168px and a cover averages 65 KiB (§9, slice 140).
+                # The panel and the player ask without it, because they show the picture large.
+                cover = self.app.cover(q.get("id", ""), thumb=q.get("thumb") == "1")
                 # **a cover is a file on disk and may be cached** (§9, slice 90): `no-store` made a
                 # refresh fetch every one of them again — 52 MB on the user's library, with the first
                 # press of play waiting behind it.

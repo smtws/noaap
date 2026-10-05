@@ -447,7 +447,9 @@ function watched(img) {
 function card(a) {
   const cover = a.cover
     ? watched(h("img", { class: "cover", alt: "", loading: "lazy",
-                         "data-cover": `/api/cover?id=${encodeURIComponent(a.id)}&t=${a.done}` }))
+                         // a card is 10.5rem wide, so it asks for a thumbnail rather than the
+                         // cover itself — 65 KiB each and about 82 MB for the whole grid (slice 140)
+                         "data-cover": `/api/cover?id=${encodeURIComponent(a.id)}&t=${a.done}&thumb=1` }))
     : h("div", { class: "cover none" }, "♪");
   const status = a.needs_choice ? h("span", { class: "badge warn" }, `${a.needs_choice} need${a.needs_choice > 1 ? "" : "s"} a choice`)
     : a.failed ? h("span", { class: "badge bad" }, `${a.failed} failed`)
