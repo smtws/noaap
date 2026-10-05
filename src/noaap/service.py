@@ -13,7 +13,7 @@ import shutil
 import tempfile
 import threading
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -672,11 +672,36 @@ class Service:
         self.log(f"{merged.albumartist} — {merged.album}: {added} new, {gone} no longer in the folder")
         return Outcome("ok", merged, album_dir)
 
-    def update_all(self, report_only: bool = False, deep: bool = False, artist: str | None = None) -> list[Outcome]:
-        """Check every album (or one artist's). Unchanged, complete albums cost one request."""
+    def _only_these(self, albums: list[tuple[Path, AlbumPlan]],
+                    only: Iterable[str]) -> list[tuple[Path, AlbumPlan]]:
+        """The albums `--only` chooses, said out loud, with any value that chose nothing (slice 134).
+
+        The take-in's own rule (R-417, point 1), on the library instead of a root: a value is a path
+        under the library — `DOMINUM`, `DOMINUM/Night is Calling` — matched component by component
+        through `text_key`, so one spelling works for `adopt`, `merge`, `take-in`, `repair` and
+        `update` alike. **The library stays the whole library**: the spelling of an artist and the
+        name the scheme gives are library-wide facts, and a pass over one album must not decide them
+        from that one album.
+        """
+        from .intake import says_only, under_only
+
+        if not (values := list(only)):
+            return albums
+        by_dir = dict(albums)
+        chosen, missed = under_only(list(by_dir), self.library, values)
+        self.log(says_only(values, chosen))
+        for value in missed:
+            self.log(f"  nothing under {value!r} — no album of the library is there")
+        return [(d, by_dir[d]) for d in chosen]
+
+    def update_all(self, report_only: bool = False, deep: bool = False, artist: str | None = None,
+                   only: Iterable[str] = ()) -> list[Outcome]:
+        """Check every album (or one artist's, or the ones `--only` names). Unchanged, complete
+        albums cost one request."""
         albums = list(iter_plans(self.library)) if self.library and self.library.exists() else []
         if artist:
             albums = [(d, p) for d, p in albums if p.albumartist.casefold() == artist.casefold()]
+        albums = self._only_these(albums, only)
         if not albums:
             self.log(f"no albums{f' by {artist}' if artist else ''} in {self.library}")
         outcomes: list[Outcome] = []
@@ -1730,7 +1755,8 @@ class Service:
         return done
 
     def repair(self, dry_run: bool = False, strays: bool = False, apply: bool = False,
-               find_moved: bool = False, under: Path | None = None) -> list[Outcome]:
+               find_moved: bool = False, under: Path | None = None,
+               only: Iterable[str] = ()) -> list[Outcome]:
         """Tidy the library without asking YouTube: performer-only artists, one spelling, lengths.
 
         Fixes albums downloaded before those rules existed — renames and retags only. With
@@ -1751,7 +1777,9 @@ class Service:
         lengths = retags = renames = pointed = cased = stuck = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
-        for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
+        # the whole library decides the spellings above; `only` decides what is *touched* below
+        here = list(iter_plans(self.library)) if self.library and self.library.exists() else []
+        for album_dir, plan in self._only_these(here, only):
             before = (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks))
             # **first, before anything here tidies a name** (§9, slice 63): a file in the album's root
             # was written under the name the plan held *then*, and a pass that recognises one has to
@@ -1947,7 +1975,9 @@ class Service:
         if stuck:
             self.log(f"{stuck} album folder(s) could not move: something is already there")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
-        if self.library and self.library.is_dir():
+        if self.library and self.library.is_dir() and not list(only):
+            # **the whole-library sections belong to a whole-library run** (§9, slice 134): asked for
+            # one part of the collection, a pass has no business naming empty folders somewhere else.
             # **removing them is the setting; saying they are there is not** (§9, slice 104, 115).
             # Off, a pass clears only the folders it emptied itself and leaves the owner's alone —
             # but an empty folder a *rename* left behind is this program's own litter, and the user

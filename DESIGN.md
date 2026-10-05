@@ -3684,6 +3684,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    promises to tell you, the apply tells you in the same words** — an apply that is quieter than its
    own dry run is an apply nobody can read.
 
+134. ✅ **`repair --only` and `update --only`, the take-in's rule on the library** (2026-10-05,
+   P98 item 5). `update` could be narrowed to an artist from the API and not from the command line,
+   `repair` not at all — so settling the naming of **two** albums meant a run over 1,311, or a
+   one-off script calling the Service by hand. Both now take `--only PATH`, `append`, with
+   `intake.under_only`'s matching (R-417, point 1): a path under the library, component by component
+   through `text_key`, so one spelling works for `adopt`, `merge`, `take-in`, `repair` and `update`
+   alike, and a value that chooses nothing is named instead of silently doing nothing.
+   **`--only` says what is touched, never what anything is decided from.** The spellings are settled
+   from the whole library before the first rename (slice 129) and the scheme's names are library-wide
+   — a run over one album of `Umbra Et Imago` must still learn that twenty-three others spell it
+   `Umbra et Imago`. The two whole-library sections at the end (empty folders, artist folders without
+   albums) are the other side of that line: asked for one part of the collection, a pass has no
+   business naming folders somewhere else, so they are skipped.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

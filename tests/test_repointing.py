@@ -456,3 +456,108 @@ def test_a_folder_that_moves_cleanly_says_nothing_about_a_collision(tmp_path, on
     assert (root / "A Band" / "An Album").is_dir()
     assert not [line for line in said if "already there" in line], said
     assert not [line for line in said if "could not move" in line], said
+
+
+# -- one part of the library (§9, slice 134; R-484 item 5) ---------------------------------------
+
+
+def three_albums(root, tone):
+    an_album(root / "A Band" / "One", ["x"], tone, artist="A Band", album="One")
+    an_album(root / "A Band" / "Two", ["y"], tone, artist="A Band", album="Two")
+    an_album(root / "B Band" / "Three", ["z"], tone, artist="B Band", album="Three")
+    return root
+
+
+def test_repair_only_touches_what_it_was_given(tmp_path, one_second_of_sound):
+    root = three_albums(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    for album in (root / "A Band" / "One", root / "A Band" / "Two", root / "B Band" / "Three"):
+        plan = load_plan(album)
+        plan.source_id = plan.source_url = f"/gone/staging/batch/{album.parent.name}/{album.name}"
+        save_plan(plan, album)
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(only=["A Band/Two"])
+
+    assert said[0] == "only: A Band/Two (1 album)", said[:2]
+    assert load_plan(root / "A Band" / "Two").source_id == str(root / "A Band" / "Two")
+    assert load_plan(root / "A Band" / "One").source_id.startswith("/gone"), "not asked for"
+    assert load_plan(root / "B Band" / "Three").source_id.startswith("/gone")
+    assert "1 album(s) tidied up" in said, said
+
+
+def test_an_artist_folder_chooses_all_its_albums(tmp_path, one_second_of_sound):
+    root = three_albums(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True, only=["a band"])
+
+    assert said[0] == "only: a band (2 albums)", said[:2]
+
+
+def test_a_value_that_chooses_nothing_is_said(tmp_path, one_second_of_sound):
+    root = three_albums(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True, only=["C Band"])
+
+    assert said[0] == "only: C Band (0 albums)", said[:2]
+    assert "  nothing under 'C Band' — no album of the library is there" in said, said
+
+
+def test_the_whole_library_sections_belong_to_a_whole_library_run(tmp_path, one_second_of_sound):
+    """Asked for one part, a pass has no business naming empty folders somewhere else."""
+    root = three_albums(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    (root / "C Band").mkdir()
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True, only=["A Band"])
+    assert not [line for line in said if "empty folder" in line], said
+
+    said.clear()
+    service.repair(dry_run=True)
+    assert [line for line in said if "empty folder" in line], said
+
+
+def test_the_spelling_is_still_decided_from_the_whole_library(tmp_path, one_second_of_sound):
+    """`--only` says what is touched, never what the names are decided from: one album cannot know
+    how the rest of the library spells its artist."""
+    root = tmp_path / "collection"
+    for album in ("One", "Two", "Three"):
+        an_album(root / "Umbra et Imago" / album, ["x"], one_second_of_sound,
+                 artist="Umbra et Imago", album=album)
+    an_album(root / "Umbra Et Imago" / "Four", ["y"], one_second_of_sound,
+             artist="Umbra Et Imago", album="Four")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = said.append
+    service.repair(only=["Umbra Et Imago"])
+
+    assert (root / "Umbra et Imago" / "Four").is_dir(), "the three won, though only the one was run"
+    assert [line for line in said if "elsewhere in the library" in line], said
+
+
+def test_update_takes_the_same_option(tmp_path, one_second_of_sound):
+    root = three_albums(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root)
+    service.log = said.append
+    service.update_all(report_only=True, only=["B Band/Three"])
+
+    assert said[0] == "only: B Band/Three (1 album)", said[:2]
+    assert not [line for line in said if "A Band" in line], said

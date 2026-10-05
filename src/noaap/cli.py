@@ -100,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--apply", action="store_true",
                     help="with --strays or --find-moved: actually do it. Without it those two make the "
                          "whole run a dry one — nothing at all is written, plans included")
+    rp.add_argument("--only", action="append", metavar="PATH", help='one part of the library — an artist folder, or an album inside one, as a path under the library; may be given more than once. The library stays the whole library, so a spelling and a name are still decided from all of it')
 
     ly = sub.add_parser("lyrics", help="fetch lyrics for tracks that have none yet (.lrc beside the file + tag)")
     ly.add_argument("--library", type=Path)
@@ -120,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--no-mb", action="store_true", help="skip the MusicBrainz lookup")
     u.add_argument("--no-lyrics", action="store_true", help="do not look lyrics up at lrclib.net")
     u.add_argument("--deep", action="store_true", help="read every album fully, even unchanged ones")
+    u.add_argument("--only", action="append", metavar="PATH", help='one part of the library — an artist folder, or an album inside one, as a path under the library; may be given more than once. The library stays the whole library, so a spelling and a name are still decided from all of it')
 
     sv = sub.add_parser("serve", help="web UI for the library (also installable as an app)")
     sv.add_argument("--library", type=Path)
@@ -274,7 +276,8 @@ def main(argv: list[str] | None = None) -> int:
                 library = _library(args, cfg, required=True)
                 if library is None:
                     return 2
-                code = exit_code(_service(cfg, library).update_all(report_only=args.dry_run, deep=args.deep))
+                code = exit_code(_service(cfg, library).update_all(
+                    report_only=args.dry_run, deep=args.deep, only=args.only or ()))
                 _say_lost(library)
                 return code
             case "serve":
@@ -390,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:
                 code = exit_code(_service(cfg, library).repair(dry_run=args.dry_run,
                                                                 strays=args.strays, apply=args.apply,
                                                                 find_moved=args.find_moved,
-                                                                under=args.under))
+                                                                under=args.under,
+                                                                only=args.only or ()))
                 _say_lost(library)
                 return code
             case "lyrics":
