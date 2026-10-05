@@ -914,3 +914,53 @@ def _shared(values: list[str | None]) -> str | None:
     """The value if every entry has the same non-empty one."""
     present = {_key(v): v for v in values if v}
     return next(iter(present.values())) if len(present) == 1 and all(values) else None
+
+
+# -- what a lookup would change (§9, slice 142) --------------------------------------------------
+#
+# `update --dry-run` on an album already in the library printed the merge and the MusicBrainz lines
+# and **nothing about the album's own fields**: `0 new, 0 no longer in the source` and no word on the
+# title it would rewrite, the numbers it would move or the discs it would assign. The `NN would be
+# retagged` lines belong to `repair`, which is a different pass asking a different question. So the
+# dry run compares the plan it has merged with the one on disk and says what it would really do.
+
+def _one(name: str, was: object, now: object) -> str | None:
+    if was == now:
+        return None
+    return f"{name}: {was if was not in (None, '') else 'nothing'} → {now if now not in (None, '') else 'nothing'}"
+
+
+def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
+    """Field by field, what `now` would change about `was` — one line each, nothing it would not.
+
+    The album's own fields first, then a line per track that moves or is renamed. A track is matched
+    by its id, so a track that is simply new or simply gone is named as that rather than paired with
+    somebody else by position.
+    """
+    out: list[str] = []
+    for name in ("albumartist", "album", "year", "mbid", "kind"):
+        if line := _one(name, getattr(was, name, None), getattr(now, name, None)):
+            out.append(line)
+    if (was.cover_url or "") != (now.cover_url or "") and now.cover_url:
+        out.append(f"cover: from {now.cover_url}")
+    mine = {t.video_id: t for t in was.tracks}
+    for track in now.tracks:
+        before = mine.pop(track.video_id, None)
+        if before is None:
+            out.append(f"{track.disc}-{track.number:02d} {track.title}: new in the source")
+            continue
+        for name, label in (("title", "title"), ("artist", "artist")):
+            if line := _one(f"{track.number:02d} {label}", getattr(before, name), getattr(track, name)):
+                out.append(line)
+        if (before.disc, before.number) != (track.disc, track.number):
+            out.append(f"{before.title}: {before.disc}-{before.number:02d} → "
+                       f"{track.disc}-{track.number:02d}")
+        if not before.mbid and track.mbid:
+            out.append(f"{track.number:02d} {track.title}: a recording id")
+        # **a track the source has dropped is kept and flagged, not removed** (slice 3), so this is
+        # where it is seen — not in the leftovers below, which `merge_plans` rarely leaves anything in
+        if before.in_source and not track.in_source:
+            out.append(f"{track.number:02d} {track.title}: no longer in the source")
+    for left in mine.values():
+        out.append(f"{left.number:02d} {left.title}: gone from the plan")
+    return out

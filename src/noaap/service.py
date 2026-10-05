@@ -68,6 +68,7 @@ from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, 
 from .plan import (
     as_the_plan_knows_them,
     build_plan,
+    changes_from,
     drop_album_name,
     merge_plans,
     refresh_derived,
@@ -399,7 +400,13 @@ class Service:
             gone = sum(not t.in_source for t in plan.tracks)
             self.log(f"existing album {old_dir.relative_to(self.library)}: {new} new, {gone} no longer in the source")
             if report_only:
-                return Outcome("reported", plan, old_dir)
+                # **and what it would change about the album itself** (§9, slice 142). This used to
+                # stop at the line above: `0 new, 0 no longer in the source` and not a word about the
+                # title it would rewrite, the numbers it would move or the discs it would assign.
+                self._settle_artist(plan)   # read-only, and part of what a real run would write
+                for line in (said := changes_from(existing, plan)):
+                    self.log(f"  {line}")
+                return Outcome("reported", plan, old_dir, f"{len(said)} change(s)")
             self._settle_artist(plan)  # before the folder is chosen, or the album stays put
             album_dir = relocate(old_dir, plan, self.library, for_album(self.cfg, plan))
         else:

@@ -3887,6 +3887,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    still comes first of all, and a cover beside the album is never fetched over at all — that path
    only runs when there is none.
 
+142. ✅ **"Identify with MusicBrainz", and a dry run that says what it would change**
+   (2026-10-05, P106). The user pinned a release by hand and nothing happened until a pass was run
+   from a terminal: the panel had no way to say *go and look this album up*.
+   **And the premise the button was asked for did not hold.** `update --dry-run` on an album already
+   in the library returned at the merge — `0 new, 0 no longer in the source` — and said **nothing
+   about the album's own fields**: not the title it would rewrite, not the numbers it would move, not
+   the discs it would assign. The `NN would be retagged` lines are `repair`'s, a different pass
+   asking a different question. So there were no "dry-run lines" to show.
+   The dry run already computes the plan it would write, so it now compares that with the one on disk
+   and says what it would really do, field by field: `mbid: nothing → 73fcbc7e…`, `03 title: … → …`,
+   a track that moved disc or number, a recording id arriving, a cover. **One function, two callers**
+   (`changes_from`), so the command line and the button cannot drift.
+   The button is a repair's two steps — look, then apply what was listed — because the lookup rewrites
+   titles, numbers and discs, and a person who cannot see that first is being asked to trust it
+   blind. `identify` is in the read lane and writes nothing; `identify_apply` is the write. Always
+   `deep`, because the point of the button is to look: an album the cheap check would call unchanged
+   must still be read.
+   **What it does not do is as much the point.** A pinned release is opened and not searched for
+   (slice 137); a field the user typed is untouched; and for an album adopted from a folder **the
+   files' own tags still beat the archive** (`FIRSTHAND`), so a release cased differently brings its
+   ids and leaves the name alone — what it said is kept in `auto`, where a reset can reach it. Three
+   expectations written for this were wrong in exactly that way before the cases were made to fail
+   without the fix: a release whose title differs is not even a candidate, and an adopted album's
+   title is deliberately not the archive's to change.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
