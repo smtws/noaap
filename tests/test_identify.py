@@ -129,10 +129,12 @@ def test_the_apply_is_a_write_and_does_it(collection):
     assert all(t.mbid for t in after.tracks), "and a recording id per track"
 
 
-def test_an_adopted_albums_own_tags_still_beat_the_archive(collection):
-    """For an album taken in from a folder, what the files say wins over MusicBrainz — that is the
-    rule (`FIRSTHAND`), and identifying it does not quietly change it. So a release whose title is
-    cased differently brings its ids and leaves the name alone."""
+def test_a_matched_release_outranks_the_files_own_tags(collection):
+    """§9, slice 148 (the user: *"normalizing a library may become quite a workload otherwise"*).
+    Until R-515 the files' own tags beat the archive for an adopted album, so a release cased
+    differently brought its ids and left the name alone. Now a release that has been **matched** —
+    by name, by artist and by four fifths of its titles — is the better information, and the album
+    takes its spelling. Nothing is written without an apply."""
     mb = SaysOneRelease(title="CULT")
     app = an_app(collection, mb)
     source_id = the_album(app)
@@ -140,8 +142,8 @@ def test_an_adopted_albums_own_tags_still_beat_the_archive(collection):
     settled(app, app.submit("identify", {"id": source_id}))
 
     after = load_plan(app.album(source_id)[0])
-    assert after.album == "Cult", "the owner's own spelling"
-    assert after.auto.get("album") == "CULT", "and what the archive said is kept where a reset reaches it"
+    assert after.album == "CULT", "the matched release's own title"
+    assert after.auto.get("album") == "CULT"
     assert after.mbid == RELEASE
 
 

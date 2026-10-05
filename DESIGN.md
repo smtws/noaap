@@ -4009,6 +4009,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    well each release *fits*, which the sort cannot know because it has opened none of them. The case
    written for the date was therefore passing either way until it was made to say so.
 
+148. ✅ **A matched release outranks the files' own tags** (2026-10-05, R-515). The user:
+   *"normalizing a library may become quite a workload otherwise"*.
+   Slice 53 gave the files the last word over MusicBrainz — *whoever tagged that collection knew
+   which release they had* — and for **1,312 of the user's 1,523 albums** that meant identifying one
+   brought its ids and left every name as the owner had typed it, so a library could never be
+   normalised by looking it up. **This supersedes R-410 ruling 5 for matched albums.**
+   A release that has been *matched* is not a guess: it agreed on the album's name, on its artist,
+   and on four fifths of its track titles. That is better information than a tag nobody has checked
+   since, so once a release is matched or pinned its album name, album artist, year, track titles,
+   numbers and discs are written. An album with **no** matched release changes nothing and keeps
+   every value its take-in found.
+   Three things are untouched by it. A value the **user** typed: `_set` writes and `merge_plans`
+   restores it by comparing with `auto` (slice 29) — that pairing is where the rule lives, and the
+   case for it drives both halves. The **artist's spelling**, which stays the MusicBrainz *artist
+   entity*'s and not a release credit's (slice 138) — `_settle_artist` runs after the lookup and has
+   the last word. And **the disk**: this is what a dry run would do, shown line by line by the field
+   diff (slice 142), and nothing is written without an apply.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

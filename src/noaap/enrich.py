@@ -429,11 +429,12 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         _, cand, release, matches = min(fits, key=lambda f: f[0])
         rg = release.get("release-group") or cand.get("release-group") or {}
         plan.offered = []      # something fitted, so there is nothing left for a person to choose
-        _set(plan, "album", release["title"])
+        _set(plan, "album", release["title"], matched=True)
         # the album belongs to the main artist; guest credits stay on the tracks
-        _set(plan, "albumartist", credit_names(release["artist-credit"])[0] or credit_phrase(release["artist-credit"]))
+        _set(plan, "albumartist", credit_names(release["artist-credit"])[0]
+             or credit_phrase(release["artist-credit"]), matched=True)
         if year := (rg.get("first-release-date") or release.get("date") or "")[:4]:
-            _set(plan, "year", int(year))
+            _set(plan, "year", int(year), matched=True)
         plan.mbid = release["id"]
         # **this release's own front** (§9, slice 141). The group's is whichever edition the archive
         # chose for the group, and for a release somebody named by hand that is the wrong picture.
@@ -451,8 +452,8 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         for i, t in enumerate(plan.tracks):
             if m := matches.get(i):
                 artist, title = move_feat(credit_phrase(m.get("artist-credit") or release["artist-credit"]), m["title"])
-                _set(t, "title", title)
-                _set(t, "artist", artist)
+                _set(t, "title", title, matched=True)
+                _set(t, "artist", artist, matched=True)
                 t.number, t.disc, t.mbid = int(m["position"]), int(m["disc"]), m["recording"]["id"]
                 if length := m.get("length") or m["recording"].get("length"):
                     t.mb_length = round(int(length) / 1000, 1)
@@ -599,8 +600,20 @@ def _worth_looking_up(plan: AlbumPlan, t: PlanTrack) -> bool:
 FIRSTHAND = (Provenance.FILE_TAGS,)
 
 
-def _set(obj: AlbumPlan | PlanTrack, name: str, value: Any) -> None:
-    if obj.provenance.get(name) in FIRSTHAND:
+def _set(obj: AlbumPlan | PlanTrack, name: str, value: Any, matched: bool = False) -> None:
+    """Write what MusicBrainz says, unless something better is already there.
+
+    **`matched` says a release was identified** (§9, slice 148; the user: *"normalizing a library may
+    become quite a workload otherwise"*). Where one was, the files' own tags no longer outrank it:
+    whoever tagged that collection knew which record they had, but a release that has been *matched*
+    — by name, by artist and by four fifths of its track titles — is better information than a tag
+    nobody has checked since. Where no release was identified, `FIRSTHAND` stands as it was and the
+    files keep their values.
+
+    A value the **user** typed is never touched by either path: `merge_plans` decides a field is
+    theirs by comparing it with `auto`, and restores it over anything written here (slice 29).
+    """
+    if not matched and obj.provenance.get(name) in FIRSTHAND:
         # kept where a reset can reach it, so the page can still offer what MusicBrainz said
         obj.auto[name] = value
         return
