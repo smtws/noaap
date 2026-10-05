@@ -445,6 +445,11 @@ class AlbumPlan:
     provenance: dict[str, str] = field(default_factory=dict)
     auto: dict[str, object] = field(default_factory=dict)  # album-level twin of PlanTrack.auto
     mbid: str | None = None  # MusicBrainz release id
+    # **the release group this release belongs to** (§9, slice 144). Only MusicBrainz knows it, and
+    # the Cover Art Archive answers a group where a release itself has no front — so an album whose
+    # release has no artwork can never reach its group's unless this is written down. The user's
+    # `Apocalyptica/Amplified…` is the case: release `31a80627` is a 404 and the group is a 307.
+    release_group: str | None = None
     cover_fallback_url: str | None = None  # tried when cover_url fails (e.g. no Cover Art Archive image)
     cover_fetched: dict[str, str] = field(default_factory=dict)  # {url, sha1} of the cover.* we saved
     # what the source looked like last time: lets an update skip it after one cheap request

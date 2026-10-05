@@ -1348,6 +1348,16 @@ def caa_release_front(mbid: str | None) -> str | None:
     return f"{CAA}/release/{mbid}/front-500" if mbid else None
 
 
+def caa_group_front(mbid: str | None) -> str | None:
+    """The front of the release **group**, or None (§9, slice 144).
+
+    Behind the release's own, because a group's front is whichever edition the archive picked for the
+    group — but a release with no artwork of its own is exactly when that is the best there is. The
+    user's `Apocalyptica/Amplified…`: release `31a80627` answers 404, the group answers 307.
+    """
+    return f"{CAA}/release-group/{mbid}/front-500" if mbid else None
+
+
 def is_caa_group(url: object) -> bool:
     """Whether this address is a release *group*'s front rather than a release's."""
     return str(url or "").startswith(f"{CAA}/release-group/")
@@ -1380,6 +1390,12 @@ def _cover_addresses(plan: AlbumPlan, album_dir: Path | None = None) -> list[str
         # reached: `Apocalyptica/Cult` had a pinned release, a folder for an address and no picture
         # in any of its files, and every pass said `could not fetch any cover`.
         found = [*found, front]
+    # **and behind the release, its group** (§9, slice 144) — last, because a group's front is
+    # whichever edition the archive chose, but a release with no artwork of its own is exactly when
+    # that is the best there is: `Apocalyptica/Amplified…` answers 404 for its release and 307 here.
+    group = caa_group_front(plan.release_group)
+    if group and group not in found:
+        found = [*found, group]
     if not any(held) and _asks_its_source(plan):
         found.append(plan.source_url)
     if not any(held) and plan.adopted and album_dir is not None:

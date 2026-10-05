@@ -3929,6 +3929,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    track's candidates from the day it was written and this one line had been quietly breaking it
    ever since folders became a provider.
 
+144. ✅ **A release with no artwork of its own has a group that may have some** (2026-10-05, P108
+   item 1). The user pinned `Apocalyptica/Amplified — A Decade of Reinventing the Cello` to release
+   `31a80627`. Measured against the archive: that release's front is a **404**, and its group
+   `ff01a595-ff51-395a-9ed1-b2c93f54f659` answers **307** — to `3395850b`, which is another edition
+   of the same album. Every pass logged `could not fetch any cover … no cover in <folder>`.
+   Slice 141 ruled release-then-group and the group was still never tried, because **the plan did not
+   hold the group's id**: only MusicBrainz knows it, and the address list is offline by design. So
+   the release group is written into the plan the moment a lookup tells us, and its front is the last
+   address tried — after the album's own files and after the release's own front, because a group's
+   front is whichever edition the archive chose and that is a worse answer than this release's own
+   whenever there is one.
+   **Why P105's case did not catch it:** the release it used *has* a front, so the list never ran out
+   of addresses. A case for "the archive answers" is not a case for "the archive answers 404 and
+   something else is left to try" — and only the second one is a fallback.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

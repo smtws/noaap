@@ -285,3 +285,85 @@ def test_a_hedged_cover_line_alone_does_not_un_skip_an_album(tmp_path, one_secon
     service.repair(dry_run=True)
 
     assert not [line for line in said if line.startswith("=== ")], said
+
+
+# -- the release group, for a release with no front of its own (§9, slice 144; R-512 item 1) ------
+
+AMPLIFIED = "31a80627-5b74-4456-bf0d-770472566220"
+AMPLIFIED_GROUP = "ff01a595-ff51-395a-9ed1-b2c93f54f659"
+
+
+def test_the_group_is_tried_behind_the_release(tmp_path):
+    """`Apocalyptica/Amplified — A Decade of Reinventing the Cello`, pinned by the user to
+    `31a80627`: that release's front is a **404** and its group's is a **307**. Measured against the
+    archive. The group was never tried, because the plan did not hold its id — only MusicBrainz knows
+    it, and the address list is offline."""
+    from noaap.download import caa_group_front
+
+    album = tmp_path / "Apocalyptica" / "Amplified"
+    plan = a_plan(mbid=AMPLIFIED, release_group=AMPLIFIED_GROUP, cover_url=str(album),
+                  adopted={"folder": "Apocalyptica/Amplified"})
+
+    addresses = _cover_addresses(plan, album)
+
+    assert addresses == [str(album), caa_release_front(AMPLIFIED), caa_group_front(AMPLIFIED_GROUP)]
+
+
+def test_without_a_group_nothing_is_invented(tmp_path):
+    album = tmp_path / "Apocalyptica" / "Amplified"
+    plan = a_plan(mbid=AMPLIFIED, cover_url=str(album), adopted={"folder": "x"})
+
+    assert _cover_addresses(plan, album) == [str(album), caa_release_front(AMPLIFIED)]
+
+
+def test_the_group_front_is_an_address_of_its_own():
+    from noaap.download import caa_group_front
+
+    assert caa_group_front(AMPLIFIED_GROUP) == f"{CAA}/release-group/{AMPLIFIED_GROUP}/front-500"
+    assert caa_group_front(None) is None
+
+
+def test_a_lookup_writes_the_group_down():
+    """Only MusicBrainz knows it, so the pass that is told remembers it — and every later pass can
+    then reach the group offline."""
+    from noaap.enrich import enrich_release
+
+    credit = [{"name": "Apocalyptica", "artist": {"name": "Apocalyptica"}}]
+    release = {"id": AMPLIFIED, "title": "Cult", "date": "2008", "artist-credit": credit,
+               "release-group": {"id": AMPLIFIED_GROUP, "first-release-date": "2006"},
+               "media": [{"position": 1, "tracks": [
+                   {"position": 1, "title": "Path Vol. II", "artist-credit": credit,
+                    "recording": {"id": "rec-1"}}]}]}
+
+    class MB:
+        def release(self, mbid):
+            return release
+
+        def search_releases(self, artist, album):
+            return []
+
+        def search_recordings(self, artist, title):
+            return []
+
+        def artist(self, name):
+            return None
+
+        def artist_albums(self, artist):
+            return []
+
+    plan = a_plan(mbid=AMPLIFIED)
+    plan.provenance["mbid"] = "user"
+    assert plan.release_group is None
+
+    assert enrich_release(plan, MB()) is True
+    assert plan.release_group == AMPLIFIED_GROUP
+
+
+def test_a_group_already_in_the_cover_address_is_not_listed_twice(tmp_path):
+    plan = a_plan(mbid=AMPLIFIED, release_group=AMPLIFIED_GROUP,
+                  cover_url=f"{CAA}/release-group/{AMPLIFIED_GROUP}/front-500")
+
+    addresses = _cover_addresses(plan, tmp_path)
+
+    assert addresses.count(f"{CAA}/release-group/{AMPLIFIED_GROUP}/front-500") == 1, addresses
+    assert addresses[0] == caa_release_front(AMPLIFIED), "the release still comes first"

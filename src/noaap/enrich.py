@@ -302,6 +302,9 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         plan.cover_fallback_url = (plan.cover_fallback_url or plan.cover_url
                                    or (f"{CAA}/release-group/{rg['id']}/front-500" if rg.get("id") else None))
         plan.cover_url = caa_release_front(release["id"])
+        # **written down, because only MusicBrainz knows it** (§9, slice 144): an album whose release
+        # has no front can then reach its group's on any later pass, offline.
+        plan.release_group = rg.get("id") or plan.release_group
 
         next_number = max((int(m["position"]) for m in matches.values()), default=0) + 1
         for i, t in enumerate(plan.tracks):
