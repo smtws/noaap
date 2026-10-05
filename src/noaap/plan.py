@@ -7,6 +7,7 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from .models import AlbumPlan, Collection, Entry, Kind, PlanTrack, Provenance
@@ -535,6 +536,48 @@ ALBUM_FIELDS = ("kind", "album", "albumartist", "year")
 TRACK_FIELDS = ("artist", "title")
 
 
+def as_the_plan_knows_them(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
+    """A fresh read of a folder, with each track's id put back to the one the plan holds for that
+    very file (§9, slice 135; R-488).
+
+    A folder's refs **are** paths, so a fresh read calls a file by where it is while the plan calls it
+    by `filename` — and where a pass or a person took another candidate for a track, those two names
+    are different: the plan's id is the owner's file, which is gone, and the file in the folder is
+    the copy that superseded it. Matching on the id alone then reported *both* — the superseded track
+    as `no longer in the source` and its own replacement as new.
+    **On 20 of the user's albums.** `The Dead Don't Die` went from 20 tracks to 37 with the numbers
+    1,1,2,2,…,28 and 37 audio files in the folder, measured on a copy before any of it reached the
+    library; `Hey Living People` 13 → 21, `Schandmaul — Wie Pech & Schwefel` 15 → 22.
+
+    Matched on the path **relative to the folder that was read**, so a track in `cd1/` is only ever
+    the plan's `cd1/` track — and **never where two tracks could answer**: an ambiguous name is left
+    to the id, which is the behaviour that was there before.
+    """
+    if fresh.provider != FOLDER:
+        return fresh
+    root = str(fresh.source_url or fresh.source_id or "")
+    if not root.startswith("/"):
+        return fresh
+    mine: dict[str, list[PlanTrack]] = {}
+    for track in existing.tracks:
+        if track.filename:
+            mine.setdefault(str(Path(track.filename)), []).append(track)
+    out = copy.deepcopy(fresh)
+    for track in out.tracks:
+        said = str(track.video_id or "")
+        if not said.startswith("/"):
+            continue
+        try:
+            rel = str(Path(said).relative_to(root))
+        except ValueError:
+            continue
+        held = mine.get(rel, [])
+        if len(held) == 1 and held[0].video_id != track.video_id:
+            track.video_id = held[0].video_id
+            track.sync_candidates()
+    return out
+
+
 def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     """Bring an existing plan up to date with a fresh one from the same source (DESIGN.md slice 3).
 
@@ -545,6 +588,8 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
       later lands where it belongs, not at the end
     - tracks that left the source are kept (their files stay), flagged and put last
     """
+    # **a file the plan already holds is that plan's track, whatever the fresh id says** (slice 135)
+    fresh = as_the_plan_knows_them(existing, fresh)
     merged = copy.deepcopy(existing)
     _merge_fields(merged, fresh, ALBUM_FIELDS)
     merged.cover_url = fresh.cover_url or merged.cover_url

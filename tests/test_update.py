@@ -230,3 +230,107 @@ def test_without_a_user_order_the_source_still_decides():
     plan.tracks = list(reversed(plan.tracks))  # reordered by something other than the user
     merged = merge_plans(plan, build_plan(vol1()))
     assert [t.video_id for t in merged.tracks] == [t.video_id for t in build_plan(vol1()).tracks]
+
+
+# -- a file the plan already holds is that plan's track (§9, slice 135; R-488 / P100) ------------
+
+
+def superseded(tmp_path, one_second_of_sound, how_many=3, overridden=2):
+    """A folder album in the state 20 of the user's albums are in: some tracks' owner files were
+    superseded by a fetched copy, so the plan's id names a file that is gone while the file in the
+    folder is the replacement."""
+    from test_intake import QUIET
+    from test_repointing import a_library, an_album
+
+    from noaap import intake
+
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album",
+                     [f"Song {n}" for n in range(1, how_many + 1)], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    album = root / "A Band" / "An Album"
+    plan = load_plan(album)
+    for track in plan.tracks[:overridden]:
+        # the owner's copy was an mp3, a pass took a video instead, and the mp3 is gone
+        track.video_id = str(album / (Path(track.filename).stem + ".mp3"))
+        track.source_override = f"vid{track.number}"
+        track.sync_candidates()
+    save_plan(plan, album)
+    return root, album
+
+
+def test_a_superseded_track_is_the_same_track_not_a_new_one(tmp_path, one_second_of_sound):
+    """`The Dead Don't Die`: 20 tracks, 17 of them overridden. Matching on the id alone made the
+    update report all 17 gone *and* their own files new — 37 tracks, numbers 1,1,2,2,…,28, and 37
+    audio files in the folder. Measured on a copy before any of it reached the library."""
+    from test_repointing import a_library
+
+    root, album = superseded(tmp_path, one_second_of_sound, how_many=3, overridden=2)
+    was = load_plan(album)
+
+    said = []
+    service = a_library(root)
+    service.log = said.append
+    service.update_all(deep=True)   # the album is otherwise skipped as unchanged, and nothing merges
+
+    now = load_plan(album)
+    assert len(now.tracks) == len(was.tracks) == 3, [t.title for t in now.tracks]
+    assert sorted(t.number for t in now.tracks) == [1, 2, 3]
+    assert all(t.in_source for t in now.tracks), [(t.title, t.in_source) for t in now.tracks]
+    assert [t.video_id for t in now.tracks] == [t.video_id for t in was.tracks], "the ids are kept"
+    files = sorted(p.name for p in album.iterdir() if p.suffix.lower() == ".opus")
+    assert len(files) == 3, files
+    assert not [line for line in said if "no longer in the source" in line and "0 no longer" not in line], said
+
+
+def test_two_tracks_that_could_answer_leave_it_to_the_id(tmp_path, one_second_of_sound):
+    """Never a guess: where the same relative name is held by two tracks, the match is the id's, as
+    it was before."""
+    from noaap.plan import as_the_plan_knows_them
+
+    root, album = superseded(tmp_path, one_second_of_sound, how_many=2, overridden=1)
+    existing = load_plan(album)
+    existing.tracks[1].filename = existing.tracks[0].filename   # two tracks, one name
+    fresh = copy.deepcopy(existing)
+    fresh.tracks[0].video_id = str(album / existing.tracks[0].filename)
+
+    out = as_the_plan_knows_them(existing, fresh)
+
+    assert out.tracks[0].video_id == str(album / existing.tracks[0].filename), "left to the id"
+
+
+def test_a_track_in_a_disc_folder_is_only_that_disc_folders_track(tmp_path, one_second_of_sound):
+    """Matched on the path relative to the folder that was read, so `cd1/01.opus` is never
+    `cd2/01.opus`."""
+    from noaap.plan import as_the_plan_knows_them
+
+    root, album = superseded(tmp_path, one_second_of_sound, how_many=2, overridden=0)
+    existing = load_plan(album)
+    existing.tracks[0].filename = "cd1/01 Song.opus"
+    existing.tracks[1].filename = "cd2/01 Song.opus"
+    existing.tracks[0].video_id = "/gone/cd1/01 Song.opus"
+    existing.tracks[1].video_id = "/gone/cd2/01 Song.opus"
+    fresh = copy.deepcopy(existing)
+    fresh.tracks[0].video_id = str(album / "cd1/01 Song.opus")
+    fresh.tracks[1].video_id = str(album / "cd2/01 Song.opus")
+
+    out = as_the_plan_knows_them(existing, fresh)
+
+    assert out.tracks[0].video_id == "/gone/cd1/01 Song.opus"
+    assert out.tracks[1].video_id == "/gone/cd2/01 Song.opus"
+
+
+def test_a_fetched_album_is_not_matched_by_file_at_all(tmp_path, one_second_of_sound):
+    """Only a folder's refs are paths. A YouTube album's ids are video ids and stay the only answer."""
+    from noaap.plan import as_the_plan_knows_them
+
+    root, album = superseded(tmp_path, one_second_of_sound, how_many=2, overridden=0)
+    existing = load_plan(album)
+    existing.provider = "youtube"
+    fresh = copy.deepcopy(existing)
+    fresh.provider = "youtube"
+    fresh.tracks[0].video_id = "abcdefghijk"
+
+    out = as_the_plan_knows_them(existing, fresh)
+
+    assert out.tracks[0].video_id == "abcdefghijk"

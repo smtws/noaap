@@ -3710,6 +3710,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    albums) are the other side of that line: asked for one part of the collection, a pass has no
    business naming folders somewhere else, so they are skipped.
 
+135. ✅ **A file the plan already holds is that plan's track, whatever the fresh id says**
+   (2026-10-05, P100). A folder's refs **are** paths, so a fresh read calls a file by where it is
+   while the plan calls it by `filename` — and where a pass or a person took another candidate for a
+   track, those two names are different: the plan's id is the owner's file, which is gone, and the
+   file in the folder is the copy that superseded it. `merge_plans` matched on `video_id` alone, so
+   it reported **both** — the superseded track as `no longer in the source` and its own replacement
+   as new.
+   Measured on a copy of the user's albums before any of it could reach the library:
+   `DOMINUM — The Dead Don't Die` went from **20 tracks to 37**, numbers `1,1,2,2,…,28`, discs
+   {1: 28, 2: 9}, 17 entries marked not in the source, and **37 audio files in a folder that held
+   20**. `DOMINUM — Hey Living People` 13 → 21, `Schandmaul — Wie Pech & Schwefel` 15 → 22,
+   `Wahre Helden` 13 → 20, `Saltatio Mortis — Manufactum II` 17 → 23: **20 albums of the library**,
+   every one of which a whole-library `update` would have doubled.
+   So before anything is counted or merged, a fresh folder read is put back into the plan's own
+   names: matched on the path **relative to the folder that was read**, so a track in `cd1/` is only
+   ever the plan's `cd1/` track, and **never where two tracks could answer** — an ambiguous name is
+   left to the id, which is what happened before. A fetched album is untouched by this: its ids are
+   video ids and they remain the only answer.
+   The lesson is slice 130's again from the other end. **The id is a record of where a track came
+   from; the file beside the plan is what the album is.** A pass that confuses the two either loses
+   the history or duplicates the music, and this one would have duplicated it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

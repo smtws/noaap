@@ -65,6 +65,7 @@ from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, default_cache_path
 from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
 from .plan import (
+    as_the_plan_knows_them,
     build_plan,
     drop_album_name,
     merge_plans,
@@ -353,6 +354,8 @@ class Service:
             known_dir = None
             if found := (find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None):
                 known_dir, existing = found
+                # the ids the plan holds for these very files, before anything is counted (slice 135)
+                plan = as_the_plan_knows_them(existing, plan)
                 fresh_ids = {t.video_id for t in plan.tracks}
                 new = sum(t.video_id not in {x.video_id for x in existing.tracks} for t in plan.tracks)
                 plan = merge_plans(existing, plan)
@@ -365,6 +368,7 @@ class Service:
 
         if found := find_plan(self.library, plan.source_id):
             old_dir, existing = found
+            plan = as_the_plan_knows_them(existing, plan)   # §9, slice 135
             known = {t.video_id for t in existing.tracks}
             new = sum(t.video_id not in known for t in plan.tracks)
             plan = merge_plans(existing, plan)
