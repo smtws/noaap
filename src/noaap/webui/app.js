@@ -1,7 +1,7 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         identifyLines, identifyState,
+         identifyLines, identifyState, offersState,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
@@ -1446,6 +1446,7 @@ function renderAlbum() {
         ? h("div", { class: "muted order-mark" }, "Release pinned by you ",
           h("a", { href: `https://musicbrainz.org/release/${p.mbid}`, target: "_blank", rel: "noopener" }, p.mbid))
         : null,
+      offersPanel(p),
       p.provenance.order === "user"
         ? h("div", { class: "muted order-mark" }, "Track order is yours ",
           h("button", { class: "badge user reset", type: "button",
@@ -1924,6 +1925,39 @@ function updateSection() {
       h("button", { class: "quiet", type: "button",
         title: "Read every album in full instead of asking whether it changed — slower, and more requests",
         onclick: (e) => submit("update", { deep: true }, e.currentTarget) }, "Read every album in full")));
+}
+
+// The releases a lookup weighed and could not fit (§9, slice 145). 111 of the first 517 albums of
+// the user's library are a release MusicBrainz has, refused over a handful of song names — and the
+// pass said `0/0 tracks matched` and nothing about the nine releases it had just weighed. One click
+// pins one; the normal look → apply follows.
+function offersPanel(p) {
+  const said = offersState({ offered: p.offered, mbid: p.mbid,
+                             pinned: p.provenance?.mbid === "user" });
+  if (!said) return null;
+  return h("div", { class: "offers" },
+    h("div", { class: "muted" }, said.note),
+    h("ul", {}, ...said.rows.map((row) =>
+      h("li", {},
+        h("a", { href: `https://musicbrainz.org/release/${row.id}`, target: "_blank",
+          rel: "noopener" }, row.label),
+        " ",
+        row.current
+          ? h("span", { class: "badge user" }, "pinned")
+          : h("button", { class: "quiet small", type: "button",
+              title: "Say this is the release, then look it up again",
+              onclick: (e) => pinOffer(p, row.id, e.currentTarget) }, "this one")))));
+}
+
+async function pinOffer(p, id, button) {
+  if (!confirm(`Pin this album to release ${id}?\n\nIt is then yours: every update takes its names, `
+               + "numbers and discs from it and never searches for another.")) return;
+  const job = await submit("edit", { id: p.source_id, edits: { mbid: id } }, button);
+  if (job == null) return;
+  await jobSettled(job, 1200);
+  lastIdentify = null;                 // the album has changed: look again
+  await poll();
+  await refreshAlbumPanel();
 }
 
 // Where this album came from: a link only where the source is one a browser can open, and named

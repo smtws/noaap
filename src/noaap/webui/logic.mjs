@@ -1251,3 +1251,25 @@ export function sourceOpen({ source_url = "", provider = "" } = {}) {
   if (!url) return null;
   return { text: `taken in from ${url}` };
 }
+
+/** One weighed-and-refused release as the panel lists it (§9, slice 145). */
+export function offerLine(one = {}) {
+  const where = [one.date, one.country].filter(Boolean).join(", ") || "no date";
+  const shape = (one.media || []).join("/") || String(one.tracks ?? "?");
+  const fit = one.matched == null ? "not opened"
+            : `${one.matched} of ${one.needed} titles fitted`;
+  return `${one.title || "untitled"} (${where}) · ${shape} track(s) · ${fit}`;
+}
+
+/** Whether the panel has candidates to offer, and what to say above them. */
+export function offersState({ offered = [], mbid = null, pinned = false } = {}) {
+  if (!offered.length) return null;
+  return {
+    note: pinned
+      ? "MusicBrainz could not fit the release you pinned. These are the ones it weighed:"
+      : `MusicBrainz weighed ${offered.length} release(s) and none fitted. Pin the right one and `
+        + "identify again:",
+    rows: offered.map((one) => ({ id: one.id, label: offerLine(one),
+                                  current: Boolean(mbid) && one.id === mbid })),
+  };
+}

@@ -943,6 +943,11 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
             out.append(line)
     if (was.cover_url or "") != (now.cover_url or "") and now.cover_url:
         out.append(f"cover: from {now.cover_url}")
+    # **what was weighed and refused is part of what a lookup would do** (§9, slice 145): an album
+    # that gains a list of candidates has changed, and the dry run must say so or the panel shows
+    # something the check never mentioned.
+    if now.offered and now.offered != was.offered:
+        out.append(f"{len(now.offered)} release(s) weighed, none fitted — one of them can be pinned")
     mine = {t.video_id: t for t in was.tracks}
     for track in now.tracks:
         before = mine.pop(track.video_id, None)

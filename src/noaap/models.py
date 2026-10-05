@@ -450,6 +450,11 @@ class AlbumPlan:
     # release has no artwork can never reach its group's unless this is written down. The user's
     # `Apocalyptica/Amplified…` is the case: release `31a80627` is a 404 and the group is a 307.
     release_group: str | None = None
+    # **the releases a lookup looked at and could not fit** (§9, slice 145). 111 of the first 517
+    # albums of the user's library are a release MusicBrainz has, refused over a handful of song
+    # names — and the pass said `0/0 tracks matched` and nothing about the nine releases it had just
+    # weighed. Kept so a person can see them and pin one; cleared the moment something does fit.
+    offered: list[dict[str, Any]] = field(default_factory=list)
     cover_fallback_url: str | None = None  # tried when cover_url fails (e.g. no Cover Art Archive image)
     cover_fetched: dict[str, str] = field(default_factory=dict)  # {url, sha1} of the cover.* we saved
     # what the source looked like last time: lets an update skip it after one cheap request

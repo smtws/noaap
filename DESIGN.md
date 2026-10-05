@@ -3944,6 +3944,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    of addresses. A case for "the archive answers" is not a case for "the archive answers 404 and
    something else is left to try" — and only the second one is a fallback.
 
+145. ✅ **A lookup that fits nothing says what it weighed** (2026-10-05, P108 item 2).
+   Measured over the first 517 albums of the user's library: **168 found no release, and 111 of those
+   are a release MusicBrainz has** — refused over a handful of song names. `Alice Cooper/Dragontown`
+   is the shape: nine candidates pass the name filter, every one of them the right twelve tracks, and
+   each is refused because **8 of 12 titles fit where 10 are needed** (`Somewhere` against `Somewhere
+   in the Jungle`, `Sister Sarah` against `Sister Sara`, `Just Wanna Be God` against `I Just Wanna Be
+   God`, `I Am The Sentinel` against `The Sentinel`). What the pass printed was `MusicBrainz: 0/0
+   tracks matched` — not a word about the nine releases it had just weighed. The user's conclusion,
+   that identification "only works when MusicBrainz has no similar albums", was a fair reading of
+   that silence.
+   So every candidate the search returned is recorded on the plan with its shape and, for the ones
+   actually opened, how near it came: **`rel-2 'Dragontown' (2001, DE) 12 track(s) — 8 of 10 titles
+   fitted`**. All nine for the cost of the three that are opened, because the search's own answer
+   already carries the title, the date, the country and the track count. The nearest first. It is said
+   in the log, in the dry run's diff, and in the album panel, where one click pins a candidate — and
+   it is cleared the moment something does fit, because then there is nothing for a person to decide.
+   **A refusal is a finding, and a finding nobody can see is a silence.** The rule here is the same
+   one as slice 133's: the pass knew exactly why it gave up, and kept it to itself.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

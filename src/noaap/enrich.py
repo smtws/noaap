@@ -276,18 +276,65 @@ def carry_the_pin(existing: AlbumPlan, fresh: AlbumPlan) -> str | None:
     return pin
 
 
+def says_offer(one: dict[str, Any]) -> str:
+    """One candidate in a line, as the log and the panel both say it (§9, slice 145)."""
+    where = ", ".join(x for x in (one.get("date"), one.get("country")) if x)
+    shape = "/".join(str(n) for n in one.get("media") or []) or str(one.get("tracks") or "?")
+    fit = (f"{one['matched']} of {one['needed']} titles fitted"
+           if one.get("matched") is not None else "not opened")
+    return f"  {one['id']} {one['title']!r} ({where or 'no date'}) {shape} track(s) — {fit}"
+
+
+def _fits(plan: AlbumPlan, mb_tracks: list[dict[str, Any]]) -> int:
+    """How many of the plan's titles are somewhere in this release — the number a refusal hangs on."""
+    left = [key(core(t.get("title", ""))) for t in mb_tracks]
+    n = 0
+    for track in plan.tracks:
+        want = key(core(track.title))
+        if want in left:
+            left.remove(want)
+            n += 1
+    return n
+
+
+def offered_from(cand: dict[str, Any], release: dict[str, Any] | None = None,
+                 matched: int | None = None, needed: int | None = None) -> dict[str, Any]:
+    """One candidate as a person needs to see it (§9, slice 145).
+
+    The search's own answer already carries the title, the date, the country and the track count, so
+    every candidate can be listed without opening it. The ones that *were* opened carry how many of
+    their track titles fitted and how many were needed, which is the whole reason they were refused.
+    """
+    media = [len(m.get("tracks", [])) for m in (release or {}).get("media", [])]
+    return {"id": cand["id"], "title": cand.get("title") or (release or {}).get("title") or "",
+            "date": cand.get("date") or (release or {}).get("date") or "",
+            "country": cand.get("country") or (release or {}).get("country") or "",
+            "tracks": int(cand.get("track-count") or sum(media) or 0),
+            "media": media, "matched": matched, "needed": needed}
+
+
 def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
     if pinned := pinned_release(plan):
         # **a pin is not a guess, so it is not searched for and not voted on** (slice 137)
         candidates = [{"id": pinned}]
+        every = candidates
     else:
-        candidates = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))[:RELEASE_LOOKUPS]
+        every = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))
+        candidates = every[:RELEASE_LOOKUPS]
+    looked: dict[str, dict[str, Any]] = {c["id"]: offered_from(c) for c in every}
     for cand in candidates:
         release = mb.release(cand["id"])
+        if release:
+            matches = match_release_tracks(plan, release, pinned=bool(pinned))
+            mb_tracks = [t for m in release.get("media", []) for t in m.get("tracks", [])]
+            looked[cand["id"]] = offered_from(cand, release,
+                                              matched=len(matches or {}) or _fits(plan, mb_tracks),
+                                              needed=math.ceil(MIN_TRACK_MATCH * len(plan.tracks)))
         if not release or (matches := match_release_tracks(plan, release,
                                                            pinned=bool(pinned))) is None:
             continue
         rg = release.get("release-group") or cand.get("release-group") or {}
+        plan.offered = []      # something fitted, so there is nothing left for a person to choose
         _set(plan, "album", release["title"])
         # the album belongs to the main artist; guest credits stay on the tracks
         _set(plan, "albumartist", credit_names(release["artist-credit"])[0] or credit_phrase(release["artist-credit"]))
@@ -319,6 +366,9 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
                 t.number, next_number = next_number, next_number + 1
         plan.tracks.sort(key=lambda t: (t.disc, t.number))
         return True
+    # **nothing fitted, so say what was weighed** (§9, slice 145): `0/0 tracks matched` and silence
+    # about nine releases is what made the user think identification only works by luck.
+    plan.offered = sorted(looked.values(), key=lambda o: (-(o["matched"] or 0), o["date"] or "9999"))
     return False
 
 
@@ -419,6 +469,13 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
             else:
                 progress(f"MusicBrainz: looking for the release “{plan.album}”")
             stats["release"] = int(enrich_release(plan, mb))
+            if plan.offered and not stats["release"]:
+                # **the number, then the list** (§9, slice 145): `0/0 tracks matched` and silence
+                # about nine releases is what made the user think identification works by luck.
+                progress(f"MusicBrainz: {len(plan.offered)} release(s) weighed, none fitted — "
+                         "pin one to say which this album is")
+                for one in plan.offered:
+                    progress(says_offer(one))
             if pinned and not stats["release"]:
                 progress(f"MusicBrainz: the release you pinned ({pinned}) does not answer for this "
                          "album — nothing taken from it")
