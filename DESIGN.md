@@ -3778,6 +3778,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Every case written for the pin exercised `enrich_release` and `merge_plans` directly, so not one
    of them saw it. **A rule about what a pass does has to be driven through the pass.**
 
+138. ✅ **One spelling per artist, from the MusicBrainz artist entity** (2026-10-05, P102, absorbing
+   P97). Slice 129 chose a case-only spelling by how many albums hold it and marked the choice
+   `by count; MusicBrainz not asked`, because the user's word is *"such stuff should follow
+   MusicBrainz, not numbers"*. This is the lookup it was waiting for.
+   **Asked of the artist, never of a release.** A release's artist *credit* is per release and
+   carries a sleeve's stylisation; the artist entity has one `name`. Pinning `DOMINUM — Night is
+   Calling` to its 2-CD release showed the difference at once: that sleeve says `Dominum`, and the
+   update offered to rename thirteen files and undo a spelling five other albums had just been given
+   (R-490, I-373). So the credit never decides what a library calls somebody.
+   The order is now: a spelling **the user chose**, then the **entity's name**, then — only where the
+   entity does not answer — a release credit, the case penalties, the count, the alphabet. One
+   request per artist key per pass, cached in the client for thirty days, and **nothing is asked at
+   all about an artist whose every album is private**: a lookup sends a name to somebody else's
+   server, and for an album a patron paid for the question is what is forbidden, not only the answer
+   (slice 72). `repair` settles the whole library and `update`'s `_settle_artist` writes it too, so a
+   fetch does not leave an old spelling standing until the next repair.
+   **And the basis names the ground that actually decided.** `spelling_basis` said `alphabet` where
+   the case penalty had chosen — `DOMINUM` (5 albums) loses to `Dominum` (2) on that ground and on no
+   other — so `case` is now one of the answers. A check that names the wrong reason is worse than one
+   that names none, because a reader will believe it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

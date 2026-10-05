@@ -63,7 +63,7 @@ from .lyrics import (
     write_sidecar,
 )
 from .lyrics import default_cache_path as lyrics_cache_path
-from .mb import MusicBrainz, default_cache_path
+from .mb import MusicBrainz, MusicBrainzError, default_cache_path
 from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
 from .plan import (
     as_the_plan_knows_them,
@@ -242,6 +242,8 @@ class Service:
         self._cancel = cancel
         self._mb = mb
         self._lrclib = lrclib
+        # what MusicBrainz calls each artist key, asked once per key per pass (§9, slice 138)
+        self._artist_names: dict[str, str | None] = {}
         # Who is holding the graphics card (§9, slice 82). The app's server passes its own holder, so
         # the models stay loaded from one job to the next and its idle window decides when they go; a
         # CLI run gets one of its own and gives it back when the pass ends.
@@ -430,21 +432,57 @@ class Service:
         # (§9, slice 129). Counted per album, not per candidate: the spelling an album's own tracks
         # carry is MusicBrainz evidence and is a candidate, never a vote.
         held: dict[str, dict[str, int]] = {}
+        may: dict[str, bool] = {}
         for _, plan in iter_plans(self.library) if self.library and self.library.exists() else []:
             key = text_key(plan.albumartist)
             for name, source in ((plan.albumartist, plan.provenance.get("albumartist")), (track_spelling(plan), Provenance.MB)):
                 if name:
                     candidates.setdefault(key, {}).setdefault(name, set()).add(source)
             held.setdefault(key, {})[plan.albumartist] = held.get(key, {}).get(plan.albumartist, 0) + 1
+            # **nothing is asked about an artist whose every album is private** (§9, slice 72): the
+            # question itself is the thing a private source forbids, name included.
+            may[key] = may.get(key, False) or self.may_look_up(plan)
         decided: dict[str, tuple[str, set[str | None]]] = {}
         self._spelling_counts = held
         self._spelling_basis = {}
         for key, names in candidates.items():
             counts = held.get(key, {})
-            best = min(names, key=lambda n: spelling_rank(n, names[n], counts.get(n, 0)))
-            decided[key] = (best, names[best])
-            self._spelling_basis[key] = spelling_basis(best, names[best], names, counts)
+            # **what MusicBrainz calls this artist, asked of the artist and not of a release**
+            # (§9, slice 138). One request per key, cached; `None` where it is off or does not answer.
+            entity = self._artist_entity(key, names) if may.get(key) else None
+            theirs = next((n for n in names if Provenance.USER in names[n]), None)
+            if theirs:
+                best, why = theirs, "user"
+            elif entity:
+                best, why = entity, "MusicBrainz artist"
+            else:
+                best = min(names, key=lambda n: spelling_rank(n, names[n], counts.get(n, 0)))
+                why = spelling_basis(best, names[best], names, counts)
+            decided[key] = (best, names.get(best, {Provenance.MB} if best == entity else set()))
+            self._spelling_basis[key] = why
         return decided
+
+    def _artist_entity(self, key: str, names: dict[str, set[str | None]]) -> str | None:
+        """What MusicBrainz calls the artist behind these spellings, asked once per key (slice 138).
+
+        Asked of the **artist entity**, whose `name` is the one spelling MusicBrainz has — never of a
+        release, whose artist *credit* is per release and may carry a sleeve's stylisation. Any of the
+        library's spellings is enough to find the entity, because the search matches on `text_key`;
+        the first that answers is the answer, and the rest are not asked.
+        """
+        if not self.cfg.musicbrainz:
+            return None
+        if key in self._artist_names:
+            return self._artist_names[key]
+        found: str | None = None
+        if mb := self.mb:
+            for name in sorted(names):
+                with contextlib.suppress(MusicBrainzError):
+                    if (entity := mb.artist(name)) and entity.get("name"):
+                        found = str(entity["name"])
+                        break
+        self._artist_names[key] = found
+        return found
 
     def _apply_spelling(self, plan: AlbumPlan, decided: dict[str, tuple[str, set[str | None]]]) -> None:
         """Give this album the spelling the library decided on for its artist."""
@@ -489,8 +527,13 @@ class Service:
             plan.provenance["albumartist"] = Provenance.SOURCE_TAGS
             plan.adopted = dict(plan.adopted or {})
             plan.adopted["spelling"] = "by count; MusicBrainz not asked"
-        elif isinstance(plan.adopted, dict):
-            plan.adopted.pop("spelling", None)
+        else:
+            if basis == "MusicBrainz artist":
+                # **the lookup slice 129 was waiting for** (§9, slice 138): the artist entity has
+                # answered, so the spelling is MusicBrainz's and says so.
+                plan.provenance["albumartist"] = Provenance.MB
+            if isinstance(plan.adopted, dict):
+                plan.adopted.pop("spelling", None)
         return f"{was!r} -> {chosen[0]!r} ({basis})"
 
     def _settle_artist(self, plan: AlbumPlan) -> None:
@@ -506,6 +549,16 @@ class Service:
         self._adopt_track_spelling(plan)
         if plan.provenance.get("albumartist") == Provenance.USER or not self.library or not self.library.exists():
             return  # a spelling chosen for *this* album wins for this album, second folder or not
+        # **what MusicBrainz calls this artist outranks every spelling in the library** (slice 138),
+        # so a fetch writes it too and does not wait for the next repair.
+        if self.may_look_up(plan) and (entity := self._artist_entity(
+                text_key(plan.albumartist), {plan.albumartist: set()})):
+            if entity != plan.albumartist:
+                self.log(f"MusicBrainz calls this artist '{entity}' — using that")
+                plan.albumartist = entity
+                plan.auto["albumartist"] = entity
+                plan.provenance["albumartist"] = Provenance.MB
+            return
         seen = self._spellings(plan)
         if not seen:
             return  # the library knows this artist under no other spelling
@@ -2750,7 +2803,12 @@ def spelling_rank(name: str, sources: set[str | None],
 
 def spelling_basis(name: str, sources: set[str | None], names: dict[str, set[str | None]],
                    counts: dict[str, int] | None = None) -> str:
-    """Why this spelling won: `user`, `MusicBrainz`, `count` or `alphabet` (R-479, point 2).
+    """Why this spelling won where the artist entity did not answer: `MusicBrainz release`, `count`
+    or `alphabet` (R-479, point 2; §9, slice 138).
+
+    `user` and `MusicBrainz artist` are decided before this is asked, because both are grounds no
+    tie-break may overrule. What is left is a release's artist credit, then how many albums hold the
+    spelling, then the alphabet.
 
     Said in the check and written into the plan, because a choice nobody can account for is not a
     choice a reader can disagree with — and because `count` is the one basis a later MusicBrainz
@@ -2759,10 +2817,16 @@ def spelling_basis(name: str, sources: set[str | None], names: dict[str, set[str
     if Provenance.USER in sources:
         return "user"
     if Provenance.MB in sources:
-        return "MusicBrainz"
+        return "MusicBrainz release"
     rivals = [n for n in names if n != name]
     if not rivals:
         return "the only spelling"
+    # **the case penalties decide before the count does** (§9, slice 23, named here since 138): a
+    # spelling in mixed case beats a shouted or whispered one however many albums hold it, and saying
+    # `alphabet` where that is what happened is simply untrue — `DOMINUM` (5 albums) loses to
+    # `Dominum` (2) on this ground and on no other.
+    if any(n.isupper() or n.islower() for n in rivals) and not (name.isupper() or name.islower()):
+        return "case"
     counts = counts or {}
     if counts.get(name, 0) > max((counts.get(n, 0) for n in rivals), default=0):
         return "count"

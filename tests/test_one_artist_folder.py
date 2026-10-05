@@ -203,7 +203,7 @@ def test_the_basis_is_named():
     assert spelling_basis("Umbra Et Imago", set(), both, {"Umbra et Imago": 1,
                                                           "Umbra Et Imago": 1}) == "alphabet"
     assert spelling_basis("DOMINUM", {Provenance.MB}, {"DOMINUM": set(), "Dominum": set()}) \
-        == "MusicBrainz"
+        == "MusicBrainz release"
     assert spelling_basis("x", {Provenance.USER}, {"x": set(), "y": set()}) == "user"
     assert spelling_basis("only", set(), {"only": set()}) == "the only spelling"
 

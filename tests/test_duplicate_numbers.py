@@ -214,6 +214,9 @@ class TwoDiscs:
     def release(self, mbid):
         return self.body
 
+    def artist(self, name):
+        return None     # this double answers about a release, not about an artist (§9, slice 138)
+
 
 def test_every_file_on_one_disc_and_position_assigns_the_discs(tmp_path, one_second_of_sound):
     from noaap.enrich import discs_for_duplicates

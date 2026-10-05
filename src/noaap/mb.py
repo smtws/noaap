@@ -128,6 +128,7 @@ class MusicBrainzAPI(Protocol):
     def search_releases(self, artist: str, album: str) -> list[dict[str, Any]]: ...
     def release(self, mbid: str) -> dict[str, Any] | None: ...
     def artist_albums(self, artist: str) -> list[dict[str, Any]]: ...
+    def artist(self, name: str) -> dict[str, Any] | None: ...
 
 
 def default_cache_path() -> Path:
@@ -176,10 +177,22 @@ class MusicBrainz:
     def release(self, mbid: str) -> dict[str, Any] | None:
         return self._get(f"release/{mbid}", {"inc": "recordings+artist-credits+release-groups"})
 
+    def artist(self, name: str) -> dict[str, Any] | None:
+        """The artist **entity** whose name is this one, or None (§9, slice 138).
+
+        Matched on `text_key`, so it answers for any casing the library happens to hold — and what it
+        answers with is the entity's own `name`, which is the one spelling MusicBrainz has for that
+        artist. A release's artist *credit* is a different thing: it is per release and it can carry
+        a stylisation (`DOMINUM` on one sleeve, `Dominum` on another), which is why the credit must
+        never decide what a library calls somebody.
+        """
+        found = self._get("artist", {"query": f"artist:{phrase(name)}", "limit": "5"})
+        return next((a for a in (found or {}).get("artists", [])
+                     if text_key(a.get("name", "")) == text_key(name)), None)
+
     def artist_albums(self, artist: str) -> list[dict[str, Any]]:
         """Studio albums (release groups: primary type Album, no secondary type) of the best-matching artist."""
-        found = self._get("artist", {"query": f"artist:{phrase(artist)}", "limit": "5"})
-        match = next((a for a in (found or {}).get("artists", []) if text_key(a.get("name", "")) == text_key(artist)), None)
+        match = self.artist(artist)
         if not match:
             return []
         groups = self._get("release-group", {"artist": match["id"], "type": "album", "limit": "100"})
