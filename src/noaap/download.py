@@ -633,9 +633,17 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
     # so the dry run says what would be asked and does not promise the answer.
     if want is not None and want.cover_beside and cover is None:
         if address := _cover_addresses(plan, album_dir):
-            said.append("a cover would be saved beside the album"
-                        + (MAYBE_COVER if address[0] == str(album_dir)
-                           else f" from {address[0]}"))
+            # **where there is an address that does promise something, say it** (§9, slice 141).
+            # An adopted album's own folder comes first and may answer with a picture out of one of
+            # its files, which is why the line hedges — but a Cover Art Archive front is a definite
+            # address, and a reader asking "will this album get a cover?" deserves to see it. The
+            # user's `Apocalyptica/Cult` had a pinned release and a check that said nothing at all.
+            archive = next((a for a in address if a.startswith(f"{CAA}/")), None)
+            if address[0] == str(album_dir):
+                said.append("a cover would be saved beside the album" + MAYBE_COVER
+                            + (f", else from {archive}" if archive else ""))
+            else:
+                said.append(f"a cover would be saved beside the album from {address[0]}")
     if want is not None and not want.cover_embedded:
         cover = None
     if library is not None and rename:
@@ -1332,6 +1340,19 @@ def _asks_its_source(plan: AlbumPlan) -> bool:
     return bool(plan.source_url) and sources.private(plan.provider)
 
 
+CAA = "https://coverartarchive.org"
+
+
+def caa_release_front(mbid: str | None) -> str | None:
+    """The Cover Art Archive front of **this release**, or None (§9, slice 141)."""
+    return f"{CAA}/release/{mbid}/front-500" if mbid else None
+
+
+def is_caa_group(url: object) -> bool:
+    """Whether this address is a release *group*'s front rather than a release's."""
+    return str(url or "").startswith(f"{CAA}/release-group/")
+
+
 def _cover_addresses(plan: AlbumPlan, album_dir: Path | None = None) -> list[str]:
     """What to try, in order: what the plan holds, and — for some albums — its source itself.
 
@@ -1345,12 +1366,58 @@ def _cover_addresses(plan: AlbumPlan, album_dir: Path | None = None) -> list[str
     are already there and reaches nobody: measured on the reference collection, 269 of 2000 files
     carry a picture.
     """
-    found = [plan.cover_url, plan.cover_fallback_url]
-    if not any(found) and _asks_its_source(plan):
+    held = [plan.cover_url, plan.cover_fallback_url]
+    # **the release before its group** (§9, slice 141). A group's front is whichever edition the
+    # archive picked for the group, which is not necessarily this one: the user pinned
+    # `Apocalyptica/Cult` to release `73fcbc7e…` and the group's front redirects to `a1b9ddb1…`,
+    # another edition's artwork for an album somebody named by hand. The group stays as a later try,
+    # because a release with no art of its own often belongs to a group that has some.
+    front = caa_release_front(plan.mbid)
+    found = [front, *held] if front and is_caa_group(plan.cover_url) else held
+    if front and front not in found:
+        # **and an album whose own address answers with nothing still has a release** (slice 141).
+        # An adopted album's address is its own folder, which is truthy, so nothing below was ever
+        # reached: `Apocalyptica/Cult` had a pinned release, a folder for an address and no picture
+        # in any of its files, and every pass said `could not fetch any cover`.
+        found = [*found, front]
+    if not any(held) and _asks_its_source(plan):
         found.append(plan.source_url)
-    if not any(found) and plan.adopted and album_dir is not None:
+    if not any(held) and plan.adopted and album_dir is not None:
         found.append(str(album_dir))
     return [url for url in found if url]
+
+
+def _archive_cover(url: str, why: list[str] | None = None) -> bytes | None:
+    """The Cover Art Archive's bytes, fetched here rather than by a provider (§9, slice 141).
+
+    **The archive is nobody's provider.** `source.art` is the provider's own way of getting a
+    picture: the folder provider reads a path and raises `no cover in …` for anything else, so
+    handing it a `coverartarchive.org` address could only ever fail — which is half of why the user's
+    pinned `Apocalyptica/Cult` never got one. The archive answers a release id with a redirect to
+    `archive.org`, so both hosts are allowed and nothing else is.
+    """
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    from . import user_agent
+
+    host = (urlsplit(url).hostname or "").lower()
+    if urlsplit(url).scheme != "https" or not any(
+            host == h or host.endswith("." + h) for h in ("coverartarchive.org", "archive.org")):
+        return None
+    try:
+        r = httpx.get(url, timeout=20, follow_redirects=True,
+                      headers={"User-Agent": user_agent()})
+        if r.status_code == 200 and image_mime(r.content):
+            return r.content
+        if why is not None:
+            why.append(f"{urlsplit(url).hostname} answered {r.status_code}")
+    except Exception as e:
+        log.debug("cover %s not available: %s", url, e)
+        if why is not None:
+            why.append(str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__)
+    return None
 
 
 def _download_cover(url: str, source: Source, why: list[str] | None = None) -> tuple[str, bytes] | None:
@@ -1359,6 +1426,8 @@ def _download_cover(url: str, source: Source, why: list[str] | None = None) -> t
     The live Patreon fetch warned `could not fetch any cover` and the reason was at debug level,
     where nobody saw it; the address turned out to be good and the request shape wrong (§9, slice 73).
     """
+    if (data := _archive_cover(url, why)) is not None:
+        return url, data
     for candidate in cover_candidates(url, source):
         try:
             data = source.art(candidate)

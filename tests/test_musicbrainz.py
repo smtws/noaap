@@ -109,7 +109,9 @@ def test_official_album_takes_the_release():
     assert plan.provenance == {"albumartist": Provenance.MB, "album": Provenance.MB, "year": Provenance.MB}
     assert plan.mbid and all(t.mbid for t in plan.tracks)
     assert [t.number for t in plan.tracks] == list(range(1, 12))
-    assert plan.cover_url.startswith("https://coverartarchive.org/release-group/")
+    # **the release's own front, not its group's** (§9, slice 141): a group's is whichever edition
+    # the archive picked for the group, which need not be the one that was matched.
+    assert plan.cover_url == f"https://coverartarchive.org/release/{plan.mbid}/front-500"
     assert "ytimg.com/s_p/OLAK5uy_" in plan.cover_fallback_url  # YouTube Music's own (square) album art
 
 

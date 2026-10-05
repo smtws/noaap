@@ -1983,10 +1983,15 @@ class Service:
             # `run` then does, so asking it here is the same answer by construction.
             # It also subsumes the three questions that were asked here one by one — a tail to drop,
             # a comment, a Windows Media frame — because `would_do` prints a line for each.
-            would = [line for line in
-                     would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library,
-                              want_here)
-                     if MAYBE_COVER not in line]   # that one promises nothing (§9, slice 124)
+            everything = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library,
+                                  want_here)
+            # **what the skip counts and what the check prints are not the same list** (§9, slice 141).
+            # A cover line that hedges promises nothing (slice 124), so it may not hold an album out
+            # of the skip for ever — an archive with no art for this release would leave every pass
+            # looking at it again. But a reader asking "will this album get a cover?" must still see
+            # that it will be tried: the user's `Apocalyptica/Cult` had a pinned release and a check
+            # that said nothing at all about a cover.
+            would = [line for line in everything if MAYBE_COVER not in line]
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not discs and not would \
@@ -2010,7 +2015,7 @@ class Service:
                 want = want_here
                 if stopped := held_back(self.cfg, plan):
                     self.log(f"  this album is excepted from: {', '.join(stopped)}")
-                for line in would:
+                for line in everything:          # including what only *may* happen
                     self.log(f"  {line}")
                 retags += sum(1 for line in would if "retagged" in line or "rewritten" in line)
                 renames += sum(1 for line in would if "renamed" in line)

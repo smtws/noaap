@@ -3862,6 +3862,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    After: **65 KiB → 24 KiB per card**, 2.67 MB → 0.98 MB for a first view, 18 ms → 10 ms warm, and
    the whole grid **82 MB → 30 MB**, for 0.73 MB of cache per forty albums.
 
+141. ✅ **An album with no cover of its own takes its release's artwork** (2026-10-05, P105).
+   The user pinned `Apocalyptica/Cult` to release `73fcbc7e…`, the lyrics followed, and no cover
+   arrived. **Two reasons, both of them silent:**
+   First, `_cover_addresses` began `[plan.cover_url, plan.cover_fallback_url]` and only fell through
+   to anything else when **neither** was set. An adopted album's address is its own folder (slice
+   101) — which is truthy — so for every album taken in from a folder the list was exactly one
+   address: itself. Cult's flacs carry no picture, so every pass said `could not fetch any cover`
+   and no other address was ever considered, pin or no pin. Second, the only Cover Art Archive
+   address this program ever produced was written by `enrich_release`, and **`repair` never
+   enriches** — `enrich` is called from `fetch` alone. The pin was recorded and nothing had asked
+   the archive about it since.
+   And a third thing, found while fixing those: **the archive is nobody's provider.** `source.art`
+   is a provider's own way of getting a picture, and the folder provider reads a path and raises
+   `no cover in …` for anything else — so even with the address in the list, handing it to the
+   provider could only ever fail. A `coverartarchive.org` address (and the `archive.org` it redirects
+   to, and no other host) is fetched directly.
+   **The release before its group.** A group's front is whichever edition the archive picked for the
+   group: for that pin it redirects to `a1b9ddb1…`, a different edition's artwork for an album
+   somebody named by hand. So the release's own front comes first, both in the address list and in
+   what `enrich_release` writes, and **behind it stays whatever the album already had**: a source's
+   own art is *this* album's picture, which is worth more as a second try than another edition's, so
+   the group only fills a fallback slot that would otherwise be empty. What the plan already holds
+   still comes first of all, and a cover beside the album is never fetched over at all — that path
+   only runs when there is none.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

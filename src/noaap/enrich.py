@@ -17,6 +17,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
 from .plan import owner_artist_of, refresh_derived
@@ -293,9 +294,14 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         if year := (rg.get("first-release-date") or release.get("date") or "")[:4]:
             _set(plan, "year", int(year))
         plan.mbid = release["id"]
-        if rg.get("id"):
-            plan.cover_fallback_url = plan.cover_fallback_url or plan.cover_url
-            plan.cover_url = f"https://coverartarchive.org/release-group/{rg['id']}/front-500"
+        # **this release's own front** (§9, slice 141). The group's is whichever edition the archive
+        # chose for the group, and for a release somebody named by hand that is the wrong picture.
+        # Behind it stays whatever the album already had — its source's own art is this album's,
+        # which is worth more as a second try than another edition's — and the group only fills a
+        # slot that would otherwise be empty.
+        plan.cover_fallback_url = (plan.cover_fallback_url or plan.cover_url
+                                   or (f"{CAA}/release-group/{rg['id']}/front-500" if rg.get("id") else None))
+        plan.cover_url = caa_release_front(release["id"])
 
         next_number = max((int(m["position"]) for m in matches.values()), default=0) + 1
         for i, t in enumerate(plan.tracks):
