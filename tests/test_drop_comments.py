@@ -156,9 +156,11 @@ def test_the_setting_takes_the_comment_atom_out_of_an_m4a(tmp_path):
     assert comments_in(path) == 0
 
 
-def test_an_m4a_still_gets_noaaps_own_source_in_that_atom(tmp_path):
-    """`©cmt` is where noaap keeps an m4a's `source`, so the drop happens before the plan's keys
-    go in — otherwise a fetched album would lose the one value this program does put there.
+def test_an_m4a_keeps_noaaps_source_in_its_own_atom_and_loses_the_comment(tmp_path):
+    """§9, slice 136. `source` used to go into `\xa9cmt`, which is the comment — the very thing
+    `ID3_KEYS` says must not happen (`TXXX:source`, "COMM is where people keep their own notes").
+    So the drop took the atom away and the writer filled it again with noaap's own value, and the
+    album was offered for the same comment-drop at every check, for ever.
     """
     root = tmp_path / "collection"
     where = root / "A Band" / "An Album"
@@ -172,7 +174,28 @@ def test_an_m4a_still_gets_noaaps_own_source_in_that_atom(tmp_path):
 
     tag_file(path, plan, plan.tracks[0], None, None, keep_unknown=False, drop_comments=True)
 
-    assert MP4(path)["\xa9cmt"] == ["https://example.com/playlist?list=abc"]
+    after = MP4(path)
+    assert "\xa9cmt" not in after, "the owner's note is gone and nothing of ours took its place"
+    assert comments_in(path) == 0, "and a second check does not ask for it again"
+    assert after["----:com.apple.iTunes:source"][0] == b"https://example.com/playlist?list=abc"
+
+
+def test_the_source_atom_survives_a_comment_drop(tmp_path):
+    """The other side: dropping the comment must not cost the one value this program does put
+    there. Vorbis keeps `source` in a field of its own and ID3 in a `TXXX`; now MP4 does too."""
+    root = tmp_path / "collection"
+    where = root / "A Band" / "An Album"
+    where.mkdir(parents=True)
+    path = encode(where / "01 One.m4a", "-c:a", "aac", "-b:a", "128k")
+    plan = a_plan(root, where)
+    plan.source_url = "https://example.com/playlist?list=abc"
+    tag_file(path, plan, plan.tracks[0], None, None, keep_unknown=False, drop_comments=False)
+    assert MP4(path)["----:com.apple.iTunes:source"][0] == b"https://example.com/playlist?list=abc"
+
+    tag_file(path, plan, plan.tracks[0], None, None, keep_unknown=True, drop_comments=True)
+
+    assert MP4(path)["----:com.apple.iTunes:source"][0] == b"https://example.com/playlist?list=abc"
+    assert comments_in(path) == 0
 
 
 # -- it reaches the passes, and only where a file is written ------------------------------------

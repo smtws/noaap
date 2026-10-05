@@ -647,9 +647,14 @@ ID3_KEYS = {  # Vorbis comment -> ID3 frame. `source` is a TXXX rather than COMM
     "musicbrainz_trackid": "TXXX:MusicBrainz Track Id",
 }
 
-MP4_KEYS = {  # Vorbis comment -> MP4 atom
+MP4_KEYS = {  # Vorbis comment -> MP4 atom. `source` is a freeform atom rather than `\xa9cmt` for
+    # the reason `ID3_KEYS` gives for `TXXX:source` over `COMM`: the comment is where people keep
+    # their own notes, and this must not land on top of one (§9, slice 136). It did, for every m4a
+    # noaap touched — and because `drop_comments` then removed the atom the writer was about to fill
+    # again, one album of the user's was offered for the same comment-drop at every single check.
     "title": "\xa9nam", "artist": "\xa9ART", "albumartist": "aART", "album": "\xa9alb",
-    "date": "\xa9day", "source": "\xa9cmt", "lyrics": "\xa9lyr", "youtube_id": "----:com.apple.iTunes:YOUTUBE_ID",
+    "date": "\xa9day", "source": "----:com.apple.iTunes:source", "lyrics": "\xa9lyr",
+    "youtube_id": "----:com.apple.iTunes:YOUTUBE_ID",
     "musicbrainz_albumid": "----:com.apple.iTunes:MusicBrainz Album Id",
     "musicbrainz_trackid": "----:com.apple.iTunes:MusicBrainz Track Id",
 }
@@ -875,7 +880,7 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     if not keep_unknown:
         audio.delete()
     if drop_comments:
-        audio.pop("\xa9cmt", None)      # before the loop: noaap's own `source` lives in this atom
+        audio.pop("\xa9cmt", None)      # the owner's note, and nothing of ours lives there (slice 136)
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]

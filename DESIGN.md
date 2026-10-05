@@ -3732,6 +3732,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    from; the file beside the plan is what the album is.** A pass that confuses the two either loses
    the history or duplicates the music, and this one would have duplicated it.
 
+136. ✅ **An m4a's `source` is not its comment** (2026-10-05, P99). `ID3_KEYS` says why in its own
+   margin: `source` is a `TXXX` rather than a `COMM` because "COMM is where people keep their own
+   notes, and this must not land on top of one". `MP4_KEYS` put `source` in `\xa9cmt`, which **is**
+   MP4's comment atom — so every m4a noaap touched had its owner's note overwritten with a URL, the
+   thing the rule exists to prevent.
+   And it made `drop_comments` a loop: the drop took the atom away and the writer, three lines
+   later, filled it again with noaap's own value. `scifistories1977 — [REVIEW] The Black Ship -
+   Chapter 61 Part 3` was therefore offered for the same comment-drop at **every** check, the apply
+   said `retagged`, and `repair --only` after it still said `1 comment(s) would be dropped`. An
+   album nothing could ever finish with.
+   `source` now has a freeform atom of its own, as it has a `TXXX` in ID3 and a field in Vorbis. One
+   m4a in the user's library, so the measured reach is small — the rule was wrong all the same, and
+   a pass that can never finish an album is worse than the tag it was trying to fix.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
