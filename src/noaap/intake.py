@@ -30,7 +30,7 @@ from typing import Any
 from . import adopt as adopt_pass
 from . import config as config_mod
 from . import precautions, sources, sources_folder
-from .download import load_plan, relocate, run, save_plan, would_do
+from .download import load_plan, point_at, relocate, run, save_plan, would_do
 from .enrich import discs_for_duplicates, enrich
 from .models import AlbumPlan
 from .plan import duplicate_numbers, safe_name, says_duplicates
@@ -559,6 +559,12 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             expect=lambda name, folder=where: recorded.get(f"{folder}/{name}"),
             track_source=service._track_source(plan), on_track=_counted(done, service.on_track),
             check=service.check, download=False)
+        if point_at(plan, here):
+            # **the pass that moved and renamed them records where they now are** (§9, slice 130).
+            # The folder provider's ref is the source file's own path, and `run` above has just given
+            # every file the scheme's name — so without this every track of every album the take-in
+            # renames is left naming a file that no longer exists.
+            save_plan(plan, here)
         if plan.cover_fetched != had_a_cover:
             done.covers += 1        # a cover was written beside this album, and the plan records it
         # **what this pass put in the folder, so a restore can take it away** (§9, slice 102). The

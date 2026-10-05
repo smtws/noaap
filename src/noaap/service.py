@@ -1900,6 +1900,17 @@ class Service:
             want = for_album(self.cfg, plan)
             album_dir = relocate(album_dir, plan, self.library, want)
             self._run(plan, album_dir, download=False)
+            # **a move, a rename and the re-point of what they touched are one pass** (§9, slice 130).
+            # The question above is asked before the skip, which is before the folder moves and before
+            # `_run` renames the files — so on the user's share `repair --apply` moved 15 folders and
+            # left 13 plans naming the folder they had just left, a second apply fixed 13 and left the
+            # one it had moved itself, and a third was needed for that. Asked again here, where the
+            # album is where it is going to stay, it is the same pass that moved it.
+            if point_at(plan, album_dir):
+                if not repointed:
+                    self.log("  re-pointed at its own folder, which this pass has just moved it to")
+                    pointed += 1
+                save_plan(plan, album_dir)
             outcomes.append(Outcome("ok", plan, album_dir))
         if moved_total.get("sources") or moved_total.get("would_source"):
             self.log(f"{moved_total.get('sources') or moved_total.get('would_source')} album(s) "

@@ -3620,6 +3620,30 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    says its basis — user, MusicBrainz, count or alphabet — because a choice nobody can account for
    is not one a reader can disagree with.
 
+130. ✅ **A folder-sourced track's id, and a move that settles in one pass** (2026-10-05, P98 item 1).
+   Slice 125 re-pointed a plan that named a folder nobody will see again; it never asked the same of
+   the tracks. A folder provider's ref **is** the source file's path, so it is the track's
+   `video_id` — and on the user's share **4,086 tracks in 390 albums** named a file that is not
+   there: 2,041 under the deleted staging copy, 1,647 renamed in place by the take-in that adopted
+   them, 398 under a folder a later pass moved. (12,531 tracks in 1,063 albums already name their
+   own file, which is what the state is supposed to be.)
+   What that costs: a re-read of such a folder reports **every track new and every known track
+   gone** — `13 new, 13 no longer in the source` for an album whose thirteen files are all present.
+   An `update --apply` on that report would rewrite the plan as all-new tracks and mark the thirteen
+   as missing. It is `points_elsewhere`'s question asked per track, and the answer is the same one:
+   **gone, or under a staged index**, never "not the album's own folder" — an album taken in from a
+   folder that is still where the plan says keeps pointing at it. The two halves are gated apart, so
+   a right source and a wrong track can be true at once. `video_id` does not travel alone:
+   its `Candidate`, a `source_override` and a refusal naming the same path move with it, one
+   candidate is kept per ref, and `source_state["ids"]` follows so the cheap skip still recognises
+   the source.
+   **And the pass that moves an album re-points it.** The question is asked before the skip, which
+   is before `relocate` moves the folder and before `run` renames the files — so `repair --apply`
+   over the share moved 15 folders and left 13 plans naming the folder they had just left; a second
+   apply fixed those 13 and left the one *it* had moved; a third was needed for that. Asked again
+   after the move and the rename, where the album is going to stay, it is the same pass. The take-in
+   does the same, because it is the pass that gives every file the scheme's name.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

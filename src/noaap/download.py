@@ -31,7 +31,7 @@ from .lyrics import (
     update_track,
     write_sidecar,
 )
-from .models import AlbumPlan, Failure, PlanTrack, Provenance
+from .models import AlbumPlan, Candidate, Failure, PlanTrack, Provenance
 from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folder
 from .precautions import Unsafe, empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
@@ -673,6 +673,71 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
 
 
 def points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
+    """Whether this folder-sourced plan says its album, or one of its files, is somewhere it is not.
+
+    The album's own address (§9, slice 125) **and its tracks'** (§9, slice 130) — one question, so
+    that one `point_at` settles both and the skip above it cannot be true while either is wrong.
+    """
+    return _source_points_elsewhere(plan, album_dir) or bool(tracks_elsewhere(plan, album_dir))
+
+
+def tracks_elsewhere(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
+    """The folder-sourced tracks whose id names a file that is gone or a staging copy's (slice 130).
+
+    A folder provider's ref **is** the source file's path, so it is the track's `video_id` — and when
+    the album moves, or the staging copy it was read from is deleted, that id names nothing while the
+    file itself sits beside the plan under `filename`. 33 tracks of two of the user's albums were in
+    that state after their folders moved, and a re-read of the folder then reports *every* track new
+    and every known track gone: `13 new, 13 no longer in the source`. An apply on that report would
+    rewrite the plan as all-new tracks and mark the thirty-three that are there as missing.
+
+    The same question as the album's, asked per track — **gone, or under a staged index** — because
+    an album taken in from a folder that is still where the plan says must keep pointing at it.
+    """
+    if plan.provider != "folder":
+        return []
+    out: list[PlanTrack] = []
+    for track in plan.tracks:
+        said = str(track.video_id or "")
+        if not said.startswith("/") or not track.filename:
+            continue
+        here = album_dir / track.filename
+        if not here.is_file() or Path(said) == here:
+            continue    # nothing to point at, or already pointing at it
+        where = Path(said)
+        if not where.exists() or _under_a_staging_folder(where):
+            out.append(track)
+    return out
+
+
+def _point_track_at(track: PlanTrack, file: Path) -> bool:
+    """Give one track the path its file is really at — candidate, override and refusals with it.
+
+    `video_id` is not alone: `sync_candidates` keeps a `Candidate` per ref, so changing the id without
+    its candidate would leave the stale ref in the list and add a second one beside it.
+    """
+    was, now = str(track.video_id), str(file)
+    if was == now:
+        return False
+    for candidate in track.candidates:
+        if candidate.ref == was:
+            candidate.ref = now
+    # one candidate per ref: where a candidate for the file's real path was already there, renaming
+    # the stale one onto it would leave two, and `candidate(ref)` answers with whichever comes first
+    kept: list[Candidate] = []
+    for candidate in track.candidates:
+        if not any(other.ref == candidate.ref for other in kept):
+            kept.append(candidate)
+    track.candidates = kept
+    if track.source_override == was:
+        track.source_override = now
+    track.refused_candidates = [now if ref == was else ref for ref in track.refused_candidates]
+    track.video_id = now
+    track.sync_candidates()
+    return True
+
+
+def _source_points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
     """Whether this folder-sourced plan says its album is somewhere it is not (§9, slice 125).
 
     A staged take-in runs the ordinary pass against the **staging copy**, so the folder provider
@@ -713,20 +778,33 @@ def _under_a_staging_folder(path: Path) -> bool:
 
 
 def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
-    """Say where this album is: its own folder, and the cover beside it. True when anything changed.
+    """Say where this album and its files are. True when anything changed.
 
-    What the plain pass records, which is what a staged one should have recorded (§9, slice 125).
+    What the plain pass records, which is what a staged one should have recorded (§9, slice 125) —
+    and, since slice 130, the tracks' own ids too. **The two halves are gated apart**: a plan whose
+    source really is a folder elsewhere that is still there keeps that address even while a track of
+    it needs re-pointing, and the other way round.
     """
-    if not points_elsewhere(plan, album_dir):
-        return False
-    was = (plan.source_id, plan.source_url, plan.cover_url)
-    plan.source_id = plan.source_url = str(album_dir)
-    if str(plan.cover_url or "").startswith("/"):
-        # beside the album if it is there; otherwise the folder itself, which is the address the
-        # provider gives for "the picture is inside one of the files"
-        beside = next((q for q in sorted(album_dir.glob(f"{COVER_STEM}.*"))), None)
-        plan.cover_url = str(beside or album_dir)
-    return (plan.source_id, plan.source_url, plan.cover_url) != was
+    changed = False
+    if _source_points_elsewhere(plan, album_dir):
+        was = (plan.source_id, plan.source_url, plan.cover_url)
+        plan.source_id = plan.source_url = str(album_dir)
+        if str(plan.cover_url or "").startswith("/"):
+            # beside the album if it is there; otherwise the folder itself, which is the address the
+            # provider gives for "the picture is inside one of the files"
+            beside = next((q for q in sorted(album_dir.glob(f"{COVER_STEM}.*"))), None)
+            plan.cover_url = str(beside or album_dir)
+        changed = (plan.source_id, plan.source_url, plan.cover_url) != was
+    moved: dict[str, str] = {}
+    for track in tracks_elsewhere(plan, album_dir):
+        was_id = str(track.video_id)
+        if _point_track_at(track, album_dir / track.filename):
+            moved[was_id] = str(track.video_id)
+            changed = True
+    if moved and (ids := (plan.source_state or {}).get("ids")):
+        # what the source looked like last time, so the cheap skip above still recognises it
+        plan.source_state["ids"] = [moved.get(str(one), one) for one in ids]
+    return changed
 
 
 def tails_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = None) -> int:

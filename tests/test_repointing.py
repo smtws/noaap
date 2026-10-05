@@ -201,3 +201,119 @@ def test_a_staging_folder_that_is_still_there_is_recognised_by_its_index(tmp_pat
     assert points_elsewhere(plan, album) is True
     assert point_at(plan, album) is True
     assert plan.source_id == str(album)
+
+
+# -- a track's own id, and a move that settles in one pass (§9, slice 130; R-484 item 1) ---------
+
+
+def test_a_tracks_id_naming_a_deleted_staging_file_is_re_pointed(tmp_path, one_second_of_sound):
+    """The state 33 of the user's tracks were in: the file is beside the plan, the id names the
+    staging copy the staged pass read it from, and that folder is gone."""
+    from noaap.download import tracks_elsewhere
+
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One", "Two"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    plan = load_plan(album)
+    assert tracks_elsewhere(plan, album) == [], "a plain take-in records the file itself"
+    for track in plan.tracks:
+        track.video_id = f"/gone/staging/batch/A Band/An Album/{track.filename}"
+        track.sync_candidates()
+
+    assert len(tracks_elsewhere(plan, album)) == 2
+    assert points_elsewhere(plan, album) is True
+    assert point_at(plan, album) is True
+
+    for track in plan.tracks:
+        assert track.video_id == str(album / track.filename)
+        assert [c.ref for c in track.candidates] == [track.video_id], "no stale candidate left over"
+        assert track.chosen == track.video_id
+
+
+def test_a_track_whose_file_really_is_elsewhere_keeps_pointing_at_it(tmp_path, one_second_of_sound):
+    """The narrowing, per track: gone or under a staged index, never "not the album's own folder"."""
+    from noaap.download import tracks_elsewhere
+
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    elsewhere = tmp_path / "intake" / "A Band" / "An Album"
+    elsewhere.mkdir(parents=True)
+    source = elsewhere / "01 One.opus"
+    shutil.copy(one_second_of_sound, source)
+    plan = load_plan(album)
+    plan.source_id = plan.source_url = str(elsewhere)
+    plan.tracks[0].video_id = str(source)
+    plan.tracks[0].sync_candidates()
+
+    assert tracks_elsewhere(plan, album) == []
+    assert point_at(plan, album) is False
+    assert plan.tracks[0].video_id == str(source)
+
+
+def test_the_source_and_the_tracks_are_gated_apart(tmp_path, one_second_of_sound):
+    """A source that is right and a track that is not: only the track moves."""
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    elsewhere = tmp_path / "intake" / "A Band" / "An Album"
+    elsewhere.mkdir(parents=True)
+    plan = load_plan(album)
+    plan.source_id = plan.source_url = str(elsewhere)   # really there, so never touched
+    plan.tracks[0].video_id = "/gone/staging/batch/A Band/An Album/01 One.opus"
+    plan.tracks[0].sync_candidates()
+
+    assert point_at(plan, album) is True
+    assert plan.source_id == str(elsewhere), "the album's own address was right and stays"
+    assert plan.tracks[0].video_id == str(album / plan.tracks[0].filename)
+
+
+def test_what_the_source_last_looked_like_moves_with_the_ids(tmp_path, one_second_of_sound):
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    plan = load_plan(album)
+    stale = f"/gone/staging/batch/A Band/An Album/{plan.tracks[0].filename}"
+    plan.tracks[0].video_id = stale
+    plan.tracks[0].sync_candidates()
+    plan.source_state = {"ids": [stale], "modified": "20261004"}
+
+    point_at(plan, album)
+
+    assert plan.source_state["ids"] == [str(album / plan.tracks[0].filename)]
+
+
+def test_a_move_and_its_re_point_are_one_pass(tmp_path, one_second_of_sound):
+    """The three-applies bug. `repair` asks where the album is **before** the skip, which is before
+    the folder moves and before the files are renamed — so the plan was left naming the folder it had
+    just been moved out of, and only the next apply fixed it."""
+    root = tmp_path / "collection"
+    album = an_album(root / "a band" / "an album", ["One"], one_second_of_sound,
+                     artist="A Band", album="An Album")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    assert (root / "A Band" / "An Album").is_dir(), "the scheme renamed it on the way in"
+
+    # put it back under the owner's spelling, with every address naming that folder: the state an
+    # album is in when a repair is about to move it
+    shutil.move(root / "A Band" / "An Album", album)
+    shutil.rmtree(root / "A Band")
+    plan = load_plan(album)
+    plan.folder = "a band/an album"
+    plan.source_id = plan.source_url = str(album)
+    plan.cover_url = str(album)
+    for track in plan.tracks:
+        track.video_id = str(album / track.filename)
+        track.sync_candidates()
+    save_plan(plan, album)
+
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = lambda s: None
+    service.repair()
+
+    moved = root / "A Band" / "An Album"
+    assert moved.is_dir(), "the repair moved it into the scheme"
+    after = load_plan(moved)
+    assert after.source_id == str(moved), after.source_id
+    assert points_elsewhere(after, moved) is False, "one pass, not three"
+    for track in after.tracks:
+        assert track.video_id == str(moved / track.filename), track.video_id
