@@ -3767,6 +3767,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    has in hand, a `release-group/…` link is refused (a group has no media and nothing could be
    matched against it), and an empty field hands the choice back to the search. The check says
    `release pinned by you`, so a reader can tell a chosen release from a found one.
+   **And the pin has to reach the plan that is actually enriched** (R-490, found by the real run the
+   day this shipped). The pin is stored on the album's plan; `fetch` builds a **fresh** plan from the
+   source, enriches that, and only then finds the stored one and merges. So `pinned_release` was
+   asked of a plan that could never carry a pin: the pass logged *looking for the release*, took the
+   search's answer, and the merge then kept the pinned **id** — the plan would have named one release
+   while its names, numbers and discs came from another. `carry_the_pin` moves it across before the
+   enrichment, and the stored album is looked up once and reused by both branches, because
+   `find_plan` reads every plan and over 1,311 albums on a NAS that is not a question to ask twice.
+   Every case written for the pin exercised `enrich_release` and `merge_plans` directly, so not one
+   of them saw it. **A rule about what a pass does has to be driven through the pass.**
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

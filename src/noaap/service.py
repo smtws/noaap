@@ -41,7 +41,7 @@ from .download import (
     says_the_old_name,
     would_do,
 )
-from .enrich import enrich, pinned_release
+from .enrich import carry_the_pin, enrich, pinned_release
 from .lyrics import (
     Lrclib,
     LyricsAPI,
@@ -327,6 +327,12 @@ class Service:
             self.log(msg)
             return Outcome("failed", plan, message=msg)
 
+        # **the pin is the stored plan's, and what gets enriched is this fresh one** (slice 137).
+        # Looked up once, here, and reused by both branches below — `find_plan` reads every plan in
+        # the library, and over the user's 1,311 albums on a NAS that is not a question to ask twice.
+        here = find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None
+        if here and (pin := carry_the_pin(here[1], plan)):
+            self.log(f"  the release you pinned: {pin}")
         if not self.may_look_up(plan):
             self.log("  nothing about this album is looked up anywhere: its audio came from a source "
                      "one person paid for (set \"lookups\": true in its plan to change that)")
@@ -368,7 +374,7 @@ class Service:
             # and writes nothing. Without the merge it would show a fresh plan for an album whose
             # stored one carries the user's own edits, and promise names the fetch would not write.
             known_dir = None
-            if found := (find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None):
+            if found := here:
                 known_dir, existing = found
                 # the ids the plan holds for these very files, before anything is counted (slice 135)
                 plan = as_the_plan_knows_them(existing, plan)
@@ -382,7 +388,7 @@ class Service:
             self.on_plan(plan)
             return Outcome("dry", plan, known_dir)
 
-        if found := find_plan(self.library, plan.source_id):
+        if found := here:
             old_dir, existing = found
             plan = as_the_plan_knows_them(existing, plan)   # §9, slice 135
             known = {t.video_id for t in existing.tracks}

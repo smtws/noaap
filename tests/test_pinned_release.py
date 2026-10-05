@@ -209,3 +209,65 @@ def test_reset_says_whether_there_was_a_pin():
     plan.mbid, plan.provenance["mbid"] = TWO_DISCS, Provenance.USER
     assert reset_field(plan, "mbid") is True
     assert plan.mbid is None
+
+
+# -- the pin has to reach the plan that is actually enriched (R-490) ------------------------------
+
+
+def test_the_pin_reaches_the_fetch_not_only_the_merge(tmp_path, one_second_of_sound):
+    """Found by the real run, after P101 was released. The pin is on the plan **on disk** and the
+    enrichment happens on the **fresh** plan the pass builds from the source — so `Night is Calling`
+    was pinned to the 2-CD release and the pass still logged *looking for the release* and took the
+    search's answer. `merge_plans` then kept the pinned id, so the plan named one release while its
+    names, numbers and discs came from another. A pin that only survives the merge is not a pin.
+    """
+    from test_intake import QUIET
+    from test_repointing import a_library, an_album
+
+    from noaap import intake
+    from noaap.download import load_plan, save_plan
+
+    root = tmp_path / "collection"
+    an_album(root / "DOMINUM" / "Night is Calling", FIRST, one_second_of_sound,
+             artist="DOMINUM", album="Night is Calling")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    album = root / "DOMINUM" / "Night is Calling"
+    plan = load_plan(album)
+    apply_user_edits(plan, {"mbid": TWO_DISCS})
+    save_plan(plan, album)
+
+    said: list[str] = []
+    mb = StubMB()
+    service = a_library(root)
+    service.cfg.musicbrainz = True
+    service._mb = mb
+    service.log = said.append
+    service.fetch(str(album), report_only=True)
+
+    assert mb.searched == 0, said
+    assert mb.opened == [TWO_DISCS], said
+    assert [line for line in said if "the release you pinned" in line], said
+    assert [line for line in said if "release pinned by you, and it answers" in line], said
+
+
+def test_an_album_with_no_pin_still_searches(tmp_path, one_second_of_sound):
+    from test_intake import QUIET
+    from test_repointing import a_library, an_album
+
+    from noaap import intake
+
+    root = tmp_path / "collection"
+    an_album(root / "DOMINUM" / "Night is Calling", FIRST, one_second_of_sound,
+             artist="DOMINUM", album="Night is Calling")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said: list[str] = []
+    mb = StubMB()
+    service = a_library(root)
+    service.cfg.musicbrainz = True
+    service._mb = mb
+    service.log = said.append
+    service.fetch(str(root / "DOMINUM" / "Night is Calling"), report_only=True)
+
+    assert mb.searched == 1, said
+    assert not [line for line in said if "pinned" in line], said

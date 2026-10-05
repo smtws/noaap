@@ -260,6 +260,21 @@ def pinned_release(plan: AlbumPlan) -> str | None:
     return plan.mbid if plan.provenance.get("mbid") == Provenance.USER and plan.mbid else None
 
 
+def carry_the_pin(existing: AlbumPlan, fresh: AlbumPlan) -> str | None:
+    """Put the album's pinned release onto the fresh plan that is about to be enriched (slice 137).
+
+    **The pin is on the plan on disk and the enrichment happens on the fresh one.** Found by the real
+    run: `DOMINUM — Night is Calling` was pinned to `84dfc64c` and the pass still logged *looking for
+    the release* and took the search's answer. `merge_plans` then kept the pinned **id** — so the plan
+    said one release while its names, numbers and discs came from another. A pin that only survives
+    the merge is not a pin.
+    """
+    if pin := pinned_release(existing):
+        fresh.mbid = pin
+        fresh.provenance["mbid"] = Provenance.USER
+    return pin
+
+
 def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
     if pinned := pinned_release(plan):
         # **a pin is not a guess, so it is not searched for and not voted on** (slice 137)
