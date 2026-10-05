@@ -594,7 +594,11 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     _merge_fields(merged, fresh, ALBUM_FIELDS)
     merged.cover_url = fresh.cover_url or merged.cover_url
     merged.cover_fallback_url = fresh.cover_fallback_url or merged.cover_fallback_url
-    merged.mbid = fresh.mbid or merged.mbid
+    # **a release a person named is theirs to keep** (§9, slice 137): every other album field goes
+    # through `_merge_fields`, which honours a user edit; `mbid` was taken from the fresh plan
+    # unconditionally, so a pinned release was gone at the next update.
+    if merged.provenance.get("mbid") != Provenance.USER:
+        merged.mbid = fresh.mbid or merged.mbid
     merged.skipped = fresh.skipped
     merged.source_state = fresh.source_state or merged.source_state
 

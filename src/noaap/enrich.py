@@ -222,8 +222,16 @@ def release_candidates(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[
     )
 
 
-def match_release_tracks(plan: AlbumPlan, release: dict[str, Any]) -> dict[int, dict[str, Any]] | None:
-    """plan track index -> MB track (with 'disc' added), or None if too few tracks match."""
+def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
+                         pinned: bool = False) -> dict[int, dict[str, Any]] | None:
+    """plan track index -> MB track (with 'disc' added), or None if too few tracks match.
+
+    **A pinned release is only asked about the plan's own tracks** (§9, slice 137). The second test
+    — enough of the *release* matched — is there to stop a search pairing a 13-track album with a
+    26-track release by accident. A person who named the release has made no accident, and an album
+    that holds one disc of two legitimately answers for half of it: `Night is Calling` is 13 files
+    against `84dfc64c`'s 13 + 13, which the release-side test rejects by design.
+    """
     mb_tracks = [{**t, "disc": m.get("position", 1)} for m in release.get("media", []) for t in m.get("tracks", [])]
     unused = list(range(len(mb_tracks)))
     matches: dict[int, dict[str, Any]] = {}
@@ -234,14 +242,34 @@ def match_release_tracks(plan: AlbumPlan, release: dict[str, Any]) -> dict[int, 
                 matches[i] = mb_tracks[j]
                 unused.remove(j)
                 break
-    enough = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(mb_tracks)) and len(matches) >= math.ceil(MIN_TRACK_MATCH * len(plan.tracks))
+    mine = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(plan.tracks))
+    theirs = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(mb_tracks))
+    enough = mine if pinned else (mine and theirs)
     return matches if mb_tracks and enough else None
 
 
+def pinned_release(plan: AlbumPlan) -> str | None:
+    """The release a person said this album is, or None (§9, slice 137; R-489).
+
+    `mbid` was the one album field no edit could hold: `merge_plans` took the fresh value
+    unconditionally and nothing ever wrote a provenance for it, so a hand-set release was gone at the
+    next update. The user's own `Night is Calling` is the case — a rip of **disc 1 of a 2-CD
+    release**, which the search can only ever answer with the 13-track single-disc edition, because
+    a half-present release is exactly what a search is built to reject.
+    """
+    return plan.mbid if plan.provenance.get("mbid") == Provenance.USER and plan.mbid else None
+
+
 def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
-    for cand in release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))[:RELEASE_LOOKUPS]:
+    if pinned := pinned_release(plan):
+        # **a pin is not a guess, so it is not searched for and not voted on** (slice 137)
+        candidates = [{"id": pinned}]
+    else:
+        candidates = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))[:RELEASE_LOOKUPS]
+    for cand in candidates:
         release = mb.release(cand["id"])
-        if not release or (matches := match_release_tracks(plan, release)) is None:
+        if not release or (matches := match_release_tracks(plan, release,
+                                                           pinned=bool(pinned))) is None:
             continue
         rg = release.get("release-group") or cand.get("release-group") or {}
         _set(plan, "album", release["title"])
@@ -361,8 +389,15 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
     stats = {"release": 0, "tracks": 0, "looked_up": 0}
     try:
         if plan.kind in (Kind.OFFICIAL_ALBUM, Kind.ARTIST_PLAYLIST):
-            progress(f"MusicBrainz: looking for the release “{plan.album}”")
+            if pinned := pinned_release(plan):
+                # **said, because a pinned release is not what the pass would have chosen** (slice 137)
+                progress(f"MusicBrainz: release pinned by you ({pinned})")
+            else:
+                progress(f"MusicBrainz: looking for the release “{plan.album}”")
             stats["release"] = int(enrich_release(plan, mb))
+            if pinned and not stats["release"]:
+                progress(f"MusicBrainz: the release you pinned ({pinned}) does not answer for this "
+                         "album — nothing taken from it")
 
         todo = [t for t in plan.tracks if not t.mbid and _worth_looking_up(plan, t)]
         for i, t in enumerate(todo, 1):

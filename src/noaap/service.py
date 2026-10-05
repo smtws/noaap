@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 import shutil
 import tempfile
 import threading
@@ -40,7 +41,7 @@ from .download import (
     says_the_old_name,
     would_do,
 )
-from .enrich import enrich
+from .enrich import enrich, pinned_release
 from .lyrics import (
     Lrclib,
     LyricsAPI,
@@ -107,6 +108,18 @@ log = logging.getLogger(__name__)
 
 EDITABLE_ALBUM = ("album", "albumartist", "year")
 EDITABLE_TRACK = ("artist", "title")
+# **a release is pinned, not typed** (§9, slice 137). `mbid` is editable but it is not one of the
+# text fields above: it is an id to be recognised or refused, and a link is what a person has in
+# hand, so the id is taken out of one. `release/<id>` and `release-group/<id>` are different things
+# and only the first is a release — a group has no media and nothing could be matched against it.
+RELEASE_ID = re.compile(r"(?:^|/release/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+                        r"(?:$|[/?#])")
+
+
+def release_id_in(said: str) -> str | None:
+    """The MusicBrainz release id in what a person typed or pasted, or None."""
+    found = RELEASE_ID.search(str(said or "").strip())
+    return found.group(1) if found else None
 
 
 def parse_time(value: object) -> float | None:
@@ -323,7 +336,10 @@ class Service:
         if self.may_look_up(plan) and (mb := self.mb):
             stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")),
                            source=self.source_for(plan))
-            self.log("MusicBrainz: " + ("release matched" if stats["release"] else f"{stats['tracks']}/{stats['looked_up']} tracks matched"))
+            matched = ("release pinned by you, and it answers" if stats["release"] and pinned_release(plan)
+                       else "release matched" if stats["release"]
+                       else f"{stats['tracks']}/{stats['looked_up']} tracks matched")
+            self.log(f"MusicBrainz: {matched}")
             # enrichment keeps bracket groups MusicBrainz lacks, which puts a live album's own
             # name back into every track ("Louder Than Hell (Live in Hamburg)") - so the
             # album-wide judgement is made again, on the final titles
@@ -2516,6 +2532,13 @@ def reset_field(obj: AlbumPlan | PlanTrack, name: str) -> bool:
     """
     if name == "order":
         return isinstance(obj, AlbumPlan) and obj.provenance.pop("order", None) is not None
+    if name == "mbid":
+        # back to searching — and the id goes with the mark, because for this field the id *is* the
+        # pin; the next lookup writes whatever it finds (§9, slice 137)
+        if isinstance(obj, AlbumPlan) and obj.provenance.pop("mbid", None) is not None:
+            obj.mbid = None
+            return True
+        return False
     if name == "source":
         # the way back is the playlist's own video, which `auto` does not have to remember: it is
         # `video_id`. Going back costs what choosing cost — the track is fetched again (§9, slice 34).
@@ -2576,6 +2599,14 @@ def apply_user_edits(plan: AlbumPlan, edits: dict[str, Any], source: Any = None)
     """
     for name in edits.get("reset") or []:
         reset_field(plan, str(name))
+    if "mbid" in edits:
+        # **the release a person says this album is** (§9, slice 137): kept against every later
+        # search, and an empty field means "go back to searching".
+        if said := release_id_in(edits["mbid"]):
+            plan.mbid = said
+            plan.provenance["mbid"] = Provenance.USER
+        elif not str(edits["mbid"] or "").strip():
+            reset_field(plan, "mbid")
     for name in EDITABLE_ALBUM:
         if name in edits:
             value = edits[name]

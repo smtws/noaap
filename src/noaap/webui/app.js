@@ -1406,7 +1406,20 @@ function renderAlbum() {
       seedButton(p),
       h("button", { class: "quiet", type: "button", onclick: () => closeAlbum() }, "Close")),
     h("form", { id: "albumform", onsubmit: saveAlbum },
-      h("div", { class: "fields" }, field("Album artist", "albumartist", p.albumartist), field("Album", "album", p.album), field("Year", "year", p.year, "number")),
+      h("div", { class: "fields" }, field("Album artist", "albumartist", p.albumartist), field("Album", "album", p.album), field("Year", "year", p.year, "number"),
+        // **the release this album is** (§9, slice 137). A paste of the MusicBrainz link does it, and
+        // an empty field hands the choice back to the search.
+        h("label", { class: "wide" },
+          h("span", {}, "MusicBrainz release ", resetMark(p, null, "mbid")),
+          h("input", { type: "text", name: "mbid", value: p.mbid || "", size: 38,
+            placeholder: "paste the musicbrainz.org/release/… link",
+            title: p.provenance.mbid === "user"
+              ? "This release is yours: every update takes its names, numbers and discs from it and never searches for another. Clear the field to hand it back."
+              : "Paste a release link to say which release this album is. Until you do, every update searches for one." }))),
+      p.provenance.mbid === "user"
+        ? h("div", { class: "muted order-mark" }, "Release pinned by you ",
+          h("a", { href: `https://musicbrainz.org/release/${p.mbid}`, target: "_blank", rel: "noopener" }, p.mbid))
+        : null,
       p.provenance.order === "user"
         ? h("div", { class: "muted order-mark" }, "Track order is yours ",
           h("button", { class: "badge user reset", type: "button",
@@ -1673,6 +1686,7 @@ function saveAlbum(ev) {
   try {
     const edits = {
       album: form.album.value, albumartist: form.albumartist.value, year: form.year.value,
+      mbid: form.mbid.value,
       // **only the track rows** (§9, slice 89): a panel is a row too, with none of these fields
       tracks: trackRows(form.querySelectorAll("tbody tr")).map((tr) => ({
         video_id: tr.dataset.id,

@@ -3746,6 +3746,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    m4a in the user's library, so the measured reach is small — the rule was wrong all the same, and
    a pass that can never finish an album is worse than the tag it was trying to fix.
 
+137. ✅ **A release a person named is theirs to keep** (2026-10-05, P101).
+   `mbid` was the one album field no edit could hold. Every other one goes through `_merge_fields`,
+   which honours a user edit; `merged.mbid = fresh.mbid or merged.mbid` took the search's answer
+   unconditionally, and **no `mbid` key was ever written into `provenance` anywhere in the
+   codebase** — so a hand-set release was gone at the next update and there was no way to say which
+   release an album is.
+   The user's own case is `DOMINUM — Night is Calling`: a rip of **disc 1 of a 2-CD release**. The
+   search can only ever answer with the 13-track single-disc edition, because `release_candidates`
+   requires the track count to be within one and `match_release_tracks` requires 80% of the
+   *release* to be matched — a release that is half present is exactly what a search is built to
+   reject, and rightly so.
+   So: `provenance["mbid"] = "user"` is a pin; the merge leaves it alone; `enrich_release` opens
+   **that** release and does not search at all (`search_releases` is not called, which the case
+   asserts); and for a pinned release the release-side share is dropped while the plan-side share
+   stays — **a person who named the release has made no accident**, and 13 files answering for
+   13 + 13 is a rip of one disc, not a mismatch. A pin that still does not answer changes nothing
+   and says so.
+   Set by pasting the MusicBrainz link: the id is taken out of a URL because a link is what a person
+   has in hand, a `release-group/…` link is refused (a group has no media and nothing could be
+   matched against it), and an empty field hands the choice back to the search. The check says
+   `release pinned by you`, so a reader can tell a chosen release from a found one.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
