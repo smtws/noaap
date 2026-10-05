@@ -1748,7 +1748,7 @@ class Service:
         # **an album this program cannot see is said out loud** (R-419, point 3), never skipped
         if line := says_the_old_name(self.library):
             self.log(line)
-        lengths = retags = renames = pointed = cased = 0
+        lengths = retags = renames = pointed = cased = stuck = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         decided = self._decide_spellings()  # every artist key settled before the first rename
         for album_dir, plan in list(iter_plans(self.library)) if self.library and self.library.exists() else []:
@@ -1903,7 +1903,12 @@ class Service:
                 continue
             save_plan(plan, album_dir)
             want = for_album(self.cfg, plan)
-            album_dir = relocate(album_dir, plan, self.library, want)
+            stayed: list[str] = []
+            album_dir = relocate(album_dir, plan, self.library, want, say=stayed.append)
+            for line in stayed:
+                # **a collision is a finding, not a log-file footnote** (§9, slice 133)
+                self.log(f"  {line}")
+            stuck += len(stayed)
             self._run(plan, album_dir, download=False)
             # **a move, a rename and the re-point of what they touched are one pass** (§9, slice 130).
             # The question above is asked before the skip, which is before the folder moves and before
@@ -1939,6 +1944,8 @@ class Service:
         if pointed:
             log_it = "would be re-pointed" if dry_run else "re-pointed"
             self.log(f"{pointed} plan(s) {log_it} at their own album folder")
+        if stuck:
+            self.log(f"{stuck} album folder(s) could not move: something is already there")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")
         if self.library and self.library.is_dir():
             # **removing them is the setting; saying they are there is not** (§9, slice 104, 115).

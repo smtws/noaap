@@ -549,7 +549,9 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
         # (§9, slice 100), and the album is brought to the settings by the next repair like any other.
         here = album_dir
         if root.resolve() == service.library.resolve():
-            here = relocate(album_dir, plan, service.library, want)   # only where the root *is* the library
+            # only where the root *is* the library; `say` so a collision is in this run's log too
+            here = relocate(album_dir, plan, service.library, want,
+                            say=lambda line: log(f"  {line}"))
         if here != album_dir and here.is_dir():
             # the folder this pass moved the album into, so a restore does not leave it standing empty
             made_folders.append(str(here.relative_to(root)))

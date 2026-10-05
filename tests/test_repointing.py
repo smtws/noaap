@@ -405,3 +405,54 @@ def test_an_artist_folder_full_of_albums_is_not_named(tmp_path, one_second_of_so
     service.repair(dry_run=True)
 
     assert not [line for line in said if "holds no album" in line], said
+
+
+# -- a folder that cannot move because the name is taken (§9, slice 133; R-484 item 4) -----------
+
+
+def test_a_collision_is_named_by_the_apply_and_counted(tmp_path, one_second_of_sound):
+    """`DOMINUM/Night is Calling` was taken by the YouTube copy when the flac rip wanted that name.
+    The dry run said so outright; the apply said it only to the module logger, so a reader of the
+    apply's own log found nothing."""
+    root = tmp_path / "collection"
+    an_album(root / "a band" / "an album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    moved = root / "A Band" / "An Album"
+    assert moved.is_dir()
+    # put the album back under the owner's spelling and occupy the name it wants
+    shutil.move(moved, root / "a band" / "an album")
+    plan = load_plan(root / "a band" / "an album")
+    plan.folder = "a band/an album"
+    save_plan(plan, root / "a band" / "an album")
+    an_album(moved, ["Something else"], one_second_of_sound)
+
+    said = []
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = said.append
+    service.repair()
+
+    assert (root / "a band" / "an album").is_dir(), "it stays where it is"
+    named = [line for line in said if line.startswith("  the album folder would move")]
+    assert named == ["  the album folder would move to A Band/An Album — but something is already "
+                     "there, so it stays"], said
+    assert "1 album folder(s) could not move: something is already there" in said, said
+
+
+def test_a_folder_that_moves_cleanly_says_nothing_about_a_collision(tmp_path, one_second_of_sound):
+    root = tmp_path / "collection"
+    album = an_album(root / "a band" / "an album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    shutil.move(root / "A Band" / "An Album", album)
+    shutil.rmtree(root / "A Band")
+    plan = load_plan(album)
+    plan.folder = "a band/an album"
+    save_plan(plan, album)
+
+    said = []
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = said.append
+    service.repair()
+
+    assert (root / "A Band" / "An Album").is_dir()
+    assert not [line for line in said if "already there" in line], said
+    assert not [line for line in said if "could not move" in line], said

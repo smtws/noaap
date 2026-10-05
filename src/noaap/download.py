@@ -412,11 +412,16 @@ def find_plan(library: Path, source_id: str) -> tuple[Path, AlbumPlan] | None:
     return next(((d, p) for d, p in iter_plans(library) if p.source_id == source_id), None)
 
 
-def relocate(album_dir: Path, plan: AlbumPlan, library: Path, want: Treatment | None = None) -> Path:
+def relocate(album_dir: Path, plan: AlbumPlan, library: Path, want: Treatment | None = None,
+             say: Callable[[str], None] | None = None) -> Path:
     """Move the album folder to where the (edited) plan says it belongs. Never overwrites.
 
     An album that keeps its names stays where its owner put it (§9, slice 58) — unless the library is
     set to rename adopted albums and this one is not excepted from that (§9, slice 100).
+
+    **`say` hears the one thing that can go wrong** (§9, slice 133): a target that is already taken.
+    Without it that fact reached only the module logger, so an apply over the share said nothing a
+    reader of its log would find, while the dry run before it had named the collision outright.
     """
     if not renames(plan, want):
         return album_dir
@@ -426,6 +431,9 @@ def relocate(album_dir: Path, plan: AlbumPlan, library: Path, want: Treatment | 
         return target
     if target.exists():
         log.warning("not moving %s: %s already exists", album_dir, target)
+        if say is not None:
+            say(f"the album folder would move to {wanted_folder(plan)} — but something is already "
+                "there, so it stays")
         return album_dir
     target.parent.mkdir(parents=True, exist_ok=True)
     album_dir.rename(target)

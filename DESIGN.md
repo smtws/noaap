@@ -3671,6 +3671,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    owner's; a folder that noaap has emptied of its own work is noaap's to report and the owner's to
    decide about.
 
+133. ✅ **A collision is a finding, not a log-file footnote** (2026-10-05, P98 item 4).
+   `relocate` never overwrites: where the folder an album wants is already taken it stays where it
+   is, and said so with `log.warning` — the module logger, which a pass's own log does not carry. So
+   the dry run named the collision outright (`the album folder would move to DOMINUM/Night is
+   Calling — but something is already there, so it would stay`) and the apply that hit the same wall
+   said nothing a reader of its log would find. The flac rip of `Night is Calling` sat under the old
+   artist spelling for two applies because of it.
+   `relocate` now takes a `say`, the pass prints the line under the album's header in the same words
+   as the dry run, and the run ends with `N album folder(s) could not move: something is already
+   there`. The take-in passes one too, because it moves folders as well. **Whatever a check
+   promises to tell you, the apply tells you in the same words** — an apply that is quieter than its
+   own dry run is an apply nobody can read.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
