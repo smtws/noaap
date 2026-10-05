@@ -3644,6 +3644,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    after the move and the rename, where the album is going to stay, it is the same pass. The take-in
    does the same, because it is the pass that gives every file the scheme's name.
 
+131. ✅ **An album's line prints under that album's header** (2026-10-05, P98 item 2).
+   The re-point of slice 125 is decided *before* the skip, because an album nothing else is wrong
+   with must still be reached — and the skip is before the `=== artist — album` header. So the line
+   came out above its own header and read as the previous album's: in one check of the user's share,
+   13 of them, each appearing to say that *another* album's plan named this one's folder
+   (`=== DOMINUM — Cannibal Corpses` followed by nothing, and above it a line about
+   `'Hey Living People'`), with the very first line having no header above it at all.
+   The decision stays where it is; only the sentence moves. **Whatever a pass decides before it
+   knows it will speak, it says after it has named the album** — a log a reader has to re-align by
+   one line is worse than no log, because it reads as a fact about the wrong album.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

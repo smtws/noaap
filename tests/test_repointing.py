@@ -317,3 +317,28 @@ def test_a_move_and_its_re_point_are_one_pass(tmp_path, one_second_of_sound):
     assert points_elsewhere(after, moved) is False, "one pass, not three"
     for track in after.tracks:
         assert track.video_id == str(moved / track.filename), track.video_id
+
+
+def test_the_re_point_line_comes_under_its_own_header(tmp_path, one_second_of_sound):
+    """R-484 item 2. The question is asked before the skip, which is before the header — so the line
+    used to print above it and read as the previous album's. In one check 13 of them each named the
+    *next* album's folder, and the first had no header above it at all."""
+    root = tmp_path / "collection"
+    first = an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    an_album(root / "B Band" / "Another", ["Two"], one_second_of_sound,
+             artist="B Band", album="Another")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    plan = load_plan(first)
+    plan.source_id = plan.source_url = "/gone/staging/batch/A Band/An Album"
+    plan.cover_url = "/gone/staging/batch/A Band/An Album/cover.jpg"
+    save_plan(plan, first)
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True)
+
+    where = next(i for i, line in enumerate(said) if "re-pointed at its own folder" in line)
+    assert where > 0, said
+    assert said[where - 1] == "=== A Band — An Album", said[max(0, where - 2):where + 1]
+    assert said[where].startswith("  would be re-pointed"), said[where]

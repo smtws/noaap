@@ -1854,12 +1854,8 @@ class Service:
             # before the skip: a cover address under a staging folder that no longer exists cannot be
             # read, and an album it keeps out of the skip is an album nothing ever finishes with.
             repointed = point_at(plan, album_dir)
-            if repointed:
-                self.log(f"  {'would be' if dry_run else ''} re-pointed at its own folder "
-                         f"(its plan named {album_dir.name!r} elsewhere)")
-                pointed += 1
-                if not dry_run:
-                    save_plan(plan, album_dir)
+            if repointed and not dry_run:
+                save_plan(plan, album_dir)
             # **and the one question that cannot drift from the apply: what would the apply do?**
             # (§9, slice 124). Eleven conditions guessed at this and none of them asked whether a
             # *file* would be renamed or retagged — so slice 116's renames reached only the albums
@@ -1883,6 +1879,14 @@ class Service:
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
                      + (f" ({filled} track(s) measured)" if filled else ""))
+            # **under its album's header** (§9, slice 130, R-484 item 2). The question is asked before
+            # the skip, which is before the header is printed — so the line used to come out above it
+            # and read as the previous album's: 13 of them in one check, each naming the *next*
+            # album's folder, and the first with no header above it at all.
+            if repointed:
+                self.log(f"  {'would be ' if dry_run else ''}re-pointed at its own folder "
+                         f"(its plan named {album_dir.name!r} elsewhere)")
+                pointed += 1
             if dry_run:
                 # **the dry run names what the real run would do to the files** (§9, slice 85). It used
                 # to stop here, so renames and retags — which happen inside `run` below — were never
