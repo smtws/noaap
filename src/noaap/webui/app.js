@@ -1,7 +1,8 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         nearMiss, nudged, numberByDisc, oneVideo, ourLength, publishConfirm, publishState, refLabel, refLength,
+         nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
+         POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
          copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
          repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
@@ -39,12 +40,15 @@ function h(tag, attrs = {}, ...children) {
   return el;
 }
 
-async function api(path, body) {
+async function api(path, body, timeoutMs = 0) {
   const opts = body === undefined ? {} : {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Noaap": "1" },
     body: JSON.stringify(body),
   };
+  // a ceiling only where one was asked for, and it is an abort rather than an error: the caller
+  // decides whether a timeout means the server is gone (§9, slice 139)
+  if (timeoutMs > 0 && typeof AbortSignal?.timeout === "function") opts.signal = AbortSignal.timeout(timeoutMs);
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || r.statusText);
@@ -131,11 +135,24 @@ function renderActivity() {
 // rebuild would throw that text away before the user could look at it (§9, slice 36). The lane comes from
 // the server with every job, so this cannot drift from the list the server actually uses.
 let ranWrite = false;
+// **one state request at a time** (§9, slice 139, R-499 item 3). The timer fired every 700 ms while
+// a job ran, and on the user's NAS library one answer took 107 s — so each tick opened another
+// request behind the last and the page queued dozens of identical walks, with anything else (a
+// cover, a track) waiting its turn. A tick that finds one in flight simply waits for the next.
+let polling = false;
 
 async function poll() {
+  const plan = pollPlan({ polling, busy: state.busy, waiting: Boolean(waitingFor), offline });
+  if (!plan.ask) {
+    schedulePoll(plan.next);
+    return;
+  }
+  polling = true;
   try {
     const prevBusy = state.busy;
-    state = await api("/api/state");
+    // the ceiling is far above the bound the server states for its own answer, so a slow library
+    // is waited for rather than declared dead (R-499 item 3)
+    state = await api("/api/state", undefined, POLL_CEILING_MS);
     if (state.jobs?.some((j) => ["queued", "running"].includes(j.state) && j.lane !== "read")) ranWrite = true;
     if (state.tracks_version && state.tracks_version !== trackIndex.version) loadTracks();
     renderLibrary();
@@ -159,9 +176,15 @@ async function poll() {
     setOffline(false);
   } catch (e) {
     console.warn("poll failed", e);
-    setOffline(true);
+    // **a slow answer is not a server that went down** (R-499 item 3). It is waited for: the page
+    // opens no second request while one is in flight, and the ceiling above is far beyond the
+    // staleness bound the server states — so reaching here means a refused connection or a wait
+    // past that ceiling, and both of those really are "gone".
+    setOffline(pollFailureIsOffline());
+  } finally {
+    polling = false;
   }
-  schedulePoll(offline ? 3000 : state.busy || waitingFor ? 700 : 8000);
+  schedulePoll(pollPlan({ busy: state.busy, waiting: Boolean(waitingFor), offline }).next);
 }
 
 let offline = false;

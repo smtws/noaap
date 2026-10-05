@@ -1166,3 +1166,25 @@ export const CLAIM_LABEL = "I have corrected these words, they are mine";
 export function wordsAfterClaim(wordsBy, claimed) {
   return claimed ? "" : (wordsBy || "");
 }
+
+// -- polling (§9, slice 139; R-499 item 3) ---------------------------------------------------
+//
+// The timer fired every 700 ms while a job ran, and on the user's NAS library one `/api/state`
+// answer took 107 seconds — so every tick opened another request behind the last one and the page
+// queued dozens of identical walks, with anything else (a cover, a track) waiting its turn. One
+// request at a time, and a slow answer is waited for rather than called a dead server.
+
+/** How long to wait before the next poll, and whether this tick may ask at all. */
+export const pollPlan = ({ polling = false, busy = false, waiting = false, offline = false } = {}) =>
+  polling
+    ? { ask: false, next: 1000 }
+    : { ask: true, next: offline ? 3000 : busy || waiting ? 700 : 8000 };
+
+/** Whether a failed poll means the server is gone. A slow answer never reaches here: the page
+ *  opens no second request while one is in flight, and the ceiling is far above the staleness
+ *  bound the server states, so anything that does fail really is gone. */
+export const pollFailureIsOffline = () => true;
+
+/** The ceiling for one state request: well above the server's own `stale_after` and above the one
+ *  walk a cold start costs (23 s on the user's library over NFS). */
+export const POLL_CEILING_MS = 120000;
