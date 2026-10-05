@@ -73,6 +73,9 @@ class StubMB:
     def search_recordings(self, artist, title):
         return []
 
+    def artist(self, name):
+        return None     # this double answers about releases, not about artists (§9, slice 138)
+
     def artist_albums(self, artist):
         return []
 
