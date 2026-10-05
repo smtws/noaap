@@ -3912,6 +3912,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    without the fix: a release whose title differs is not even a candidate, and an adopted album's
    title is deliberately not the archive's to change.
 
+143. ✅ **Where an album came from is the provider's answer, not "YouTube"** (2026-10-05, P107).
+   The album panel ended in `<a href=p.source_url>open on YouTube</a>` for **every** album, whatever
+   its source. For the **1,312 of the user's 1,523 albums adopted from folders** that is a link to a
+   path on the NAS, labelled as YouTube: it opens nothing, and it says something untrue about where
+   the music came from. Found in a browser run over the real library, not by the suite — nothing in
+   it had ever looked at that line.
+   The folder provider had answered this correctly all along: `url_for` returns None, and its own
+   margin says why — *"nothing to open in a browser. A file manager would need a `file://`, and
+   offering one that half the desktops ignore is worse than offering none."* The page simply never
+   asked. So a link appears only where the address really is one a browser can open, it is named
+   after the provider that minted it (`open on SoundCloud`, `open on Patreon`), and a folder-sourced
+   album says **`taken in from <path>`** as words rather than as a link. No source at all shows
+   nothing.
+   Slice 51's rule, one level up: **the page must not decide what a ref means.** It held for a
+   track's candidates from the day it was written and this one line had been quietly breaking it
+   ever since folders became a provider.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

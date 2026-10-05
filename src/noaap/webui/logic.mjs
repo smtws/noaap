@@ -1228,3 +1228,26 @@ export function identifyState({ check = null, running = false, pinned = false,
 export const identifyLines = (job) =>
   (job?.log || []).filter((line) => line.trim() && !line.startsWith("==="))
                   .map((line) => line.replace(/^ {2}/, ""));
+
+// -- where an album came from (§9, slice 143; R-509 item 2) ------------------------------------
+//
+// The album panel ended in `<a href=p.source_url>open on YouTube</a>` for every album, whatever its
+// source. For the 1,312 albums the user adopted from folders that is a link to a path on the NAS
+// labelled as YouTube — it opens nothing, and it says something untrue about where the music came
+// from. The folder provider has always answered `url_for` with None and said why: "nothing to open
+// in a browser. A file manager would need a `file://`, and offering one that half the desktops
+// ignore is worse than offering none."
+
+/** How the panel should show where an album came from: a link, or words.
+ *
+ *  A link only where the source really is one a browser can open, and named after the provider that
+ *  minted it rather than after YouTube (§9, slice 51: the page must not decide what a ref means).
+ */
+export function sourceOpen({ source_url = "", provider = "" } = {}) {
+  const url = String(source_url || "");
+  if (/^https?:\/\//i.test(url)) {
+    return { href: url, label: `open on ${sourceLabel(provider) || "the source"}` };
+  }
+  if (!url) return null;
+  return { text: `taken in from ${url}` };
+}

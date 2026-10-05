@@ -6,7 +6,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
          copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
-         repairState, sourceLabel, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
+         repairState, sourceLabel, sourceOpen, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
          resetKind, roundMark, watchesAfter, watchesWithout,
          scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
@@ -1464,7 +1464,7 @@ function renderAlbum() {
         identifyButton(p),
         h("button", { class: "danger", type: "button", onclick: (e) => deleteAlbum(p, e.currentTarget) }, "Delete album"),
         gone.length ? h("button", { class: "danger", type: "button", onclick: (e) => pruneAlbum(p, gone, e.currentTarget) }, `Remove ${gone.length} track${gone.length > 1 ? "s" : ""} no longer in the playlist`) : null,
-        h("a", { href: p.source_url, target: "_blank", rel: "noopener" }, "open on YouTube"))));
+        sourceOpening(p))));
   panel.hidden = false;
   markAlbumFields();
   reopenLyrics();
@@ -1924,6 +1924,17 @@ function updateSection() {
       h("button", { class: "quiet", type: "button",
         title: "Read every album in full instead of asking whether it changed — slower, and more requests",
         onclick: (e) => submit("update", { deep: true }, e.currentTarget) }, "Read every album in full")));
+}
+
+// Where this album came from: a link only where the source is one a browser can open, and named
+// after the provider that minted it (§9, slice 143). For the 1,312 albums adopted from folders this
+// was a link to a path on the NAS labelled "open on YouTube".
+function sourceOpening(p) {
+  const said = sourceOpen(p);
+  if (!said) return null;
+  return said.href
+    ? h("a", { href: said.href, target: "_blank", rel: "noopener" }, said.label)
+    : h("span", { class: "muted", title: p.source_url }, said.text);
 }
 
 // -- "Identify with MusicBrainz" (§9, slice 142) ----------------------------------------------
