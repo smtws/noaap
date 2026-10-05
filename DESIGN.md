@@ -4027,6 +4027,46 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the last word. And **the disk**: this is what a dry run would do, shown line by line by the field
    diff (slice 142), and nothing is written without an apply.
 
+149. ✅ **A title that differs only as a typo does** (2026-10-05, R-517). Measured over 70 of the
+   user's 177 unmatched albums, with the shipped code and the slice-148 disc rule held constant:
+   those 70 go from 11 albums matching to **14**, and from 17 listed-but-unfitted to 14. **Edit
+   distance alone buys 3** — `Alice Cooper/Dragontown`, `Böhse Onkelz/E.I.N.S`,
+   `Corvus Corax/Congregatio` — every pair a dropped letter, a missing diacritic, or **mojibake in
+   the owner's own tags** (`Meister der LÃ¼gen` for `Meister der Lügen`). One character, or a
+   seventh of the longer name, whichever is more. A looser script run before the unambiguity guard
+   existed had predicted 5; the guard refused 3 of those and the measurement found another, so the
+   figure to believe is the one from the shipped code, not from the sketch.
+   **Containment was measured and refused.** It reached five further albums and paid for them with
+   `Milk - Exclusive Track` ↔ `Milk` and `Maybe - Remix` ↔ `Maybe (remixed by Dust of Basement)` —
+   a *different recording* taking an album track's name, number and recording id. `Somewhere` ↔
+   `Somewhere in the Jungle` and `I Am The Sentinel` ↔ `The Sentinel` are probably right and are
+   still guesses. Five albums is not worth a wrong song name written into somebody's files.
+   **It is a second pass, and only where nothing else is near.** Every exact title is seated first,
+   so a typo can never take a seat an exact name wanted; and a near pair is taken only when it is the
+   one candidate for that file *and* that file is the one candidate for it. `_seats_by_whole_title`
+   is on record for what ambiguity costs here: with `core` alone, `Dreams (Deep crowl Mix)` matched
+   the plain `Dreams` and the two were swapped.
+   Two expectations written for this were wrong and the measurement corrected them: `Just Wanna Be
+   God` against `I Just Wanna Be God` is **one** character after normalising, so it is a typo and not
+   the guess I had called it in I-385; and a four-letter name can afford no slack at all, so `Fuor`
+   for `Four` — a transposition, which is two changes — is refused, which is right.
+   **It moved the case the offered list was written from.** `Dragontown` was slice 145's example —
+   nine editions, every one the right twelve tracks, each refused at 8 of 10 — and `Sister Sarah`/
+   `Sister Sara` plus `Just Wanna Be God`/`I Just Wanna Be God` are one edit each, which takes it to
+   exactly 10. So it now fits and offers nothing to decide, and `test_offered` keeps it as the case
+   that leaves the list empty. The list's own case is `Depeche Mode/Music For The Masses`, taken
+   from the library in the same measurement: 12 editions, 3 opened, 11 of 12 titles fitted, refused
+   over a medley (`Pimpf` against `Pimpf / Interlude #1: Mission Impossible`) and two mixes the
+   folder writes with a dash where MusicBrainz uses brackets. None of the three is a typo, which is
+   what makes it the right fixture for a list that has to survive the distance.
+   **Two things the same measurement found and did not act on** (they are the queue's, not
+   R-517's): `core()` strips `(Aggro mix)` but not ` - Aggro Mix`, which is what costs
+   `Music For The Masses` its twelfth title — a change to the one title matcher, so it needs its own
+   package and its own collision check, since both of that album's `Never Let Me Down Again` entries
+   would then key alike. And `Alice Cooper/Lace And Whiskey` matches MusicBrainz title for title
+   except that every one of the owner's titles carries an `Alice Cooper - ` prefix; across the whole
+   library that is **1 album of 1713**, so it is a curiosity and not a class worth code.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

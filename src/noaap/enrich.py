@@ -11,6 +11,7 @@ Values set here become the plan's auto values, so user edits still win on merge.
 
 from __future__ import annotations
 
+import difflib
 import logging
 import math
 import re
@@ -299,6 +300,28 @@ def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
     return _seat(plan, mb_tracks, pinned=pinned)
 
 
+def edits(a: str, b: str) -> int:
+    """How many characters would have to change to turn one title into the other."""
+    return sum(max(i2 - i1, j2 - j1)
+               for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes()
+               if op != "equal")
+
+
+def near_enough(a: str, b: str) -> bool:
+    """Whether two titles differ only as a typo does (§9, slice 149; R-517).
+
+    One character, or a seventh of the longer, whichever is more: `Dunler Ort`/`Dunkler Ort`,
+    `Toudion`/`Tourdion`, `Scarazula`/`Scuarazula`, `Zeit zu gehen`/`Zeit zu gehn`, and
+    `Meister der LÃ¼gen`/`Meister der Lügen` — which is mojibake in the user's own tags.
+    **Containment is deliberately not here**: it took `Milk - Exclusive Track` for `Milk` and
+    `Maybe - Remix` for `Maybe (remixed by Dust of Basement)`, which are different recordings, and
+    bought five albums for that.
+    """
+    if not a or not b:
+        return False
+    return edits(a, b) <= max(1, int(0.15 * max(len(a), len(b))))
+
+
 def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
           pinned: bool = False) -> dict[int, dict[str, Any]] | None:
     """plan track index -> one of `mb_tracks`, or None if too few fit."""
@@ -311,6 +334,25 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
                 matches[i] = mb_tracks[j]
                 unused.remove(j)
                 break
+    # **a second pass, and only where nothing else is near** (§9, slice 149). Every exact title is
+    # seated first, so a typo can never take a seat an exact name wanted; and a near pair is taken
+    # only when it is the one candidate for that file *and* that file is the one candidate for it.
+    # `_seats_by_whole_title` records what looseness costs when it is ambiguous: with `core` alone,
+    # `Dreams (Deep crowl Mix)` matched the plain `Dreams` and the two were swapped.
+    for i, t in enumerate(plan.tracks):
+        if i in matches:
+            continue
+        want = key(core(t.title))
+        close = [j for j in unused if near_enough(want, key(core(mb_tracks[j]["title"])))]
+        if len(close) != 1:
+            continue
+        their_title = key(core(mb_tracks[close[0]]["title"]))
+        rivals = [k for k, other in enumerate(plan.tracks)
+                  if k != i and k not in matches
+                  and near_enough(key(core(other.title)), their_title)]
+        if not rivals:
+            matches[i] = mb_tracks[close[0]]
+            unused.remove(close[0])
     mine = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(plan.tracks))
     theirs = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(mb_tracks))
     enough = mine if pinned else (mine and theirs)

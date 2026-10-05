@@ -1,11 +1,20 @@
 """The releases a lookup weighed and could not fit (DESIGN §9, slice 145; R-513 item 2).
 
-Measured on the user's library: of the first 517 albums, **168 found no release**, and 111 of those
-are a release MusicBrainz *has* — refused over a handful of song names. `Alice Cooper/Dragontown`
-is the shape: nine candidates pass the name filter, every one of them the right 12 tracks, and each
-is refused because 8 of 12 titles fit where 10 are needed. The pass said `0/0 tracks matched` and
-nothing at all about the nine releases it had just weighed, which is what made the user think
-identification only works when MusicBrainz has nothing similar.
+Measured on the user's library: of the first 517 albums, 177 found no release, and many of those are
+a release MusicBrainz *has* — refused over a handful of song names. The pass said `0/0 tracks
+matched` and nothing at all about the releases it had just weighed, which is what made the user
+think identification only works when MusicBrainz has nothing similar.
+
+`Alice Cooper/Dragontown` used to be the shape: nine candidates, every one the right 12 tracks, each
+refused because 8 of 12 titles fit where 10 are needed. **Since slice 149 it fits** — `Sister Sarah`/`Sister
+Sara` and `Just Wanna Be God`/`I Just Wanna Be God` are each one edit, which takes it to
+exactly 10 — so it is kept here as the case that leaves nothing to decide.
+
+What still refuses, and so still needs the list, is `Depeche Mode/Music For The Masses`: 12 editions,
+3 opened, 11 of 12 titles fitted. The three that miss are a medley (`Pimpf` against `Pimpf /
+Interlude #1: Mission Impossible`) and two mixes the folder writes with a dash where MusicBrainz
+uses brackets (`… - Aggro Mix` against `… (Aggro mix)`) — far past any edit bound, and none of them
+something a distance can rescue.
 """
 
 from __future__ import annotations
@@ -24,39 +33,58 @@ THEIRS = ["Triggerman", "Deeper", "Dragontown", "Sex, Death and Money", "Fantasy
 CREDIT = [{"name": "Alice Cooper", "artist": {"name": "Alice Cooper"}}]
 
 
-def a_plan(titles=MINE):
+def credit_for(name):
+    return [{"name": name, "artist": {"name": name}}]
+
+
+# Music For The Masses, as the folder has it and as MusicBrainz has it (the real pair of lists).
+MASSES = ["Never Let Me Down Again", "The Things You Said", "Strangelove", "Sacred", "Little 15",
+          "Behind The Wheel", "I Want You Now", "To Have And To Hold", "Nothing", "Pimpf",
+          "Agent Orange", "Never Let Me Down Again - Aggro Mix",
+          "To Have And To Hold - Spanish Taster", "Pleasure, Little Treasure"]
+MASSES_THEIRS = ["Never Let Me Down Again", "The Things You Said", "Strangelove", "Sacred",
+                 "Little 15", "Behind the Wheel", "I Want You Now", "To Have and to Hold",
+                 "Nothing", "Pimpf / Interlude #1: Mission Impossible", "Agent Orange",
+                 "Never Let Me Down Again (Aggro mix)", "To Have and to Hold (Spanish Taster)",
+                 "Pleasure, Little Treasure (Glitter mix)"]
+
+
+def a_plan(titles=MINE, album="Dragontown", artist="Alice Cooper", year=2001):
     return AlbumPlan(
-        source_url="/music/Alice Cooper/Dragontown", source_id="/music/Alice Cooper/Dragontown",
-        kind=Kind.OFFICIAL_ALBUM, album="Dragontown", albumartist="Alice Cooper", year=2001,
-        cover_url=None, folder="Alice Cooper/Dragontown", provider="folder",
-        tracks=[PlanTrack(video_id=f"/music/{n:02d}.flac", number=n, artist="Alice Cooper",
+        source_url=f"/music/{artist}/{album}", source_id=f"/music/{artist}/{album}",
+        kind=Kind.OFFICIAL_ALBUM, album=album, albumartist=artist, year=year,
+        cover_url=None, folder=f"{artist}/{album}", provider="folder",
+        tracks=[PlanTrack(video_id=f"/music/{n:02d}.flac", number=n, artist=artist,
                           title=t, filename=f"{n:02d}.flac", provenance={}, state="done")
                 for n, t in enumerate(titles, 1)])
 
 
-def a_release(mbid, titles=THEIRS, date="2001-09-18", country="US"):
-    return {"id": mbid, "title": "Dragontown", "date": date, "country": country,
-            "artist-credit": CREDIT, "release-group": {"id": "rg-1", "first-release-date": "2001"},
+def a_release(mbid, titles=THEIRS, date="2001-09-18", country="US", title="Dragontown",
+              credit=CREDIT):
+    return {"id": mbid, "title": title, "date": date, "country": country,
+            "artist-credit": credit, "release-group": {"id": "rg-1", "first-release-date": "2001"},
             "media": [{"position": 1, "tracks": [
-                {"position": n, "title": t, "artist-credit": CREDIT,
+                {"position": n, "title": t, "artist-credit": credit,
                  "recording": {"id": f"rec-{n}"}} for n, t in enumerate(titles, 1)]}]}
 
 
-class NineEditions:
-    """What MusicBrainz really answers for Dragontown: nine editions, all twelve tracks."""
+class Editions:
+    """What MusicBrainz really answers for one of these albums: N editions, all the same tracks."""
 
-    def __init__(self, titles=THEIRS, how_many=9):
-        self.titles, self.how_many = titles, how_many
+    def __init__(self, titles=THEIRS, how_many=9, album="Dragontown", artist="Alice Cooper"):
+        self.titles, self.how_many, self.album = titles, how_many, album
+        self.credit = credit_for(artist)
         self.opened: list[str] = []
 
     def search_releases(self, artist, album):
-        return [{"id": f"rel-{n}", "title": "Dragontown", "score": 100, "status": "Official",
-                 "country": "US", "date": f"20{n:02d}", "track-count": 12,
-                 "artist-credit": CREDIT} for n in range(1, self.how_many + 1)]
+        return [{"id": f"rel-{n}", "title": self.album, "score": 100, "status": "Official",
+                 "country": "US", "date": f"20{n:02d}", "track-count": len(self.titles),
+                 "artist-credit": self.credit} for n in range(1, self.how_many + 1)]
 
     def release(self, mbid):
         self.opened.append(mbid)
-        return a_release(mbid, self.titles, date=f"20{mbid.split('-')[1]:0>2}")
+        return a_release(mbid, self.titles, date=f"20{mbid.split('-')[1]:0>2}",
+                         title=self.album, credit=self.credit)
 
     def search_recordings(self, artist, title):
         return []
@@ -71,36 +99,42 @@ class NineEditions:
 # -- what gets recorded --------------------------------------------------------------------------
 
 
+def masses():
+    """The real still-refusing case: twelve editions, eleven of twelve titles fitted."""
+    return (a_plan(MASSES, album="Music For The Masses", artist="Depeche Mode", year=1987),
+            Editions(MASSES_THEIRS, how_many=12, album="Music For The Masses",
+                         artist="Depeche Mode"))
+
+
 def test_every_candidate_is_listed_not_only_the_ones_opened():
-    """The search's own answer carries each candidate's shape, so all nine are listed for the cost
+    """The search's own answer carries each candidate's shape, so all twelve are listed for the cost
     of the three the pass opens."""
-    plan, mb = a_plan(), NineEditions()
+    plan, mb = masses()
 
     assert enrich_release(plan, mb) is False
     assert len(mb.opened) == 3, "still only three requests"
-    assert len(plan.offered) == 9, [o["id"] for o in plan.offered]
+    assert len(plan.offered) == 12, [o["id"] for o in plan.offered]
 
 
 def test_the_ones_opened_say_how_near_they_came():
-    plan, mb = a_plan(), NineEditions()
+    plan, mb = masses()
     enrich_release(plan, mb)
 
     opened = [o for o in plan.offered if o["matched"] is not None]
     assert len(opened) == 3
-    assert all(o["matched"] == 8 and o["needed"] == 10 for o in opened), opened
+    assert all(o["matched"] == 11 and o["needed"] == 12 for o in opened), opened
 
 
 def test_the_nearest_is_listed_first():
-    plan = a_plan()
-    mb = NineEditions()
+    plan, mb = masses()
     enrich_release(plan, mb)
 
-    assert plan.offered[0]["matched"] == 8, "the ones that were weighed come before the rest"
+    assert plan.offered[0]["matched"] == 11, "the ones that were weighed come before the rest"
     assert plan.offered[-1]["matched"] is None
 
 
 def test_a_release_that_fits_leaves_nothing_to_choose():
-    plan, mb = a_plan(), NineEditions(titles=MINE)      # the archive agrees with the folder
+    plan, mb = a_plan(), Editions()     # Dragontown, which fits since slice 149
 
     assert enrich_release(plan, mb) is True
     assert plan.offered == [], "something fitted, so there is nothing for a person to decide"
@@ -110,16 +144,16 @@ def test_a_lookup_that_fits_clears_an_older_list():
     plan = a_plan()
     plan.offered = [offered_from({"id": "rel-old", "title": "Dragontown"})]
 
-    assert enrich_release(plan, NineEditions(titles=MINE)) is True
+    assert enrich_release(plan, Editions(titles=MINE)) is True
     assert plan.offered == []
 
 
 def test_nothing_found_at_all_is_an_empty_list_not_a_lie():
-    class Nothing(NineEditions):
+    class Nothing(Editions):
         def search_releases(self, artist, album):
             return []
 
-    plan = a_plan()
+    plan = a_plan(MASSES, album="Music For The Masses", artist="Depeche Mode")
     assert enrich_release(plan, Nothing()) is False
     assert plan.offered == []
 
@@ -153,12 +187,12 @@ def test_a_multi_disc_candidate_says_its_media():
 
 def test_the_pass_says_the_number_then_the_list():
     said: list[str] = []
-    plan = a_plan()
+    plan, mb = masses()
 
-    enrich(plan, NineEditions(), progress=said.append)
+    enrich(plan, mb, progress=said.append)
 
     headline = next(i for i, line in enumerate(said) if "release(s) weighed, none fitted" in line)
-    assert "9 release(s)" in said[headline]
+    assert "12 release(s)" in said[headline]
     assert "pin one" in said[headline]
     assert sum(1 for line in said[headline + 1:] if "titles fitted" in line) == 3
 
