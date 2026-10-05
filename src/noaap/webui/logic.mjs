@@ -1188,3 +1188,43 @@ export const pollFailureIsOffline = () => true;
 /** The ceiling for one state request: well above the server's own `stale_after` and above the one
  *  walk a cold start costs (23 s on the user's library over NFS). */
 export const POLL_CEILING_MS = 120000;
+
+// -- "Identify with MusicBrainz" (§9, slice 142; R-506 item 2) ---------------------------------
+//
+// The user pinned a release by hand and nothing happened until a pass was run from a terminal: the
+// panel had no way to say "go and look this album up". It is the same two steps as a repair — look
+// first, apply what was listed — because the lookup rewrites titles, numbers and discs, and a
+// person who cannot see that first is being asked to trust it blind.
+
+/** What the Identify button may do, and what to say under it. */
+export function identifyState({ check = null, running = false, pinned = false,
+                                version = null } = {}) {
+  if (running) {
+    return { canCheck: false, canApply: false, stale: false,
+             note: "Something is writing to this library — identifying waits until it is finished." };
+  }
+  if (!check) {
+    return { canCheck: true, canApply: false, stale: false,
+             note: pinned
+               ? "Asks MusicBrainz about the release you pinned. It writes nothing yet."
+               : "Asks MusicBrainz which release this album is. It writes nothing yet." };
+  }
+  if (check.version && version && check.version !== version) {
+    return { canCheck: true, canApply: false, stale: true,
+             note: "This album has changed since you looked — look again before applying it." };
+  }
+  if (!(check.lines || []).length) {
+    return { canCheck: true, canApply: false, stale: false,
+             note: check.matched
+               ? "MusicBrainz agrees with what this album already says — nothing to change."
+               : "MusicBrainz has no release that matches this album." };
+  }
+  return { canCheck: true, canApply: true, stale: false,
+           note: `Apply writes exactly what is listed: ${check.lines.length} change(s).` };
+}
+
+/** The lines of an identify check, in the order the panel shows them. A plain list, because the
+ *  server's own words are what a person is being asked to agree to (§9, slice 85). */
+export const identifyLines = (job) =>
+  (job?.log || []).filter((line) => line.trim() && !line.startsWith("==="))
+                  .map((line) => line.replace(/^ {2}/, ""));

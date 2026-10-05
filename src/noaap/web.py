@@ -132,7 +132,8 @@ class Jobs:
     # channel listing) get their own lane so a search never waits for a download
     # they only read: the answer goes to the page. `repair_check` is the dry run of slice 85 — it
     # writes nothing, so it belongs here and may run beside a download (§9, slice 91).
-    READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check", "take_in_check")
+    READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check", "take_in_check",
+                 "identify")   # it writes nothing; `identify_apply` is the write (§9, slice 142)
 
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
                  wrote: Callable[[], Any] | None = None,
@@ -1103,6 +1104,25 @@ class App:
                 # accepted at all, and one that climbs out of the root is refused. It is a write
                 # like any other, so it needs the `X-Noaap` header too.
                 return self.jobs.submit(*self._arrival(body))
+            case "identify":
+                # **the same two steps as a repair** (§9, slice 142): look, then apply what was
+                # listed. The lookup rewrites titles, numbers and discs, and a person who cannot see
+                # that first is being asked to trust it blind.
+                source_id = str(body.get("id", ""))
+                found = self.album(source_id)
+                if not found:
+                    raise ValueError("unknown album")
+                album_dir, plan = found
+                where = str(album_dir.relative_to(self.library))
+                dry = bool(body.get("dry_run"))
+                what = f"{plan.albumartist} — {plan.album}"
+                # `deep`, always: the point of the button is to look, so an album the cheap check
+                # would call unchanged must still be read.
+                return self.jobs.submit(
+                    "identify" if dry else "identify_apply",
+                    f"{'Identify' if dry else 'Apply what MusicBrainz says about'} {what}",
+                    lambda s: s.update_all(report_only=dry, deep=True, only=[where]),
+                    target=source_id)
             case "update":
                 deep = bool(body.get("deep"))
                 artist = str(body.get("artist") or "").strip() or None

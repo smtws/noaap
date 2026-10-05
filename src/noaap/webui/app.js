@@ -1,6 +1,7 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
+         identifyLines, identifyState,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
@@ -1460,6 +1461,7 @@ function renderAlbum() {
         h("button", { class: "quiet", type: "button",
           title: "Look up the lyrics of every track that has none yet (LRCLIB), as a .lrc file beside it and in its tags.\nShift+click looks up all of them again — lyrics you wrote yourself are kept either way.",
           onclick: (e) => submit("lyrics", { id: p.source_id, refetch: e.shiftKey }, e.currentTarget) }, "Fetch lyrics"),
+        identifyButton(p),
         h("button", { class: "danger", type: "button", onclick: (e) => deleteAlbum(p, e.currentTarget) }, "Delete album"),
         gone.length ? h("button", { class: "danger", type: "button", onclick: (e) => pruneAlbum(p, gone, e.currentTarget) }, `Remove ${gone.length} track${gone.length > 1 ? "s" : ""} no longer in the playlist`) : null,
         h("a", { href: p.source_url, target: "_blank", rel: "noopener" }, "open on YouTube"))));
@@ -1922,6 +1924,57 @@ function updateSection() {
       h("button", { class: "quiet", type: "button",
         title: "Read every album in full instead of asking whether it changed — slower, and more requests",
         onclick: (e) => submit("update", { deep: true }, e.currentTarget) }, "Read every album in full")));
+}
+
+// -- "Identify with MusicBrainz" (§9, slice 142) ----------------------------------------------
+//
+// Two steps, like a repair: look first, apply what was listed. The lookup rewrites titles, numbers
+// and discs, so a person who cannot see that first is being asked to trust it blind.
+
+let lastIdentify = null;   // { id, version, lines, matched } of the album last looked up
+
+function identifyButton(p) {
+  const mine = lastIdentify && lastIdentify.id === p.source_id ? lastIdentify : null;
+  const said = identifyState({ check: mine, version: state.tracks_version,
+                               pinned: p.provenance?.mbid === "user",
+                               running: Boolean(state.busy_write) });
+  const box = h("span", { class: "identify" });
+  const label = mine && said.canApply ? "Apply what MusicBrainz says" : "Identify with MusicBrainz";
+  fill(box,
+    h("button", { class: "quiet", type: "button",
+      disabled: !(said.canApply || said.canCheck), title: said.note,
+      onclick: (e) => (mine && said.canApply ? applyIdentify : checkIdentify)(p, e.currentTarget) },
+      label),
+    mine ? h("span", { class: "muted" }, " ", said.note) : null);
+  return box;
+}
+
+async function checkIdentify(p, button) {
+  const version = state.tracks_version;
+  const id = await submit("identify", { id: p.source_id, dry_run: true }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 1200);
+  if (!job || job.state !== "done") return;      // submit() and the job log have said why
+  const lines = identifyLines(job);
+  lastIdentify = { id: p.source_id, version, lines,
+                   matched: (job.log || []).some((l) => l.includes("release matched")
+                                                     || l.includes("release pinned by you")) };
+  await refreshAlbumPanel();
+}
+
+async function applyIdentify(p, button) {
+  if (!lastIdentify || lastIdentify.id !== p.source_id) return;
+  if (!confirm("Apply what MusicBrainz says about this album?\n\n"
+               + lastIdentify.lines.slice(0, 12).join("\n")
+               + (lastIdentify.lines.length > 12
+                  ? `\n… and ${lastIdentify.lines.length - 12} more lines` : "")
+               + "\n\nThis is what the check listed. Nothing you typed yourself is changed.")) return;
+  const id = await submit("identify", { id: p.source_id }, button);
+  if (id == null) return;
+  await jobSettled(id, 4800);
+  lastIdentify = null;                           // the album has changed: look again
+  await poll();
+  await refreshAlbumPanel();
 }
 
 function repairSection() {
