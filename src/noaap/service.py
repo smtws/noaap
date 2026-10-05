@@ -416,7 +416,7 @@ class Service:
             return Outcome("planned", plan, album_dir)
         return self.execute(plan, album_dir)
 
-    def _decide_spellings(self) -> dict[str, tuple[str, set[str | None]]]:
+    def _decide_spellings(self, asking: set[str] | None = None) -> dict[str, tuple[str, set[str | None]]]:
         """One spelling per artist key for the whole library, decided before anything is renamed.
 
         `repair` used to ask the question once per album, against the library *as stored*, so
@@ -449,7 +449,12 @@ class Service:
             counts = held.get(key, {})
             # **what MusicBrainz calls this artist, asked of the artist and not of a release**
             # (§9, slice 138). One request per key, cached; `None` where it is off or does not answer.
-            entity = self._artist_entity(key, names) if may.get(key) else None
+            # **only the artists this run touches are asked about** (R-497). The candidates still
+            # come from the whole library — a spelling is a library-wide fact — but a run over one
+            # album must not cost 153 requests, which is what the user's library has artist keys
+            # for: 2.8 minutes of rate limiting before the first line, paid by `--only` too.
+            ask = may.get(key, False) and (asking is None or key in asking)
+            entity = self._artist_entity(key, names) if ask else None
             theirs = next((n for n in names if Provenance.USER in names[n]), None)
             if theirs:
                 best, why = theirs, "user"
@@ -1855,10 +1860,13 @@ class Service:
             self.log(line)
         lengths = retags = renames = pointed = cased = stuck = 0
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
-        decided = self._decide_spellings()  # every artist key settled before the first rename
-        # the whole library decides the spellings above; `only` decides what is *touched* below
+        # the whole library decides the spellings; `only` decides what is *touched*, and what is
+        # *asked of MusicBrainz* (§9, slice 138, R-497)
         here = list(iter_plans(self.library)) if self.library and self.library.exists() else []
-        for album_dir, plan in self._only_these(here, only):
+        mine = self._only_these(here, only)
+        asking = {text_key(plan.albumartist) for _, plan in mine} if list(only) else None
+        decided = self._decide_spellings(asking)  # every artist key settled before the first rename
+        for album_dir, plan in mine:
             before = (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks))
             # **first, before anything here tidies a name** (§9, slice 63): a file in the album's root
             # was written under the name the plan held *then*, and a pass that recognises one has to

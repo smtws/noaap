@@ -3798,6 +3798,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the case penalty had chosen — `DOMINUM` (5 albums) loses to `Dominum` (2) on that ground and on no
    other — so `case` is now one of the answers. A check that names the wrong reason is worse than one
    that names none, because a reader will believe it.
+   **Only the artists a run touches are asked about** (R-497). The candidates still come from the
+   whole library, because a spelling is a library-wide fact — but the user's library has **153 artist
+   keys**, which on a cold cache is 2.8 minutes of rate limiting before the first line is printed,
+   and `repair --only` over one album paid all of it. So `--only` narrows what is asked as well as
+   what is touched, and a whole-library run still asks for everything.
+   The measured result on the user's library: **15 albums across 7 artists**, every one on the
+   entity — `Die Legende Von Nord`→`von` (5), `EMMA`→`Emma` (3), `Miracle Of Sound`→`of` (2),
+   `Sven Van Thom`→`van` (2), `Amy MacDonald`→`Macdonald`, `Sons Of Seasons`→`of`,
+   `Trollfest`→`TrollfesT`. Two of them **reverse** what slice 129's weaker grounds had chosen a day
+   earlier (`Von` by count, `Of` by alphabet), which is the rule working. And the entity confirms
+   `DOMINUM`, `Umbra et Imago`, `Subway to Sally` and `Van Canto` exactly as they stand, so the four
+   albums that caused all this do not move at all.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

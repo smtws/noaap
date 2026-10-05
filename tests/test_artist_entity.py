@@ -223,3 +223,40 @@ def test_an_update_writes_the_entitys_spelling_too(tmp_path, one_second_of_sound
     after = load_plan(root / "Dominum" / "Loud 1")
     assert after is not None and after.albumartist == "Dominum"
     assert after.provenance["albumartist"] == Provenance.MB
+
+
+def test_only_the_artists_a_run_touches_are_asked_about(tmp_path, one_second_of_sound):
+    """R-497. The candidates still come from the whole library, because a spelling is a library-wide
+    fact — but a run over one album must not cost one request per artist in it. The user's library
+    has 153 artist keys: 2.8 minutes of rate limiting before the first line, paid by `--only` too."""
+    root = tmp_path / "collection"
+    an_album(root, "DOMINUM", "Loud 1", ["One"], one_second_of_sound)
+    an_album(root, "EMMA", "Quiet 1", ["One"], one_second_of_sound)
+    an_album(root, "Trollfest", "Third 1", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    mb = ArtistMB("Dominum")
+    service = a_library(root, mb=mb, retag_adopted=True, rename_adopted=True)
+    service.repair(dry_run=True, only=["DOMINUM"])
+
+    assert mb.asked == ["DOMINUM"], mb.asked
+
+    whole = ArtistMB("Dominum")
+    other = a_library(root, mb=whole, retag_adopted=True, rename_adopted=True)
+    other.repair(dry_run=True)
+
+    assert sorted(whole.asked) == ["DOMINUM", "EMMA", "Trollfest"], whole.asked
+
+
+def test_the_candidates_still_come_from_the_whole_library(tmp_path, one_second_of_sound):
+    """`--only` narrows what is asked and what is touched, never where the evidence comes from."""
+    root = by_count(tmp_path / "collection", one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+
+    said = []
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.log = said.append
+    service.repair(only=["Umbra Et Imago"])
+
+    assert (root / "Umbra et Imago" / "Upper 1").is_dir(), "the three won, though only the one ran"
+    assert [line for line in said if "(count)" in line], said
