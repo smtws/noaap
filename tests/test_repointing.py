@@ -342,3 +342,66 @@ def test_the_re_point_line_comes_under_its_own_header(tmp_path, one_second_of_so
     assert where > 0, said
     assert said[where - 1] == "=== A Band — An Album", said[max(0, where - 2):where + 1]
     assert said[where].startswith("  would be re-pointed"), said[where]
+
+
+# -- a folder with nothing of ours in it (§9, slice 132; R-484 item 3) ---------------------------
+
+
+def test_an_artist_folder_without_albums_is_named_and_left(tmp_path, one_second_of_sound):
+    """After the spelling pass moved four albums out of `Umbra Et Imago`, the folder stayed — the
+    owner's `logo.jpg` was still in it, so `empty_under` could not see it and nothing said it was
+    there. Seven such folders on the user's share."""
+    root = tmp_path / "collection"
+    an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    left = root / "a band"
+    (left / ".thumb").mkdir(parents=True)
+    (left / "logo.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    (left / ".thumb" / "logo.jpg.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+    said = []
+    service = a_library(root, retag_adopted=True, remove_empty_folders=True)
+    service.log = said.append
+    service.repair()
+
+    assert left.is_dir(), "it is the owner's and nothing may take it away"
+    assert (left / "logo.jpg").is_file()
+    named = [line for line in said if "holds no album" in line]
+    assert named == ["  a band holds no album, 2 file(s) of yours — left alone"], said
+    assert [line for line in said if "artist folder(s) hold no album" in line], said
+
+
+def test_loose_audio_in_such_a_folder_is_counted_as_audio(tmp_path, one_second_of_sound):
+    """`Spotify/` on the user's share holds 33 audio files and no album at all. A stray logo and
+    thirty-three unfiled recordings are not the same news, so the line says which."""
+    root = tmp_path / "collection"
+    an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    loose = root / "Spotify"
+    loose.mkdir()
+    for name in ("one.flac", "two.mp3"):
+        shutil.copy(one_second_of_sound, loose / name)
+    (loose / "logo.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True)
+
+    assert [line for line in said
+            if line == "  Spotify holds no album, 3 file(s) of yours, 2 of them audio — left alone"], said
+    assert [line for line in said if "2 audio file(s) among them are in no album" in line], said
+
+
+def test_an_artist_folder_full_of_albums_is_not_named(tmp_path, one_second_of_sound):
+    root = tmp_path / "collection"
+    an_album(root / "A Band" / "An Album", ["One"], one_second_of_sound)
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    (root / "A Band" / "logo.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+    said = []
+    service = a_library(root, retag_adopted=True)
+    service.log = said.append
+    service.repair(dry_run=True)
+
+    assert not [line for line in said if "holds no album" in line], said

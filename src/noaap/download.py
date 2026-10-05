@@ -35,6 +35,7 @@ from .models import AlbumPlan, Candidate, Failure, PlanTrack, Provenance
 from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folder
 from .precautions import Unsafe, empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
+from .sources_folder import is_hidden_name
 from .tag import (
     audio_quality,
     build_tags,
@@ -369,6 +370,41 @@ def iter_plans(library: Path) -> Iterator[tuple[Path, AlbumPlan]]:
             yield path.parent, read_plan(path, path.parent)
         except (ValueError, KeyError, TypeError) as e:
             log.warning("ignoring unreadable plan %s: %s", path, e)
+
+
+def artists_without_albums(library: Path) -> dict[Path, tuple[int, int]]:
+    """Artist folders that hold no album but hold files of the owner's (§9, slice 132).
+
+    What a pass that moves albums leaves behind. When the user's library went to one spelling per
+    artist, `Umbra Et Imago`'s four albums moved to `Umbra et Imago` — and the folder stayed, because
+    a `logo.jpg` and a `.thumb` of the owner's were still in it. `empty_under` cannot see it: it is
+    not empty. So nothing removed it and nothing said it was there.
+
+    Seven of them on the user's share, in three shapes: five are a logo left by a spelling move
+    (`asp`, `emma`, `Umbra Et Imago`, `J.B.O.`, `Oomph! feat. Lame Immortelle`), one is an artist
+    folder with two album folders in it that hold a `cover.jpg` and no plan (`omd`), and one —
+    `Spotify` — is **33 audio files of the user's that no pass has ever taken in**. That last is why
+    the count says how many are audio: a stray logo and thirty-three unfiled recordings are not the
+    same news.
+
+    Each folder maps to (files, of which audio). **Named, never removed**: the files are the owner's,
+    and nobody asked for them to be moved or binned.
+    """
+    out: dict[Path, tuple[int, int]] = {}
+    try:
+        artists = sorted(p for p in library.iterdir() if p.is_dir())
+    except OSError:
+        return out
+    for artist in artists:
+        if is_hidden_name(artist.name):
+            continue
+        with contextlib.suppress(OSError):
+            if any((album / PLAN_FILE).is_file() for album in artist.iterdir() if album.is_dir()):
+                continue
+        files = [f for f in artist.rglob("*") if f.is_file() and f.name != PLAN_FILE]
+        if files:
+            out[artist] = (len(files), sum(1 for f in files if f.suffix.lower() in AUDIO))
+    return out
 
 
 def find_plan(library: Path, source_id: str) -> tuple[Path, AlbumPlan] | None:

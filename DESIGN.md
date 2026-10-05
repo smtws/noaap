@@ -3655,6 +3655,22 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    knows it will speak, it says after it has named the album** — a log a reader has to re-align by
    one line is worse than no log, because it reads as a fact about the wrong album.
 
+132. ✅ **A folder with nothing of ours in it and something of theirs is named, never touched**
+   (2026-10-05, P98 item 3). `empty_under` (slices 104, 115) clears what a pass emptied and, with
+   `remove_empty_folders`, the owner's empty folders too. Neither reaches a folder that is **not
+   empty and holds no album**: when the spelling pass moved four albums out of `Umbra Et Imago` the
+   folder stayed, because the owner's `logo.jpg` and a `.thumb` were still in it — and nothing
+   removed it and nothing said it was there.
+   Seven of them on the user's share, in three shapes: five are a logo left by a spelling move
+   (`asp`, `emma`, `Umbra Et Imago`, `J.B.O.`, `Oomph! feat. Lame Immortelle`), `omd` is an artist
+   folder whose two album folders hold a `cover.jpg` and no plan, and **`Spotify` holds 33 audio
+   files of the user's that no pass has ever taken in**. So the line says how many of the files are
+   audio: a stray logo and thirty-three unfiled recordings are not the same news, and a total that
+   counts them together would hide the second behind the first.
+   Named in the sections, never removed, whatever `remove_empty_folders` says. The files are the
+   owner's; a folder that noaap has emptied of its own work is noaap's to report and the owner's to
+   decide about.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

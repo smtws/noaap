@@ -26,6 +26,7 @@ from .download import (
     MAYBE_COVER,
     PARTS_DIR,
     PLAN_FILE,
+    artists_without_albums,
     find_plan,
     iter_plans,
     load_plan,
@@ -1959,6 +1960,20 @@ class Service:
                          "(`remove_empty_folders` is off): "
                          + ", ".join(str(f.relative_to(self.library)) for f in empty[:3])
                          + (" …" if len(empty) > 3 else ""))
+            # **a folder with nothing of ours in it and something of theirs is named, not touched**
+            # (§9, slice 132). `empty_under` cannot see it, because it is not empty — so after the
+            # spelling pass moved four albums out of `Umbra Et Imago` the folder simply stayed, with
+            # the owner's logo in it and nothing anywhere saying so.
+            if left := artists_without_albums(self.library):
+                for folder, (files, audio) in left.items():
+                    self.log(f"  {folder.relative_to(self.library)} holds no album, "
+                             f"{files} file(s) of yours"
+                             + (f", {audio} of them audio" if audio else "")
+                             + " — left alone")
+                loose = sum(audio for _, audio in left.values())
+                self.log(f"{len(left)} artist folder(s) hold no album and files of yours; "
+                         f"nothing was removed"
+                         + (f" ({loose} audio file(s) among them are in no album)" if loose else ""))
         return outcomes
 
     # -- taking a folder in (§9, slice 92) -----------------------------------------------
