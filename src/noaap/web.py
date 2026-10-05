@@ -11,6 +11,8 @@ by album id, never by a path from the request.
 
 from __future__ import annotations
 
+import contextlib
+import datetime as dt
 import email.utils
 import hashlib
 import itertools
@@ -131,6 +133,7 @@ class Jobs:
     READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check", "take_in_check")
 
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
+                 wrote: Callable[[], Any] | None = None,
                  idle_seconds: float = CARD_IDLE, sleep: Callable[[float], None] = time.sleep,
                  now: Callable[[], float] = time.monotonic) -> None:
         self.make_service = make_service
@@ -141,6 +144,9 @@ class Jobs:
         # the graphics card goes back when the queues have been quiet this long (§9, slice 82). A job
         # holds `self.idle` while it runs, and `busy` covers the one that is queued but has not
         # started, so nothing is ever taken out from under work that is coming.
+        # **somebody wrote** (§9, slice 139): the model the page is answered from is stale the moment
+        # one of our own passes finishes, and waiting a minute to notice our own work is absurd.
+        self.wrote = wrote or (lambda: None)
         self.idle = release_when_idle(idle_seconds if release else 0.0, release or (lambda: None),
                                      busy=self.busy, sleep=sleep, now=now)
         for lane in self._queues:
@@ -219,6 +225,9 @@ class Jobs:
                 job.state = "failed"
             finally:
                 job.finished = time.time()
+                if job.lane == "write":
+                    with contextlib.suppress(Exception):
+                        self.wrote()
 
 
 # what to call each container when a player asks for it. The suffix is the file's own claim and the
@@ -304,6 +313,56 @@ class Details:
 # said by every door that would have sent a private album's audio somewhere (§9, slice 75)
 PRIVATE_AUDIO = ("this album's audio came from a source one person paid its creator for: it is not sent to a timing provider that runs anywhere but this machine")
 
+def _album_row(plan: AlbumPlan, cover: bool) -> dict[str, Any]:
+    """One album as the page lists it. `cover` is passed in because the walk already knows."""
+    return {
+        "id": plan.source_id,
+        "albumartist": plan.albumartist,
+        "album": plan.album,
+        "year": plan.year,
+        "kind": plan.kind,
+        "tracks": len(plan.tracks),
+        "done": sum(t.state == "done" for t in plan.tracks),
+        "failed": sum(t.state == "failed" and t.in_source for t in plan.tracks),
+        "cover": cover,
+        "mb": bool(plan.mbid) or any(t.mbid for t in plan.tracks),
+        "lyrics": sum(t.lyrics in ("synced", "plain") for t in plan.tracks),
+        "length": album_length_flag(plan),  # set only when most of the album disagrees
+        "needs_choice": sum(t.error_kind == "no_audio_stream" for t in plan.tracks),
+        # tracks where the near-miss check ran and could not decide for you (§9, slice 46):
+        # the words exist and nothing was taken, so they wait for a person
+        "needs_you": sum(needs_you(t) for t in plan.tracks),
+        # tracks where a merge found another copy and could not rank it against the one in use
+        # (§9, slice 55) — counted like `needs_you`, for the same reason: it is a decision only a
+        # person can take, and nothing listed it before.
+        "copies": sum(bool(t.undecided_copies()) for t in plan.tracks),
+    }
+
+
+@dataclass
+class Held:
+    """One walk of the library, kept in memory — what every read is answered from (§9, slice 139).
+
+    Measured on the user's library over NFS, 1,523 albums and 20,100 tracks: one `/api/state` cost
+    **107 seconds**, cold and warm alike, and did three full traversals to get there — `albums()`
+    read and parsed every plan, `missing()` read them all again and `stat`ed every one of the 20,100
+    files (62.6 s of it), and `library_version()` ran an `rglob` over every directory in the tree to
+    hash mtimes the other two had already visited. `album()` called `library_version()` too, so one
+    cover request paid the same `rglob`, and a page load fires one per card.
+    """
+
+    version: str = ""
+    albums: list[dict[str, Any]] = field(default_factory=list)
+    index: dict[str, Path] = field(default_factory=dict)            # source_id -> album folder
+    plans: dict[Path, tuple[int, AlbumPlan]] = field(default_factory=dict)
+    covers: dict[Path, tuple[int, bool]] = field(default_factory=dict)
+    # **not measured here** (R-499, R-500): one `stat` per track is 62.6 s on this library, so it
+    # belongs to `check`/`repair` and never to a page request. What the last sweep found is carried.
+    missing: dict[str, Any] = field(default_factory=lambda: {"albums": 0, "tracks": 0, "where": [],
+                                                             "measured": None})
+    at: float = 0.0
+
+
 class App:
     def __init__(self, cfg: Config, library: Path, host: str = "127.0.0.1", port: int = 8765, service_factory=None) -> None:
         self.cfg, self.library, self.host, self.port = cfg, library.expanduser(), host, port
@@ -315,7 +374,7 @@ class App:
         self.engines = Engines()
         self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel, engines=self.engines))
         self.jobs = Jobs(self._service_factory, release=self.engines.let_go,
-                         idle_seconds=cfg.timing_card_idle_seconds)
+                         wrote=self.library_changed, idle_seconds=cfg.timing_card_idle_seconds)
         self.details = Details(lambda: sources.get(None, self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running
@@ -326,6 +385,117 @@ class App:
         # {source_id: album folder}, rebuilt when any plan file changes (§9, slice 90)
         self._album_index: dict[str, Path] = {}
         self._album_index_for: str | None = None
+        # **one walk, one model** (§9, slice 139). `_rescanning` lets exactly one walk run, and it is
+        # not held while anything is read — a cover or a track must never wait behind a rescan.
+        self._held = Held()
+        self._rescanning = threading.Lock()
+        self._scanner: threading.Thread | None = None
+        self._dirty = threading.Event()
+        self._stop_scanning = threading.Event()
+
+    # -- the one walk (§9, slice 139) --------------------------------------------------
+
+    STALE_SECONDS = 60      # the bound a page's answer may be behind the disk by
+
+    def held(self) -> Held:
+        """What a read is answered from. Never walks the library — except for the very first caller,
+        who has nothing to be answered from yet (§9, slice 139)."""
+        if not self._held.at or self._dirty.is_set():
+            # **our own writes are seen at once** (§9, slice 139). The minute bound is for changes
+            # made behind noaap's back; a page that cannot see what it has just done is broken.
+            self._dirty.clear()
+            self.rescan()
+        self._keep_watching()
+        return self._held
+
+
+    def _keep_watching(self) -> None:
+        if self._scanner is None or not self._scanner.is_alive():
+            self._scanner = threading.Thread(target=self._scanning, name="noaap-rescan", daemon=True)
+            self._scanner.start()
+
+    def _scanning(self) -> None:
+        """Rescan at most once in `STALE_SECONDS`, and at once when a pass of ours has written."""
+        while not self._stop_scanning.is_set():
+            self._dirty.wait(self.STALE_SECONDS)
+            if self._stop_scanning.is_set():
+                return
+            self._dirty.clear()
+            try:
+                self.rescan()
+            except Exception as e:                      # a rescan that fails keeps the old answer
+                log.warning("rescan failed, keeping what was held: %s", e)
+
+    def library_changed(self) -> None:
+        """A pass of ours wrote something, so the next tick rescans instead of waiting a minute."""
+        self._dirty.set()
+
+    def rescan(self, measure: bool = False) -> Held:
+        """Walk once and swap the result in. One walk at a time; readers never wait for it."""
+        if not self._rescanning.acquire(blocking=False):
+            return self._held       # somebody is already walking; what is held is good enough
+        try:
+            fresh = self._walk(self._held, measure=measure)
+            self._held = fresh      # one assignment, so a reader sees the old model or the new one
+            return fresh
+        finally:
+            self._rescanning.release()
+
+    def _walk(self, old: Held, measure: bool = False) -> Held:
+        """One `glob('*/*/.noaap.json')` — 0.58 s on the user's library against `rglob`'s 10.5 s,
+        because it does not descend into an album — and **only the plans that changed are read
+        again**: 0.01 s each, against 7.25 s for all 1,523 of them.
+        """
+        fresh = Held(missing=old.missing, at=time.monotonic())
+        if not self.library.exists():
+            return fresh
+        stamp: list[str] = []
+        for path in sorted(self.library.glob(f"*/*/{PLAN_FILE}")):
+            album_dir = path.parent
+            try:
+                when = path.stat().st_mtime_ns
+            except OSError:
+                continue
+            stamp.append(f"{path}:{when}")
+            if (kept := old.plans.get(album_dir)) and kept[0] == when:
+                plan = kept[1]
+            else:
+                try:
+                    plan = read_plan(path, album_dir)
+                except (ValueError, KeyError, TypeError, OSError) as e:
+                    log.warning("ignoring unreadable plan %s: %s", path, e)
+                    continue
+            fresh.plans[album_dir] = (when, plan)
+            fresh.index[plan.source_id] = album_dir
+            # the cover is a file in the album folder, so the folder's own mtime says whether to look
+            try:
+                folder = album_dir.stat().st_mtime_ns
+            except OSError:
+                folder = 0
+            if (seen := old.covers.get(album_dir)) and seen[0] == folder:
+                cover = seen[1]
+            else:
+                cover = any(album_dir.glob(f"{COVER_STEM}.*"))
+            fresh.covers[album_dir] = (folder, cover)
+            fresh.albums.append(_album_row(plan, cover))
+        fresh.version = hashlib.sha1("".join(stamp).encode()).hexdigest()[:12]
+        # artist, then chronological, then by name. Albums with no year all tie, so compilations
+        # keep their natural order (Vol. 1 … Vol. 20) until someone fills a year in.
+        fresh.albums.sort(key=lambda a: (natural_key(a["albumartist"]), a["year"] is None,
+                                         a["year"] or 0, natural_key(a["album"])))
+        if measure:
+            fresh.missing = self._measure_missing(fresh)
+        return fresh
+
+    def _measure_missing(self, held: Held) -> dict[str, Any]:
+        """One `stat` per track — 62.6 s on the user's library, so only a sweep that was asked for
+        does this (R-499). `check` and `repair` ask; a page request never does."""
+        from .download import lost_files
+
+        found = [(d, lost) for d, (_, p) in sorted(held.plans.items()) if (lost := lost_files(d, p))]
+        return {"albums": len(found), "tracks": sum(len(lost) for _, lost in found),
+                "where": [str(d.relative_to(self.library)) for d, _ in found[:5]],
+                "measured": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}
 
     # read side
 
@@ -336,10 +506,13 @@ class App:
         return self._reader
 
     def library_version(self) -> str:
-        """Changes whenever any plan file does — cheap enough to compute on every poll."""
-        files = sorted(self.library.rglob(PLAN_FILE)) if self.library.exists() else []
-        stamp = "".join(f"{p}:{p.stat().st_mtime_ns}" for p in files)
-        return hashlib.sha1(stamp.encode()).hexdigest()[:12]
+        """Changes whenever any plan file does — from the one walk, never a tree of its own.
+
+        It used to `rglob` the whole library on every poll (10.5 s on the user's over NFS) to hash
+        mtimes the walk had already read, and `album()` asked for it on every cover request
+        (§9, slice 139).
+        """
+        return self.held().version
 
     #: one track in the index: video id, artist, title, downloaded, trim start, trim end
     TRACK_FIELDS = ("video_id", "artist", "title", "done", "trim_start", "trim_end")
@@ -366,38 +539,8 @@ class App:
         return self._track_index
 
     def albums(self) -> list[dict[str, Any]]:
-        out = []
-        for album_dir, plan in iter_plans(self.library) if self.library.exists() else []:
-            out.append(
-                {
-                    "id": plan.source_id,
-                    "albumartist": plan.albumartist,
-                    "album": plan.album,
-                    "year": plan.year,
-                    "kind": plan.kind,
-                    "tracks": len(plan.tracks),
-                    "done": sum(t.state == "done" for t in plan.tracks),
-                    "failed": sum(t.state == "failed" and t.in_source for t in plan.tracks),
-                    "cover": any(album_dir.glob(f"{COVER_STEM}.*")),
-                    "mb": bool(plan.mbid) or any(t.mbid for t in plan.tracks),
-                    "lyrics": sum(t.lyrics in ("synced", "plain") for t in plan.tracks),
-                    "length": album_length_flag(plan),  # set only when most of the album disagrees
-                    "needs_choice": sum(t.error_kind == "no_audio_stream" for t in plan.tracks),
-                    # tracks where the near-miss check ran and could not decide for you (§9, slice 46):
-                    # the words exist and nothing was taken, so they wait for a person
-                    "needs_you": sum(needs_you(t) for t in plan.tracks),
-                    # tracks where a merge found another copy and could not rank it against the one
-                    # in use (§9, slice 55) — counted like `needs_you`, for the same reason: it is a
-                    # decision only a person can take, and nothing listed it before.
-                    "copies": sum(bool(t.undecided_copies()) for t in plan.tracks),
-                }
-            )
-        # artist, then chronological, then by name. Albums with no year all tie, so compilations
-        # keep their natural order (Vol. 1 … Vol. 20) until someone fills a year in.
-        return sorted(
-            out,
-            key=lambda a: (natural_key(a["albumartist"]), a["year"] is None, a["year"] or 0, natural_key(a["album"])),
-        )
+        """Every album, from the one walk (§9, slice 139)."""
+        return self.held().albums
 
     def album(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
         """One album, by an index of folders rather than by reading the library until it matches.
@@ -410,18 +553,16 @@ class App:
         """
         if not self.library.exists():
             return None
-        version = self.library_version()
-        if self._album_index_for != version:
-            self._album_index = {}
-            for path in sorted(self.library.glob(f"*/*/{PLAN_FILE}")):
-                try:
-                    self._album_index[read_plan(path, path.parent).source_id] = path.parent
-                except (ValueError, KeyError, TypeError) as e:
-                    log.warning("ignoring unreadable plan %s: %s", path, e)
-            self._album_index_for = version
-        album_dir = self._album_index.get(source_id)
+        held = self.held()
+        album_dir = held.index.get(source_id)
         if album_dir is None or not album_dir.is_dir():
-            return next(((d, p) for d, p in iter_plans(self.library) if p.source_id == source_id), None)
+            # not in what is held: the album may be newer than the last walk, so look once
+            found = next(((d, p) for d, p in iter_plans(self.library) if p.source_id == source_id), None)
+            if found:
+                self.library_changed()
+            return found
+        # **the plan is read, not taken from the walk**: an album panel is where a person edits, and
+        # an edit must start from what is on disk this second, not from a model up to a minute old.
         try:
             return album_dir, load_plan(album_dir)
         except (ValueError, KeyError, TypeError, OSError):
@@ -592,17 +733,17 @@ class App:
         return self._thumbs[url]
 
     def missing(self) -> dict[str, Any]:
-        """`{albums, tracks, where}` — empty when every plan's files are where it says.
+        """`{albums, tracks, where, measured}` — empty when every plan's files are where it says.
 
         Not the same question as "the folder this album was taken in from is gone": that is a fact
         about a source, the tracks here are complete, and it belongs where a re-fetch is asked for
         (R-207, ruling 3).
-        """
-        from .download import lost_files
 
-        found = [(d, lost) for d, p in iter_plans(self.library) if (lost := lost_files(d, p))]
-        return {"albums": len(found), "tracks": sum(len(lost) for _, lost in found),
-                "where": [str(d.relative_to(self.library)) for d, _ in found[:5]]}
+        **What the last sweep found, with the time it was taken.** Asking it afresh is one `stat` per
+        track — 62.6 s on the user's library over NFS, three quarters of what `/api/state` used to
+        cost — so `check` and `repair` measure it and a page request reads the answer (§9, slice 139).
+        """
+        return self.held().missing
 
     def watching(self) -> list[dict[str, Any]]:
         """The configured watches, what each is for, and when it was last looked at.
@@ -849,18 +990,26 @@ class App:
         if library is not None:
             self.library = library
             self._reader = None  # it holds the old library, and its lyrics cache with it
+            # and so does the model: every album in it belongs to the library we have just left
+            # (§9, slice 139), so it is thrown away rather than marked stale
+            self._held = Held()
         return self.settings()
 
     def state(self) -> dict[str, Any]:
+        """What the page polls. **One call, one model, no walk** (§9, slice 139) — and the model it
+        reads may be up to `STALE_SECONDS` behind the disk, which the README states."""
+        held = self.held()
         return {
+            "held_at": round(time.monotonic() - held.at, 1),   # how old this answer is, in seconds
+            "stale_after": self.STALE_SECONDS,
             "settings": self.settings(),
             "library": str(self.library),
-            "albums": self.albums(),
+            "albums": held.albums,
             "jobs": [j.summary() for j in self.jobs.recent()],
             "busy": self.jobs.busy(),
             "busy_write": self.jobs.busy("write"),
             "musicbrainz": self.cfg.musicbrainz,
-            "tracks_version": self.library_version(),
+            "tracks_version": held.version,
             # what the bin holds, so the header can offer it only when there is something in it
             "recycled": self.recycled(),
         }
@@ -915,9 +1064,13 @@ class App:
                 # run of slice 85, whose log names every file it would touch, and the page only offers
                 # the apply after one has been read.
                 if body.get("dry_run"):
+                    # **the sweep that measures what is missing rides along here** (§9, slice 139):
+                    # one `stat` per track is 62.6 s on the user's library, so it belongs to a pass
+                    # somebody asked for and never to a page poll.
                     return self.jobs.submit("repair_check", "Check what a repair would do",
-                                            lambda s: s.repair(dry_run=True))
-                return self.jobs.submit("repair", "Repair the library", lambda s: s.repair())
+                                            lambda s: (s.repair(dry_run=True), self.rescan(measure=True))[0])
+                return self.jobs.submit("repair", "Repair the library",
+                                        lambda s: (s.repair(), self.rescan(measure=True))[0])
             case "take_in":
                 # **a folder taken in is a check and then an apply** (§9, slice 92), like the repair:
                 # merge compares and takes the better copies, adopt takes it in where it stands.

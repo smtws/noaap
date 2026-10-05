@@ -281,10 +281,17 @@ def test_the_page_says_it_and_says_where(tmp_path):
     album_dir = an_album(tmp_path)
     (album_dir / load_plan(album_dir).tracks[0].filename).unlink()
 
-    missing = App(Config(musicbrainz=False, lyrics=False), tmp_path).settings()["missing"]
+    app = App(Config(musicbrainz=False, lyrics=False), tmp_path)
+    # **the sweep is asked for, never done by a poll** (§9, slice 139): one `stat` per track is
+    # 62.6 s on the user's library, so the repair check measures it and the page reports what it
+    # found. A plain request answers with the last sweep's result, which here is "nothing yet".
+    assert app.settings()["missing"] == {"albums": 0, "tracks": 0, "where": [], "measured": None}
+    app.rescan(measure=True)
+    missing = app.settings()["missing"]
 
     assert missing["albums"] == 1 and missing["tracks"] == 1
     assert missing["where"] == ["A Band/An Album"]
+    assert missing["measured"], "and it says when it was taken"
 
 
 # -- a scope that matches nothing is a typo ------------------------------------------------------------

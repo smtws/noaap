@@ -235,6 +235,22 @@ to be photographed where there are two.
 
 ## The web UI
 
+**What the page shows is read from one walk of the library, held in memory.** A poll is answered
+from that model rather than from the disk: on a library of 1,523 albums over NFS the old answer
+took 107 seconds and walked the tree three times, so a page refresh and anything else asking at
+the same time simply queued behind it.
+
+The model is rebuilt when noaap itself writes — a fetch, an edit, a repair, a folder taken in — so
+the page always shows what it has just done. A change made **behind noaap's back**, by moving files
+or editing a plan with another program, is picked up by a rescan that runs **at most once a minute**;
+until then the grid may be that much out of date. Only the plans whose file changed are read again.
+`/api/state` says how old its answer is (`held_at`) and what the bound is (`stale_after`).
+
+How many of an album's files are missing is not part of that: asking costs one `stat` per track, so
+it is measured by **“Check what a repair would do”** and by a repair itself, and what the last one
+found is what the page reports, with the time it was taken.
+
+
 `noaap serve` opens the library at `http://localhost:8765`: every album as a card, a filter over
 albums, artists and song titles, and a player that queues what the filter found. Opening an album gives
 the [album view](#screenshots) — every field editable, where each value came from, drag to reorder, the

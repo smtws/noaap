@@ -3811,6 +3811,37 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `DOMINUM`, `Umbra et Imago`, `Subway to Sally` and `Van Canto` exactly as they stand, so the four
    albums that caused all this do not move at all.
 
+139. ✅ **One walk, one model: the library's state lives in memory** (2026-10-05, P103).
+   Measured on the user's library over NFS — 1,523 albums, 20,100 tracks — **one `/api/state` cost
+   107 seconds, cold and warm alike**, because it walked the library three times for one answer:
+   `albums()` read and parsed every plan and globbed every album for its cover; `missing()` read all
+   1,523 plans *again* and `stat`ed every one of the 20,100 files (62.6 s of the total);
+   `library_version()` ran an `rglob` over **every directory in the tree** to hash mtimes the other
+   two had already read. `album()` asked for that version too, so one cover request paid the whole
+   `rglob` — and a page load fires one per card. The user's page took 8.3 s per poll on a warm local
+   disk and a request from the side waited **104 s** behind the polling.
+   Now one `glob('*/*/.noaap.json')` — **0.58 s**, because it does not descend into an album — and
+   **only the plans whose file changed are parsed again**: 0.01 s each against 7.25 s for all of
+   them. The covers are remembered per album folder mtime. Everything the page reads comes out of
+   that one model: the rows, the version, the album index. Measured after:
+   **first request 23.4 s (the one walk), every one after it 0.00 s, `album()` 0.01 s, a rescan tick
+   with nothing changed 0.63 s.**
+   **What makes it stale is said plainly.** A pass of ours marks it stale the moment it finishes, so
+   the page always sees what it has just done; a change made behind noaap's back is picked up by a
+   rescan at most a minute later, and `/api/state` carries `held_at` and `stale_after` so a reader
+   can tell. Changing the library root throws the model away rather than marking it stale — every
+   album in it belongs to the library just left.
+   **The expensive question is asked where somebody asked for it.** One `stat` per track is 62.6 s,
+   so "how many files are missing" is measured by the repair check and by a repair, and the page
+   reports what the last sweep found **with the time it was taken**. A number nobody can date is
+   worse than no number.
+   **And nothing that carries bytes waits behind a walk.** The walk's lock is the walker's alone and
+   is never held while anything is read; a cover and a track are answered from `held_now()`, which
+   never walks even when the model is stale. On the page: one state request at a time — the timer
+   fired every 700 ms while a job ran, so against a 107 s answer it queued dozens of identical walks
+   with every cover behind them — and a slow answer is *waited for*, with a ceiling far above the
+   staleness bound, rather than shown as a server that went down.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
