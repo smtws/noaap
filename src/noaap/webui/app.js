@@ -1,6 +1,6 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
-         fold, foldMap, hits, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
+         fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, offersState,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
@@ -8,7 +8,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
          repairState, sourceLabel, sourceOpen, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
          resetKind, roundMark, watchesAfter, watchesWithout,
-         scrollForActive, scrollToLine, seedConfirm, shifted, sourceChange, stampOf, takeInState,
+         scrollForActive, scrollToLine, searchTerms, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
          timingFields, timingNotice,
          toFileClock, trimOffset, trimTarget, watchTrouble, wordsAfterClaim }
@@ -246,7 +246,7 @@ function matchRanges(text, terms) {
 
 // The matched part of a string, wrapped in <mark>; plain text when nothing is being filtered.
 function marked(text) {
-  const terms = libFilter ? fold(libFilter).split(" ").filter(Boolean) : [];
+  const terms = libFilter ? searchTerms(libFilter) : [];
   const ranges = terms.length ? matchRanges(text, terms) : [];
   if (!ranges.length) return text;
   const out = [];
@@ -264,24 +264,60 @@ function marked(text) {
 // inside Vol. 3, not only "Nocturnal Whispers".
 const TRACK = { id: 0, artist: 1, title: 2, done: 3, start: 4, end: 5 }; // rows from /api/tracks
 
+// **what the filter matches against, folded once** (§9, slice 151; R-523). The user: the search
+// field took seconds to accept a letter. Every `shownAlbums()` folded all 1,523 album lines and all
+// 20,261 track titles, in both spellings, and `renderLibrary` called it six times per keystroke.
+// Folding is per character with a `normalize` and two regexes, so one letter cost about ten million
+// of those steps. Here each album's words are folded once and kept until the library changes.
+let searchKeys = { for: null, albums: new Map() };
+
+function keysFor(a) {
+  const stamp = `${state.tracks_version || ""}|${trackIndex.version || ""}`;
+  if (searchKeys.for !== stamp) searchKeys = { for: stamp, albums: new Map() };
+  let keys = searchKeys.albums.get(a.id);
+  if (!keys) {
+    keys = {
+      own: foldedBoth(`${a.albumartist} ${a.album} ${a.year || ""}`),
+      rows: (trackIndex.albums[a.id] || []).map((r) => ({
+        row: r, folded: foldedBoth(`${r[TRACK.artist]} ${r[TRACK.title]}`) })),
+    };
+    searchKeys.albums.set(a.id, keys);
+  }
+  return keys;
+}
+
 function matchingRows(a, terms) {
-  return (trackIndex.albums[a.id] || []).filter((r) => hits(terms, `${r[TRACK.artist]} ${r[TRACK.title]}`));
+  return keysFor(a).rows.filter((k) => hitsIn(terms, k.folded)).map((k) => k.row);
 }
 
 function matchingTracks(a, terms) {
   return matchingRows(a, terms).map((r) => `${r[TRACK.artist]} — ${r[TRACK.title]}`);
 }
 
+// One answer per render, not six: `renderLibrary`, `renderPlayMatches` and the signature all used
+// to ask separately, and each asking walked the library again (R-523).
+let shownFor = null;
+let shownWas = [];
+
 function shownAlbums() {
+  const stamp = `${state.tracks_version || ""}|${trackIndex.version || ""}|${artistFilter}`
+    + `|${libFilter}|${lengthOnly}|${needsYouOnly}|${state.albums.length}`;
+  if (shownFor === stamp) return shownWas;
+  shownFor = stamp;
+  shownWas = pickAlbums();
+  return shownWas;
+}
+
+function pickAlbums() {
   let byArtist = artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums;
   if (lengthOnly) byArtist = byArtist.filter((a) => a.length);
   if (needsYouOnly) byArtist = byArtist.filter((a) => a.needs_you || a.copies);
   if (!libFilter) return byArtist.map((a) => ({ ...a, matches: null }));
-  const terms = fold(libFilter).split(" ").filter(Boolean);
+  const terms = searchTerms(libFilter);
   const out = [];
   for (const a of byArtist) {
-    const own = hits(terms, `${a.albumartist} ${a.album} ${a.year || ""}`);
-    const songs = matchingTracks(a, terms);
+    const own = hitsIn(terms, keysFor(a).own);
+    const songs = own ? [] : matchingTracks(a, terms);
     if (own || songs.length) out.push({ ...a, matches: own ? null : songs });
   }
   return out;
@@ -337,9 +373,10 @@ function showArtist(name) {
 }
 
 function renderLibrary() {
-  const shown = shownAlbums().length;
+  const albums = shownAlbums();
+  const shown = albums.length;
   const all = (artistFilter ? state.albums.filter((a) => a.albumartist === artistFilter) : state.albums).length;
-  const songMatches = shownAlbums().reduce((n, a) => n + (a.matches?.length || 0), 0);
+  const songMatches = albums.reduce((n, a) => n + (a.matches?.length || 0), 0);
   $("#libpath").textContent = libFilter
     ? `${shown} of ${all} albums` + (songMatches ? `, ${songMatches} track${songMatches > 1 ? "s" : ""}` : "")
     : artistFilter
@@ -351,17 +388,23 @@ function renderLibrary() {
       ? `Nothing in the library matches “${libFilter}”.`
       : "Nothing here yet. Paste a playlist URL or type an artist above.";
   const grid = $("#grid");
-  const signature = JSON.stringify(shownAlbums()) + artistFilter + libFilter + lengthOnly + trackIndex.version;
+  // **the signature says what the grid shows, without serialising it** (R-523). This was
+  // `JSON.stringify(shownAlbums())`: the whole filtered library turned into a string on every
+  // keystroke, only to be compared and thrown away. The ids and the number of matching songs say
+  // the same thing about whether the cards would differ, and `state.version` covers the rest.
+  const signature = [state.tracks_version, trackIndex.version, artistFilter, libFilter, lengthOnly,
+                     needsYouOnly, shown, songMatches,
+                     albums.map((a) => a.id).join("\u0000")].join("\u0001");
   if (signature !== gridShows) {
     // rebuilding throws away the focused card, which would break arrow-key navigation
     const focused = document.activeElement?.closest?.("#grid .card")?.dataset.id;
     gridShows = signature;
-    fill(grid, shownAlbums().map(card));
+    fill(grid, albums.map(card));
     // preventScroll: a rebuild must not drag the viewport to the focused card - it would
     // pull an open album editor out of view whenever a download changes something
     if (focused) grid.querySelector(`.card[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
   }
-  $("#empty").hidden = shownAlbums().length > 0;
+  $("#empty").hidden = shown > 0;
   renderPlayMatches();
   renderLengthFilter();
   renderNeedsYouFilter();
@@ -487,7 +530,7 @@ function card(a) {
 // Play what the filter found: the matching songs of each album, or all of an album that
 // matched by name — the same thing the cards show.
 function playMatches() {
-  const terms = fold(libFilter).split(" ").filter(Boolean);
+  const terms = searchTerms(libFilter);
   const wanted = [];
   for (const a of shownAlbums()) {
     const rows = a.matches ? matchingRows(a, terms) : trackIndex.albums[a.id] || [];
@@ -511,16 +554,42 @@ function renderPlayMatches() {
 
 $("#play-matches").addEventListener("click", playMatches);
 
-$("#libfilter").addEventListener("input", (e) => {
-  libFilter = e.target.value.trim();
-  renderLibrary();
-  if (!$("#album").hidden) markAlbumFields();
-});
+// **typing is answered by the browser, filtering happens just after** (§9, slice 151; R-523).
+// The field is the user's to type in; the grid can be a sixth of a second behind. Without this the
+// keystroke itself waited for the filter, so a fast typist queued one full render per letter.
+const FILTER_IDLE_MS = 150;
+let filterSoon = null;
+
+function filterAfterIdle(value) {
+  const wanted = value.trim();
+  if (wanted === libFilter && filterSoon === null) return;
+  clearTimeout(filterSoon);
+  filterSoon = setTimeout(() => {
+    filterSoon = null;
+    if (wanted === libFilter) return;
+    libFilter = wanted;
+    renderLibrary();
+    if (!$("#album").hidden) markAlbumFields();
+  }, FILTER_IDLE_MS);
+}
+
+$("#libfilter").addEventListener("input", (e) => filterAfterIdle(e.target.value));
 // Enter jumps into the results; Escape clears the filter before anything else closes
 $("#libfilter").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("#grid").querySelector(".card")?.focus();
-  else if (e.key === "Escape" && libFilter) {
+  // Enter and Escape are answers, not typing: they take effect at once, ahead of the idle wait
+  if (e.key === "Enter") {
+    clearTimeout(filterSoon);
+    filterSoon = null;
+    if (e.target.value.trim() !== libFilter) {
+      libFilter = e.target.value.trim();
+      renderLibrary();
+      if (!$("#album").hidden) markAlbumFields();
+    }
+    $("#grid").querySelector(".card")?.focus();
+  } else if (e.key === "Escape" && (libFilter || e.target.value)) {
     e.stopPropagation();
+    clearTimeout(filterSoon);
+    filterSoon = null;
     e.target.value = libFilter = "";
     renderLibrary();
     if (!$("#album").hidden) markAlbumFields();
@@ -1599,7 +1668,7 @@ document.addEventListener("keydown", (e) => {
 // The value of an input cannot be highlighted character by character — the whole field is
 // tinted instead, so an album opened from a filtered library shows which fields matched.
 function markAlbumFields() {
-  const terms = libFilter ? fold(libFilter).split(" ").filter(Boolean) : [];
+  const terms = libFilter ? searchTerms(libFilter) : [];
   for (const el of $("#album").querySelectorAll('input[type="text"]')) {
     const maps_ = maps(el.value);
     el.classList.toggle("hit", terms.some((term) => maps_.some((m) => m.folded.includes(term))));

@@ -208,7 +208,11 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
         # not that recording - keep our title, attach no recording id, and take no length
         # from it either (a live cut measured against the studio one reads as 2 minutes off)
         t.title = t.auto["title"] = title
-        t.provenance["title"] = Provenance.SOURCE_TITLE
+        # **and keeping a title must not cost it its standing** (§9, slice 153; R-525). This wrote
+        # `SOURCE_TITLE` over whatever was there, so a `file_tags` title that survived one lookup
+        # stopped being firsthand and the *next* one could replace it.
+        if t.provenance.get("title") not in FIRSTHAND:
+            t.provenance["title"] = Provenance.SOURCE_TITLE
     else:
         _set(t, "title", title)
         t.mbid = rec["id"]
@@ -639,7 +643,14 @@ def _worth_looking_up(plan: AlbumPlan, t: PlanTrack) -> bool:
 # Whoever tagged that collection knew which release they had — the Deluxe Edition, the live
 # recording, the remaster — and a lookup that matched *a* release is not better information than
 # the one in front of it. MusicBrainz still fills every field the files leave empty.
-FIRSTHAND = (Provenance.FILE_TAGS,)
+#
+# **The file's and the folder's names are the files' own words too** (§9, slice 153; R-525). Only
+# `FILE_TAGS` was here, so a title read off the file name was not firsthand and an unmatched
+# per-track lookup replaced it: on `Depeche Mode/Policy of Truth`, which matches no release at all,
+# `Kaleid` became `Kaleid (remix)` that way. Somebody who named the file `04 - Kaleid.mp3` said as
+# much about this recording as a tag would, and a lookup that found *a* recording of that name has
+# not earned the right to argue with it.
+FIRSTHAND = (Provenance.FILE_TAGS, Provenance.FILE_NAME, Provenance.FOLDER_NAME)
 
 
 def _set(obj: AlbumPlan | PlanTrack, name: str, value: Any, matched: bool = False) -> None:

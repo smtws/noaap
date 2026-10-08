@@ -489,6 +489,7 @@ def test_track_index_version_follows_the_plans(library, opus_template):
     # a plan written behind noaap's back is seen at the next rescan, not instantly
     # (§9, slice 139): a page poll is answered from the model, bounded by STALE_SECONDS
     app.library_changed()
+    app.rescan()   # the walk is the background thread's; here it is asked for outright
     after = app.track_index()
     assert after["version"] != before["version"]  # the UI refetches only when this changes
     assert after["albums"][plan.source_id][0][2] == "Renamed by hand"  # [video_id, artist, title, …]
@@ -812,8 +813,10 @@ def test_the_grid_carries_the_length_flag(server):
         t.file_length, t.mb_length = 40.0, 200.0
     save_plan(plan, album_dir)
     # a plan written behind noaap's back is seen at the next rescan, not instantly
-    # (§9, slice 139): a page poll is answered from the model, bounded by STALE_SECONDS
+    # (§9, slice 139): a page poll is answered from the model, bounded by STALE_SECONDS, and since
+    # slice 152 no read walks at all — so the walk is asked for outright here
     app.library_changed()
+    app.rescan()
     assert app.albums()[0]["length"] == {"way": "stub", "n": len(plan.tracks), "of": len(plan.tracks)}
 
 

@@ -12,6 +12,7 @@ a request from the side waited 104 s behind the polling.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from test_incremental import opus_template
 from test_web import library
@@ -19,6 +20,25 @@ from test_web import library
 from noaap.config import Config
 from noaap.download import load_plan, save_plan
 from noaap.web import App
+
+
+def counting_io(monkeypatch):
+    """Every path a walk or a patch touches on the disk, in order. `stat` and `glob` are each a
+    round trip to the share, which is what made the user's `/api/state` 8 seconds (R-524)."""
+    where: list[str] = []
+    real_stat, real_glob = Path.stat, Path.glob
+
+    def stat(self, *a, **k):
+        where.append(str(self))
+        return real_stat(self, *a, **k)
+
+    def glob(self, pattern, *a, **k):
+        where.append(f"{self}/{pattern}")
+        return real_glob(self, pattern, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    monkeypatch.setattr(Path, "glob", glob)
+    return where
 
 
 def an_app(library, **kw):
@@ -32,18 +52,25 @@ def test_a_state_request_does_not_walk_the_library(library, monkeypatch):
     app = an_app(library)
     app.state()                      # the first caller pays for the first walk
 
+    import threading
+
+    # the background thread walks on its own schedule and is not what this is about (slice 152)
+    app._stop_scanning.set()
+
     walks = []
     real = type(library).glob
     monkeypatch.setattr(type(library), "glob",
-                        lambda self, pattern: (walks.append(pattern), real(self, pattern))[1])
+                        lambda self, pattern: (walks.append((threading.current_thread().name,
+                                                             pattern)), real(self, pattern))[1])
 
+    here = threading.current_thread().name
     app.state()
     app.state()
     app.state()
     app.albums()                     # and the method behind it, which the panel and the API use
     app.missing()
 
-    assert walks == [], walks
+    assert [w for w in walks if w[0] == here] == [], walks
 
 
 def test_the_version_and_the_albums_come_from_the_same_walk(library, monkeypatch):
@@ -106,19 +133,104 @@ def test_an_album_panel_reads_the_plan_from_disk(library):
 
 def test_our_own_write_is_seen_at_once(library):
     """The minute bound is for changes made behind noaap's back. A page that cannot see what it has
-    just done is broken, so a finished write job marks the model stale and the next read rescans."""
+    just done is broken — so a finished write job **patches its own album** into what is held, and
+    the next read sees it without walking the library (§9, slice 152)."""
     app = an_app(library)
     before = app.state()["tracks_version"]
     album_dir = next(library.glob("*/*/.noaap.json")).parent
+    source_id = load_plan(album_dir).source_id
     plan = load_plan(album_dir)
     plan.album = "After the write"
     save_plan(plan, album_dir)
 
-    app.library_changed()            # what the job lane calls when a write finishes
+    app.wrote_one(source_id)         # what the job lane calls when a write finishes
 
     after = app.state()
     assert after["tracks_version"] != before
     assert any(a["album"] == "After the write" for a in after["albums"])
+
+
+def test_a_state_request_never_walks_however_stale_it_is_told_it_may_be(library, monkeypatch):
+    """The 8-second `/api/state` the user hit (R-523/R-524): `held` walked whenever anything had
+    been written, and every write set that flag, so nearly every request paid a full walk — three
+    thousand `stat`s over a busy NFS share. A page's answer must not depend on the disk's load."""
+    app = an_app(library)
+    app.state()                                 # the first caller may walk; it has nothing else
+
+    import threading
+
+    walkers = []
+    monkeypatch.setattr(app, "_walk",
+                        lambda *a, **k: walkers.append(threading.current_thread().name) or app._held)
+    app.library_changed()                       # a write by somebody who did not say which album
+
+    here = threading.current_thread().name
+    app.state()
+    app.state()
+    assert here not in walkers, \
+        f"a read must answer from what is held; it walked on the request's own thread ({walkers})"
+
+
+def test_a_write_that_does_not_name_its_album_still_asks_for_a_walk(library):
+    app = an_app(library)
+    app.state()
+    app._dirty.clear()
+
+    app.wrote_one(None)                         # `update` over the whole library names no album
+    assert app._dirty.is_set()
+
+
+def test_patching_one_album_does_not_read_the_others(library):
+    """What the patch is for: three I/O calls instead of three thousand."""
+    app = an_app(library)
+    app.state()
+    album_dir = next(library.glob("*/*/.noaap.json")).parent
+    source_id = load_plan(album_dir).source_id
+    others = {d: v for d, v in app._held.plans.items() if d != album_dir}
+
+    plan = load_plan(album_dir)
+    plan.album = "Patched"
+    save_plan(plan, album_dir)
+    app.wrote_one(source_id)
+
+    assert any(a["album"] == "Patched" for a in app.state()["albums"])
+    for d, (when, kept) in others.items():
+        assert app._held.plans[d][0] == when, f"{d} was not touched"
+        assert app._held.plans[d][1] is kept, f"{d}'s plan object was not read again"
+
+
+def test_a_patch_and_a_walk_agree_on_the_version(library):
+    """If they disagreed, the page would re-fetch the track index on every write (or never)."""
+    app = an_app(library)
+    app.state()
+    app._stop_scanning.set()        # else the background walk recomputes it and proves nothing
+    album_dir = next(library.glob("*/*/.noaap.json")).parent
+    source_id = load_plan(album_dir).source_id
+
+    plan = load_plan(album_dir)
+    plan.album = "Both ways"
+    save_plan(plan, album_dir)
+
+    app.wrote_one(source_id)
+    patched = app.state()["tracks_version"]
+    app.rescan()
+    assert app.state()["tracks_version"] == patched
+
+
+def test_an_album_removed_under_a_patch_leaves_the_model(library):
+    import shutil
+
+    app = an_app(library)
+    app.state()
+    album_dir = next(library.glob("*/*/.noaap.json")).parent
+    source_id = load_plan(album_dir).source_id
+    assert any(a["id"] == source_id for a in app.state()["albums"])
+
+    shutil.rmtree(album_dir)
+    app.wrote_one(source_id)
+
+    assert not any(a["id"] == source_id for a in app.state()["albums"])
+    assert source_id not in app._held.index
 
 
 def test_a_changed_library_throws_the_model_away(library, tmp_path):
@@ -241,3 +353,76 @@ def test_nothing_is_read_while_the_walker_holds_its_lock(library):
         assert time.monotonic() - start < 1.0
     finally:
         app._rescanning.release()
+
+
+def test_a_slow_share_does_not_reach_the_state_request(library, monkeypatch):
+    """The user's case, counted rather than timed (R-524). Every `stat` and every `glob` of a walk
+    is a round trip to the share, so the thing that made `/api/state` take 8 seconds is that it did
+    them at all. However much has been written since, a state request must do **none**."""
+    app = an_app(library)
+    app.state()                                 # the first caller walks; it has nothing else
+    app._stop_scanning.set()                    # the background thread is not what is measured here
+    app._dirty.clear()
+
+    trips = counting_io(monkeypatch)
+    app.library_changed()                       # "something was written", the old trigger to walk
+    for _ in range(3):
+        app.state()
+
+    assert trips == [], f"a state request went to the disk {len(trips)} time(s): {trips[:5]}"
+
+
+def test_the_patch_reads_one_album_where_the_walk_reads_the_library(library, monkeypatch):
+    """And what replaced it: seeing your own write costs this album's I/O, not the library's. On the
+    user's 1,523 albums the walk is one glob plus two `stat`s each — about three thousand trips."""
+    app = an_app(library)
+    album_dir = next(library.glob("*/*/.noaap.json")).parent
+    # a few more albums, so "one album" and "the library" are different sizes at all
+    for n in range(2, 6):
+        other = library / "My Dark Lullabies" / f"Vol. {n} - Copied"
+        other.mkdir(parents=True, exist_ok=True)
+        plan = load_plan(album_dir)
+        plan.album = f"Vol. {n} - Copied"
+        plan.source_id = f"{plan.source_id}-{n}"
+        plan.source_url = f"{plan.source_url}-{n}"
+        save_plan(plan, other)
+    app.state()
+    app._stop_scanning.set()
+    source_id = load_plan(album_dir).source_id
+
+    patch_trips = counting_io(monkeypatch)
+    app.album_changed(album_dir)
+    patch_only = list(patch_trips)          # snapshot: the counter below wraps this one
+
+    walk_trips = counting_io(monkeypatch)
+    before_walk = len(walk_trips)
+    app.rescan()
+    walked = len(walk_trips) - before_walk
+
+    assert all(str(where).startswith(str(album_dir)) for where in patch_only), \
+        f"the patch looked outside its album: {patch_only}"
+    assert len(patch_only) < walked, f"patch {len(patch_only)} trips, walk {walked}"
+    assert any(a["id"] == source_id for a in app.state()["albums"])
+
+
+def test_a_burst_of_writes_costs_one_walk_not_twenty(library):
+    """Since a read never walks, the background thread is the only thing that does — and every write
+    marks the library dirty. An `update` writing album after album would have it walking back to
+    back, seconds of the share's attention each time, for nothing a page waits on (§9, slice 152).
+    `QUIET_SECONDS` is the floor between two walks. The margin here is wide on purpose: the claim is
+    "a burst coalesces", not a number of milliseconds."""
+    app = an_app(library)
+    app.STALE_SECONDS, app.QUIET_SECONDS = 0.01, 0.2
+    walks = []
+    real = app._walk
+    app._walk = lambda *a, **k: (walks.append(1), real(*a, **k))[1]
+    app.state()                                     # starts the scanner, pays the first walk
+    walks.clear()
+
+    for _ in range(20):
+        app.library_changed()
+        time.sleep(0.005)
+    time.sleep(0.1)
+    app._stop_scanning.set()
+
+    assert len(walks) <= 3, f"{len(walks)} walks for twenty writes in 0.1 s"

@@ -31,10 +31,25 @@ export const fold = (s) => foldMap(s, false).folded;
 // "knuppel" would miss — so every string is matched (and highlighted) in both spellings.
 export const maps = (text) => [foldMap(text, false), foldMap(text, true)];
 
-export const hits = (terms, text) => {
-  const both = maps(text);
-  return terms.every((term) => both.some((m) => m.folded.includes(term)));
-};
+export const hits = (terms, text) => hitsIn(terms, foldedBoth(text));
+
+/** The two spellings a text is matched in, as plain strings — the whole of what matching needs.
+ *
+ * `maps` also carries a `from` array per character, for highlighting; building it is most of the
+ * cost and a filter does not use it. Measured on the user's library (R-523): the search folded
+ * 1,523 album lines and 20,261 track titles, twice each, on **every** `shownAlbums()` call, and
+ * `renderLibrary` called that six times per keystroke — about ten million `normalize`-plus-regex
+ * steps for one letter typed. Folded once into `searchKeys` and kept, a keystroke is `includes`
+ * over ready strings.
+ */
+export const foldedBoth = (text) => [foldMap(text, false).folded, foldMap(text, true).folded];
+
+/** Whether every term is somewhere in one of the two spellings already folded. */
+export const hitsIn = (terms, folded) =>
+  terms.every((term) => folded.some((f) => f.includes(term)));
+
+/** What the filter is typed against: the terms, folded the same way the keys were. */
+export const searchTerms = (text) => fold(text || "").split(" ").filter(Boolean);
 
 // -- time ---------------------------------------------------------------------------------
 

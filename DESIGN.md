@@ -4100,6 +4100,59 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    album's audio files still carry the right titles, so they are the way back. Checked across all
    1,713 album folders: that album is the only one whose stored plan holds a collapsed title.
 
+151. ✅ **Typing in the search field is answered before the grid is** (2026-10-08, R-523). The user:
+   the field was unresponsive, letters not taken for seconds. `renderLibrary` ran on every `input`
+   event, and the cost was not the rendering: `shownAlbums()` folded all 1,523 album lines *and* all
+   20,261 track titles, in **both** spellings, every time it was asked — and `renderLibrary`,
+   `renderPlayMatches` and the signature each asked separately, six walks per keystroke. Folding is
+   per character, with a `normalize("NFD")` and two regexes each, so one letter cost roughly ten
+   million of those steps. On top of that the signature was `JSON.stringify(shownAlbums())`: the
+   whole filtered library serialised, compared, and thrown away.
+   Measured at the real library's size: **1,663 ms per keystroke → 2.1 ms**, with a one-off 314 ms
+   to fold the library's words when its version changes, built per album as the filter reaches it.
+   Three separate things did that: each album's words are folded **once** into `searchKeys` and kept
+   until `tracks_version` changes; `shownAlbums()` answers once per render and remembers its answer
+   for the current filter; and the signature is ids and counts rather than the albums themselves.
+   `foldedBoth` exists because `maps` also builds a per-character trail for highlighting, which is
+   most of the cost and which a filter never reads.
+   And the keystroke no longer waits for any of it: the field is the user's to type in, the grid may
+   be 150 ms behind (`FILTER_IDLE_MS`). Enter and Escape are answers rather than typing, so they
+   take effect at once, ahead of the idle wait.
+
+152. ✅ **A page's answer does not depend on how loaded the disk is** (2026-10-08, R-524). `/api/state`
+   is served from what one walk holds in memory (slice 139) — but `held()` walked whenever `_dirty`
+   was set, and **every write of ours sets it**. So while the user was deleting albums and
+   identifying them, nearly every state request paid a full walk: one glob, a `stat` per plan and a
+   `stat` per album folder, about three thousand round trips. On an idle share that walk is 0.58 s;
+   over NFS with the share busy — three of my own dry runs at the time — it was **8 seconds a
+   request**, and the page polls on completion, so it never caught up.
+   The invariant that forced it is real: *a page that cannot see what it has just done is broken*.
+   But seeing one's own edit does not need the other 1,522 albums re-`stat`ed. So a write patches
+   **its own album** into what is held (`album_changed`, reached through `wrote_one` from the job's
+   `target`): one plan read, one folder `stat`, one look for a cover — three I/O calls where there
+   were three thousand, and the model is swapped in with a single assignment as before. A full walk
+   still follows in the background, because a patch cannot see a folder that was renamed or one that
+   appeared elsewhere, and a write that names no album (an `update` over everything) still asks for
+   one. The version is computed by `_stamp_of` from what is held, so a patch and a walk can never
+   disagree about it — if they did, the page would re-fetch the whole track index on every write.
+   The cases count I/O rather than time it: a walk's `stat`s and globs are what cost, so the claim
+   is that a state request makes **none** of them, at any library size.
+
+153. ✅ **A file's own name is the files' word too** (2026-10-08, R-525). R-525 states the rule — an
+   album with no matched release keeps what it was taken in with, and a per-track lookup does not
+   overwrite it — and asked whether it held. It did not, in two ways, both visible on
+   `Depeche Mode/Policy of Truth`, which matches no release at all:
+   `FIRSTHAND` held only `FILE_TAGS`, so a title read off the **file name** was not firsthand and
+   one `search_recordings` hit replaced it: `Kaleid` became `Kaleid (remix)`. Somebody who named a
+   file `04 - Kaleid.mp3` has said as much about that recording as a tag would, so `FILE_NAME` and
+   `FOLDER_NAME` are firsthand now as well.
+   And `enrich_track`'s "MusicBrainz lacks our bracket group" branch kept the title but stamped
+   `SOURCE_TITLE` over its provenance — so a `file_tags` title that survived one lookup **stopped
+   being firsthand**, and the next pass could take it. Keeping a value must not cost it its
+   standing. What MusicBrainz said is not thrown away in either case: it stays in `auto`, where the
+   page's reset still reaches it. A title a *source* wrote is still replaced, because that is a
+   shop's guess and not the files' word.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

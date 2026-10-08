@@ -26,7 +26,7 @@ import threading
 import time
 import traceback
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -149,7 +149,9 @@ class Jobs:
         # started, so nothing is ever taken out from under work that is coming.
         # **somebody wrote** (§9, slice 139): the model the page is answered from is stale the moment
         # one of our own passes finishes, and waiting a minute to notice our own work is absurd.
-        self.wrote = wrote or (lambda: None)
+        # **what the write touched, where the job knows it** (§9, slice 152): a job for one album
+        # patches that album into what is held; one for the whole library asks for a walk.
+        self.wrote = wrote or (lambda target: None)
         self.idle = release_when_idle(idle_seconds if release else 0.0, release or (lambda: None),
                                      busy=self.busy, sleep=sleep, now=now)
         for lane in self._queues:
@@ -230,7 +232,7 @@ class Jobs:
                 job.finished = time.time()
                 if job.lane == "write":
                     with contextlib.suppress(Exception):
-                        self.wrote()
+                        self.wrote(job.target)
 
 
 # what to call each container when a player asks for it. The suffix is the file's own claim and the
@@ -377,7 +379,7 @@ class App:
         self.engines = Engines()
         self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel, engines=self.engines))
         self.jobs = Jobs(self._service_factory, release=self.engines.let_go,
-                         wrote=self.library_changed, idle_seconds=cfg.timing_card_idle_seconds)
+                         wrote=self.wrote_one, idle_seconds=cfg.timing_card_idle_seconds)
         self.details = Details(lambda: sources.get(None, self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running
@@ -399,14 +401,21 @@ class App:
     # -- the one walk (§9, slice 139) --------------------------------------------------
 
     STALE_SECONDS = 60      # the bound a page's answer may be behind the disk by
+    QUIET_SECONDS = 5       # the floor between two walks, so a burst of writes costs one
 
     def held(self) -> Held:
-        """What a read is answered from. Never walks the library — except for the very first caller,
-        who has nothing to be answered from yet (§9, slice 139)."""
-        if not self._held.at or self._dirty.is_set():
-            # **our own writes are seen at once** (§9, slice 139). The minute bound is for changes
-            # made behind noaap's back; a page that cannot see what it has just done is broken.
-            self._dirty.clear()
+        """What a read is answered from. **Never walks the library** — except for the very first
+        caller, who has nothing to be answered from yet (§9, slice 139, slice 152).
+
+        It used to walk whenever `_dirty` was set, which every write of ours sets. So while the user
+        was deleting albums and identifying them, nearly every `/api/state` paid a full walk: one
+        glob, a `stat` per plan and a `stat` per album folder, about three thousand round trips.
+        Over NFS with the share busy that was **8 seconds a request** against the 0.58 s this walk
+        costs on an idle share (R-523/R-524). A page's answer must not depend on how loaded the disk
+        is, so our own writes now patch the one album they touched into what is held
+        (`album_changed`), and the walk belongs to the background thread alone.
+        """
+        if not self._held.at:
             self.rescan()
         self._keep_watching()
         return self._held
@@ -430,7 +439,15 @@ class App:
             self._scanner.start()
 
     def _scanning(self) -> None:
-        """Rescan at most once in `STALE_SECONDS`, and at once when a pass of ours has written."""
+        """Rescan at most once in `STALE_SECONDS`, and soon after a pass of ours has written.
+
+        **Soon, not at once** (§9, slice 152). Since a read never walks, this thread is the only
+        thing that does, and every write sets `_dirty` — so an `update` writing album after album
+        would have it walking back to back, which on a library over NFS is seconds of the share's
+        attention each time, for nothing a page is waiting on. `QUIET_SECONDS` is the floor between
+        two walks: a burst of writes coalesces into one, and each write has already patched its own
+        album in, which is what the page actually needed.
+        """
         while not self._stop_scanning.is_set():
             self._dirty.wait(self.STALE_SECONDS)
             if self._stop_scanning.is_set():
@@ -440,10 +457,82 @@ class App:
                 self.rescan()
             except Exception as e:                      # a rescan that fails keeps the old answer
                 log.warning("rescan failed, keeping what was held: %s", e)
+            if self._stop_scanning.wait(self.QUIET_SECONDS):
+                return
 
     def library_changed(self) -> None:
         """A pass of ours wrote something, so the next tick rescans instead of waiting a minute."""
         self._dirty.set()
+
+    def wrote_one(self, target: str | None = None) -> None:
+        """A write job has finished. If it names its album, patch that album in; else ask for a walk.
+
+        Either way `_dirty` is set, so the background thread walks shortly: a patch is what makes the
+        page see its own edit at once, not a replacement for the walk (§9, slice 152).
+        """
+        album_dir = self._held.index.get(target) if target else None
+        if album_dir is None:
+            self.library_changed()
+            return
+        self.album_changed(album_dir)
+
+    def album_changed(self, album_dir: Path) -> None:
+        """**One album of ours has just been written, so patch that album in** (§9, slice 152).
+
+        A page that cannot see what it has just done is broken, and that is why `held` used to walk
+        on every write. But seeing one's own edit does not need the other 1,522 albums re-`stat`ed:
+        it needs this folder read again. So this reads one plan, looks once for its cover, and swaps
+        in a model that differs in that album alone — no glob, no walk, three I/O calls instead of
+        three thousand. A full walk still follows in the background, because a patch cannot see a
+        folder that was renamed or one that appeared somewhere else.
+        """
+        self._dirty.set()
+        old = self._held
+        if not old.at:
+            return                      # nothing is held yet; the first reader will walk anyway
+        fresh = replace(old, plans=dict(old.plans), index=dict(old.index),
+                        covers=dict(old.covers), albums=list(old.albums), at=time.monotonic())
+        path = album_dir / PLAN_FILE
+        gone = [sid for sid, d in fresh.index.items() if d == album_dir]
+        try:
+            when = path.stat().st_mtime_ns
+            plan = read_plan(path, album_dir)
+        except (OSError, ValueError, KeyError, TypeError):
+            # written and then removed, or not readable: drop what we held about it
+            fresh.plans.pop(album_dir, None)
+            fresh.covers.pop(album_dir, None)
+            for sid in gone:
+                fresh.index.pop(sid, None)
+            fresh.albums = [a for a in fresh.albums if a["id"] not in gone]
+            fresh.version = self._stamp_of(fresh.plans)
+            self._held = fresh
+            return
+        try:
+            folder = album_dir.stat().st_mtime_ns
+        except OSError:
+            folder = 0
+        cover = any(album_dir.glob(f"{COVER_STEM}.*"))
+        fresh.plans[album_dir] = (when, plan)
+        fresh.covers[album_dir] = (folder, cover)
+        for sid in gone:
+            if sid != plan.source_id:
+                fresh.index.pop(sid, None)
+        fresh.index[plan.source_id] = album_dir
+        row = _album_row(plan, cover)
+        kept = [a for a in fresh.albums if a["id"] not in gone and a["id"] != row["id"]]
+        kept.append(row)
+        kept.sort(key=lambda a: (natural_key(a["albumartist"]), a["year"] is None,
+                                 a["year"] or 0, natural_key(a["album"])))
+        fresh.albums = kept
+        fresh.version = self._stamp_of(fresh.plans)
+        self._held = fresh           # one assignment, so a reader sees the old model or the new one
+
+    @staticmethod
+    def _stamp_of(plans: dict[Path, tuple[int, AlbumPlan]]) -> str:
+        """The library's version, from what is held rather than from a walk — so a patch and a walk
+        answer the same string for the same library."""
+        stamp = [f"{d / PLAN_FILE}:{when}" for d, (when, _) in sorted(plans.items())]
+        return hashlib.sha1("".join(stamp).encode()).hexdigest()[:12]
 
     def rescan(self, measure: bool = False) -> Held:
         """Walk once and swap the result in. One walk at a time; readers never wait for it."""
@@ -464,14 +553,12 @@ class App:
         fresh = Held(missing=old.missing, at=time.monotonic())
         if not self.library.exists():
             return fresh
-        stamp: list[str] = []
         for path in sorted(self.library.glob(f"*/*/{PLAN_FILE}")):
             album_dir = path.parent
             try:
                 when = path.stat().st_mtime_ns
             except OSError:
                 continue
-            stamp.append(f"{path}:{when}")
             if (kept := old.plans.get(album_dir)) and kept[0] == when:
                 plan = kept[1]
             else:
@@ -493,7 +580,7 @@ class App:
                 cover = any(album_dir.glob(f"{COVER_STEM}.*"))
             fresh.covers[album_dir] = (folder, cover)
             fresh.albums.append(_album_row(plan, cover))
-        fresh.version = hashlib.sha1("".join(stamp).encode()).hexdigest()[:12]
+        fresh.version = self._stamp_of(fresh.plans)
         # artist, then chronological, then by name. Albums with no year all tie, so compilations
         # keep their natural order (Vol. 1 … Vol. 20) until someone fills a year in.
         fresh.albums.sort(key=lambda a: (natural_key(a["albumartist"]), a["year"] is None,
