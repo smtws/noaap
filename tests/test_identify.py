@@ -288,3 +288,83 @@ def test_the_apply_reports_what_it_wrote(collection):
     assert any(line.startswith("mbid: nothing → " + RELEASE) for line in wrote)
     assert any("mbid: nothing → " + RELEASE in line for line in job.log), \
         "and it is in the log the person watching sees"
+
+
+# -- the releases a refused lookup weighed (§9, slice 158; R-530) --------------------------------
+
+
+class WeighsSeveralAndFitsNone(SaysOneRelease):
+    """Four editions of this album, every one of them with the wrong track titles.
+
+    What the user's `Depeche Mode/Violator` is: twenty candidates pass the name filter, three are
+    opened, the best fits 7 of the 8 titles it needs, and so the lookup refuses them all.
+    """
+
+    EDITIONS = ("rel-de", "rel-gb", "rel-us", "rel-jp")
+
+    def search_releases(self, artist, album):
+        self.searched += 1
+        credit = [{"name": "Apocalyptica", "artist": {"name": "Apocalyptica"}}]
+        return [{"id": mbid, "title": self.title, "score": 100, "status": "Official",
+                 "country": where, "date": f"200{n}", "track-count": len(TITLES),
+                 "disambiguation": "deluxe" if n == 2 else "",
+                 "label-info": [{"label": {"name": "Mute"}}],
+                 "media": [{"format": "CD", "track-count": len(TITLES)}],
+                 "artist-credit": credit}
+                for n, (mbid, where) in enumerate(zip(self.EDITIONS, "DE GB US JP".split(),
+                                                      strict=True), 1)]
+
+    def _body(self, mbid):
+        body = super()._body(mbid)
+        for n, track in enumerate(body["media"][0]["tracks"], 1):
+            track["title"] = f"Not The Song {n}"       # nothing a plan title can be seated on
+        return body
+
+
+def test_the_check_hands_over_the_releases_it_weighed(collection):
+    """R-530, found by the reviewer on `Depeche Mode/Violator`: the check weighed twenty editions
+    and the panel answered "MusicBrainz has no release that matches this album". A check **writes
+    nothing**, so the plan on disk cannot carry the candidates to the page — the outcome must."""
+    app = an_app(collection, WeighsSeveralAndFitsNone())
+    source_id = the_album(app)
+
+    job = settled(app, app.submit("identify", {"id": source_id, "dry_run": True}))
+
+    outcome = job.result[0]
+    assert outcome["changes"] == [], "nothing fitted, so nothing would be written"
+    assert len(outcome["offered"]) == 4, outcome["offered"]
+    assert {o["id"] for o in outcome["offered"]} == set(WeighsSeveralAndFitsNone.EDITIONS)
+
+
+def test_a_candidate_carries_what_tells_the_editions_apart(collection):
+    app = an_app(collection, WeighsSeveralAndFitsNone())
+    job = settled(app, app.submit("identify", {"id": the_album(app), "dry_run": True}))
+
+    one = next(o for o in job.result[0]["offered"] if o["id"] == "rel-gb")
+    assert one["country"] == "GB"
+    assert one["format"] == "CD"
+    assert one["label"] == "Mute"
+    assert one["note"] == "deluxe", "MusicBrainz' own word for which edition this is"
+    assert one["media"] == [len(TITLES)], "its shape, without anybody opening it"
+
+
+def test_an_album_already_in_the_library_keeps_what_the_lookup_weighed(collection):
+    """The bug under the bug: `merge_plans` starts from the plan on disk and never took `offered`
+    from the fresh one, so for **every album already in the library** — which is all of them after
+    the first pass — a refused lookup's candidates were thrown away between the lookup and the
+    plan. The log said "4 release(s) weighed"; the plan said nothing."""
+    from noaap.plan import merge_plans
+
+    app = an_app(collection, WeighsSeveralAndFitsNone())
+    source_id = the_album(app)
+    album_dir, on_disk = app.album(source_id)
+    assert on_disk.offered == [], "nothing weighed yet"
+
+    settled(app, app.submit("identify", {"id": source_id}))        # a real apply, which writes
+
+    assert len(load_plan(album_dir).offered) == 4, "and now the plan holds them too"
+
+    # and the merge itself, directly: the fresh answer wins over the old plan's silence
+    fresh = load_plan(album_dir)
+    fresh.offered = [{"id": "rel-new", "title": "Cult"}]
+    assert [o["id"] for o in merge_plans(on_disk, fresh).offered] == ["rel-new"]

@@ -4237,6 +4237,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    were opened and fitted most first, then the rest in the order the search answered, which is its
    own ranking.
 
+158. ✅ **"None of them fitted" is not "there is nothing"** (2026-10-08, R-530). The reviewer's check
+   of `Depeche Mode/Violator`: twenty editions weighed, three opened, the best fitting 7 of the 8
+   titles it needed — and the panel answered *"MusicBrainz has no release that matches this album"*,
+   with no way to choose between them. Three faults, one on top of the other:
+   **`merge_plans` threw the candidates away.** It starts as a copy of the plan on disk and took
+   `offered` from nowhere, so for every album *already in the library* — which is all of them after
+   the first pass — a refused lookup's list was dropped between the lookup and the plan. The log
+   said "20 release(s) weighed", the plan said nothing, and the panel had nothing to offer: slice
+   145 only ever worked for an album being taken in. `release_group` was the same.
+   **A check writes nothing, so the plan cannot carry them to the page either.** The outcome does,
+   beside the change list it already carries from slice 154.
+   **And the panel was reading a verdict out of two facts that cannot tell those cases apart.** The
+   change list is empty whenever nothing would be written, and `matched` is false whenever nothing
+   fitted; "none of twenty" and "not one exists" look identical in those two. The releases weighed
+   are the third fact, and with them the panel asks *which one is this album?* instead of denying
+   that any is.
+   One thing came back the other way: with the candidates no longer dropped, `changes_from`'s
+   slice-145 line made an album where *nothing* fitted report "1 change(s)" and offer an apply that
+   writes nothing to anybody's files. The candidates are a question, not a change, so that line is
+   gone — they travel as `offered` now.
+   **Why the cases did not catch it:** they tested `enrich_release` (which sets `offered` on the
+   plan handed to it), and `offersToChoose` against an `offered` array written by hand. Nothing
+   joined the two ends — a check on an album *already in the library*, then what the panel receives.
+   That join is now a case, and it fails on each of the three faults put back separately.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

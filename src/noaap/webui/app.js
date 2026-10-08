@@ -2115,8 +2115,8 @@ function offersPanel(p) {
 // a radio group is: the browser gives it the focus trap, Escape, Tab between the choices, arrow
 // keys inside the group and the screen-reader announcement of "3 of 9", none of which hand-written
 // markup gets right. The best fit is preselected, so Enter is the answer most of the time.
-function chooseRelease(p) {
-  const said = offersToChoose({ offered: p.offered, mbid: p.mbid });
+function chooseRelease(p, offered = null) {
+  const said = offersToChoose({ offered: offered || p.offered, mbid: p.mbid });
   if (!said) return;
   const name = `offer-${Date.now()}`;
   const rows = said.rows.map((row) => {
@@ -2253,7 +2253,7 @@ function sourceOpening(p) {
 // Two steps, like a repair: look first, apply what was listed. The lookup rewrites titles, numbers
 // and discs, so a person who cannot see that first is being asked to trust it blind.
 
-let lastIdentify = null;   // { id, version, lines, matched } of the album last looked up
+let lastIdentify = null;   // { id, version, lines, matched, offered } of the album last looked up
 
 function identifyButton(p) {
   const mine = lastIdentify && lastIdentify.id === p.source_id ? lastIdentify : null;
@@ -2267,6 +2267,14 @@ function identifyButton(p) {
       disabled: !(said.canApply || said.canCheck), title: said.note,
       onclick: (e) => (mine && said.canApply ? applyIdentify : checkIdentify)(p, e.currentTarget) },
       label),
+    // **the candidates the check weighed, straight from the check** (§9, slice 158; R-530). A
+    // check writes nothing, so they cannot come from the plan on disk — and the panel used to
+    // answer a refused lookup with "MusicBrainz has no release that matches this album".
+    said.canChoose
+      ? h("button", { class: "quiet", type: "button",
+          onclick: () => chooseRelease(p, mine.offered) },
+          `Which release is this? (${mine.offered.length})`)
+      : null,
     mine ? h("span", { class: "muted" }, " ", said.note) : null);
   return box;
 }
@@ -2278,7 +2286,9 @@ async function checkIdentify(p, button) {
   const job = await jobSettled(id, 1200);
   if (!job || job.state !== "done") return;      // submit() and the job log have said why
   const lines = identifyLines(job);
+  const outcomes = Array.isArray(job.result) ? job.result : [];
   lastIdentify = { id: p.source_id, version, lines,
+                   offered: outcomes.flatMap((o) => (Array.isArray(o?.offered) ? o.offered : [])),
                    matched: (job.log || []).some((l) => l.includes("release matched")
                                                      || l.includes("release pinned by you")) };
   await refreshAlbumPanel();

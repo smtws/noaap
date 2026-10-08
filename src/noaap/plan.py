@@ -609,6 +609,14 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         merged.mbid = fresh.mbid or merged.mbid
     merged.skipped = fresh.skipped
     merged.source_state = fresh.source_state or merged.source_state
+    # **what the lookup just weighed is the lookup's answer, not the old plan's** (§9, slice 158;
+    # R-530). `merged` starts as a copy of what is on disk, and `offered` was never taken from the
+    # fresh plan — so for every album *already in the library*, which is all of them after the first
+    # pass, the candidates a refused lookup had just listed were thrown away here. The log said
+    # "20 release(s) weighed", the plan said nothing, and the panel had nothing to offer: slice 145
+    # worked only for an album being taken in. `release_group` is the same kind of fact.
+    merged.offered = fresh.offered
+    merged.release_group = fresh.release_group or merged.release_group
 
     fresh_by_id = {t.video_id: t for t in fresh.tracks}  # a repeated video is one entry
     listed = set(fresh_by_id) | {s["video_id"] for s in fresh.skipped}  # skipped videos are still in the source
@@ -951,11 +959,11 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
             out.append(line)
     if (was.cover_url or "") != (now.cover_url or "") and now.cover_url:
         out.append(f"cover: from {now.cover_url}")
-    # **what was weighed and refused is part of what a lookup would do** (§9, slice 145): an album
-    # that gains a list of candidates has changed, and the dry run must say so or the panel shows
-    # something the check never mentioned.
-    if now.offered and now.offered != was.offered:
-        out.append(f"{len(now.offered)} release(s) weighed, none fitted — one of them can be pinned")
+    # **the releases a lookup weighed are not a change it would write** (§9, slice 158; R-530).
+    # Slice 145 put them here, so that a check would mention them at all — and once `merge_plans`
+    # stopped dropping them, an album where *nothing fitted* reported "1 change(s)" and offered an
+    # apply that writes nothing to anybody's files. They are a question for the person, and they
+    # travel as the outcome's `offered`, which is what the panel asks it with.
     mine = {t.video_id: t for t in was.tracks}
     for track in now.tracks:
         before = mine.pop(track.video_id, None)

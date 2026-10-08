@@ -197,11 +197,15 @@ def test_the_pass_says_the_number_then_the_list():
     assert sum(1 for line in said[headline + 1:] if "titles fitted" in line) == 3
 
 
-def test_the_dry_run_diff_says_it_too():
+def test_the_releases_it_weighed_are_not_a_change_to_apply():
+    """They were a line in the diff until R-530, so that a check mentioned them at all. Then
+    `merge_plans` stopped dropping them (slice 158) and an album where *nothing* fitted reported
+    "1 change(s)" and offered an apply that writes nothing to anybody's files. They are a question
+    for the person, and they reach the panel as the outcome's `offered`."""
     from noaap.plan import changes_from
 
     was = a_plan()
     now = a_plan()
     now.offered = [offered_from({"id": f"rel-{n}", "title": "Dragontown"}) for n in range(1, 10)]
 
-    assert changes_from(was, now) == ["9 release(s) weighed, none fitted — one of them can be pinned"]
+    assert changes_from(was, now) == [], "nothing here would be written to a file"

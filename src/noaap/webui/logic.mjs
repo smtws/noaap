@@ -1126,15 +1126,15 @@ export function takeInState({ folder = "", mode = "merge", check = null, running
  */
 export function repairState({ check = null, version = null, running = false } = {}) {
   if (running) {
-    return { canCheck: false, canApply: false, stale: false,
+    return { canCheck: false, canApply: false, stale: false, canChoose: false,
              note: "Something is writing to the library — a repair waits until it is finished." };
   }
   if (!check) {
-    return { canCheck: true, canApply: false, stale: false,
+    return { canCheck: true, canApply: false, stale: false, canChoose: false,
              note: "Check first: it reads the library and writes nothing." };
   }
   if (check.version && version && check.version !== version) {
-    return { canCheck: true, canApply: false, stale: true,
+    return { canCheck: true, canApply: false, stale: true, canChoose: false,
              note: "The library has changed since this check — run it again before applying it." };
   }
   // **what it found, not how much it said**: the summary line is always there, so the number of albums
@@ -1242,26 +1242,36 @@ export const POLL_CEILING_MS = 120000;
 export function identifyState({ check = null, running = false, pinned = false,
                                 version = null } = {}) {
   if (running) {
-    return { canCheck: false, canApply: false, stale: false,
+    return { canCheck: false, canApply: false, stale: false, canChoose: false,
              note: "Something is writing to this library — identifying waits until it is finished." };
   }
   if (!check) {
-    return { canCheck: true, canApply: false, stale: false,
+    return { canCheck: true, canApply: false, stale: false, canChoose: false,
              note: pinned
                ? "Asks MusicBrainz about the release you pinned. It writes nothing yet."
                : "Asks MusicBrainz which release this album is. It writes nothing yet." };
   }
   if (check.version && version && check.version !== version) {
-    return { canCheck: true, canApply: false, stale: true,
+    return { canCheck: true, canApply: false, stale: true, canChoose: false,
              note: "This album has changed since you looked — look again before applying it." };
   }
   if (!(check.lines || []).length) {
-    return { canCheck: true, canApply: false, stale: false,
+    // **"none of them fitted" is not "there is nothing"** (§9, slice 158; R-530). A check that
+    // weighed twenty editions of `Violator` and could not fit one said "MusicBrainz has no release
+    // that matches this album", because the only things this was given were the change list (empty,
+    // since nothing would be written) and whether one fitted. The releases it weighed are a third
+    // thing, and the answer to them is a question for the person, not a verdict.
+    const weighed = (check.offered || []).length;
+    return { canCheck: true, canApply: false, stale: false, canChoose: weighed > 0,
              note: check.matched
                ? "MusicBrainz agrees with what this album already says — nothing to change."
-               : "MusicBrainz has no release that matches this album." };
+               : weighed
+                 ? `MusicBrainz weighed ${weighed} release(s) and none of them fitted on its own. `
+                   + "Which one is this album?"
+                 : "MusicBrainz has no release that matches this album." };
   }
   return { canCheck: true, canApply: true, stale: false,
+           canChoose: ((check.offered || []).length) > 0,
            note: `Apply writes exactly what is listed: ${check.lines.length} change(s).` };
 }
 

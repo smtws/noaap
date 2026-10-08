@@ -269,7 +269,7 @@ def audio_type(path: Path | None) -> str:
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Outcome):
         return {"status": value.status, "message": value.message, "changes": list(value.changes),
-                "album_dir": str(value.album_dir or ""),
+                "offered": list(value.offered), "album_dir": str(value.album_dir or ""),
                 "plan": value.plan.to_dict() if value.plan else None}
     if isinstance(value, list):
         return [_jsonable(v) for v in value]

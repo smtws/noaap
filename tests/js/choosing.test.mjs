@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { offerFacts, offersToChoose } from "../../src/noaap/webui/logic.mjs";
+import { identifyState, offerFacts, offersToChoose } from "../../src/noaap/webui/logic.mjs";
 
 // what MusicBrainz' release search really answers, trimmed to the fields a candidate keeps
 const VIOLATOR = [
@@ -77,4 +77,53 @@ test("a candidate with nothing but an id is still listed", () => {
 test("per-medium counts are shown where there are media, the total otherwise", () => {
   assert.equal(offerFacts({ id: "a", media: [9, 5] }).facts.at(-1), "9/5 track(s)");
   assert.equal(offerFacts({ id: "b", tracks: 12 }).facts.at(-1), "12 track(s)");
+});
+
+// -- what the panel says when nothing fitted (§9, slice 158; R-530) ------------------------------
+
+test("a check that weighed releases and fitted none asks which one it is", () => {
+  // The reviewer's case on `Depeche Mode/Violator`: twenty editions weighed, three opened, the best
+  // fitting 7 of the 8 titles it needed — and the panel answered "MusicBrainz has no release that
+  // matches this album", with no way to choose. The change list is empty (nothing would be
+  // written) and nothing fitted, so those two alone cannot tell "none of them" from "there is
+  // nothing"; the releases it weighed are the third thing.
+  const said = identifyState({ check: { lines: [], matched: false, version: "v1",
+                                        offered: VIOLATOR }, version: "v1" });
+
+  assert.equal(said.canChoose, true, "the dialog must be reachable");
+  assert.match(said.note, /weighed 3 release\(s\)/);
+  assert.match(said.note, /Which one is this album\?/);
+  assert.doesNotMatch(said.note, /no release/);
+  assert.equal(said.canApply, false, "there is still nothing to write");
+});
+
+test("nothing weighed and nothing fitted is still nothing", () => {
+  const said = identifyState({ check: { lines: [], matched: false, version: "v1", offered: [] },
+                               version: "v1" });
+  assert.equal(said.canChoose, false);
+  assert.match(said.note, /no release that matches/);
+});
+
+test("an album MusicBrainz agrees with is not asked about", () => {
+  const said = identifyState({ check: { lines: [], matched: true, version: "v1", offered: [] },
+                               version: "v1" });
+  assert.equal(said.canChoose, false);
+  assert.match(said.note, /nothing to change/);
+});
+
+test("a check with changes can still offer the choice", () => {
+  // it fitted one release well enough to list changes, and others were weighed: both are true
+  const said = identifyState({ check: { lines: ["mbid: nothing → x"], matched: true,
+                                        version: "v1", offered: VIOLATOR }, version: "v1" });
+  assert.equal(said.canApply, true);
+  assert.equal(said.canChoose, true);
+});
+
+test("every answer says whether the choice is there, so no caller reads undefined", () => {
+  for (const check of [null, { lines: [], matched: false, version: "old", offered: VIOLATOR }]) {
+    for (const running of [true, false]) {
+      const said = identifyState({ check, running, version: "v1" });
+      assert.equal(typeof said.canChoose, "boolean", JSON.stringify({ check, running }));
+    }
+  }
 });

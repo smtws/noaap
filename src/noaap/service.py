@@ -152,6 +152,10 @@ class Outcome:
     # album MusicBrainz agreed with was announced as "6 change(s)" and offered an apply that then
     # wrote nothing. The server already knows the list; this is it, rather than its prose.
     changes: list[str] = field(default_factory=list)
+    # **and the releases it weighed and could not fit** (§9, slice 158; R-530). A check writes
+    # nothing, so the plan on disk cannot carry them to the page — `Depeche Mode/Violator` weighed
+    # twenty and the panel said "MusicBrainz has no release that matches this album".
+    offered: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def blocked(self) -> bool:
@@ -414,7 +418,8 @@ class Service:
                 self._settle_artist(plan)   # read-only, and part of what a real run would write
                 for line in (said := changes_from(existing, plan)):
                     self.log(f"  {line}")
-                return Outcome("reported", plan, old_dir, f"{len(said)} change(s)", changes=said)
+                return Outcome("reported", plan, old_dir, f"{len(said)} change(s)", changes=said,
+                               offered=list(plan.offered or []))
             # **and the apply says what it wrote, not only that it ran** (§9, slice 154; R-519
             # item 1). Pressing Apply used to answer with `downloading 0 of 12 tracks` and
             # `12/12 tracks done` — nothing about the release it had just written, the cover it had
