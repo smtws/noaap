@@ -103,6 +103,7 @@ from .timing import (
     said_after_silence,
     stamped,
     stays_here,
+    trim_loops,
     with_gaps,
 )
 from .timing import kind_for as timing_kind
@@ -1257,6 +1258,13 @@ class Service:
         # where the machine heard nothing for a long stretch, the draft says so rather than letting
         # the next line jump a minute — and the notice counts what it actually covered (§9, slice 45)
         length = track.file_length or track.duration
+        # **a transcriber stuck in a loop is trimmed, and the draft says so** (§9, slice 160;
+        # R-540). The last net under the provider's own voice detection: `Mondfeuer` came back as
+        # 186 lines of "Thank you." and nothing else.
+        timed.lines, looped = trim_loops(timed.lines)
+        if looped:
+            timed.parameters["looped"] = str(looped)
+            self.log(f"dropped {looped} line(s) the provider repeated over and over")
         timed.lines = with_gaps(timed.lines, length)
         # **and where the song is over, the draft says so** (§9, slice 159; R-535). On a live track
         # the transcriber is right and the draft is wrong: what it writes down after the song is the

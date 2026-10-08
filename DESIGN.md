@@ -4286,6 +4286,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    says what it doubts and offers one press to remove the block and its marker — and a marker a
    person has already edited away means the press does nothing, rather than cutting at a guess.
 
+160. ✅ **A transcriber given silence will fill it** (2026-10-08, R-540). The user's drafts were
+   wrong from somewhere in the middle, and on **studio** tracks, which slice 159's marking does not
+   explain. Measured on five of their tracks with the local model, scored against
+   `/usr/share/dict/ngerman` and by line repetition:
+   `Lacrimosa/Mondfeuer` — fifteen minutes, mostly instrumental — came back as **186 lines of
+   "Thank you." and nothing else**, 100% of its words not German. A live track repeated one invented
+   line **88** times, `Die Braut` one **23** times, the Romanian track one **63** times. The honest
+   worst repeat anywhere is 8, `Die Braut`'s own refrain.
+   **Four levers were measured one at a time, and only one works.** `vad_filter` hands the model
+   only the stretches that hold a voice, so there is no silence left to invent over: Mondfeuer
+   becomes 31 lines of its real words (`so viel Tränen im Gesicht`, where Deepgram had
+   `so viel Trätach`) with **no line twice and 0% non-German**; the live track drops to 9% and a
+   worst repeat of 6; and `Heavysaurus/Dinos spielen` says **"Dinos" ten times** where it had said
+   "Tinos" eight — which is the user's own reported line, fixed by voice detection alone.
+   `condition_on_previous_text=False` adds a little (it stops a repetition that has started from
+   feeding itself). `no_speech_threshold`/`compression_ratio_threshold` at 0.6/2.0 changed
+   **nothing at all** — byte-identical output on all five tracks.
+   **And the `initial_prompt` was refused on the measurement.** Against the plain model it had
+   fixed "Tinos" → "Dinos"; against `vad_filter`, which fixes that by itself, it is *worse* — it
+   brings back "monstercrass", and raises the non-German share on three of the five. I had
+   recommended it in I-398 on the strength of the earlier test; the fuller grid says no.
+   `trim_loops` stays as the net underneath, at twelve of a line — well above the real refrain, far
+   below every loop measured — and it keeps the first twelve rather than all of them, so a draft
+   reads as a song that repeats rather than as a hole. With the two settings in, it now trims
+   nothing on any of the five.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

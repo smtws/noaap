@@ -743,6 +743,41 @@ def maybe_talk(lines: list[TimedLine], floor: float = TALK_SILENCE,
     return None
 
 
+#: a line this many times over is a transcriber stuck in a loop, not a chorus. The worst honest
+#: repeat measured over five of the user's tracks is 8 (`Die Braut`'s refrain); the loops this
+#: catches were 23, 63, 88 and 186 (§9, slice 160; R-540).
+LOOP_TIMES = 12
+
+
+def trim_loops(lines: list[TimedLine], times: int = LOOP_TIMES) -> tuple[list[TimedLine], int]:
+    """Take a runaway repetition out of a draft, and say how many lines went (§9, slice 160).
+
+    The last net under `vad_filter`, which is what actually stops these: a transcriber given a
+    stretch of no voice will fill it, and what it fills it with is the same line over and over —
+    `Lacrimosa/Mondfeuer` came back as 186 lines of "Thank you." and nothing else. A chorus repeats
+    too, so the bar is well above the honest ones (8 for `Die Braut`'s refrain).
+    **The first `times` of a repeated line are kept**: where it really is a chorus the draft still
+    reads as one, and where it is a loop the person sees what it got stuck on rather than a hole.
+    """
+    seen: dict[str, int] = {}
+    kept: list[TimedLine] = []
+    dropped = 0
+    counts: dict[str, int] = {}
+    for line in lines:
+        counts[line.text.strip()] = counts.get(line.text.strip(), 0) + 1
+    for line in lines:
+        text = line.text.strip()
+        if counts.get(text, 0) <= times:
+            kept.append(line)
+            continue
+        seen[text] = seen.get(text, 0) + 1
+        if seen[text] <= times:
+            kept.append(line)
+        else:
+            dropped += 1
+    return kept, dropped
+
+
 def said_after_silence(lines: list[TimedLine], at: int) -> str:
     """The marker put in front of a block that may not be the song (§9, slice 159)."""
     before = [line for line in lines[:at]

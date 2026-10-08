@@ -366,9 +366,19 @@ class LocalTiming:
         # asked after that tidy-up, so a full card is a full card and not last job's leftovers
         self._whisper_where = device or self.device_now(TRANSCRIBE)
         self.log(f"listening to {audio.name} with {WHISPER} …")
+        # **the two settings that stop it talking over silence** (§9, slice 160; R-540). Measured on
+        # five of the user's tracks: without them `Lacrimosa/Mondfeuer`, fifteen minutes and mostly
+        # instrumental, came back as **186 lines of "Thank you."** and nothing else; a live track
+        # repeated one invented line 88 times; and `Heavysaurus/Dinos spielen` heard "Tinos" eight
+        # times where the title says Dinos. With them: Mondfeuer is 31 lines of its real words and
+        # no line twice, the live track's worst repeat is 6, and the hook is "Dinos" ten times.
+        # `vad_filter` is the one that does the work — it hands the model only the parts that hold
+        # a voice, so there is no silence for it to invent over; `condition_on_previous_text=False`
+        # stops a repetition that has started from feeding itself.
         result = self._whisper_run(
             lambda model: model.transcribe(str(audio), language=language, temperature=0,
-                                           verbose=None))
+                                           verbose=None, vad_filter=True,
+                                           condition_on_previous_text=False))
         if check:
             check()
         lines = [TimedLine(text=segment.text.strip(), start=round(segment.start, 2),
