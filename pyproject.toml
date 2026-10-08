@@ -43,6 +43,12 @@ timing = [
 timing-check = [
     "faster-whisper>=1.1",
     "stable-ts>=2.19",
+    # **faster-whisper 1.2.1 cannot read a file with PyAV 19** (§9, slice 161; R-542). It calls
+    # `av.open(..., metadata_errors=...)`, which PyAV dropped in 19.0, so every decode raises
+    # `TypeError: open() got an unexpected keyword argument 'metadata_errors'` — the user's first
+    # local draft on 1.48.0 died there. 1.2.1 is the newest faster-whisper there is, so there is no
+    # version of it to move to; the constraint is on the library that moved.
+    "av<19",
 ]
 
 [project.scripts]

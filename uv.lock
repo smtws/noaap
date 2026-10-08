@@ -750,6 +750,7 @@ timing = [
     { name = "torchaudio" },
 ]
 timing-check = [
+    { name = "av" },
     { name = "faster-whisper" },
     { name = "stable-ts" },
 ]
@@ -761,6 +762,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "av", marker = "extra == 'timing-check'", specifier = "<19" },
     { name = "bgutil-ytdlp-pot-provider", specifier = ">=2.0.0" },
     { name = "demucs", marker = "extra == 'timing'", specifier = ">=4.0.1" },
     { name = "faster-whisper", marker = "extra == 'timing-check'", specifier = ">=1.1" },
