@@ -73,11 +73,22 @@ def title_by_artist(title: str) -> tuple[str, str] | None:
     return (m["artist"].strip(), m["title"].strip()) if m else None
 
 
+_GROUP_ONLY = re.compile(r"\s*[(\[][^()\[\]]*[)\]]")
+# words that say "another cut of the same song" rather than "another song". Wider than
+# `enrich.VERSION_MARKERS`, which answers a different question (is this release the instrumental
+# one); here a plain "mix" or "edit" has to count too, because that is what the damage looked like.
+_VERSION_OF_A_SONG = re.compile(
+    r"\b(version|versions|mix|mixes|remix|remixes|edit|edits|dub|instrumental|instrumentals|"
+    r"acoustic|unplugged|live|demo|demos|karaoke|orchestral|symphonic|reprise|rehearsal|"
+    r"single|album|film|radio|club|extended|vocal|original|mono|stereo|bonus)\b", re.I)
+
+
 def strip_album_name(album: str, title: str) -> str:
     """Take the release name out of a track title, wherever the shop put it.
 
     "1 - Der Kuss des Kometen (Teil 01)" -> "Teil 01"
-    "Kapitel 01: Die Hexenmeister des Metal (Folge 4)" -> "Kapitel 01"
+    "Kapitel 01: Die Hexenmeister des Metal (Folge 4)" -> "Kapitel 01 (Folge 4)" - the part number
+    is kept, because it is what tells that recording from its siblings
 
     Only a run of at least two words counts, so a single-word album keeps its title track,
     and a title that would end up empty is left alone. Whether this is applied at all is an
@@ -102,14 +113,41 @@ def strip_album_name(album: str, title: str) -> str:
     # "(Folge 4)" after the name is the release again, in brackets
     # a group that named the release, and the empty pair left when it sat inside one
     rest = BRACKETS.sub(lambda m: "" if not words_of(m[1]) or words_of(m[1]) <= vocabulary else m[0], rest)
-    rest = re.sub(r"^\W*\d+\W+", " ", rest) if words_of(rest) - vocabulary else rest  # a leading "2 - "
+    # a leading "2 - ". **Not across an opening bracket**: on "1 - Der Kuss des Kometen (Teil 01)"
+    # a greedy \W+ ate the "(" too and left "Teil 01)" behind (R-521).
+    rest = re.sub(r"^[^\w(\[]*\d+[^\w(\[]+", " ", rest) if words_of(rest) - vocabulary else rest
+    # the name came out of the middle: "Vangelis - The City - Procession" must not become
+    # "Vangelis - - Procession" (found 2026-10-08 in the full dry run, R-521)
+    rest = re.sub(r"\s*([-–—:|])\s*(?:[-–—:|]\s*)+", r" \1 ", rest)
+    rest = re.sub(r"\(\s*\)|\[\s*\]", " ", rest)
+    rest = re.sub(r"\s*[:\-–—|]\s*(?=[(\[])", " ", rest)   # "Kapitel 01: (Folge 4)"
     rest = re.sub(r"\s+", " ", rest).strip(" -–—:|,.")
     inner = BRACKETS.fullmatch(rest)
     rest = (inner[1] if inner else rest).strip()
     # a title that *is* the album name leaves punctuation behind, not a name: "Drachentanz
     # (Live 2008)" on the album of that name strips to ")". Empty was already guarded; a remainder
     # with no word in it is the same thing wearing a bracket (found 2026-09-28, P51).
-    return rest if re.search(r"\w", rest) else title
+    if not re.search(r"\w", rest):
+        return title
+    # **what is left has to be able to be a song name** (R-521, found in the full dry run of
+    # 2026-10-08). On a single the album name *is* the song name, so every track reads
+    # "<album> (<version>)" and all of them are hits - the album-wide share guard cannot tell
+    # that apart from a shop's prefix. Then the only thing stripping leaves is the bracket:
+    # "Policy of Truth (Single Version)" became "single version", "Summer Wine (single edit)"
+    # became "single edit", "Ai Vis Lo Lop (vocal remix)" became "vocal remix".
+    #
+    # What tells that apart from the audio play this rule was written for is **what the bracket
+    # says**: "(Teil 01)" and "(Folge 4)" enumerate different recordings, "(single version)" and
+    # "(Capitol mix)" name another cut of the one song. So a remainder that came out of the
+    # brackets alone is refused only when it names a version; and a title never *begins* with
+    # its own version marker.
+    outside = words_of(_GROUP_ONLY.sub(" ", title))
+    from_brackets_only = not words_of(rest) & outside
+    if from_brackets_only and _VERSION_OF_A_SONG.search(rest):
+        return title
+    if rest.lstrip().startswith(("(", "[")):
+        return title
+    return rest
 
 
 _CHANNEL_NOISE = re.compile(r"(\s*-\s*topic|vevo|\s*official)$", re.I)

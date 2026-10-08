@@ -4067,6 +4067,37 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    except that every one of the owner's titles carries an `Alice Cooper - ` prefix; across the whole
    library that is **1 album of 1713**, so it is a curiosity and not a class worth code.
 
+150. ✅ **MusicBrainz' words are MusicBrainz', and what is left of a title has to be a title**
+   (2026-10-08, R-521). Found by reading the full dry run of 1.44.0 over all 1,523 albums *before*
+   anything was applied. `drop_album_name` shortened 192 titles across 15 albums; 175 were right and
+   **17 were wrong**, in two shapes:
+   **On a single the album name IS the song name.** Every track then reads `<album> (<version>)`, so
+   *all* of them are hits and the album-wide share guard — which exists to tell a shop's prefix from
+   a lone title track — cannot see anything unusual. All that stripping leaves is the bracket:
+   `Policy of Truth (Single Version)` → `single version`, `Ai Vis Lo Lop (vocal remix)` →
+   `vocal remix`, `Summer Wine (single edit)` → `single edit`.
+   **And the rule was running over MusicBrainz' own titles.** `Lacrimosa/Live in Mexico City`
+   matched a release, so its 22 titles were MusicBrainz' (`Lacrimosa Theme (live 2014)`), and the
+   rule took the album's own `(Live 2014)` out of every one of them. A matched release's titles are
+   now taken as MusicBrainz states them; this rule is only about what a shop wrote into a file name
+   or a video title. The share is still measured against the **whole** album, because measuring it
+   against the remaining tags alone would make any three stragglers a majority.
+   **What tells the two apart is what the bracket says.** `(Teil 01)` and `(Folge 4)` *enumerate*
+   recordings — they are the only thing distinguishing one track of an audio play from the next, so
+   they must still be taken. `(single version)` and `(Capitol mix)` name another cut of the one song.
+   So a remainder that came out of the brackets alone is refused only when it names a version, and a
+   title never *begins* with its own version marker (`(album version) feat. Tanzwut`).
+   Three dangling-separator bugs of the same family went with it, all real: removal from the middle
+   left `Vangelis - The City - Procession` as `Vangelis - - Procession`; a greedy `\W+` ate an
+   opening bracket and left `Teil 01)`; and a separator stranded in front of a kept group left
+   `Kapitel 01: (Folge 4)`. The second of those means the docstring's own example had never worked —
+   the claim was written, not measured.
+   **The plans on the NAS already hold some of this.** `Depeche Mode/Policy of Truth` has
+   `single version` *stored* with provenance `mb` from an earlier pass, and no release fits it, so
+   nothing will overwrite it: the code fix stops the damage spreading but does not undo it. The
+   album's audio files still carry the right titles, so they are the way back. Checked across all
+   1,713 album folders: that album is the only one whose stored plan holds a collapsed title.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

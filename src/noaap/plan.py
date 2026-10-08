@@ -350,8 +350,14 @@ def drop_album_name(album: str, tracks: list[PlanTrack]) -> int:
     Judged per album, so a lone title track keeps its name: "Carolus Rex (Swedish version)"
     stands among fifteen unrelated titles, "Teil 01" among thirty siblings.
     """
-    shorter = {t.video_id: strip_album_name(album, t.title) for t in tracks}
-    hits = [t for t in tracks if shorter[t.video_id] != t.title]
+    # **a matched release's titles are MusicBrainz' own, and they are taken as it states them**
+    # (R-521, found in the full dry run of 2026-10-08). This rule is about what a shop wrote into
+    # a file or a video title. Run over MusicBrainz' words it did real damage: on the single
+    # `Ai Vis Lo Lop` every track is "<album> (<some remix>)", so all of them are hits and the
+    # share guard passes, and `In Extremo — vocal remix` is what would have been written.
+    mine = [t for t in tracks if t.provenance.get("title") != Provenance.MB]
+    shorter = {t.video_id: strip_album_name(album, t.title) for t in mine}
+    hits = [t for t in mine if shorter[t.video_id] != t.title]
     if len(hits) < 3 or len(hits) < PREFIXED_SHARE * len(tracks):
         return 0
     for t in hits:
