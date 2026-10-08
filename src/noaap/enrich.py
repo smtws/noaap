@@ -432,12 +432,25 @@ def offered_from(cand: dict[str, Any], release: dict[str, Any] | None = None,
     every candidate can be listed without opening it. The ones that *were* opened carry how many of
     their track titles fitted and how many were needed, which is the whole reason they were refused.
     """
-    media = [len(m.get("tracks", [])) for m in (release or {}).get("media", [])]
+    # **the search's own answer says more than it was being asked for** (§9, slice 157; R-519
+    # item 3): the formats, the label, the per-medium track counts and MusicBrainz' own
+    # disambiguation are all in it already, so a candidate nobody opened can still say what shape
+    # it is and which edition it is. Two `Policy of Truth` singles from one year are told apart by
+    # "collector's edition" and "7\" Vinyl", not by their ids.
+    opened = [len(m.get("tracks", [])) for m in (release or {}).get("media", [])]
+    listed = [int(m.get("track-count") or 0) for m in (cand.get("media") or [])]
+    formats = [str(m["format"]) for m in (cand.get("media") or []) if m.get("format")]
+    labels = [one["label"]["name"] for one in (cand.get("label-info") or [])
+              if (one.get("label") or {}).get("name")]
+    media = opened or listed
     return {"id": cand["id"], "title": cand.get("title") or (release or {}).get("title") or "",
             "date": cand.get("date") or (release or {}).get("date") or "",
             "country": cand.get("country") or (release or {}).get("country") or "",
             "tracks": int(cand.get("track-count") or sum(media) or 0),
-            "media": media, "matched": matched, "needed": needed}
+            "media": media, "matched": matched, "needed": needed,
+            "format": " + ".join(dict.fromkeys(formats)),
+            "label": labels[0] if labels else "",
+            "note": str(cand.get("disambiguation") or (release or {}).get("disambiguation") or "")}
 
 
 def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:

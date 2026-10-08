@@ -1,7 +1,7 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         identifyLines, identifyState, inSlices, offersState,
+         identifyLines, identifyState, inSlices, offersState, offersToChoose,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
@@ -1580,8 +1580,7 @@ function renderAlbum() {
   fill(panel,
     h("div", { class: "panel-head" },
       h("div", { class: "album-head" },
-        h("img", { class: "album-cover", src: `/api/cover?id=${encodeURIComponent(p.source_id)}&t=${p.tracks.filter((t) => t.state === "done").length}`,
-          alt: "", title: "Play album", onclick: () => playAlbum(p.source_id, 0), onerror: (e) => { e.currentTarget.hidden = true; } }),
+        coverBlock(p),
         h("div", {}, h("h2", {},
           h("span", { class: "link", role: "button", tabindex: "0", title: `Show all albums by ${p.albumartist}`,
             onclick: () => { const name = p.albumartist; closeAlbum(); showArtist(name); },
@@ -2096,6 +2095,9 @@ function offersPanel(p) {
   if (!said) return null;
   return h("div", { class: "offers" },
     h("div", { class: "muted" }, said.note),
+    h("div", { class: "actions" },
+      h("button", { type: "button", onclick: () => chooseRelease(p) },
+        `Which release is this? (${p.offered.length})`)),
     h("ul", {}, ...said.rows.map((row) =>
       h("li", {},
         h("a", { href: `https://musicbrainz.org/release/${row.id}`, target: "_blank",
@@ -2106,6 +2108,66 @@ function offersPanel(p) {
           : h("button", { class: "quiet small", type: "button",
               title: "Say this is the release, then look it up again",
               onclick: (e) => pinOffer(p, row.id, e.currentTarget) }, "this one")))));
+}
+
+// **the question asked as a question** (§9, slice 157; R-519 item 3). A list of ids and a row of
+// buttons is not how a person decides between nine pressings of one single. A real `<dialog>` with
+// a radio group is: the browser gives it the focus trap, Escape, Tab between the choices, arrow
+// keys inside the group and the screen-reader announcement of "3 of 9", none of which hand-written
+// markup gets right. The best fit is preselected, so Enter is the answer most of the time.
+function chooseRelease(p) {
+  const said = offersToChoose({ offered: p.offered, mbid: p.mbid });
+  if (!said) return;
+  const name = `offer-${Date.now()}`;
+  const rows = said.rows.map((row) => {
+    const radio = h("input", { type: "radio", name, value: row.id,
+                               checked: row.id === said.choose });
+    return h("label", { class: "offer-row" }, radio,
+      h("span", {},
+        h("strong", {}, row.title),
+        row.note ? h("span", { class: "muted" }, ` — ${row.note}`) : null,
+        h("div", { class: "muted small" }, row.facts.join(" · ")),
+        h("div", { class: "muted small" }, row.fit, " · ",
+          h("a", { href: `https://musicbrainz.org/release/${row.id}`, target: "_blank",
+            rel: "noopener", onclick: (e) => e.stopPropagation() }, "on musicbrainz.org"))));
+  });
+  const dialog = h("dialog", { class: "source-dialog offers-dialog",
+                               "aria-label": "Which release is this album?" },
+    h("div", { class: "panel-head" }, h("h3", {}, `${p.albumartist} — ${p.album}`)),
+    h("div", { class: "muted" },
+      `MusicBrainz weighed ${p.offered.length} release(s) and none of them fitted on its own. `
+      + "Choosing one says this album is that release: it is then yours, and every update takes "
+      + "its names, numbers and discs from it."),
+    h("form", { method: "dialog", id: "offerform",
+                onsubmit: (e) => { e.preventDefault(); takeTheRelease(p, dialog, name); } },
+      h("fieldset", { class: "offer-list" },
+        h("legend", { class: "muted small" }, "the releases it weighed, the nearest first"),
+        ...rows),
+      h("div", { class: "actions" },
+        h("button", { type: "submit" }, "This is the release"),
+        h("button", { class: "quiet", type: "button",
+                      onclick: () => dialog.close() }, "Cancel"))));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+  dialog.querySelector(`input[name="${name}"]:checked`)?.focus();
+}
+
+async function takeTheRelease(p, dialog, name) {
+  const chosen = dialog.querySelector(`input[name="${name}"]:checked`)?.value;
+  if (!chosen) return;
+  dialog.close();
+  const job = await submit("edit", { id: p.source_id, edits: { mbid: chosen } });
+  if (job == null) return;
+  await jobSettled(job, 1200);
+  lastIdentify = null;
+  await poll();
+  await refreshAlbumPanel();
+  // **and the look is run, which is what was wanted** (R-519 item 3). Pinning on its own left the
+  // user to find the Identify button again and press it; the point of answering the question is to
+  // see what the answer does.
+  const panel = $("#album");
+  if (!panel.hidden) await checkIdentify(p, null);
 }
 
 async function pinOffer(p, id, button) {
@@ -2122,6 +2184,62 @@ async function pinOffer(p, id, button) {
 // Where this album came from: a link only where the source is one a browser can open, and named
 // after the provider that minted it (§9, slice 143). For the 1,312 albums adopted from folders this
 // was a link to a path on the NAS labelled "open on YouTube".
+// **the cover, and a way to choose one** (§9, slice 156; R-519 item 2). A picture the user hands
+// over is theirs: it is written as it is and no pass replaces it, which is what `cover_fetched`
+// being empty means in the plan. Either a file from their machine or an address they paste.
+function coverBlock(p) {
+  const done = p.tracks.filter((t) => t.state === "done").length;
+  const picture = h("img", { class: "album-cover",
+    src: `/api/cover?id=${encodeURIComponent(p.source_id)}&t=${done}&v=${coverVersion}`,
+    alt: "", title: "Play album", onclick: () => playAlbum(p.source_id, 0),
+    onerror: (e) => { e.currentTarget.hidden = true; } });
+  const file = h("input", { type: "file", id: "coverfile", class: "hidden-file",
+    accept: "image/jpeg,image/png,image/webp,image/gif",
+    onchange: (e) => sendCoverFile(p, e.currentTarget) });
+  return h("div", { class: "album-cover-box" }, picture,
+    h("div", { class: "cover-choose" },
+      file,
+      h("button", { class: "quiet small", type: "button",
+        onclick: () => file.click() }, "Choose a cover…"),
+      h("button", { class: "quiet small", type: "button",
+        onclick: () => sendCoverUrl(p) }, "…or paste a link")));
+}
+
+// bumped after a cover is written, so the browser fetches the new picture rather than its cache
+let coverVersion = 0;
+
+async function sendCoverFile(p, input) {
+  const chosen = input.files?.[0];
+  input.value = "";
+  if (!chosen) return;
+  if (chosen.size > 20 * 1024 * 1024) return toast("That picture is larger than 20 MB", "blocked");
+  const bytes = new Uint8Array(await chosen.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  await sendCover(p, { data: btoa(binary) }, `“${chosen.name}”`);
+}
+
+async function sendCoverUrl(p) {
+  const said = prompt("The address of a picture (http:// or https://):", "");
+  const url = (said || "").trim();
+  if (!url) return;
+  if (!/^https?:\/\//i.test(url)) return toast("A cover address has to be http:// or https://", "blocked");
+  await sendCover(p, { url }, url);
+}
+
+async function sendCover(p, what, named) {
+  const id = await submit("cover", { id: p.source_id, ...what });
+  if (id == null) return;
+  const job = await jobSettled(id, 2400);
+  if (!job || job.state !== "done") return;      // submit() and the job log have said why
+  coverVersion++;
+  toast(`Cover set from ${named}`, "ok");
+  await poll();
+  await refreshAlbumPanel();
+}
+
 function sourceOpening(p) {
   const said = sourceOpen(p);
   if (!said) return null;

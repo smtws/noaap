@@ -19,11 +19,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from . import sources
 from .config import Config
+from .cover import square_if_padded
 from .download import (
+    COVER_STEM,
     MAYBE_COVER,
     PARTS_DIR,
     PLAN_FILE,
@@ -81,7 +83,7 @@ from .precautions import empty_under
 from .recycle import DELETED, PRUNED, Entry, bin_album, bin_track
 from .search import SearchResult, search_artist
 from .sources import Cancelled
-from .tag import audio_length, measure, measured_length, raw_tags
+from .tag import audio_length, image_mime, measure, measured_length, raw_tags, set_picture
 from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
@@ -2566,6 +2568,60 @@ class Service:
 
     def find_album(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
         return find_plan(self.library, source_id) if self.library and self.library.exists() else None
+
+    # the picture formats a browser will show and this program can write into a file
+    COVER_TYPES: ClassVar[dict[str, str]] = {"image/jpeg": "jpg", "image/png": "png",
+                                             "image/webp": "webp", "image/gif": "gif"}
+    COVER_LIMIT = 12 * 1024 * 1024
+
+    def set_cover(self, source_id: str, data: bytes, url: str = "") -> Outcome:
+        """**A cover the user chose** (§9, slice 156; R-519 item 2).
+
+        The model for this already existed: `_cover` replaces a picture only while the plan's
+        `cover_fetched` sha1 says noaap wrote it, and treats anything else as the owner's and leaves
+        it alone. So a cover handed over here is written and that record is *cleared* — which is
+        what makes it the user's, and what stops the next pass, the next MusicBrainz match or the
+        Cover Art Archive from taking it back.
+
+        `cover_beside` decides whether a copy stays in the folder, `cover_embedded` whether it goes
+        into the files; the bytes are passed to the pass either way, so a library that keeps covers
+        only inside its files can still be given one.
+        """
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        kind = image_mime(data)
+        if kind not in self.COVER_TYPES:
+            return Outcome("failed", plan, album_dir,
+                           f"that is not a picture this program can use ({kind or 'unknown'})")
+        data = square_if_padded(data) or data        # a pillarboxed thumbnail -> the square art
+        kind = image_mime(data) or kind
+        want = for_album(self.cfg, plan)
+        for old in sorted(album_dir.glob(f"{COVER_STEM}.*")):
+            old.unlink()
+        if want.cover_beside:
+            (album_dir / f"{COVER_STEM}.{self.COVER_TYPES[kind]}").write_bytes(data)
+        plan.cover_fetched = {}                      # not ours, so nothing replaces it
+        if url:
+            plan.cover_url = plan.auto["cover_url"] = url
+            plan.provenance["cover_url"] = Provenance.USER
+        save_plan(plan, album_dir)
+        # **only the picture is written into the files** (§9, slice 156). Not the whole tag: an
+        # adopted album keeps its own tags unless the library says otherwise (`retag_adopted`), and
+        # somebody choosing a cover did not ask for the rest of their tags to be rewritten with it.
+        # `set_picture` is the one writer that touches nothing else.
+        put_in = 0
+        if want.cover_embedded:
+            for track in plan.tracks:
+                path = _inside(album_dir, track.filename)
+                if path and path.exists() and set_picture(path, data):
+                    put_in += 1
+        self.log(f"cover set by you{f' from {url}' if url else ''}"
+                 + (", saved beside the album" if want.cover_beside else "")
+                 + (f", written into {put_in} file(s)" if want.cover_embedded else ""))
+        return Outcome("ok", plan, album_dir, "cover set",
+                       changes=[f"cover: {url or 'a file you chose'}"])
 
     def apply_edits(self, source_id: str, edits: dict[str, Any]) -> Outcome:
         """User edits from the UI: set values, mark them as the user's, then rename/retag on disk."""

@@ -4204,6 +4204,39 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `pickAlbums` still folded synchronously whenever the cache had been reset mid-run, which is what
    sent the folding onto the render path in the first place.
 
+156. ✅ **A cover the user chose** (2026-10-08, R-519 item 2). The model for this was already in the
+   plan and needed no new concept: `_cover` replaces a picture only while `cover_fetched`'s sha1
+   says *noaap* wrote it, and treats anything else as the owner's. So a cover handed over is written
+   and that record is **cleared** — which is what keeps the next pass, the next MusicBrainz match
+   and the Cover Art Archive off it. An address is kept as `cover_url` with provenance `user`.
+   Either a file from the person's machine, base64 in the JSON body — which keeps the write header
+   and the JSON content type doing their job, at a third more bytes, so `/api/cover` alone may send
+   20 MB — or an http/https address, which is fetched **by the server** through the album's own
+   source, because a page cannot read the bytes of a picture on another site and because what gets
+   written has to be checked before it is written. `image_mime` reads the bytes, never the name.
+   **Only the picture goes into the files**, through `set_picture` and not the whole tag writer: an
+   adopted album keeps its own tags unless the library says otherwise, and somebody choosing a cover
+   did not ask for the rest of their tags to be rewritten with it. `cover_beside` decides whether a
+   copy stays in the folder; with it off, the files still get the picture, which the normal path
+   could not do (told not to fetch, it finds no file beside the album and has nothing to embed).
+
+157. ✅ **Which release is this?, asked as a question** (2026-10-08, R-519 item 3). Slice 145 listed
+   the candidates a lookup weighed, as a row of ids with "this one" buttons — which is not how
+   anybody decides between nine pressings of one single, and pinning then left the user to find the
+   Identify button again and press it themselves.
+   A real `<dialog>` with a radio group asks it instead, and the browser brings the focus trap,
+   Escape, Tab between the choices, the arrow keys inside the group and the "3 of 9" a screen reader
+   says — none of which hand-written markup gets right. The nearest fit is preselected, so Enter is
+   the answer most of the time; a release already pinned is preselected instead, because that is an
+   answer the user has already given. Choosing one pins it **and runs the look**, which is the point
+   of answering.
+   **The search's own answer already said more than it was being asked for**: the formats, the
+   label, the per-medium track counts and MusicBrainz' own disambiguation are all in it, so a
+   candidate nobody opened can still say what shape and which edition it is — `collector's edition`
+   and `7" Vinyl` are what tell two 1990 singles apart, never their ids. Ordering: the ones that
+   were opened and fitted most first, then the rest in the order the search answered, which is its
+   own ranking.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

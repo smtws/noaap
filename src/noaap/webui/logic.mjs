@@ -1318,6 +1318,55 @@ export function offerLine(one = {}) {
   return `${one.title || "untitled"} (${where}) · ${shape} track(s) · ${fit}`;
 }
 
+/** One candidate as the dialog shows it: a name, then the few things that tell editions apart.
+ *
+ * What is here costs nothing — MusicBrainz' release search already answers with the formats, the
+ * label, the per-medium track counts and its own disambiguation (§9, slice 157; R-519 item 3). Two
+ * pressings of one single in one year are told apart by "collector's edition" and "7-inch Vinyl",
+ * never by their ids.
+ */
+export function offerFacts(one = {}) {
+  const facts = [];
+  const year = String(one.date || "").slice(0, 4);
+  if (year) facts.push(year);
+  if (one.country) facts.push(one.country);
+  const shape = (one.media || []).join("/") || String(one.tracks ?? "?");
+  facts.push(`${shape} track(s)`);
+  if (one.format) facts.push(one.format);
+  if (one.label) facts.push(one.label);
+  return {
+    id: one.id,
+    title: one.title || "untitled",
+    note: one.note || "",
+    facts,
+    fit: one.matched == null ? "not opened" : `${one.matched} of ${one.needed} titles fitted`,
+    weighed: one.matched != null,
+  };
+}
+
+/** The candidates in the order a person should read them, and which one is offered first.
+ *
+ * **The best fit, and ties go to the one MusicBrainz already liked** (slice 157): the ones that
+ * were opened and fitted most come first, then the ones nobody opened, in the order the search
+ * answered — which is its own ranking. A release already pinned is the one preselected, because
+ * that is the answer the user has already given.
+ */
+export function offersToChoose({ offered = [], mbid = null } = {}) {
+  if (!offered.length) return null;
+  const rows = offered.map((one, at) => ({ ...offerFacts(one), at,
+                                           current: Boolean(mbid) && one.id === mbid }));
+  const ranked = [...rows].sort((a, b) => {
+    if (a.weighed !== b.weighed) return a.weighed ? -1 : 1;
+    if (a.weighed && b.weighed) {
+      const mine = offered[a.at], theirs = offered[b.at];
+      if (mine.matched !== theirs.matched) return theirs.matched - mine.matched;
+    }
+    return a.at - b.at;
+  });
+  const pinned = ranked.find((r) => r.current);
+  return { rows: ranked, choose: (pinned || ranked[0]).id };
+}
+
 /** Whether the panel has candidates to offer, and what to say above them. */
 export function offersState({ offered = [], mbid = null, pinned = false } = {}) {
   if (!offered.length) return null;

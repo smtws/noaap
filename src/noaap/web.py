@@ -11,6 +11,8 @@ by album id, never by a path from the request.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import contextlib
 import datetime as dt
 import email.utils
@@ -42,7 +44,7 @@ from . import running_from, sources, user_agent
 from .config import Config
 from .cover import THUMB_SIDE
 from .cover import thumbnail as make_thumbnail
-from .download import COVER_STEM, PLAN_FILE, iter_plans, load_plan, read_plan
+from .download import COVER_STEM, PLAN_FILE, _download_cover, iter_plans, load_plan, read_plan
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
 from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
@@ -96,6 +98,10 @@ MAX_LOG = 400
 CHECKED_KEYS = frozenset({"first_span", "second_span", "first_piled", "second_piled", "first_placed",
                           "second_placed", "lost_method", "kept_method", "lost_why", "verified_against"})
 MAX_BODY = 1 << 20
+# **one path may send more** (§9, slice 156): a cover the user picks is a picture of their own, and
+# a megabyte is small for one. Base64 in JSON keeps the write header and the JSON content type
+# doing their job, and costs a third on top, so the room is for the picture and that third.
+MAX_COVER_BODY = 20 << 20
 # thumbnails are fetched by us, so the page never talks to Google and the CSP stays strict
 THUMB_HOSTS = ("ytimg.com", "ggpht.com", "googleusercontent.com", "coverartarchive.org", "archive.org")
 THUMB_CACHE = 300
@@ -242,6 +248,18 @@ AUDIO_TYPES = {".opus": "audio/ogg", ".ogg": "audio/ogg", ".oga": "audio/ogg",
                ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".mp4": "audio/mp4", ".aac": "audio/aac",
                ".flac": "audio/flac", ".wav": "audio/wav", ".webm": "audio/webm",
                ".mka": "audio/x-matroska", ".alac": "audio/mp4"}
+
+
+def _fetched_cover(service: Service, url: str) -> bytes:
+    """The picture at an address the user typed (§9, slice 156).
+
+    Fetched through the album's own source, so whatever that source requires of a request — its
+    headers, its session — applies here too, exactly as it does when a pass fetches a cover.
+    """
+    found = _download_cover(url, service.source_for_address(url))
+    if not found:
+        raise ValueError(f"nothing that is a picture came back from {url}")
+    return found[1]
 
 
 def audio_type(path: Path | None) -> str:
@@ -1459,6 +1477,34 @@ class App:
                 what = "Reject the lyrics of" if reject else "Look up the lyrics of"
                 return self.jobs.submit("lyrics", f"{what} {track.title}",
                                         lambda s: s.lookup_track(source_id, video_id, reject=reject), target=source_id)
+            case "cover":
+                # **a cover the user chooses** (§9, slice 156; R-519 item 2). Either the bytes of a
+                # file they picked, base64 in the JSON body, or an address — and an address is
+                # fetched *here*, because a page cannot read the bytes of a picture on another site
+                # and because what gets written must be checked before it is written.
+                source_id = str(body.get("id", ""))
+                if not self.album(source_id):
+                    raise ValueError("unknown album")
+                url = str(body.get("url") or "").strip()
+                raw = body.get("data")
+                if url and not url.startswith(("http://", "https://")):
+                    raise ValueError("a cover address has to be http:// or https://")
+                if not url and not isinstance(raw, str):
+                    raise ValueError("no picture: give a file or an address")
+                data = b""
+                if isinstance(raw, str):
+                    try:
+                        data = base64.b64decode(raw, validate=True)
+                    except (ValueError, binascii.Error) as e:
+                        raise ValueError("that file did not arrive in one piece") from e
+                    if not data:
+                        raise ValueError("that file is empty")
+                    if len(data) > MAX_COVER_BODY:
+                        raise ValueError("that picture is too large")
+                what = self.describe(source_id)
+                return self.jobs.submit("cover", f"Set the cover of {what}",
+                                        lambda s: s.set_cover(source_id, data or _fetched_cover(s, url), url),
+                                        target=source_id)
             case "edit":
                 source_id = str(body.get("id", ""))
                 if not self.album(source_id):
@@ -1702,7 +1748,8 @@ class _Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return b""
-        return self.rfile.read(min(max(length, 0), MAX_BODY + 1)) if length > 0 else b""
+        cap = MAX_COVER_BODY if urlsplit(self.path).path == "/api/cover" else MAX_BODY
+        return self.rfile.read(min(max(length, 0), cap + 1)) if length > 0 else b""
 
     def do_POST(self) -> None:
         self.app.touch()
@@ -1719,7 +1766,8 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         if not url.path.startswith("/api/"):
             return self._error(HTTPStatus.NOT_FOUND, "not found")
-        if len(self._body or b"") > MAX_BODY:
+        cap = MAX_COVER_BODY if url.path == "/api/cover" else MAX_BODY
+        if len(self._body or b"") > cap:
             return self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "too large")
         try:
             body = json.loads(self._body or b"{}")

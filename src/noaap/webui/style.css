@@ -58,6 +58,11 @@ h2 { font-size: 1rem; margin: .25rem 0 .75rem; }
 .album-cover { width: 5.5rem; height: 5.5rem; border-radius: 8px; object-fit: cover; background: var(--line); cursor: pointer; flex: none; }
 .album-cover:hover { outline: 2px solid var(--accent); }
 @media (max-width: 40rem) { .album-cover { width: 4rem; height: 4rem; } }
+/* the cover and the two ways to choose one (slice 156) */
+.album-cover-box { display: flex; flex-direction: column; gap: .3rem; flex: none; }
+.cover-choose { display: flex; flex-direction: column; gap: .15rem; }
+.cover-choose button { padding: .1rem .3rem; font-size: .75rem; }
+.hidden-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 1rem; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; cursor: pointer; text-align: left; padding: 0; color: var(--ink); }
 .card:hover, .card:focus-visible { border-color: var(--accent); }
@@ -412,3 +417,14 @@ button.src-pick.waiting { border-color: var(--warn); color: var(--warn); }
    the preview, where the words it is about are, and reads as a sentence rather than a form field. */
 tr.lyrics .claim-row { display: flex; gap: .45rem; align-items: baseline; font-size: .85em; }
 tr.lyrics .claim-row input { margin: 0; accent-color: var(--accent); }
+
+/* the "which release is this?" dialog (slice 157) */
+.offers-dialog { max-width: 42rem; }
+.offer-list { border: 1px solid var(--line); border-radius: 8px; padding: .4rem; margin: .5rem 0;
+              max-height: 24rem; overflow-y: auto; }
+.offer-row { display: flex; gap: .5rem; align-items: start; padding: .35rem .3rem; border-radius: 6px;
+             cursor: pointer; }
+.offer-row:hover { background: var(--line); }
+.offer-row:focus-within { outline: 2px solid var(--accent); }
+.offer-row input { margin-top: .25rem; flex: none; }
+.offer-row .small { font-size: .8rem; }
