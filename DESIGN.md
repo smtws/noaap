@@ -4312,6 +4312,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    reads as a song that repeats rather than as a hole. With the two settings in, it now trims
    nothing on any of the five.
 
+161. ✅ **A release installs what was tested** (2026-10-09, R-542). The user's first local draft on
+   1.48.0 died before a word was heard: `TypeError: open() got an unexpected keyword argument
+   'metadata_errors'`. faster-whisper 1.2.1 — the newest there is — calls
+   `av.open(..., metadata_errors=…)`, and PyAV dropped that argument in 19.0.
+   **The lockfile already said `av==18.1.0`.** `release-install.sh` resolved afresh from PyPI
+   instead, got 19.0.0, and so the release venv was not the venv anything had been tested or
+   measured in. Six packages differed when checked: `av` 18.1.0 → **19.0.0**, plus
+   charset-normalizer, filelock, llvmlite, numba and regex. Only one of them mattered, and it was
+   enough to make the whole local draft path raise on its first call.
+   So the install now pins to the **tag's own** `uv.lock` (`uv export --frozen` → a constraint
+   file), which also means releasing an older tag installs what that tag locked. The helpers
+   (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, `secretstorage`) are not dependencies and are not in
+   the lock, so they are still resolved; the script says which of the two it did.
+   `av<19` is in the `timing-check` extra as well, so a fresh install elsewhere cannot walk into it
+   either, and the smoke case is the cheapest one there could be: hand faster-whisper's own
+   `decode_audio` a second of sound. No model, no GPU, no network — and **no test ran that call
+   before**, which is why 2,320 passing tests said nothing about it.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

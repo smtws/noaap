@@ -114,10 +114,28 @@ if [ -n "$HELPERS" ]; then
 else
   say "installing $spec"
 fi
+# **the versions that were tested, not whatever PyPI has today** (§9, slice 161; R-542). This
+# resolved afresh, so the release venv could differ from the checkout every measurement was made in
+# — and it did: the lock says `av==18.1.0`, PyPI had 19.0.0, and faster-whisper 1.2.1 calls an
+# argument PyAV dropped in 19. The user's first local draft on 1.48.0 died on it, in a code path no
+# test and no measurement of mine had ever run in the release venv.
+# The constraints come from the **tag's own** lockfile, extracted above, so releasing an older tag
+# installs what that tag locked. The helpers are not in the lock (they are not dependencies) and
+# are still resolved; that is stated rather than hidden.
+locked="$work/locked.txt"
+if [ -f "$work/uv.lock" ] && uv export --frozen --no-hashes --no-emit-project \
+     --project "$work" $(for e in ${EXTRAS//,/ }; do printf -- '--extra %s ' "$e"; done) \
+     -o "$locked" >/dev/null 2>&1; then
+  say "pinning to $(grep -c '==' "$locked") locked version(s) from $tag's uv.lock"
+  set -- --constraint "$locked"
+else
+  say "note: $tag has no usable uv.lock — resolving afresh, which may not be what was tested"
+  set --
+fi
 # one resolution for the wheel and the helpers, so a helper that cannot be had fails the release
 # instead of leaving a service that quietly runs on the processor. $HELPERS is a list on purpose.
 # shellcheck disable=SC2086
-uv pip install --quiet --python "$VENV/bin/python" "$spec" $HELPERS
+uv pip install --quiet --python "$VENV/bin/python" "$@" "$spec" $HELPERS
 # `noaap --version` exists from 1.23.0 on; anything older still has its metadata to read
 installed="$("$VENV/bin/noaap" --version 2>/dev/null || true)"
 if [ -z "$installed" ]; then

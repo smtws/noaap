@@ -125,8 +125,9 @@ def test_the_helpers_are_a_list_the_caller_can_replace():
     cookies with. A release that cannot get one of them should stop, not run quietly on the processor."""
     text = SCRIPT.read_text()
     assert 'HELPERS="${NOAAP_RELEASE_HELPERS:-nvidia-cublas-cu12 nvidia-cudnn-cu12 secretstorage}"' in text
-    # one resolution for the wheel and the helpers, so a missing helper fails the install
-    assert 'uv pip install --quiet --python "$VENV/bin/python" "$spec" $HELPERS' in text
+    # one resolution for the wheel and the helpers, so a missing helper fails the install.
+    # `"$@"` carries the lockfile constraints of slice 161; the one resolution is the point.
+    assert 'uv pip install --quiet --python "$VENV/bin/python" "$@" "$spec" $HELPERS' in text
 
 
 def test_the_helper_list_needs_a_value_and_the_help_explains_it(repo):
@@ -135,3 +136,26 @@ def test_the_helper_list_needs_a_value_and_the_help_explains_it(repo):
     for helper in ("nvidia-cublas-cu12", "nvidia-cudnn-cu12", "secretstorage"):
         assert helper in said
     assert "NOAAP_RELEASE_HELPERS" in said
+
+
+def test_it_installs_the_versions_the_tag_locked():
+    """R-542: it resolved afresh from PyPI, so the release venv was not the one anything had been
+    tested in. The lock said `av==18.1.0`, PyPI had 19.0.0, and faster-whisper 1.2.1 calls an
+    argument PyAV dropped in 19 — the user's first local draft died on it. Six packages differed.
+    """
+    text = SCRIPT.read_text()
+
+    assert "uv export --frozen --no-hashes --no-emit-project" in text
+    assert '--project "$work"' in text, "the tag's own lockfile, not the working tree's"
+    assert '--constraint "$locked"' in text
+    # and where a tag has no lock, it says so rather than pretending to have pinned anything
+    assert "has no usable uv.lock" in text
+
+
+def test_the_extras_asked_for_are_the_ones_exported():
+    """A release with `--extras timing` must not be pinned against an export of timing-check too:
+    the constraint file has to describe the install that is actually happening."""
+    text = SCRIPT.read_text()
+
+    assert "for e in ${EXTRAS//,/ }" in text
+    assert "printf -- '--extra %s '" in text
