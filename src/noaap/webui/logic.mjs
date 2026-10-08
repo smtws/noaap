@@ -526,6 +526,34 @@ export function draftText(timed) {
     .join("\n");
 }
 
+/** The block a draft says may not be the song, and what to say about it (§9, slice 159; R-535).
+ *
+ * On a live track the transcriber is right and the draft is wrong: after the song it writes down
+ * the singer thanking the audience and introducing the band, and the user reads that as the draft
+ * losing its mind. It is marked, never dropped — this says what to offer, and `withoutTalk` does
+ * the dropping when somebody asks.
+ */
+export function talkBlock(timed) {
+  const p = (timed && timed.parameters) || {};
+  const from = Number(p.maybe_talk_from || 0);
+  const lines = Number(p.maybe_talk_lines || 0);
+  if (!lines || !from) return null;
+  return { from, lines,
+           note: `The last ${lines} line${lines > 1 ? "s" : ""} come after a long silence — on a `
+                 + "live recording that is usually the singer talking, not the song.",
+           action: `Drop the ${lines} line${lines > 1 ? "s" : ""} after the silence` };
+}
+
+/** The draft without that block, and without the marker in front of it. Text in, text out. */
+export function withoutTalk(text, timed) {
+  const block = talkBlock(timed);
+  if (!block) return text;
+  const lines = String(text || "").split("\n");
+  const at = lines.findIndex((line) => line.includes("maybe talk, not lyrics"));
+  if (at < 0) return text;
+  return lines.slice(0, at).join("\n").replace(/\s+$/, "");
+}
+
 // Said over a draft, and it never says "yours". Half a song is a realistic outcome for some tracks,
 // which the spike measured, so the label says that rather than pretending to a transcript.
 export function draftNotice(timed) {

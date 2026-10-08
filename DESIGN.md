@@ -4262,6 +4262,30 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    joined the two ends — a check on an album *already in the library*, then what the panel receives.
    That join is now a case, and it fails on each of the three faults put back separately.
 
+159. ✅ **Where a draft stops being the song, it says so** (2026-10-08, R-535). The user: a Deepgram
+   draft is right for about the first half and *"the rest of it is bullshit"*. Measured on three
+   real replies kept in `tests/data/deepgram-words.json` (R-532/R-534): **nothing is truncated and
+   nothing drifts.** We send demucs' voice.wav at full length — within 0.05 s of the track — in one
+   request, Deepgram's own `metadata.duration` matches it every time, and the word times are
+   monotone and land where the singing is. On the **live** track the transcriber is simply right:
+   after the song it writes down the singer thanking the audience and introducing the band, and the
+   draft offered that as lyrics.
+   **Two signals were measured and refused.** A vocal RMS (`sung_stretches`, the aligner's own)
+   called 231.7 s of 301.3 s singing and put **all 51** stage-talk words inside a stretch — a voice
+   track rises for speech too; its share does not even separate live from studio (77%, 75% against
+   53%, 54%). And a known length cannot bound the song: live versions in the user's library run from
+   **0.57 to 1.37** of their studio siblings (72 pairs), and the live albums where this happens are
+   not matched at all, so there is no MusicBrainz length to use. Word confidence is worse than
+   useless: the fluent stage talk scores a median **0.99** where the real singing scores **0.91**.
+   **What separates is the silence in front of it.** Longest gap between two words: 30.6 s and
+   53.6 s on the two studio tracks, both mid-song, **144.9 s** on the live one — exactly where the
+   lyric stops. So a block is marked when the silence before it is longer than a minute **and** more
+   than three times that track's own median pause; both bars are load-bearing, and the second is
+   what keeps a song of long instrumentals from marking itself.
+   **Marked, never dropped.** The draft carries `maybe_talk_from`/`maybe_talk_lines`, the editor
+   says what it doubts and offers one press to remove the block and its marker — and a marker a
+   person has already edited away means the press does nothing, rather than cutting at a guess.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

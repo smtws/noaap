@@ -17,6 +17,7 @@ import gc
 import itertools
 import logging
 import re
+import statistics
 import sys
 import threading
 import time
@@ -692,6 +693,65 @@ def with_gaps(lines: list[TimedLine], length: float | None = None,
     if length and last is not None and length - last > gap:
         out.append(TimedLine(text=f"\u2026 ({round(length - last)} s without words)", start=round(last, 2)))
     return out
+
+
+#: a silence this long, and this much longer than the song's own pauses, is not a pause in the
+#: singing — it is the song being over (§9, slice 159; R-535).
+TALK_SILENCE = 60.0
+TALK_TIMES = 3.0
+
+
+def maybe_talk(lines: list[TimedLine], floor: float = TALK_SILENCE,
+               times: float = TALK_TIMES) -> int | None:
+    """Index of the first line that is probably not the song any more, or None (§9, slice 159).
+
+    The user: a draft is right for about the first half and *"the rest of it is bullshit"*. Measured
+    on three real replies (R-534): nothing is truncated and no timing drifts — on a **live** track
+    the transcriber correctly writes down what it hears after the song, which is the singer
+    thanking the audience and introducing the band, and that is what the draft then offers as
+    lyrics.
+    Two signals were measured and refused: a vocal RMS (`sung_stretches`) called 231.7 s of 301.3 s
+    singing and put **every one** of the 51 stage-talk words inside a stretch, and a known length
+    cannot bound the song, because live versions in the user's own library run from 0.57 to 1.37 of
+    their studio siblings — and the live albums where this happens are not matched at all, so there
+    is no MusicBrainz length to use.
+    What does separate is the silence in front of it: the longest gap between two words was 30.6 s
+    and 53.6 s on the two studio tracks, both mid-song, and **144.9 s** on the live one, exactly
+    where the lyric stops and the patter starts. So: longer than a minute, *and* more than three
+    times this track's own median pause, which keeps a song of long instrumentals from marking
+    itself.
+    """
+    spoken = [line for line in lines
+              if line.start is not None and not line.text.startswith("\u2026 (")]
+    if len(spoken) < 3:
+        return None
+    pauses = []
+    for before, after in itertools.pairwise(spoken):
+        ended = before.end if before.end is not None else before.start
+        if ended is not None and after.start is not None:
+            pauses.append(max(0.0, after.start - ended))
+    if not pauses:
+        return None
+    usual = statistics.median(pauses)
+    bar = max(floor, times * usual)
+    for at, (before, after) in enumerate(itertools.pairwise(spoken), start=1):
+        ended = before.end if before.end is not None else before.start
+        if ended is None or after.start is None:
+            continue
+        if after.start - ended > bar:
+            return lines.index(spoken[at])
+    return None
+
+
+def said_after_silence(lines: list[TimedLine], at: int) -> str:
+    """The marker put in front of a block that may not be the song (§9, slice 159)."""
+    before = [line for line in lines[:at]
+              if line.end is not None or line.start is not None]
+    ended = next((line.end if line.end is not None else line.start
+                  for line in reversed(before)), None)
+    start = lines[at].start
+    quiet = round((start or 0) - (ended or 0)) if start is not None and ended is not None else 0
+    return (f"\u2026 after {quiet} s of silence \u2014 maybe talk, not lyrics")
 
 
 def coverage(lines: list[TimedLine], length: float | None = None,

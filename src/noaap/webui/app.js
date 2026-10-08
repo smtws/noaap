@@ -1,7 +1,7 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         identifyLines, identifyState, inSlices, offersState, offersToChoose,
+         identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
@@ -11,7 +11,7 @@ import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, ca
          scrollForActive, scrollToLine, searchTerms, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
          timingFields, timingNotice,
-         toFileClock, trimOffset, trimTarget, watchTrouble, wordsAfterClaim }
+         toFileClock, trimOffset, trimTarget, watchTrouble, withoutTalk, wordsAfterClaim }
   from "./logic.mjs";
 
 // noaap web UI. No framework, no build step. All server text goes in via textContent.
@@ -1057,7 +1057,8 @@ async function lyricsRow(p, t, editing = false, draft = null) {
   const d = await api(`/api/lyrics?id=${encodeURIComponent(p.source_id)}&v=${encodeURIComponent(t.video_id)}`);
   // a draft is not on the disk and must not look as if it were: it opens the editor over whatever
   // the server has, and only a Save puts it anywhere (§9, slice 37)
-  if (draft) Object.assign(d, { text: draft.text, words_by: draft.by, draft: draft.notice });
+  if (draft) Object.assign(d, { text: draft.text, words_by: draft.by, draft: draft.notice,
+                                timed: draft.timed });
   return h("tr", { class: "lyrics", "data-id": t.video_id }, h("td", { colspan: "8" }, lyricsPanel(p, t, d, editing)));
 }
 
@@ -1228,6 +1229,20 @@ function lyricsEditor(p, t, d) {
   // words — these are
   const timing = { by: d.timed_by || "", words: d.words_by || "", checked: null };
   const proposal = h("div", { class: "timing-note", hidden: !d.draft }, d.draft ? `\u26a0 ${d.draft}` : "");
+  // **a block the draft says may not be the song, and one press to be rid of it** (§9, slice 159;
+  // R-535). Nothing is dropped by itself: the lines stay in the editor with the marker above them
+  // until somebody says so.
+  const talk = d.timed ? talkBlock(d.timed) : null;
+  const talkRow = talk
+    ? h("div", { class: "timing-note talk-note" },
+        h("span", {}, `\u26a0 ${talk.note} `),
+        h("button", { class: "quiet small", type: "button",
+          onclick: (e) => {
+            area.value = withoutTalk(area.value, d.timed);
+            e.currentTarget.closest(".talk-note").hidden = true;
+            area.dispatchEvent(new Event("input", { bubbles: true }));
+          } }, talk.action))
+    : null;
   // **the one thing that can clear a draft mark** (§9, slice 69): a statement, not an edit. Without it
   // the editor sent `words_by` back on every save and a draft stayed a draft for ever, which made the
   // refusal's own advice impossible to follow.
@@ -1268,6 +1283,7 @@ function lyricsEditor(p, t, d) {
       h("span", { class: "muted stamp-clock" })),
     previewHead, preview,
     proposal,
+    talkRow,
     h("div", { class: "panel-actions" },
       h("span", { class: "muted" }, "shift every stamp by"), by, h("span", { class: "muted" }, "s"),
       h("button", { class: "quiet small", type: "button",
@@ -1394,7 +1410,7 @@ async function draftWords(button, p, t) {
   const row = button.closest("tr.lyrics");
   openLyrics.add(t.video_id);
   row.replaceWith(await lyricsRow(p, t, true,
-    { text: draftText(timed), by: job.result.by || "", notice: draftNotice(timed) }));
+    { text: draftText(timed), by: job.result.by || "", notice: draftNotice(timed), timed }));
 }
 
 async function alignWords(button, p, t, area, notice, timing, method = "align") {

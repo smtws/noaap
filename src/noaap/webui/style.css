@@ -428,3 +428,6 @@ tr.lyrics .claim-row input { margin: 0; accent-color: var(--accent); }
 .offer-row:focus-within { outline: 2px solid var(--accent); }
 .offer-row input { margin-top: .25rem; flex: none; }
 .offer-row .small { font-size: .8rem; }
+
+/* the block a draft says may not be the song (slice 159) */
+.talk-note { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }

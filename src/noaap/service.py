@@ -91,13 +91,16 @@ from .timing import (
     LISTEN,
     TRANSCRIBE,
     Engines,
+    TimedLine,
     TimingUnavailable,
     capabilities_of,
     coverage,
     language_hint,
+    maybe_talk,
     place_by_listening,
     plain_lines,
     release_gpu_memory,
+    said_after_silence,
     stamped,
     stays_here,
     with_gaps,
@@ -1255,6 +1258,18 @@ class Service:
         # the next line jump a minute — and the notice counts what it actually covered (§9, slice 45)
         length = track.file_length or track.duration
         timed.lines = with_gaps(timed.lines, length)
+        # **and where the song is over, the draft says so** (§9, slice 159; R-535). On a live track
+        # the transcriber is right and the draft is wrong: what it writes down after the song is the
+        # singer thanking the audience. Marked, never dropped — the editor offers that.
+        if (at := maybe_talk(timed.lines)) is not None:
+            said = said_after_silence(timed.lines, at)
+            if at and timed.lines[at - 1].text.startswith("\u2026 ("):
+                timed.lines[at - 1] = TimedLine(text=said, start=timed.lines[at - 1].start)
+                at -= 1
+            else:
+                timed.lines.insert(at, TimedLine(text=said, start=timed.lines[at].start))
+            timed.parameters["maybe_talk_from"] = f"{timed.lines[at + 1].start:.2f}"
+            timed.parameters["maybe_talk_lines"] = str(len(timed.lines) - at - 1)
         timed.parameters.update(coverage(timed.lines, length))
         text = "\n".join(line.text for line in timed.lines)
         heard = float(timed.parameters.get("covered", 0) or 0)
