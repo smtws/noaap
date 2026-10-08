@@ -10,7 +10,9 @@ name. Two things defeated that judgement:
   across 5 albums would have been written as nothing but their version: `Policy of Truth (Single
   Version)` → `single version`, `Ai Vis Lo Lop (vocal remix)` → `vocal remix`, `Summer Wine (single
   edit)` → `single edit`.
-* **A matched release's titles are MusicBrainz' own words**, and this rule was running over them.
+Keeping the rule off MusicBrainz' own words was tried for this and **taken back out** (R-522): it
+fixed nothing the guard below does not, and it put the album's name back into 66 titles across four
+live albums, where MusicBrainz titles every track `<song> (Live in <place>)`.
 
 The counter-example that keeps the rule honest is the audio play: `(Teil 01)` and `(Folge 4)`
 *enumerate* recordings, so they must still be taken; `(single version)` and `(Capitol mix)` name
@@ -103,37 +105,37 @@ def a_plan(titles, album, provenance):
                 for n, t in enumerate(titles, 1)])
 
 
-def test_a_matched_releases_titles_are_left_as_musicbrainz_states_them():
-    """`Lacrimosa/Live in Mexico City` matched, so every title was MusicBrainz': `Lacrimosa Theme
-    (live 2014)`. The rule then stripped the album's own `(Live 2014)` out of all 22 of them."""
+def test_a_matched_releases_titles_are_shortened_too():
+    """`Lacrimosa/Live in Mexico City` matched, so every title is MusicBrainz': `Lacrimosa Theme
+    (live 2014)`. The album is named that too, and the redundancy is just as redundant for coming
+    from MusicBrainz — which is why this rule runs again after enrichment. Keeping it off
+    MusicBrainz' words was tried (R-521) and taken back out (R-522): it put the album's name back
+    into 66 titles over four live albums and fixed nothing `strip_album_name` does not."""
     titles = [f"{name} (live 2014)" for name in
               ("Lacrimosa Theme", "Ich bin der brennende Komet", "Schakal", "Alleine zu zweit")]
     plan = a_plan(titles, "Live In Mexico City (Live 2014)", Provenance.MB)
+
+    assert drop_album_name(plan.album, plan.tracks) == 4
+    assert [t.title for t in plan.tracks] == ["Lacrimosa Theme", "Ich bin der brennende Komet",
+                                              "Schakal", "Alleine zu zweit"]
+
+
+def test_musicbrainz_words_are_guarded_by_the_same_rule_as_the_files():
+    """And what keeps that safe is the guard in `strip_album_name`, not an exemption: `In Extremo/
+    Ai Vis Lo Lop` matched too, and its three titles are versions of the album's own name."""
+    titles = [f"Ai Vis Lo Lop ({v})" for v in ("vocal remix", "instrumental remix",
+                                               "original version")]
+    plan = a_plan(titles, "Ai Vis Lo Lop", Provenance.MB)
 
     assert drop_album_name(plan.album, plan.tracks) == 0
     assert [t.title for t in plan.tracks] == titles
 
 
-def test_the_same_titles_from_the_files_are_still_shortened():
-    """The one difference is where the words came from: `Lacrimosa/Lichtjahre` did not match, its
-    titles are the files' own, and there the rule is right."""
-    titles = [f"{name} (Live 2007)" for name in
-              ("Lacrimosa Theme", "Kelch der Liebe", "Schakal", "Ich bin der brennende Komet")]
-    plan = a_plan(titles, "Lichtjahre (Live 2007)", Provenance.FILE_TAGS)
-
-    assert drop_album_name(plan.album, plan.tracks) == 4
-    assert [t.title for t in plan.tracks] == ["Lacrimosa Theme", "Kelch der Liebe", "Schakal",
-                                              "Ich bin der brennende Komet"]
-
-
-def test_the_share_is_of_the_whole_album_not_of_the_tags_alone():
-    """Three of thirteen carry the album name and ten are MusicBrainz'. Three is not four fifths of
-    thirteen, so the rule stays out — the share has to be measured against the album, or skipping
-    MusicBrainz' titles would make any three stragglers a majority of what is left."""
-    plan = a_plan([f"Song {n}" for n in range(1, 11)], "Big Live Show", Provenance.MB)
-    plan.tracks += a_plan(["Encore (Big Live Show)", "Outro (Big Live Show)",
-                           "Reprise (Big Live Show)"], "Big Live Show",
-                          Provenance.FILE_TAGS).tracks
+def test_a_prefix_on_a_few_tracks_is_not_the_release():
+    """The share guard's own job, unchanged: two of twelve is a title track, not a shop's habit."""
+    plan = a_plan([f"Song {n}" for n in range(1, 11)] +
+                  ["Encore (Big Live Show)", "Outro (Big Live Show)"],
+                  "Big Live Show", Provenance.FILE_TAGS)
 
     assert drop_album_name(plan.album, plan.tracks) == 0
     assert plan.tracks[10].title == "Encore (Big Live Show)"

@@ -4078,10 +4078,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `vocal remix`, `Summer Wine (single edit)` → `single edit`.
    **And the rule was running over MusicBrainz' own titles.** `Lacrimosa/Live in Mexico City`
    matched a release, so its 22 titles were MusicBrainz' (`Lacrimosa Theme (live 2014)`), and the
-   rule took the album's own `(Live 2014)` out of every one of them. A matched release's titles are
-   now taken as MusicBrainz states them; this rule is only about what a shop wrote into a file name
-   or a video title. The share is still measured against the **whole** album, because measuring it
-   against the remaining tags alone would make any three stragglers a majority.
+   rule took the album's own `(Live 2014)` out of every one of them — so for a day a matched
+   release's titles were taken as MusicBrainz states them. **That half was measured and taken back
+   out** (R-522): it refuses nothing the guard below does not already refuse, and it puts the album's
+   name back into **66 titles across four live albums**, which is the very redundancy this rule runs
+   after enrichment to remove. `Der Prolog im Himmel` → `Der Prolog im Himmel (Live in Bochum
+   09.02.2020)`, for all 21 tracks. The guard, not an exemption, is what makes it safe.
    **What tells the two apart is what the bracket says.** `(Teil 01)` and `(Folge 4)` *enumerate*
    recordings — they are the only thing distinguishing one track of an audio play from the next, so
    they must still be taken. `(single version)` and `(Capitol mix)` name another cut of the one song.
