@@ -4153,6 +4153,29 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    page's reset still reaches it. A title a *source* wrote is still replaced, because that is a
    shop's guess and not the files' word.
 
+154. ✅ **A change is what the server says it changed, not a line of its log** (2026-10-08, R-519
+   item 1). The user: *Identify said "matched" and wrote nothing visible — no release id in the
+   field, no cover.* Reproduced on a library of my own (a synthetic `Dragontown`, real MusicBrainz
+   through the warm cache, my own port and XDG dirs), and the write path turned out to be sound: a
+   fresh album's Apply set the release id, fetched the cover, wrote `cover.jpg`, served it, updated
+   the grid row, and the panel refreshes itself when a write job finishes.
+   What was wrong is that **the panel counted the pass's progress as changes.** `identifyLines` kept
+   every log line that was not a `===` header, and the log also carries `reading …`,
+   `left alone: …`, `MusicBrainz: looking for …`, `MusicBrainz: release matched` and
+   `existing album …: 0 new, 0 no longer in the source`. So an album MusicBrainz *agreed* with
+   produced six lines, `identifyState` announced **"Apply writes exactly what is listed: 6
+   change(s)"**, the confirm dialog showed those six as what the check had listed, and the apply
+   then wrote nothing. Its own "MusicBrainz agrees with what this album already says — nothing to
+   change" branch was unreachable, because a matched release always leaves progress behind.
+   `update_all` has known the list exactly all along — it logs `changes_from(existing, plan)` and
+   returns `f"{len(said)} change(s)"` in the outcome's message. So the outcome carries the **list**
+   now, and the page reads that. The log is still the log, for a person watching the pass.
+   **And the apply says what it wrote.** Pressing Apply answered `downloading 0 of 12 tracks` and
+   `12/12 tracks done` — nothing about the release, the cover or the twenty titles it had just
+   written. It reports the same list the check offered, so the two can be read against each other.
+   The cases are the three real jobs from that reproduction — a check with 20 changes, the apply,
+   and a second check with none — trimmed to the fields the page reads.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

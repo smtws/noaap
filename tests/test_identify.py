@@ -234,3 +234,57 @@ def test_the_endpoint_needs_the_write_header(collection):
     assert bad.status_code == 400 and "unknown album" in bad.text
     c.close()
     srv.shutdown()
+
+
+# -- what counts as a change, and what the apply says it wrote (§9, slice 154; R-519 item 1) -----
+
+
+def test_the_check_hands_over_its_list_of_changes(collection):
+    """The user: *Identify said "matched" and wrote nothing visible.* The page was counting the
+    pass's progress as changes, because it read them out of the log — which also carries `reading
+    …`, `left alone: …`, `MusicBrainz: release matched`. The outcome carries the list itself."""
+    app = an_app(collection, SaysOneRelease())
+    source_id = the_album(app)
+
+    job = settled(app, app.submit("identify", {"id": source_id, "dry_run": True}))
+
+    outcome = job.result[0]
+    assert outcome["status"] == "reported"
+    assert outcome["changes"], "the list the panel offers to apply"
+    assert outcome["message"] == f"{len(outcome["changes"])} change(s)"
+    assert any(line.startswith("mbid: nothing → " + RELEASE) for line in outcome["changes"])
+    for noise in ("reading", "left alone", "MusicBrainz:", "existing album", "only:"):
+        assert not any(line.startswith(noise) for line in outcome["changes"]), noise
+
+
+def test_an_album_already_identified_has_nothing_to_change(collection):
+    """And then the count is nought, which is what makes the panel's "MusicBrainz agrees with what
+    this album already says" reachable at all. Its log still has its six progress lines."""
+    app = an_app(collection, SaysOneRelease())
+    source_id = the_album(app)
+    settled(app, app.submit("identify", {"id": source_id}))        # apply it first
+
+    job = settled(app, app.submit("identify", {"id": source_id, "dry_run": True}))
+
+    outcome = job.result[0]
+    assert outcome["changes"] == [], job.log
+    assert outcome["message"] == "0 change(s)"
+    assert len(job.log) > 1, "the log still says what it did; only the change list is empty"
+
+
+def test_the_apply_reports_what_it_wrote(collection):
+    """Pressing Apply used to answer `downloading 0 of 4 tracks` and `4/4 tracks done` — nothing
+    about the release it had written, the cover it had fetched or the titles it had rewritten."""
+    app = an_app(collection, SaysOneRelease())
+    source_id = the_album(app)
+    check = settled(app, app.submit("identify", {"id": source_id, "dry_run": True}))
+
+    job = settled(app, app.submit("identify", {"id": source_id}))
+
+    assert job.state == "done", job.log
+    wrote = job.result[0]["changes"]
+    assert wrote, "the apply says what it wrote"
+    assert wrote == check.result[0]["changes"], "the same list the check offered, so they can be read together"
+    assert any(line.startswith("mbid: nothing → " + RELEASE) for line in wrote)
+    assert any("mbid: nothing → " + RELEASE in line for line in job.log), \
+        "and it is in the log the person watching sees"

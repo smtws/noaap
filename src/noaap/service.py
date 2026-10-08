@@ -16,7 +16,7 @@ import threading
 from collections import Counter
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -145,6 +145,11 @@ class Outcome:
     plan: AlbumPlan | None = None
     album_dir: Path | None = None
     message: str = ""
+    # **what this pass would change, or did, one line each** (§9, slice 154; R-519 item 1). The
+    # page used to read these out of the job's log, which also carries the pass's progress — so an
+    # album MusicBrainz agreed with was announced as "6 change(s)" and offered an apply that then
+    # wrote nothing. The server already knows the list; this is it, rather than its prose.
+    changes: list[str] = field(default_factory=list)
 
     @property
     def blocked(self) -> bool:
@@ -391,6 +396,7 @@ class Service:
             self.on_plan(plan)
             return Outcome("dry", plan, known_dir)
 
+        wrote: list[str] = []       # what this pass changed about an album already here
         if found := here:
             old_dir, existing = found
             plan = as_the_plan_knows_them(existing, plan)   # §9, slice 135
@@ -406,8 +412,16 @@ class Service:
                 self._settle_artist(plan)   # read-only, and part of what a real run would write
                 for line in (said := changes_from(existing, plan)):
                     self.log(f"  {line}")
-                return Outcome("reported", plan, old_dir, f"{len(said)} change(s)")
+                return Outcome("reported", plan, old_dir, f"{len(said)} change(s)", changes=said)
+            # **and the apply says what it wrote, not only that it ran** (§9, slice 154; R-519
+            # item 1). Pressing Apply used to answer with `downloading 0 of 12 tracks` and
+            # `12/12 tracks done` — nothing about the release it had just written, the cover it had
+            # fetched or the titles it had rewritten. The same list the check offered, in the past
+            # tense, so the two can be read against each other.
             self._settle_artist(plan)  # before the folder is chosen, or the album stays put
+            wrote = changes_from(existing, plan)
+            for line in wrote:
+                self.log(f"  {line}")
             album_dir = relocate(old_dir, plan, self.library, for_album(self.cfg, plan))
         else:
             if report_only:
@@ -420,8 +434,9 @@ class Service:
         self.on_plan(plan)
         if plan_only:
             save_plan(plan, album_dir)
-            return Outcome("planned", plan, album_dir)
-        return self.execute(plan, album_dir)
+            return Outcome("planned", plan, album_dir, changes=wrote)
+        done = self.execute(plan, album_dir)
+        return replace(done, changes=wrote) if wrote and not done.changes else done
 
     def _decide_spellings(self, asking: set[str] | None = None) -> dict[str, tuple[str, set[str | None]]]:
         """One spelling per artist key for the whole library, decided before anything is renamed.

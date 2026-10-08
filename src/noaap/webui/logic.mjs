@@ -1239,10 +1239,25 @@ export function identifyState({ check = null, running = false, pinned = false,
 }
 
 /** The lines of an identify check, in the order the panel shows them. A plain list, because the
- *  server's own words are what a person is being asked to agree to (§9, slice 85). */
-export const identifyLines = (job) =>
-  (job?.log || []).filter((line) => line.trim() && !line.startsWith("==="))
-                  .map((line) => line.replace(/^ {2}/, ""));
+ *  server's own words are what a person is being asked to agree to (§9, slice 85).
+ *
+ * **The server's list of changes, not its log** (§9, slice 154; R-519 item 1). This read the job's
+ * log and kept every line that was not a `===` header — but the log also carries the pass's
+ * progress, so an album MusicBrainz agreed with still yielded six lines (`reading …`,
+ * `left alone: …`, `MusicBrainz: looking for …`, `MusicBrainz: release matched`,
+ * `existing album …: 0 new, 0 no longer in the source`). The panel then announced "6 change(s)",
+ * offered an apply, and the apply wrote nothing — which is what the user reported as *"it said
+ * matched and wrote nothing visible"*. Its own "nothing to change" branch could never be reached.
+ * `update_all` already knows the list exactly, and now hands it over in the outcome.
+ */
+export const identifyLines = (job) => {
+  const outcomes = Array.isArray(job?.result) ? job.result : [];
+  const said = outcomes.flatMap((o) => (Array.isArray(o?.changes) ? o.changes : []));
+  if (said.length || outcomes.length) return said;
+  // a job from before the outcome carried its changes (a page left open across an upgrade)
+  return (job?.log || []).filter((line) => line.trim() && !line.startsWith("==="))
+                         .map((line) => line.replace(/^ {2}/, ""));
+};
 
 // -- where an album came from (§9, slice 143; R-509 item 2) ------------------------------------
 //
