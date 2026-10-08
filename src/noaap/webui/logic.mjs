@@ -48,6 +48,33 @@ export const foldedBoth = (text) => [foldMap(text, false).folded, foldMap(text, 
 export const hitsIn = (terms, folded) =>
   terms.every((term) => folded.some((f) => f.includes(term)));
 
+/** Run `work` over `items` a slice at a time, handing the thread back in between (§9, slice 155).
+ *
+ * The user's rule, verbatim: *"an input that doesn't show what the user types immediately is
+ * perceived as laggy, functional reaction may take time, display input has to be an instant."*
+ * Whatever the main thread is doing, a typed letter cannot appear until it stops — so folding the
+ * library's words (243 ms over 1,548 albums) and building its cards (96 ms) are done in slices of
+ * `ms`, and a run that a newer keystroke has superseded stops where it is.
+ *
+ * Answers true when it finished, false when it was abandoned. `now` and `pause` are injectable so
+ * the slicing itself can be measured rather than guessed at.
+ */
+export async function inSlices(items, work, opts = {}) {
+  const { ms = 8, wanted = () => true, now = () => performance.now(),
+          pause = () => new Promise((r) => setTimeout(r, 0)) } = opts;
+  for (let i = 0; i < items.length; ) {
+    const until = now() + ms;
+    // at least one per slice, or a budget smaller than one item would never make progress
+    do {
+      work(items[i], i);
+      i++;
+    } while (i < items.length && now() < until);
+    if (!wanted()) return false;
+    if (i < items.length) await pause();
+  }
+  return wanted();
+}
+
 /** What the filter is typed against: the terms, folded the same way the keys were. */
 export const searchTerms = (text) => fold(text || "").split(" ").filter(Boolean);
 

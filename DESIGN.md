@@ -4176,6 +4176,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    The cases are the three real jobs from that reproduction — a check with 20 changes, the apply,
    and a second check with none — trimmed to the fields the page reads.
 
+155. ✅ **The letter appears first; the filtering happens after, in slices** (2026-10-08, R-527).
+   The user, verbatim: *"an input that doesnt show what the user types immediately is perceived as
+   laggy, functional reaction may take time, display input has to be an instant."* Slice 151 made
+   the matching cheap (1,663 ms → 2.1 ms a keystroke) and put it behind a 150 ms idle, and that was
+   half an answer: the work that remained still ran as **one task**, and for as long as the main
+   thread is in a task no typed letter can be painted.
+   Measured with real key events over CDP on the user's 1,548 albums, panel open and grid scrolled:
+   one **243 ms** task folding the library's words on the first filtered render, and **96 ms**
+   rebuilding the grid when the filter cleared. A third round proved what the big one was — zero on
+   every later word, so it is the one-off folding. Under the load the user had (11), a quarter of a
+   second is the "seconds" they reported.
+   Both now go through `inSlices`: at most 8 ms of work, then the thread goes back to the browser,
+   and a run a newer keystroke has superseded stops where it is. The words are also folded ahead of
+   time on idle, so the first letter after a library change pays nothing; the filter itself is armed
+   with `requestIdleCallback` rather than a timer, so it cannot land in the frame that has a letter
+   to paint. **Nothing on the render path folds any more**: `pickAlbums` answers `null` when a word
+   it needs is not folded, the answer already on screen stands, and the warming re-renders when it
+   finishes — without that last part a filter typed before the track index arrived showed 30 albums
+   where 38 matched, until the next poll.
+   After: **no task over 50 ms at all**, keystroke-to-paint 15–18 ms, and the first filter of a
+   session settles on its full answer about half a second after the last letter.
+   Two things measuring caught that reasoning would not. The first harness sent `keyDown` carrying
+   `text` *and* a separate `char` event, so every letter was typed twice — `sscchhaannddmmaauull`
+   matched nothing, which is exactly why that run showed no long tasks at all. And the first attempt
+   at the fix made the counts drift (30 albums once, 38 another time for one word) because
+   `pickAlbums` still folded synchronously whenever the cache had been reset mid-run, which is what
+   sent the folding onto the render path in the first place.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

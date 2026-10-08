@@ -1,7 +1,7 @@
 import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
-         identifyLines, identifyState, offersState,
+         identifyLines, identifyState, inSlices, offersState,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
@@ -157,6 +157,7 @@ async function poll() {
     if (state.jobs?.some((j) => ["queued", "running"].includes(j.state) && j.lane !== "read")) ranWrite = true;
     if (state.tracks_version && state.tracks_version !== trackIndex.version) loadTracks();
     renderLibrary();
+    warmSearchKeysSoon();   // fold the library's words while nothing is being typed (slice 155)
     renderJobs();
     renderSettings();
     renderBin();
@@ -215,6 +216,7 @@ async function loadTracks() {
     if (got.version !== trackIndex.version) {
       trackIndex = got;
       renderLibrary();
+      warmSearchKeysSoon();   // the track titles only arrive now, and they are most of the folding
     }
   } catch {
     trackIndex = { version: wanted, albums: {} }; // do not hammer the server on a failure
@@ -271,8 +273,10 @@ const TRACK = { id: 0, artist: 1, title: 2, done: 3, start: 4, end: 5 }; // rows
 // of those steps. Here each album's words are folded once and kept until the library changes.
 let searchKeys = { for: null, albums: new Map() };
 
+const keysStamp = () => `${state.tracks_version || ""}|${trackIndex.version || ""}`;
+
 function keysFor(a) {
-  const stamp = `${state.tracks_version || ""}|${trackIndex.version || ""}`;
+  const stamp = keysStamp();
   if (searchKeys.for !== stamp) searchKeys = { for: stamp, albums: new Map() };
   let keys = searchKeys.albums.get(a.id);
   if (!keys) {
@@ -286,12 +290,46 @@ function keysFor(a) {
   return keys;
 }
 
-function matchingRows(a, terms) {
-  return keysFor(a).rows.filter((k) => hitsIn(terms, k.folded)).map((k) => k.row);
+// **a slice of work, then back to the browser** (§9, slice 155; R-527). The user: *"an input that
+// doesn't show what the user types immediately is perceived as laggy; functional reaction may take
+// time, display input has to be an instant."* Folding the library's words is 243 ms measured on
+// their 1,548 albums, and rebuilding the whole grid 96 ms — and whatever the main thread is doing,
+// the letters a person is typing cannot appear until it stops. So this work is done 8 ms at a time
+// with the thread handed back in between, and abandoned outright when a newer keystroke arrives.
+const SLICE_MS = 8;
+const yieldNow = () => globalThis.scheduler?.yield?.() ?? new Promise((r) => setTimeout(r, 0));
+const whenIdle = (fn) => (globalThis.requestIdleCallback
+  ? requestIdleCallback(fn, { timeout: 500 })
+  : setTimeout(fn, 50));
+
+/** Fold what the filter will match against, in slices. `mine()` says whether this run still counts. */
+function warmKeys(mine) {
+  const stamp = keysStamp();
+  return inSlices(state.albums || [], (a) => keysFor(a),
+                  { ms: SLICE_MS, wanted: () => mine() && keysStamp() === stamp, pause: yieldNow });
 }
 
-function matchingTracks(a, terms) {
-  return matchingRows(a, terms).map((r) => `${r[TRACK.artist]} — ${r[TRACK.title]}`);
+// and the same words are folded ahead of time, while nothing else is happening, so that the first
+// letter typed after a library change does not pay for the whole library either
+let warming = "";
+
+function warmSearchKeysSoon() {
+  const stamp = keysStamp();
+  if (!stamp || warming === stamp || !(state.albums || []).length) return;
+  warming = stamp;
+  whenIdle(async () => {
+    const mine = () => warming === stamp && keysStamp() === stamp;
+    if (!(await warmKeys(mine)) || !libFilter) return;
+    // **and the answer that was waiting for this is worked out now** (§9, slice 155). Without
+    // this, a filter typed before the track index arrived kept whatever the grid had until the
+    // next poll — measured as 30 albums where 38 match, for up to eight seconds.
+    renderLibrary();
+    if (!$("#album").hidden) markAlbumFields();
+  });
+}
+
+function matchingRows(a, terms) {
+  return keysFor(a).rows.filter((k) => hitsIn(terms, k.folded)).map((k) => k.row);
 }
 
 // One answer per render, not six: `renderLibrary`, `renderPlayMatches` and the signature all used
@@ -303,8 +341,14 @@ function shownAlbums() {
   const stamp = `${state.tracks_version || ""}|${trackIndex.version || ""}|${artistFilter}`
     + `|${libFilter}|${lengthOnly}|${needsYouOnly}|${state.albums.length}`;
   if (shownFor === stamp) return shownWas;
+  const picked = pickAlbums();
+  // **nothing here ever folds** (§9, slice 155; R-527). `pickAlbums` answers `null` when a word it
+  // needs has not been folded yet, rather than folding 1,548 albums where it stands — which is a
+  // quarter of a second in whatever task asked, including a poll's. The answer we had stands until
+  // the folding catches up, and it was asked for.
+  if (picked === null) return shownWas;
   shownFor = stamp;
-  shownWas = pickAlbums();
+  shownWas = picked;
   return shownWas;
 }
 
@@ -313,11 +357,21 @@ function pickAlbums() {
   if (lengthOnly) byArtist = byArtist.filter((a) => a.length);
   if (needsYouOnly) byArtist = byArtist.filter((a) => a.needs_you || a.copies);
   if (!libFilter) return byArtist.map((a) => ({ ...a, matches: null }));
+  if (searchKeys.for !== keysStamp()) {
+    warmSearchKeysSoon();
+    return null;        // folded against an older library; the answer we had is the better one
+  }
   const terms = searchTerms(libFilter);
   const out = [];
   for (const a of byArtist) {
-    const own = hitsIn(terms, keysFor(a).own);
-    const songs = own ? [] : matchingTracks(a, terms);
+    const keys = searchKeys.albums.get(a.id);
+    if (!keys) {
+      warmSearchKeysSoon();
+      return null;
+    }
+    const own = hitsIn(terms, keys.own);
+    const songs = own ? [] : keys.rows.filter((k) => hitsIn(terms, k.folded))
+                                      .map((k) => `${k.row[TRACK.artist]} — ${k.row[TRACK.title]}`);
     if (own || songs.length) out.push({ ...a, matches: own ? null : songs });
   }
   return out;
@@ -395,21 +449,35 @@ function renderLibrary() {
   const signature = [state.tracks_version, trackIndex.version, artistFilter, libFilter, lengthOnly,
                      needsYouOnly, shown, songMatches,
                      albums.map((a) => a.id).join("\u0000")].join("\u0001");
-  if (signature !== gridShows) {
-    // rebuilding throws away the focused card, which would break arrow-key navigation
-    const focused = document.activeElement?.closest?.("#grid .card")?.dataset.id;
-    gridShows = signature;
-    fill(grid, albums.map(card));
-    // preventScroll: a rebuild must not drag the viewport to the focused card - it would
-    // pull an open album editor out of view whenever a download changes something
-    if (focused) grid.querySelector(`.card[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
-  }
+  if (signature !== gridShows) paintGrid(grid, albums, signature);
   $("#empty").hidden = shown > 0;
   renderPlayMatches();
   renderLengthFilter();
   renderNeedsYouFilter();
   renderRail();
 }
+
+// **the cards are built in slices too** (§9, slice 155; R-527). Going back to the whole library
+// rebuilt 1,548 cards in one task — 96 ms measured, and 96 ms in which no typed letter can appear.
+// A paint that a newer one supersedes is abandoned, and `gridShows` is only set once the cards are
+// actually in, so an abandoned paint never claims the grid shows something it does not.
+let gridRun = 0;
+
+async function paintGrid(grid, albums, signature) {
+  const mine = ++gridRun;
+  // rebuilding throws away the focused card, which would break arrow-key navigation
+  const focused = document.activeElement?.closest?.("#grid .card")?.dataset.id;
+  const made = document.createDocumentFragment();
+  const whole = await inSlices(albums, (a) => made.append(card(a)),
+                               { ms: SLICE_MS, wanted: () => gridRun === mine, pause: yieldNow });
+  if (!whole) return;
+  gridShows = signature;
+  grid.replaceChildren(made);
+  // preventScroll: a rebuild must not drag the viewport to the focused card - it would
+  // pull an open album editor out of view whenever a download changes something
+  if (focused) grid.querySelector(`.card[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+}
+
 
 // A rail of the initials in view: 185 albums are a lot of scrolling, and the grid is sorted
 // by artist, so the first album of each letter is a place worth jumping to.
@@ -559,18 +627,49 @@ $("#play-matches").addEventListener("click", playMatches);
 // keystroke itself waited for the filter, so a fast typist queued one full render per letter.
 const FILTER_IDLE_MS = 150;
 let filterSoon = null;
+let filterRun = 0;
 
 function filterAfterIdle(value) {
   const wanted = value.trim();
   if (wanted === libFilter && filterSoon === null) return;
+  filterRun++;                    // whatever an older keystroke started, stop counting it
   clearTimeout(filterSoon);
   filterSoon = setTimeout(() => {
     filterSoon = null;
+    // and not even in the frame after the idle: `requestIdleCallback` waits for one the browser
+    // has nothing better to do with, which is never the frame that has a letter to paint
+    whenIdle(() => applyFilter(wanted));
+  }, FILTER_IDLE_MS);
+}
+
+/** Put the typed filter into effect, in slices, abandoning it if another letter arrives. */
+async function applyFilter(wanted) {
+  const mine = ++filterRun;
+  const stillMine = () => filterRun === mine;
+  // the library can change while this is folding (the track index arrives on its own), and then
+  // the words have to be folded again — three tries, so a library being written to cannot spin
+  for (let tries = 0; tries < 3; tries++) {
+    const stamp = keysStamp();
+    const warm = await warmKeys(stillMine);
+    if (!stillMine()) return;               // a newer keystroke; that run will do this
+    if (!warm || keysStamp() !== stamp) continue;
     if (wanted === libFilter) return;
     libFilter = wanted;
     renderLibrary();
     if (!$("#album").hidden) markAlbumFields();
-  }, FILTER_IDLE_MS);
+    return;
+  }
+}
+
+/** The filter now, for Enter and Escape: an answer, not typing (§9, slice 151). */
+function filterNow(wanted) {
+  clearTimeout(filterSoon);
+  filterSoon = null;
+  filterRun++;
+  if (wanted === libFilter) return;
+  libFilter = wanted;
+  renderLibrary();
+  if (!$("#album").hidden) markAlbumFields();
 }
 
 $("#libfilter").addEventListener("input", (e) => filterAfterIdle(e.target.value));
@@ -578,21 +677,12 @@ $("#libfilter").addEventListener("input", (e) => filterAfterIdle(e.target.value)
 $("#libfilter").addEventListener("keydown", (e) => {
   // Enter and Escape are answers, not typing: they take effect at once, ahead of the idle wait
   if (e.key === "Enter") {
-    clearTimeout(filterSoon);
-    filterSoon = null;
-    if (e.target.value.trim() !== libFilter) {
-      libFilter = e.target.value.trim();
-      renderLibrary();
-      if (!$("#album").hidden) markAlbumFields();
-    }
+    filterNow(e.target.value.trim());
     $("#grid").querySelector(".card")?.focus();
   } else if (e.key === "Escape" && (libFilter || e.target.value)) {
     e.stopPropagation();
-    clearTimeout(filterSoon);
-    filterSoon = null;
-    e.target.value = libFilter = "";
-    renderLibrary();
-    if (!$("#album").hidden) markAlbumFields();
+    e.target.value = "";
+    filterNow("");
   }
 });
 
