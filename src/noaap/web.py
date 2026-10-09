@@ -143,7 +143,8 @@ class Jobs:
     # they only read: the answer goes to the page. `repair_check` is the dry run of slice 85 — it
     # writes nothing, so it belongs here and may run beside a download (§9, slice 91).
     READ_ONLY = ("search", "preview", "channel", "align", "draft", "repair_check", "take_in_check",
-                 "identify")   # it writes nothing; `identify_apply` is the write (§9, slice 142)
+                 "identify",   # it writes nothing; `identify_apply` is the write (§9, slice 142)
+                 "complete_check")   # looks and searches; `complete` fetches (§9, slice 162)
 
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
                  wrote: Callable[[], Any] | None = None,
@@ -1241,6 +1242,24 @@ class App:
                     f"{'Identify' if dry else 'Apply what MusicBrainz says about'} {what}",
                     lambda s: s.update_all(report_only=dry, deep=True, only=[where]),
                     target=source_id)
+            case "complete":
+                # **look first, then fetch what the person ticked** (§9, slice 162): the check
+                # searches and writes nothing; the apply fetches only the slots it is given
+                source_id = str(body.get("id", ""))
+                found = self.album(source_id)
+                if not found:
+                    raise ValueError("unknown album")
+                plan = found[1]
+                dry = bool(body.get("dry_run"))
+                only = body.get("only")
+                if not dry and not (isinstance(only, list) and only):
+                    raise ValueError("which tracks? Run the check, then choose")
+                chosen = None if dry else {str(x) for x in only}
+                what = f"{plan.albumartist} — {plan.album}"
+                return self.jobs.submit("complete_check" if dry else "complete",
+                                        f"{'Look for the missing tracks of' if dry else 'Complete'} {what}",
+                                        lambda s: s.complete(source_id, only=chosen, dry_run=dry),
+                                        target=source_id)
             case "update":
                 deep = bool(body.get("deep"))
                 artist = str(body.get("artist") or "").strip() or None

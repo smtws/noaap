@@ -1424,3 +1424,19 @@ export function offersState({ offered = [], mbid = null, pinned = false } = {}) 
 export function unsavedEdits(fields = []) {
   return fields.filter((f) => f.name && f.value !== f.shown).map(({ row = "", name, value }) => ({ row, name, value }));
 }
+
+/** **What completing an album would fetch, as the dialog shows it** (§9, slice 162). `offered` are the
+ * check's slots — every release track the album has no file for — each with the hits it found, best
+ * first. A slot with a hit is ticked; a video, or a slot nothing close was found for, is shown and
+ * cannot be ticked. */
+export function completeRows(offered = []) {
+  const len = (s) => (s == null ? "" : ` (${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")})`);
+  return offered.map((slot) => {
+    const best = (slot.hits || [])[0];
+    const why = slot.video ? "a video on the release — not completed"
+      : best ? `“${best.title}” by ${best.channel || "?"}${best.off != null ? `, ${best.off >= 0 ? "+" : ""}${Math.round(best.off)} s` : ""}`
+        : "nothing close enough was found";
+    return { name: slot.name, title: `${slot.name} ${slot.title}${len(slot.length)}`, why,
+             can: Boolean(best) && !slot.video, ref: best?.ref || null };
+  });
+}

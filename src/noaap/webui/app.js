@@ -1,4 +1,4 @@
-import { CLAIM_LABEL, LENGTH, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
+import { CLAIM_LABEL, LENGTH, completeRows, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
@@ -1662,6 +1662,13 @@ function renderAlbum() {
           title: "Look up the lyrics of every track that has none yet (LRCLIB), as a .lrc file beside it and in its tags.\nShift+click looks up all of them again — lyrics you wrote yourself are kept either way.",
           onclick: (e) => submit("lyrics", { id: p.source_id, refetch: e.shiftKey }, e.currentTarget) }, "Fetch lyrics"),
         identifyButton(p),
+        // **only for an album whose release a person chose** (§9, slice 162): a release a pass
+        // found is not evidence of what the album is missing
+        p.provenance?.mbid === "user" && p.mbid
+          ? h("button", { class: "quiet", type: "button", disabled: Boolean(state.busy_write),
+              title: "Look for the tracks of the pinned release this album has no file for",
+              onclick: (e) => checkComplete(p, e.currentTarget) }, "Complete from the release…")
+          : null,
         h("button", { class: "danger", type: "button", onclick: (e) => deleteAlbum(p, e.currentTarget) }, "Delete album"),
         gone.length ? h("button", { class: "danger", type: "button", onclick: (e) => pruneAlbum(p, gone, e.currentTarget) }, `Remove ${gone.length} track${gone.length > 1 ? "s" : ""} no longer in the playlist`) : null,
         sourceOpening(p))));
@@ -2290,6 +2297,45 @@ function sourceOpening(p) {
   return said.href
     ? h("a", { href: said.href, target: "_blank", rel: "noopener" }, said.label)
     : h("span", { class: "muted", title: p.source_url }, said.text);
+}
+
+// -- "Complete from the release" (§9, slice 162) ------------------------------------------------
+//
+// Look first: the check searches for each missing track and writes nothing. The dialog then lists
+// what it found, ticked where there is a hit, and fetches only what stays ticked.
+
+async function checkComplete(p, button) {
+  const id = await submit("complete", { id: p.source_id, dry_run: true }, button);
+  if (id == null) return;
+  const job = await jobSettled(id, 4800);
+  if (!job || job.state !== "done" || !job.result) return;      // submit() and the log have said why
+  const result = job.result;
+  if (result.status !== "dry") return toast(result.message || "nothing to look for", "failed");
+  const rows = completeRows(result.offered || []);
+  const notes = (result.changes || []).filter((line) => !/^\d+-\d{2} /.test(line));
+  const boxes = rows.map((row) => h("label", { class: "offer-row" },
+    h("input", { type: "checkbox", value: row.name, checked: row.can, disabled: !row.can }),
+    h("span", {}, h("strong", {}, row.title), h("div", { class: "muted small" }, row.why))));
+  const dialog = h("dialog", { class: "source-dialog offers-dialog", "aria-label": "Complete this album" },
+    h("div", { class: "panel-head" }, h("h3", {}, `${p.albumartist} — ${p.album}`)),
+    ...notes.map((line) => h("div", { class: "muted" }, line)),
+    rows.length ? null : h("div", {}, "This album holds every track of its release."),
+    h("form", { method: "dialog", onsubmit: (e) => { e.preventDefault(); fetchComplete(p, dialog); } },
+      rows.length ? h("fieldset", { class: "offer-list" },
+        h("legend", { class: "muted small" }, "the release's tracks this album has no file for"), ...boxes) : null,
+      h("div", { class: "actions" },
+        rows.some((r) => r.can) ? h("button", { type: "submit" }, "Fetch the ticked tracks") : null,
+        h("button", { class: "quiet", type: "button", onclick: () => dialog.close() }, "Close"))));
+  document.body.append(dialog);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
+async function fetchComplete(p, dialog) {
+  const only = [...dialog.querySelectorAll("input[type=checkbox]:checked")].map((b) => b.value);
+  if (!only.length) return;
+  dialog.close();
+  await submit("complete", { id: p.source_id, only });
 }
 
 // -- "Identify with MusicBrainz" (§9, slice 142) ----------------------------------------------

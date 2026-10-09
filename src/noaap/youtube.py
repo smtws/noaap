@@ -217,6 +217,20 @@ class YouTube:
             "title": nfc(info.get("title")),
         }
 
+    def search_videos(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
+        """YouTube's own search, one video per hit, flat: what completing an album asks (§9, slice 162).
+
+        Not YouTube Music's song search: measured on `Letzte Instanz — Für Dich`, its flat answer
+        carries no length and no channel, and its first five hits were other songs of the band.
+        Through `_params` like every other request, so cookies and proof-of-origin tokens apply.
+        """
+        self.check()
+        with YoutubeDL(self._params(extract_flat="in_playlist")) as ydl:
+            info = ydl.extract_info(f"ytsearch{int(limit)}:{query}", download=False)
+        return [{"ref": e["id"], "title": nfc(e.get("title") or ""), "channel": e.get("channel") or e.get("uploader"),
+                 "length": float(e["duration"]) if e.get("duration") else None}
+                for e in (info or {}).get("entries") or [] if e and e.get("id")]
+
     def search_playlists(self, query: str, limit: int = 10) -> list[SourceRef]:
         """YouTube search restricted to playlists (lyric-video albums, fan compilations)."""
         url = f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}&sp=EgIQAw%253D%253D"

@@ -25,6 +25,7 @@ class YouTubeSource:
     """The seven calls, plus the capabilities YouTube happens to have."""
 
     name = sources.DEFAULT
+    delivers = "opus"   # what `audio` hands over by default, said where completing an album asks (§9, slice 162)
 
     def __init__(self, cfg: Config, cancel: Any = None) -> None:
         self.cfg = cfg
@@ -36,7 +37,7 @@ class YouTubeSource:
 
     def capabilities(self) -> frozenset[str]:
         return frozenset({sources.SEARCH, sources.LISTING, sources.CHANGES, sources.DETAILS,
-                          sources.CLEAN})
+                          sources.CLEAN, sources.TRACKS})
 
     # -- required ----------------------------------------------------------------------
 
@@ -70,6 +71,12 @@ class YouTubeSource:
 
     def find(self, query: str, limit: int = 12) -> list[SourceRef]:
         return self.yt.search_albums(query, limit)
+
+    def find_tracks(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
+        try:
+            return self.yt.search_videos(query, limit)
+        except DownloadError as e:
+            raise sources.SourceError(str(e).removeprefix("ERROR: ").strip()) from e
 
     def find_playlists(self, query: str, limit: int = 10) -> list[SourceRef]:
         return self.yt.search_playlists(query, limit)

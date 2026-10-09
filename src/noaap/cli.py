@@ -115,6 +115,11 @@ def main(argv: list[str] | None = None) -> int:
     dl.add_argument("--track", metavar="VIDEO_ID", help="delete only this track")
     dl.add_argument("--yes", action="store_true", help="do not ask")
 
+    cp = sub.add_parser("complete", help="fetch the tracks an album's pinned release lists and the album lacks (shows first)")
+    cp.add_argument("album_dir", type=Path)
+    cp.add_argument("--apply", action="store_true", help="fetch them; without it nothing is written or downloaded")
+    cp.add_argument("--only", metavar="SLOTS", help="only these, as the dry run names them: 1-06,1-13")
+
     u = sub.add_parser("update", help="re-check every album in the library against its source")
     u.add_argument("--library", type=Path)
     u.add_argument("--dry-run", action="store_true", help="only report what changed")
@@ -386,6 +391,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             case "delete":
                 return _delete(args, cfg)
+            case "complete":
+                return _complete(args, cfg)
             case "repair":
                 library = _library(args, cfg, required=True)
                 if library is None:
@@ -1197,6 +1204,23 @@ def _delete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     if outcome.message:
         print(outcome.message, file=sys.stderr)
     return exit_code(outcome)
+
+
+def _complete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
+    """`noaap complete DIR [--apply] [--only 1-06]` (§9, slice 162): the dry run is the default."""
+    from .complete import parse_only
+    from .download import load_plan
+
+    plan = load_plan(args.album_dir)
+    if not plan:
+        print(f"no plan in {args.album_dir}", file=sys.stderr)
+        return 2
+    service = _service(cfg, args.album_dir.resolve().parents[1])
+    # the lines are the pass's log, on stderr like every pass's; nothing is printed twice
+    outcome = service.complete(plan.source_id, only=parse_only(args.only), dry_run=not args.apply)
+    if outcome.message:
+        print(outcome.message, file=sys.stderr)
+    return 0 if outcome.status == "dry" else 1 if outcome.status == "held" else exit_code(outcome)
 
 
 def _serve(args: argparse.Namespace, cfg: config_mod.Config) -> int:

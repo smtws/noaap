@@ -4330,6 +4330,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `decode_audio` a second of sound. No model, no GPU, no network — and **no test ran that call
    before**, which is why 2,320 passing tests said nothing about it.
 
+162. ✅ **An album completed from the release a person chose** (2026-10-09, R-558/R-562/R-563, P118).
+   The user, of 24 albums whose numbers repeat: "try to complete them". Of those, two carry a pin
+   (`provenance.mbid = user`); the rest wait for one, because **a release nobody chose is not
+   evidence of what an album lacks** — `Evanescence/The Bitter Truth` is complete against the 2×6
+   vinyl a pass set and eight tracks short against the three-medium deluxe a search offered.
+   `noaap complete DIR` (and "Complete from the release…" on a pinned album's panel) compares the
+   album with its pinned release: a file answers for a release track by recording id, then by title
+   (a typo apart, or the release's own prefix — Nightwish's `All the Works of Nature… – Vista` is
+   `Vista`), never when their brackets name different takes (`Schau in Mein Gesicht (Akkustik
+   Version)` is a track of its own). Each missing **audio** track is looked for at YouTube — its
+   plain search, through the provider's own request path (cookies, PO tokens): YouTube Music's song
+   search was measured first and answered with no lengths, no channels and other songs — as
+   `artist - title` and `artist title album`. A hit counts only if its title, with artist, album and
+   track number taken out, is the release's title or a typo of it; another version (live, unplugged,
+   remix, …) or a length more than 30 s off is not this recording, and within 10 s scores higher.
+   The check writes nothing and names, per slot, the hit, its channel and its distance in seconds;
+   a video on the release and a file the release does not list (another edition's, or
+   `Heilig`'s `[Official Videoclip]`) are reported and left alone, and the fetched format is said
+   beside the album's own ("opus, beside the album's flac/opus"). The apply fetches only what was
+   chosen (`--only 1-06`, or the ticked rows), into the slot the release gives it, named by the
+   album's scheme and tagged from the release, with provenance `mb` and the hits as its candidates.
+   **Nothing the album holds is renamed, renumbered or removed**: an album whose next pass would
+   rename files is held until `repair` has done it, and the apply checks afterwards that every
+   existing file kept its name. Live proof on a copy of `Letzte Instanz/Heilig`: 1-06 `Für Dich`
+   found at +0 s, fetched as `06 - Für Dich.opus`, tags 6/15 with both MusicBrainz ids; the folder
+   diff is that file and the plan, nothing else; the next check lists only 1-15, for which nothing
+   close exists.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

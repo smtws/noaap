@@ -108,7 +108,7 @@ from .timing import (
     with_gaps,
 )
 from .timing import kind_for as timing_kind
-from .treatment import for_album, held_back, says_exceptions, with_exception
+from .treatment import for_album, held_back, renames, says_exceptions, with_exception
 from .trim import ORIGINALS, kept_originals, originals_of
 from .trim import key as trim_key
 
@@ -1340,6 +1340,17 @@ class Service:
             return self.yt
         return sources.get(wanted, self.cfg, self._cancel)
 
+    def _track_finder(self):
+        """The provider that can look for one recording (§9, slice 162): this Service's own first —
+        a test's stand-in stays the answer — then the first that says it can. The core names none."""
+        if sources.TRACKS in self.yt.capabilities():
+            return self.yt
+        for name in sources.known():
+            found = sources.get(name, self.cfg, self._cancel)
+            if sources.TRACKS in found.capabilities():
+                return found
+        return None
+
     def _track_source(self, plan: AlbumPlan):
         """Which provider each track's audio comes from — its chosen candidate's, not the album's."""
         def whose(track: PlanTrack):
@@ -2283,6 +2294,111 @@ class Service:
                        message=f"{plan.album}: {said}" if said else f"{plan.album}: no exceptions")
 
     # -- deleting (always asked for explicitly) -------------------------------------------
+
+    def complete(self, source_id: str, only: set[str] | None = None, dry_run: bool = True) -> Outcome:
+        """Fetch the tracks an album's **pinned** release lists and the album has no file for
+        (DESIGN §9, slice 162; P118).
+
+        The dry run says, per missing track, what the provider found and how close it is; it writes
+        nothing and downloads nothing. The apply fetches the chosen slots — `only`, or every one with
+        a hit — into the album, each in its disc/number slot, named by the album's scheme and tagged
+        from the release; the hit is the track's candidate and the other hits wait beside it. Nothing
+        the album holds is renamed, renumbered or removed: an album with renames pending is refused
+        until `repair` has done them. Videos on the release and files the release does not list
+        (another edition's) are reported and left alone.
+        """
+        from .complete import gaps, queries, rank
+
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        release_id = pinned_release(plan)
+        if not release_id:
+            return Outcome("failed", plan, album_dir,
+                           "this album has no release pinned — pin the MusicBrainz release it is first; "
+                           "a release nobody chose is not evidence of what is missing")
+        mb = self.mb
+        release = mb.release(release_id) if mb else None
+        if not release:
+            return Outcome("failed", plan, album_dir, f"MusicBrainz could not be asked for {release_id}")
+        missing, extras = gaps(plan, release)
+        audio = [s for s in missing if not s.video and (only is None or s.name in only)]
+        lines = [f"release “{release.get('title')}” ({release_id[:8]}), "
+                 f"{sum(len(m.get('tracks') or []) for m in release.get('media') or [])} tracks; "
+                 f"this album holds {len(plan.tracks)} file(s), {len(missing)} track(s) missing"]
+        want = for_album(self.cfg, plan)
+        pending = [t for t in plan.tracks if t.state == "done" and renames(plan, want)
+                   and t.filename != wanted_filename(plan, t)]
+        if pending:
+            lines.append(f"⚠ {len(pending)} file(s) of this album would be renamed by its next pass — "
+                         "run `noaap repair` first; completing never renames what is there")
+        provider = self._track_finder()
+        if provider is None:
+            return Outcome("failed", plan, album_dir, "no provider here can look for single recordings")
+        theirs = sorted({Path(t.filename).suffix.lstrip(".").lower() for t in plan.tracks if t.filename} - {""})
+        for slot in audio:
+            self.check()
+            hits: dict[str, dict] = {}
+            for q in queries(slot, plan.album):
+                for hit in provider.find_tracks(q):
+                    hits.setdefault(hit["ref"], hit)
+            slot.hits = rank(slot, list(hits.values()), plan.album)
+            best = slot.hits[0] if slot.hits else None
+            took = f" ({int(slot.length) // 60}:{int(slot.length) % 60:02d})" if slot.length else ""
+            lines.append(f"{slot.name} {slot.title}{took}: " + (
+                f"“{best['title']}” by {best.get('channel') or '?'}"
+                + (f", {best['off']:+.0f} s" if best.get("off") is not None else "")
+                + (f" — and {len(slot.hits) - 1} more" if len(slot.hits) > 1 else "")
+                if best else "nothing close enough was found"))
+        for slot in missing:
+            if slot.video:
+                lines.append(f"{slot.name} {slot.title}: a video on the release — not completed")
+        for title in extras:
+            lines.append(f"extra: “{title}” is not on this release (another edition?) — left as it is")
+        if any(s.hits for s in audio):
+            lines.append(f"fetched as {getattr(provider, 'delivers', None) or 'the provider sends it'}, "
+                         f"beside the album's {'/'.join(theirs) or 'nothing'}"
+                         + ("; the album's files are retagged only where its track total changes" if plan.tracks else ""))
+        offered = [s.to_dict() for s in missing]
+        if dry_run or pending:
+            for line in lines:
+                self.log(line)
+            return Outcome("dry" if dry_run else "held", plan, album_dir,
+                           "" if dry_run else "renames pending — nothing fetched", changes=lines, offered=offered)
+        before = {t.video_id: t.filename for t in plan.tracks}
+        added = 0
+        for slot in audio:
+            if not slot.hits:
+                continue
+            best = slot.hits[0]
+            prov = {k: Provenance.MB for k in ("title", "artist", "number", "disc")}
+            track = PlanTrack(video_id=best["ref"], number=slot.number, disc=slot.disc, artist=slot.artist,
+                              title=slot.title, filename="", provenance=prov,
+                              auto={"artist": slot.artist, "title": slot.title},
+                              mbid=slot.recording, mb_length=slot.length, duration=best.get("length"),
+                              channel=best.get("channel"),
+                              candidates=[Candidate(ref=h["ref"], provider=provider.name, length=h.get("length"),
+                                                    added_by="pass", why=f"found by completing the album: “{h['title']}”")
+                                          for h in slot.hits])
+            track.filename = wanted_filename(plan, track)
+            plan.tracks.append(track)
+            added += 1
+        if not added:
+            for line in lines:
+                self.log(line)
+            return Outcome("ok", plan, album_dir, "nothing to fetch", changes=lines, offered=offered)
+        plan.tracks.sort(key=lambda t: (t.disc, t.number))
+        save_plan(plan, album_dir)
+        self.log(f"completing {plan.albumartist} — {plan.album}: {added} track(s) to fetch")
+        outcome = self.execute(plan, album_dir)
+        moved = [f for vid, f in before.items()
+                 if (t := next((x for x in plan.tracks if x.video_id == vid), None)) is None or t.filename != f]
+        if moved:   # the promise above, checked rather than assumed
+            log.warning("completing %s changed existing file(s): %s", plan.album, moved)
+        outcome.changes = lines
+        outcome.offered = offered
+        return outcome
 
     def delete_track(self, source_id: str, video_id: str) -> Outcome:
         """Delete one track: its files go, and it leaves the album.

@@ -26,6 +26,7 @@ LISTING = "listing"      # say what one owner publishes, given their address (§
 CHANGES = "changes"      # say cheaply whether a collection changed
 DETAILS = "details"      # enrich a search hit with a cover and a track count
 CLEAN = "clean"          # its titles carry conventions worth stripping (DESIGN §5)
+TRACKS = "tracks"        # find one recording by artist and title, to complete an album (§9, slice 162)
 # **what it hands over is nobody else's** (§9, slice 72). One person paid a creator for it: it is not
 # offered to lrclib or MusicBrainz, and nothing about it — not a title, not a creator, not a duration
 # — is sent to either of them to ask a question. A provider declares this; the core enforces it, and
@@ -97,6 +98,9 @@ class Source(Protocol):
 
     def find(self, query: str, limit: int = 12) -> list[SourceRef]:
         """SEARCH: collections matching a name."""
+
+    def find_tracks(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
+        """Single recordings for a query: `{ref, title, channel, length}` each (§9, slice 162)."""
 
     def find_playlists(self, query: str, limit: int = 10) -> list[SourceRef]:
         """SEARCH: collections that are not releases — a playlist somebody made."""
