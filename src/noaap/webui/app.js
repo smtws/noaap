@@ -1,4 +1,4 @@
-import { CLAIM_LABEL, LENGTH, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
+import { CLAIM_LABEL, LENGTH, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
@@ -746,18 +746,43 @@ async function openAlbum(id) {
 
 const rowKey = (t) => [t.number, t.artist, t.title, t.state, t.in_source].join("|");
 
+// The editor's own fields, with the value each was drawn with: `defaultValue` is the `value`
+// attribute `h()` set, so a field differs from it exactly when the user has typed into it.
+function editorFields() {
+  const form = $("#albumform");
+  if (!form) return [];
+  return [...form.querySelectorAll("input[name]")]
+    .filter((el) => ["text", "number", "search", ""].includes(el.type))
+    .map((el) => ({ el, row: el.closest("tr")?.dataset.id || "", name: el.name, value: el.value, shown: el.defaultValue }));
+}
+
 async function refreshAlbumPanel() {
   if (!currentAlbum) return;
   const before = new Map(currentAlbum.tracks.map((t) => [t.video_id, rowKey(t)]));
+  const opened = currentAlbum.source_id;
   try {
     currentAlbum = await api(`/api/album?id=${encodeURIComponent(currentAlbum.source_id)}`);
   } catch { return; /* album moved or gone */ }
+  // **taken after the answer, not before it** (P116, D2): the user may type while it is on its way
+  const kept = currentAlbum.source_id === opened ? unsavedEdits(editorFields()) : [];
   syncQueueWith(currentAlbum);
   renderAlbum();
   for (const tr of document.querySelectorAll("#album tbody tr")) {
     const t = currentAlbum.tracks.find((x) => x.video_id === tr.dataset.id);
     if (t && before.get(t.video_id) !== rowKey(t)) tr.classList.add("changed");
   }
+  if (!kept.length) return;
+  // **a finished job redraws the album; it does not take back what was typed** (P116, D2): the
+  // reviewer typed a title, pressed "Fetch lyrics" on the same album, and 25 s later the field read
+  // the old title again. The typed values go back into their fields — still unsaved, so still
+  // different from what they were drawn with — and the page says the album moved underneath.
+  const fresh = editorFields();
+  let lost = 0;
+  for (const k of kept) {
+    const f = fresh.find((x) => x.row === k.row && x.name === k.name);
+    if (f) f.el.value = k.value; else lost += 1;
+  }
+  toast(`This album changed while you were editing it. Your unsaved changes are kept — save them, or reopen the album to drop them.${lost ? ` ${lost} belonged to a track that is no longer here.` : ""}`, "failed");
 }
 
 /** Teach the player what a write job just did to these files (§9, slice 87).
@@ -1902,6 +1927,9 @@ function saveAlbum(ev) {
       })),
     };
     movedRows.clear();  // the arrangement being saved is the arrangement from now on
+    // and the values being saved are the values from now on: the refresh after this save must
+    // not mistake them for unsaved typing (P116, D2)
+    for (const f of editorFields()) f.el.defaultValue = f.value;
     submit("edit", { id: currentAlbum.source_id, edits }, ev.submitter);
   } catch (e) {
     // **a save that cannot be built says so** (§9, slice 89). This one threw inside the handler, so the

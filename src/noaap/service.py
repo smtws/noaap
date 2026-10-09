@@ -37,6 +37,7 @@ from .download import (
     needs_a_recut,
     point_at,
     relocate,
+    resolved,
     rewritten,
     run,
     save_plan,
@@ -2293,6 +2294,10 @@ class Service:
         if not found:
             return Outcome("failed", message=f"unknown album {source_id}")
         album_dir, plan = found
+        # **the id the plan file shows is an id** (P116, I-404): an adopted track is stored as
+        # `./file.mp3` and loaded as the absolute path, so the one a user copied out of
+        # `.noaap.json` was refused as "no such track"
+        video_id = resolved(video_id, album_dir)
         track = next((t for t in plan.tracks if t.video_id == video_id), None)
         if not track:
             return Outcome("failed", message="no such track")

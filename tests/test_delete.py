@@ -116,3 +116,22 @@ def test_prune_takes_the_kept_original_with_it(tmp_path, opus_template):
     assert not kept_originals(album_dir, gone), "and prune must take it along"
     assert not (album_dir / gone.filename).exists()
     assert len(load_plan(album_dir).tracks) == 2
+
+
+def test_delete_track_takes_the_id_the_plan_file_shows(library):
+    """P116 (I-404): an adopted track's id is its path — `./file` in `.noaap.json`, absolute once
+    loaded — and the id a user copied out of the file was refused as "no such track"."""
+    tmp_path, plan, yt = library
+    album_dir = tmp_path / plan.folder
+    adopted = load_plan(album_dir)
+    victim = adopted.tracks[1]
+    victim.video_id = str(album_dir / victim.filename)        # what adopt gives a file
+    save_plan(adopted, album_dir)
+    shown = next(t["video_id"] for t in json.loads((album_dir / ".noaap.json").read_text())["tracks"]
+                 if t["video_id"].startswith("./"))
+    assert shown == f"./{victim.filename}"
+
+    service = Service(Config(musicbrainz=False), tmp_path, yt=yt)
+    assert service.delete_track(plan.source_id, shown).status == "ok"
+    assert len(load_plan(album_dir).tracks) == 12
+    assert not (album_dir / victim.filename).exists()

@@ -122,3 +122,22 @@ def test_saving_waits_for_the_running_download(tmp_path):
     release.set()
     wait(first), wait(second)
     assert order == ["download", "save"]
+
+
+def test_finished_jobs_are_forgotten_beyond_a_bound(tmp_path, monkeypatch):
+    """P116, I-407: a server that kept every finished job grew 165 → 339 MB over ~4,100 jobs. The
+    oldest finished ones go; a job still running is never forgotten, whatever its age."""
+    from noaap import web
+    monkeypatch.setattr(web, "KEEP_FINISHED", 3)
+    release = threading.Event()
+    jobs = Jobs(lambda job: Service(Config(musicbrainz=False), tmp_path, yt=object(), cancel=job.cancel))
+    long = jobs.submit("fetch", "long", lambda s: release.wait(5))
+    reads = [wait(jobs.submit("search", f"read {n}", lambda s: n)) for n in range(6)]
+    jobs.submit("search", "one more", lambda s: None)   # the forgetting happens on submit
+    kept = {j.id for j in jobs.recent(50)}
+    assert long.id in kept                                   # running: kept
+    assert {r.id for r in reads[-3:]} <= kept                # the newest finished: kept
+    assert not {r.id for r in reads[:3]} & kept              # the oldest: gone
+    assert jobs.get(reads[0].id) is None
+    release.set()
+    wait(long)

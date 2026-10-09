@@ -94,6 +94,10 @@ STATIC = {
     "/icon.svg": ("icon.svg", "image/svg+xml"),
 }
 MAX_LOG = 400
+# **a finished job is kept for the page, not for ever** (P116, I-407): the night run measured a
+# server that never forgot one growing 165 → 339 MB over ~4,100 jobs. The page reads the last
+# twenty (`recent`) and polls the one it started, so a few hundred is plenty.
+KEEP_FINISHED = 200
 # what a saved alignment may record about the two methods that produced it (§9, slice 44)
 CHECKED_KEYS = frozenset({"first_span", "second_span", "first_piled", "second_piled", "first_placed",
                           "second_placed", "lost_method", "kept_method", "lost_why", "verified_against"})
@@ -167,23 +171,30 @@ class Jobs:
         job = Job(next(self._ids), kind, label, lane="read" if kind in self.READ_ONLY else "write", target=target)
         with self._lock:
             self._jobs[job.id] = job
+            done = [i for i, j in self._jobs.items() if j.state not in ("queued", "running")]
+            for i in done[:max(0, len(done) - KEEP_FINISHED)]:  # oldest first: ids only grow
+                del self._jobs[i]
         self._queues[job.lane].put((job, action))
         return job
+
+    def _all(self) -> list[Job]:
+        """A copy to look through: `submit` forgets old jobs from another thread."""
+        with self._lock:
+            return list(self._jobs.values())
 
     def get(self, job_id: int) -> Job | None:
         return self._jobs.get(job_id)
 
     def recent(self, n: int = 20) -> list[Job]:
-        with self._lock:
-            return sorted(self._jobs.values(), key=lambda j: j.id, reverse=True)[:n]
+        return sorted(self._all(), key=lambda j: j.id, reverse=True)[:n]
 
     def busy(self, lane: str | None = None) -> bool:
         """Something is queued or running (by default in any lane)."""
-        return any(j.state in ("queued", "running") and lane in (None, j.lane) for j in self._jobs.values())
+        return any(j.state in ("queued", "running") and lane in (None, j.lane) for j in self._all())
 
     def writing(self) -> Job | None:
         """The queued or running job that changes the library, if there is one."""
-        return next((j for j in self._jobs.values() if j.lane == "write" and j.state in ("queued", "running")), None)
+        return next((j for j in self._all() if j.lane == "write" and j.state in ("queued", "running")), None)
 
     def working_on(self, target: str) -> Job | None:
         """The queued or running write job that has this album in its hands, if there is one.
@@ -191,7 +202,7 @@ class Jobs:
         Only jobs that know their album can be found this way: a `fetch` is named by its URL and
         learns the album id while it runs, so it is not one of them.
         """
-        return next((j for j in self._jobs.values() if j.target == target and j.state in ("queued", "running")), None)
+        return next((j for j in self._all() if j.target == target and j.state in ("queued", "running")), None)
 
     def cancel(self, job_id: int) -> Job | None:
         """Queued: will never run. Running: stops at the next safe point."""
@@ -1653,17 +1664,28 @@ class _Handler(BaseHTTPRequestHandler):
         leave a `ConnectionResetError` traceback in the journal. It is one line at debug level now, and
         a request slower than `SLOW` says so with the time it took to answer at all.
         """
-        started = self._headers_at = time.monotonic()
+        # **the clock starts when a request has arrived, not when we start waiting for one** (P116e,
+        # R-560). On a kept-alive connection this method first sits in `readline` until the browser
+        # sends its next request — the page's 8 s idle poll made every `/api/state` "slow: 8.03 s",
+        # and a connection the browser closed after minutes logged the *previous* request's path
+        # with "0.00 s to the first byte". `parse_request` stamps the start; no stamp, no request.
+        self._started = None
         try:
             super().handle_one_request()
         except (ConnectionResetError, BrokenPipeError, TimeoutError) as e:
             log.debug("the client went away: %s", type(e).__name__)
             self.close_connection = True
             return
-        took = time.monotonic() - started
+        if self._started is None:
+            return
+        took = time.monotonic() - self._started
         if took >= self.SLOW:
             log.warning("slow request: %s took %.2f s (%.2f s to the first byte)",
-                        (self.path or "?").split("?")[0], took, max(0.0, self._headers_at - started))
+                        (self.path or "?").split("?")[0], took, max(0.0, self._headers_at - self._started))
+
+    def parse_request(self) -> bool:
+        self._started = self._headers_at = time.monotonic()
+        return super().parse_request()
 
     # routing
 
@@ -1711,8 +1733,14 @@ class _Handler(BaseHTTPRequestHandler):
                 # **a cover is a file on disk and may be cached** (§9, slice 90): `no-store` made a
                 # refresh fetch every one of them again — 52 MB on the user's library, with the first
                 # press of play waiting behind it.
-                return (self._send(HTTPStatus.OK, cover[0], cover[1], modified=cover[2]) if cover
-                        else self._error(HTTPStatus.NOT_FOUND, "no cover"))
+                # **an album without a cover is not an error** (P116, R-549): a 404 for it put two
+                # console errors in every view of such an album. 204 says "nothing to show"; the
+                # page's `onerror` still hides the picture. An unknown album is still a 404.
+                if cover:
+                    return self._send(HTTPStatus.OK, cover[0], cover[1], modified=cover[2])
+                if self.app.album(q.get("id", "")):
+                    return self._nothing()
+                return self._error(HTTPStatus.NOT_FOUND, "no such album")
             case "/api/thumb":
                 thumb = self.app.thumbnail(q.get("u", ""))
                 return self._send(HTTPStatus.OK, thumb[0], thumb[1], cache=True) if thumb else self._error(HTTPStatus.NOT_FOUND, "no thumbnail")
@@ -1875,6 +1903,13 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _error(self, status: HTTPStatus, message: str) -> None:
         self._json({"error": message}, status)
+
+    def _nothing(self) -> None:
+        """204: the request was fine and there is nothing to send."""
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
 
     def _send(self, status: HTTPStatus, body: bytes, ctype: str, cache: bool = False,
               modified: float | None = None) -> None:

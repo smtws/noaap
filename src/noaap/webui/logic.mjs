@@ -1417,3 +1417,10 @@ export function offersState({ offered = [], mbid = null, pinned = false } = {}) 
                                   current: Boolean(mbid) && one.id === mbid })),
   };
 }
+
+/** **A refresh never takes back what the user typed** (P116, D2): the fields of the album editor
+ * whose value is not the one the panel was drawn with. `fields` are `{row, name, value, shown}` —
+ * `row` the track's id (empty for the album's own fields), `shown` the value it was rendered with. */
+export function unsavedEdits(fields = []) {
+  return fields.filter((f) => f.name && f.value !== f.shown).map(({ row = "", name, value }) => ({ row, name, value }));
+}

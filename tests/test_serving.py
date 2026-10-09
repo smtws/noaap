@@ -254,3 +254,29 @@ def test_the_state_counts_the_bin_without_reading_it(serving, many, monkeypatch)
 def test_a_library_with_no_bin_counts_zero(serving):
     _, c = serving
     assert c.get("/api/state").json()["recycled"] == 0
+
+
+def test_the_wait_for_the_next_request_is_not_counted(serving, monkeypatch, caplog):
+    """P116e (R-560): on a kept-alive connection the clock used to start before the request line
+    was read, so the page's 8 s idle poll logged every `/api/state` as "slow: 8.03 s", and a
+    connection the browser closed later logged the previous path with a long time."""
+    _, c = serving
+    monkeypatch.setattr(_Handler, "SLOW", 0.3)
+    with caplog.at_level("WARNING"):
+        c.get("/api/cover?id=album-1")
+        time.sleep(0.6)                        # idle on the same kept-alive connection
+        c.get("/api/cover?id=album-2")
+        c.close()                              # and close it: no request, no line
+        time.sleep(0.3)
+    assert not [r for r in caplog.records if "slow request" in r.getMessage()], caplog.text
+
+
+def test_an_album_without_a_cover_is_204_and_an_unknown_one_404(serving, many):
+    """P116 (R-549): a 404 for a known album with no picture was two console errors per view."""
+    _, c = serving
+    (many / "Artist 2" / "Album 2" / "cover.png").unlink()
+    nothing = c.get("/api/cover?id=album-2")
+    assert (nothing.status_code, nothing.content) == (204, b"")
+    assert c.get("/api/cover?id=album-2&thumb=1").status_code == 204
+    assert c.get("/api/cover?id=no-such-album").status_code == 404
+    assert c.get("/api/cover?id=album-1").status_code == 200    # and the connection still works
