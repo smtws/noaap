@@ -1167,13 +1167,16 @@ def _app(args: argparse.Namespace) -> int:
 
 
 def _delete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
-    from .download import load_plan
+    from .download import load_plan, resolved
 
     plan = load_plan(args.album_dir)
     if not plan:
         print(f"no plan in {args.album_dir}", file=sys.stderr)
         return 2
     if args.track:
+        # **the id the plan file shows is an id** (P116, I-404): `./file.mp3` there, absolute once
+        # loaded — the plan is loaded from this folder, so the id is resolved against it too
+        args.track = resolved(args.track, args.album_dir)
         track = next((t for t in plan.tracks if t.video_id == args.track), None)
         if not track:
             print(f"no track {args.track} in this album", file=sys.stderr)

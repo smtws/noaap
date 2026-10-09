@@ -135,3 +135,21 @@ def test_delete_track_takes_the_id_the_plan_file_shows(library):
     assert service.delete_track(plan.source_id, shown).status == "ok"
     assert len(load_plan(album_dir).tracks) == 12
     assert not (album_dir / victim.filename).exists()
+
+
+def test_the_command_line_takes_the_id_the_plan_file_shows(library, tmp_path, monkeypatch):
+    """P116 (I-404): `noaap delete DIR --track ./file` — the CLI checked the id against the loaded
+    (absolute) one itself and refused before the service was ever asked."""
+    from noaap.cli import main
+    lib, plan, _ = library
+    album_dir = lib / plan.folder
+    adopted = load_plan(album_dir)
+    victim = adopted.tracks[1]
+    victim.video_id = str(album_dir / victim.filename)
+    save_plan(adopted, album_dir)
+    conf = tmp_path / "xdg" / "noaap"
+    conf.mkdir(parents=True)
+    (conf / "config.toml").write_text(f'library_root = "{lib}"\nlyrics = false\nmusicbrainz = false\n')
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert main(["delete", str(album_dir), "--track", f"./{victim.filename}", "--yes"]) == 0
+    assert len(load_plan(album_dir).tracks) == 12
