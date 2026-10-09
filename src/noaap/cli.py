@@ -1208,8 +1208,14 @@ def _delete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 
 def _complete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     """`noaap complete DIR [--apply] [--only 1-06]` (§9, slice 162): the dry run is the default."""
-    from .complete import parse_only
+    from .complete import UNKNOWN_SLOT, parse_only
     from .download import load_plan
+
+    try:
+        only = parse_only(args.only)
+    except ValueError as e:
+        print(f"--only: {e}", file=sys.stderr)
+        return 2
 
     plan = load_plan(args.album_dir)
     if not plan:
@@ -1217,9 +1223,11 @@ def _complete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         return 2
     service = _service(cfg, args.album_dir.resolve().parents[1])
     # the lines are the pass's log, on stderr like every pass's; nothing is printed twice
-    outcome = service.complete(plan.source_id, only=parse_only(args.only), dry_run=not args.apply)
+    outcome = service.complete(plan.source_id, only=only, dry_run=not args.apply)
     if outcome.message:
         print(outcome.message, file=sys.stderr)
+    if outcome.message.startswith(UNKNOWN_SLOT):
+        return 2
     return 0 if outcome.status == "dry" else 1 if outcome.status == "held" else exit_code(outcome)
 
 

@@ -222,3 +222,21 @@ def test_another_take_of_a_song_is_a_track_of_its_own():
     assert not same_song("Schau in mein Gesicht", "Schau in Mein Gesicht (Akkustik Version)")
     assert not same_song("Dreams (Deep Growl Mix)", "Dreams")
     assert same_song("Sanctus (Remastered)", "Sanctus")
+
+
+def test_only_that_cannot_be_read_or_is_not_on_the_release(album, opus_template, tmp_path, monkeypatch, capsys):
+    """R-564: `--only foo` was a traceback, `--only 1-99` said nothing. Both say why, exit 2, fetch nothing."""
+    from noaap.cli import main
+    lib, album_dir, plan = album
+    with pytest.raises(ValueError, match="“foo” is not a track"):
+        parse_only("1-06,foo")
+    finder = Finder(opus_template, {"Gone Song": [{"ref": "good", "title": "Gone Song", "channel": "c", "length": 200}]})
+    out = service_for(lib, finder, release_of(plan, more=[("Gone Song", 200)])).complete(
+        plan.source_id, only={"1-99"}, dry_run=False)
+    assert out.status == "failed" and "1-99" in out.message and finder.downloads == [] and finder.asked == []
+    conf = tmp_path / "xdg" / "noaap"
+    conf.mkdir(parents=True)
+    (conf / "config.toml").write_text(f'library_root = "{lib}"\nlyrics = false\n')
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert main(["complete", str(album_dir), "--apply", "--only", "foo"]) == 2
+    assert "“foo” is not a track" in capsys.readouterr().err

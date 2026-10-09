@@ -165,14 +165,20 @@ def queries(slot: Slot, album: str) -> list[str]:
     return [f"{slot.artist} - {slot.title}", f"{slot.artist} {slot.title} {album}"]
 
 
+# the start of the refusal when `--only` names a track the release does not have (R-564)
+UNKNOWN_SLOT = "the release has no track"
+
+
 def parse_only(text: str | None) -> set[str] | None:
-    """`1-06,1-13` → {"1-06", "1-13"}; a bare `6` means disc 1."""
+    """`1-06,1-13` → {"1-06", "1-13"}; a bare `6` means disc 1. Anything else is a ValueError
+    that says which part it could not read."""
     if not text:
         return None
     out = set()
     for part in re.split(r"[,\s]+", text.strip()):
         if not part:
             continue
-        disc, _, number = part.rpartition("-")
-        out.add(f"{int(disc or 1)}-{int(number):02d}")
+        if not (m := re.fullmatch(r"(?:(\d{1,2})-)?(\d{1,3})", part)):
+            raise ValueError(f"“{part}” is not a track — write it as the check names it, e.g. 1-06")
+        out.add(f"{int(m[1] or 1)}-{int(m[2]):02d}")
     return out

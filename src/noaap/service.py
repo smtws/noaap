@@ -2307,7 +2307,7 @@ class Service:
         until `repair` has done them. Videos on the release and files the release does not list
         (another edition's) are reported and left alone.
         """
-        from .complete import gaps, queries, rank
+        from .complete import UNKNOWN_SLOT, gaps, queries, rank, slots_of
 
         found = self.find_album(source_id)
         if not found:
@@ -2322,6 +2322,9 @@ class Service:
         release = mb.release(release_id) if mb else None
         if not release:
             return Outcome("failed", plan, album_dir, f"MusicBrainz could not be asked for {release_id}")
+        if only is not None and (unknown := sorted(only - {s.name for s in slots_of(release, plan.albumartist)})):
+            # **a slot the release does not have is a typo, not a choice** (R-564): nothing is fetched
+            return Outcome("failed", plan, album_dir, f"{UNKNOWN_SLOT} {', '.join(unknown)} — nothing fetched")
         missing, extras = gaps(plan, release)
         audio = [s for s in missing if not s.video and (only is None or s.name in only)]
         lines = [f"release “{release.get('title')}” ({release_id[:8]}), "
