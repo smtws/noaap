@@ -187,6 +187,9 @@ DISC_SUFFIX = re.compile(r"^(?P<stem>.+?)[\s._-]*(?:cd|disc|disk)[\s._-]*0*(?P<n
 # scheme, which is what the 17 untagged files in the reference collection are named by.
 NAME_SHAPES = (
     re.compile(r"^(?P<artist>.+?) - (?P<album>.+?) - (?P<n>\d{1,3}) - (?P<title>.+)\Z"),
+    # and its multi-disc form, `… - 2-02 - Title` (§9, slice 164): read as no number at all before,
+    # so an untagged second disc lost both its disc and its place
+    re.compile(r"^(?P<artist>.+?) - (?P<album>.+?) - (?P<d>\d{1,2})-(?P<n>\d{1,3}) - (?P<title>.+)\Z"),
     re.compile(r"^(?P<n>\d{1,3})\s*[-.]\s*(?P<artist>.+?) - (?P<title>.+)\Z"),
     re.compile(r"^(?P<n>\d{1,3})\s*[-.]\s*(?P<title>.+)\Z"),
 )
@@ -208,6 +211,8 @@ def from_name(path: Path) -> dict[str, Any]:
                 out["album"] = album.strip()
             if (n := got.get("n")) and n.isdigit():
                 out["tracknumber"] = int(n)
+            if (d := got.get("d")) and d.isdigit() and int(d) > 0:
+                out["discnumber"] = int(d)
             return out
     return {}
 
@@ -230,6 +235,14 @@ def _past_id3v1_together(tags: list[dict[str, Any]]) -> None:
                 for row in tags:
                     if row.get(key) == short:
                         row[key] = longer[0]
+
+
+COPY_LENGTH = 2.0     # seconds two copies of one recording may differ by, measured from their containers
+
+
+def _same_length(a: Candidate, b: Candidate) -> bool:
+    """Lengths of two copies of one recording — or no length to say otherwise."""
+    return a.length is None or b.length is None or abs(a.length - b.length) <= COPY_LENGTH
 
 
 def disc_folders(folder: Path) -> list[tuple[int, Path]]:
@@ -418,15 +431,36 @@ class FolderSource:
         # audio and different names are recorded as they are, with their digests: "is this the same
         # recording as that one" is P52's first question and it is answered there, once, for the
         # library as well as for a folder.
+        # **a flat folder that holds two discs says so in its files** (§9, slice 164; R-567). With no
+        # disc sub-folders every file was disc 1, so `Saltatio Mortis — Sturm aufs Paradies`, a 2-CD
+        # set kept flat whose second disc repeats two titles at the same numbers, read as one
+        # `Hochzeitstanz` and one `Habgier und Tod` — the other file of each a "copy" — and an
+        # update then numbered the plan against that. Only where the files state **two or more**
+        # discs is their word taken: a folder whose files all say disc 1 reads as it always did.
+        if not discs:
+            stated = {(r[2].get("discnumber") or r[3].get("discnumber")) for r in rows} - {None}
+            if len(stated) > 1:
+                rows = [(r[2].get("discnumber") or r[3].get("discnumber") or r[0], *r[1:]) for r in rows]
         tracks: dict[Any, list[Any]] = {}
         for row in rows:
             disc, path, tags, named, measured = row
             known = {**named, **tags}
             name = (disc, known.get("tracknumber"), text_key(known.get("title") or path.stem))
             tracks.setdefault(name, []).append((row[:4], measured))
+        # **and two lengths are two recordings** (§9, slice 164): copies of one track — a flac and an
+        # mp3 of it — agree to within a second or two; a bonus disc's other version of a song does not
+        groups: list[list[Any]] = []
+        for group in tracks.values():
+            clusters: list[list[Any]] = []
+            for one in sorted(group, key=lambda g: g[1].length or 0):
+                if clusters and _same_length(clusters[-1][0][1], one[1]):
+                    clusters[-1].append(one)
+                else:
+                    clusters.append([one])
+            groups.extend(clusters)
 
         entries = []
-        for n, group in enumerate(tracks.values(), 1):
+        for n, group in enumerate(groups, 1):
             copies = sorted((copy for _, copy in group),
                             key=lambda c: (c.codec not in LOSSLESS, -(c.bitrate or 0)))
             disc, path, tags, named = next(row for row, _ in group if str(row[1]) == copies[0].ref)

@@ -345,15 +345,22 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     matches: dict[int, dict[str, Any]] = {}
     for i, t in enumerate(plan.tracks):
         want = key(core(t.title))
-        for j in unused:
-            # **one take is not another** (§9, slice 163): `core` strips the brackets, so the plain
-            # `Saigon und Bagdad` was seated on the release's `Saigon und Bagdad (Club Mix)` — the
-            # release spells the plain one `Saigon & Bagdad` — and an update renamed the file to
-            # the mix's number while the mix's own file held that name
-            if key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title):
-                matches[i] = mb_tracks[j]
-                unused.remove(j)
-                break
+        # **one take is not another** (§9, slice 163): `core` strips the brackets, so the plain
+        # `Saigon und Bagdad` was seated on the release's `Saigon und Bagdad (Club Mix)` — the
+        # release spells the plain one `Saigon & Bagdad` — and an update renamed the file to the
+        # mix's number while the mix's own file held that name
+        same = [j for j in unused
+                if key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title)]
+        if not same:
+            continue
+        # **and one title twice on a release is told apart by its length** (§9, slice 164):
+        # `Sturm aufs Paradies` has `Orpheus` at 1-09 (294 s) and 2-06 (401 s); the first exact
+        # name took the 401-s file to 1-09 and left the typo'd 294-s `Orpheues` for 2-06
+        mine = t.file_length or t.duration
+        j = min(same, key=lambda j: abs((mb_tracks[j].get("length") or 0) / 1000 - mine)
+                if mine and mb_tracks[j].get("length") else 0) if len(same) > 1 else same[0]
+        matches[i] = mb_tracks[j]
+        unused.remove(j)
     # **a second pass, and only where nothing else is near** (§9, slice 149). Every exact title is
     # seated first, so a typo can never take a seat an exact name wanted; and a near pair is taken
     # only when it is the one candidate for that file *and* that file is the one candidate for it.

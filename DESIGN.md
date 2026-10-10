@@ -4390,6 +4390,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    no longer lose a file); and an unseated plain `Saigon und Bagdad` is moved to the end (07 → 15) by
    the next MusicBrainz pass, as every track a release does not list is.
 
+164. ✅ **A flat folder that holds two discs** (2026-10-10, R-567, P119b). Slice 163 left
+   `Saltatio Mortis / Sturm aufs Paradies` open: a 2-CD set kept in one folder whose second disc
+   repeats `Hochzeitstanz` and `Habgier und Tod` at the same numbers. The folder reader knew discs only
+   from sub-folders, so every file was disc 1, and its copy rule (same number, same title = two copies
+   of one recording, slice 50) folded each pair into one entry — "3 no longer in the source", and the
+   next update numbered the plan against that. Now: in a folder **without** disc sub-folders, where
+   the files state two or more discs, the disc a file states is its disc; files of one number and
+   title whose lengths differ by more than 2 s are two recordings, not copies; and the name scheme's
+   multi-disc form (`… - 2-02 - Title`) is read. A folder whose files all state disc 1 reads as before.
+   The same album showed one more seat fault, fixed with it: the release has `Orpheus` at 1-09 (294 s)
+   and 2-06 (401 s), and the first exact name took the 401-s file to 1-09, leaving the owner's typo'd
+   294-s `Orpheues` for 2-06; where one title is on a release more than once, the file goes to the
+   one closest in length. Proof: a dry update of the mended copy proposes no swap and no fold — only
+   the five bonus tracks back to disc 2, `Orpheus` to 2-06 and the typo's title.
+   **Its reach, measured from the plans** (no file read): 43 flat albums of the library state two or
+   more discs in their files; in 31 of them the plan's discs differ from what the files say, so the
+   next update will number those by their files.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

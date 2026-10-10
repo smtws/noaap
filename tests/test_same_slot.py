@@ -269,3 +269,67 @@ def test_mend_leaves_a_folder_track_that_is_really_gone(tmp_path, opus_template,
     plan = load_plan(album_dir)
     mend(plan, album_dir)
     assert len(plan.tracks) == 2 and len(lost_files(album_dir, plan)) == 1
+
+
+def test_one_title_twice_on_a_release_goes_by_length():
+    """`Sturm aufs Paradies`: Orpheus at 1-09 (294 s) and at 2-06 (401 s); the plan holds a 401-s
+    `Orpheus` and a 294-s `Orpheues` (the owner's typo)."""
+    plan = build_plan(vol1())
+    plan.tracks = plan.tracks[:5]
+    for t, (title, length) in zip(plan.tracks, (("Habgier und Tod", 200), ("Hochzeitstanz", 260),
+                                                ("Prometheus", 250), ("Orpheus", 401), ("Orpheues", 294))):
+        t.title, t.file_length = title, float(length)
+    release = [{"title": "Habgier und Tod", "position": 1, "disc": 1, "length": 200_000},
+               {"title": "Hochzeitstanz", "position": 2, "disc": 1, "length": 260_000},
+               {"title": "Prometheus", "position": 3, "disc": 1, "length": 250_000},
+               {"title": "Orpheus", "position": 9, "disc": 1, "length": 294_000},
+               {"title": "Orpheus", "position": 6, "disc": 2, "length": 401_000}]
+    seats = _seat(plan, release, pinned=True)
+    assert (seats[3]["disc"], seats[3]["position"]) == (2, 6)
+    assert (seats[4]["disc"], seats[4]["position"]) == (1, 9)
+
+
+def test_a_flat_folder_with_two_discs_keeps_same_titled_files_apart(tmp_path, opus_template, long_template):
+    """`Sturm aufs Paradies` kept flat: disc 2 repeats `Hochzeitstanz` at 02. Both files are tracks."""
+    from mutagen.oggopus import OggOpus
+
+    from noaap import sources
+    album = tmp_path / "Saltatio Mortis" / "Sturm aufs Paradies"
+    album.mkdir(parents=True)
+    for name, disc, n, title, tpl in (("1-01 - Habgier und Tod", 1, 1, "Habgier und Tod", opus_template),
+                                      ("1-02 - Hochzeitstanz", 1, 2, "Hochzeitstanz", opus_template),
+                                      ("2-01 - Habgier und Tod", 2, 1, "Habgier und Tod", long_template),
+                                      ("2-02 - Hochzeitstanz", 2, 2, "Hochzeitstanz", long_template)):
+        f = album / f"Saltatio Mortis - Sturm aufs Paradies - {name}.opus"
+        shutil.copy(tpl, f)
+        tags = OggOpus(f)
+        tags.update({"title": title, "tracknumber": str(n), "discnumber": str(disc),
+                     "artist": "Saltatio Mortis", "album": "Sturm aufs Paradies"})
+        tags.save()
+    c = sources.get("folder", Config()).collection(str(album))
+    assert sorted((e.disc, e.number, e.title) for e in c.entries) == [
+        (1, 1, "Habgier und Tod"), (1, 2, "Hochzeitstanz"), (2, 1, "Habgier und Tod"), (2, 2, "Hochzeitstanz")]
+
+
+def test_two_copies_of_one_recording_are_still_one_track(tmp_path, opus_template):
+    """The rule slice 50 made: the same track twice (here two files of one length) is one entry."""
+    from noaap import sources
+    album = tmp_path / "A" / "B"
+    album.mkdir(parents=True)
+    for name in ("01 - Song.opus", "01 - Song (copy).opus"):
+        shutil.copy(opus_template, album / name)
+    from mutagen.oggopus import OggOpus
+    for f in album.iterdir():
+        t = OggOpus(f)
+        t.update({"title": "Song", "tracknumber": "1"})
+        t.save()
+    c = sources.get("folder", Config()).collection(str(album))
+    assert len(c.entries) == 1 and len(c.entries[0].copies) == 2
+
+
+def test_the_name_scheme_with_a_disc_is_read():
+    from pathlib import Path
+
+    from noaap.sources_folder import from_name
+    got = from_name(Path("Saltatio Mortis - Sturm aufs Paradies - 2-02 - Hochzeitstanz.mp3"))
+    assert (got["discnumber"], got["tracknumber"], got["title"]) == (2, 2, "Hochzeitstanz")
