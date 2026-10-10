@@ -620,6 +620,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
 
     fresh_by_id = {t.video_id: t for t in fresh.tracks}  # a repeated video is one entry
     listed = set(fresh_by_id) | {s["video_id"] for s in fresh.skipped}  # skipped videos are still in the source
+    _same_slot_new_video(merged, fresh, listed)
     known = set()
     for t in merged.tracks:
         known.add(t.video_id)
@@ -689,6 +690,36 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         t.number, t.disc = last + i, max((f.disc for f in fresh.tracks), default=1)
     merged.tracks = ordered + rest
     return refresh_derived(merged)
+
+
+def _same_slot_new_video(merged: AlbumPlan, fresh: AlbumPlan, listed: set[str]) -> None:
+    """**A new video for a song the album already holds is that song's, not a second track**
+    (§9, slice 163; R-566).
+
+    A release playlist swaps the video behind a title now and then. Read by id, that was one track
+    `no longer in the source` and one `new in the source` with the same name — and the update of
+    2026-10-10 then downloaded the new one into the name the old file held (`Metallica/Metallica`,
+    `Depeche Mode/Memento Mori`). Where exactly one finished track has left the source and exactly
+    one new entry carries its title and artist, they are one slot: the playlist's video becomes the
+    track's identity, the audio stays the file the album holds (`source_override`), and both are its
+    candidates. Nothing is downloaded; taking the new audio is one choice in the panel.
+    A folder is not asked: its ids are paths, and slice 135 answers that case.
+    """
+    if fresh.provider == FOLDER:
+        return
+    mine = {t.video_id for t in merged.tracks}
+    gone = [t for t in merged.tracks if t.video_id not in listed and t.state == "done"]
+    new = [f for f in fresh.tracks if f.video_id not in mine]
+    for f in new:
+        same = [t for t in gone if key(t.title) == key(f.title) and key(t.artist) == key(f.artist)]
+        rivals = [g for g in new if key(g.title) == key(f.title) and key(g.artist) == key(f.artist)]
+        if len(same) != 1 or len(rivals) != 1:
+            continue
+        old = same[0]
+        held = old.source_override or old.video_id
+        old.video_id, old.source_override = f.video_id, held
+        old.sync_candidates()
+        gone.remove(old)
 
 
 # how much a value is trusted; a merge never replaces a value by a less trusted one
@@ -967,6 +998,10 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
     mine = {t.video_id: t for t in was.tracks}
     for track in now.tracks:
         before = mine.pop(track.video_id, None)
+        if before is None and track.source_override and (before := mine.pop(track.source_override, None)):
+            # the source's new video for a song the album holds (§9, slice 163): one slot, said once
+            out.append(f"{track.disc}-{track.number:02d} {track.title}: the source lists another video "
+                       "for it — the file stays, the new one is a candidate")
         if before is None:
             out.append(f"{track.disc}-{track.number:02d} {track.title}: new in the source")
             continue

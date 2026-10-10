@@ -14,7 +14,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .enrich import _GROUP, core, credit_phrase, near_enough, version_markers
+from .enrich import core, credit_phrase, near_enough, takes
 from .models import AlbumPlan
 from .text import key
 
@@ -53,20 +53,11 @@ def comparable(title: str) -> str:
     return key(core(title or ""))
 
 
-# what a bracket says beyond `version_markers`: German spellings and the words a sleeve uses for
-# another take of the same song (`Schau in Mein Gesicht (Akkustik Version)` on `Heilig`)
-OTHER_TAKES = re.compile(r"\b(version|mix|edit|akustik|akkustik|orchester|live)\b", re.I)
-
-
-def versions(title: str) -> set[str]:
-    return version_markers(title) | {m.lower() for g in _GROUP.findall(title or "") for m in OTHER_TAKES.findall(g)}
-
-
 def same_song(ours: str, theirs: str) -> bool:
     """Two titles name one song: equal or a typo apart once brackets are gone — or one is the other
     with a prefix a release adds (`All the Works of Nature… - Vista` is `Vista`). **Not** when their
     brackets name different takes: the acoustic version of a song is a track of its own."""
-    if versions(ours) != versions(theirs):
+    if takes(ours) != takes(theirs):
         return False
     a, b = comparable(ours), comparable(theirs)
     if a == b or near_enough(a, b):

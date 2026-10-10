@@ -110,6 +110,18 @@ def version_markers(title: str) -> set[str]:
     return {m.lower() for group in _GROUP.findall(title) for m in _MARKER.findall(group)}
 
 
+# what a bracket says beyond `VERSION_MARKERS`: German spellings, and the words a sleeve uses for
+# another take of one song — `Saigon und Bagdad (Club Mix)`, `Schau in Mein Gesicht (Akkustik
+# Version)`. Not `version` on its own: `(Album Version)` is the same take as the plain title.
+_OTHER_TAKES = re.compile(r"\b(mix|edit|akustik|akkustik|orchester|live)\b", re.I)
+
+
+def takes(title: str) -> set[str]:
+    """Which take a title names, from its brackets: empty for the plain song (§9, slices 162/163)."""
+    return version_markers(title or "") | {m.lower() for g in _GROUP.findall(title or "")
+                                           for m in _OTHER_TAKES.findall(g)}
+
+
 def credited(entry: dict[str, Any]) -> str:
     """One artist of a credit, in their own spelling when the credit only restyles it.
 
@@ -334,7 +346,11 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     for i, t in enumerate(plan.tracks):
         want = key(core(t.title))
         for j in unused:
-            if key(core(mb_tracks[j]["title"])) == want:
+            # **one take is not another** (§9, slice 163): `core` strips the brackets, so the plain
+            # `Saigon und Bagdad` was seated on the release's `Saigon und Bagdad (Club Mix)` — the
+            # release spells the plain one `Saigon & Bagdad` — and an update renamed the file to
+            # the mix's number while the mix's own file held that name
+            if key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title):
                 matches[i] = mb_tracks[j]
                 unused.remove(j)
                 break
@@ -347,7 +363,8 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
         if i in matches:
             continue
         want = key(core(t.title))
-        close = [j for j in unused if near_enough(want, key(core(mb_tracks[j]["title"])))]
+        close = [j for j in unused if near_enough(want, key(core(mb_tracks[j]["title"])))
+                 and takes(mb_tracks[j]["title"]) == takes(t.title)]
         if len(close) != 1:
             continue
         their_title = key(core(mb_tracks[close[0]]["title"]))

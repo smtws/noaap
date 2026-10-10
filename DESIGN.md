@@ -4358,6 +4358,38 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    diff is that file and the plan, nothing else; the next check lists only 1-15, for which nothing
    close exists.
 
+163. ✅ **One slot, one file** (2026-10-10, R-566, P119). The library-wide MusicBrainz apply ended
+   with "4 track(s) in 4 album(s) are not where their plan says", in three shapes. **Metallica /
+   Metallica** and **Depeche Mode / Memento Mori**: the playlist listed a new video for a song the
+   album held; the merge kept the old entry as `no longer in the source` at the end (01 → 13) and
+   added the new one at 01 — and `run`, track by track, downloaded the new one into `01 - Enter
+   Sandman.opus` while the old file still had that name, overwriting it, before the old entry's
+   rename carried the new audio to 13. The old copy of each is gone (its length on disk is the new
+   video's). **In Extremo / Kompass zur Sonne** and **Saltatio Mortis / Sturm aufs Paradies**: a rename
+   was skipped because its name was taken — and the plan recorded the name anyway. In Extremo's
+   started in the seat rule: the release spells the plain song `Saigon & Bagdad`, and `core`, which
+   strips brackets, made the file's `Saigon und Bagdad` equal to `Saigon und Bagdad (Club Mix)`.
+   Now: (1) **a new video for a song the album holds is that song's** — exactly one finished track
+   left the source and exactly one new entry has its title and artist: the playlist's video becomes
+   the track's identity, the file stays (`source_override`), both are candidates, nothing is
+   downloaded, and the check says so in one line. (2) **Every rename before any download**, names
+   that only trade places go through a temporary name, and a rename whose name somebody else holds
+   is not taken and **not recorded**; a download never replaces another track's file. (3) **One take
+   is not another** when a release is seated: brackets that name a mix, an edit, a live or acoustic
+   take must agree (`(Album Version)` and `(Remastered)` still match the plain title). (4) `repair`
+   mends what the apply left, from the disk and after `find_again`: a lost file the track's own id or
+   adopted name points at is given back; where that leaves two entries of one title, each returns to
+   the title, disc and number its own file carried when adopted; and two entries of one song where
+   only one has left the source and only one has a file become one track, holding that file — whose
+   video the audio is, its length says when it can, and the line says when it cannot. Proved on
+   fixtures that reproduce each shape (five of them fail on the code before) and on copies of the
+   four albums: the second check finds nothing, every file carries its own title and number.
+   **Left open, said here:** `Saltatio Mortis / Sturm aufs Paradies` is a two-disc set kept flat, and
+   the folder reader reads `2-02 - Hochzeitstanz` as disc 1 and folds the two `Hochzeitstanz` (and two
+   `Habgier und Tod`) into one entry each — so the next update would number them wrong again (it can
+   no longer lose a file); and an unseated plain `Saigon und Bagdad` is moved to the end (07 → 15) by
+   the next MusicBrainz pass, as every track a release does not list is.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a

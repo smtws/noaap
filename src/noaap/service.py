@@ -67,6 +67,7 @@ from .lyrics import (
 )
 from .lyrics import default_cache_path as lyrics_cache_path
 from .mb import MusicBrainz, MusicBrainzError, default_cache_path
+from .mend import mend
 from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
 from .plan import (
     as_the_plan_knows_them,
@@ -1997,7 +1998,13 @@ class Service:
             # written form differs from the file — a path inside the album that is still absolute —
             # is saved even when nothing else about the album needs tidying.
             stale = rewritten(album_dir, plan)
+            lost_before = [t for t in plan.tracks if t.state == "done" and t.filename
+                           and not (album_dir / t.filename).is_file()]
             refound = self.find_again(plan, album_dir, dry_run=dry_run)
+            # **what the collection could not point at is mended from the disk** (§9, slice 163;
+            # R-566): after `find_again`, which answers the 1.5.0 plans — and a track it gave its
+            # file back is still asked whether its title and number are its file's own
+            mended = mend(plan, album_dir, given_back=[t for t in lost_before if (album_dir / t.filename).is_file()])
             # after `find_again`, which is cheap and asks the provider: only what is still missing is
             # worth decoding for (§9, slice 66)
             elsewhere = self.find_moved(plan, album_dir, apply=apply and not dry_run) if find_moved else {}
@@ -2059,11 +2066,13 @@ class Service:
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not discs and not would \
-                    and not repointed \
+                    and not repointed and not mended \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
                      + (f" ({filled} track(s) measured)" if filled else ""))
+            for line in mended:
+                self.log(f"  {'would mend' if dry_run else 'mended'}: {line}")
             # **under its album's header** (§9, slice 130, R-484 item 2). The question is asked before
             # the skip, which is before the header is printed — so the line used to come out above it
             # and read as the previous album's: 13 of them in one check, each naming the *next*

@@ -1051,6 +1051,14 @@ def run(
     if want is not None and not want.cover_embedded:
         cover = None          # the picture stays beside the album, not inside every file
     emptied: set[Path] = set()   # disc folders the renames below take the last file out of
+    if rename and keep is None and expect is None:
+        # **every rename before any download** (§9, slice 163; R-566). Done track by track, a track
+        # that moves away from a name ran after the new track that wanted that name had already been
+        # downloaded into it: `Metallica/Metallica` — the source listed a new video for `Enter
+        # Sandman` at 01, the old one moved to 13, and the download overwrote the old file at 01
+        # before the rename carried the new audio to 13. A take-in (`keep`) puts each original
+        # aside under its old name first, so it keeps the one-track-at-a-time order.
+        _renames_first(plan, album_dir, on_track, emptied, say)
     for track in plan.tracks:
         check()
         # **the original goes aside before anything happens to the file** (§9, slice 99), under the
@@ -1066,15 +1074,7 @@ def run(
                           as_path=f"{keep_as}/{track.filename}" if keep_as else None)
         wanted = wanted_filename(plan, track) if rename else track.filename
         if track.state == "done" and track.filename != wanted:
-            old, new = album_dir / track.filename, album_dir / wanted
-            if old.parent != album_dir:
-                emptied.add(old.parent)     # a disc folder this pass is taking the files out of
-            if old.exists() and not new.exists():
-                old.rename(new)
-                on_track(track, "renamed")
-            rename_sidecar(album_dir, track.filename, wanted)  # the lyrics follow the audio
-            track.filename = wanted
-            save_plan(plan, album_dir)
+            _rename_into_place(plan, album_dir, track, wanted, on_track, emptied, say)
         final = album_dir / track.filename
 
         if track.state == "done" and final.exists():
@@ -1206,6 +1206,10 @@ def run(
                     track.tagged = tag_file(tmp, plan, track, cover, text)
                 except MutagenError as e:
                     raise RuntimeError(f"downloaded file cannot be tagged: {e}") from e
+                if final.exists() and _owner_of(plan, track.filename, besides=track):
+                    # **a download never lands on a file another track owns** (§9, slice 163)
+                    raise RuntimeError(f"{track.filename} is another track's file in this album — "
+                                       "not overwritten; run `noaap repair`")
                 os.replace(tmp, final)
                 _put_away(album_dir, plan, track, final)
                 # a fresh download is by definition untouched, whatever the plan said before:
@@ -1246,6 +1250,83 @@ def run(
         with contextlib.suppress(OSError):
             folder.rmdir()
     return plan
+
+
+def _owner_of(plan: AlbumPlan, filename: str, besides: PlanTrack | None = None) -> PlanTrack | None:
+    """The finished track of this plan whose own file is `filename`, other than `besides`."""
+    return next((t for t in plan.tracks
+                 if t is not besides and t.state == "done" and t.filename == filename), None)
+
+
+def _rename_into_place(plan: AlbumPlan, album_dir: Path, track: PlanTrack, wanted: str,
+                       on_track: Callable[[PlanTrack, str], None], emptied: set[Path],
+                       say: Callable[[str], None]) -> bool:
+    """Give a finished track's file the name its plan wants — **and only record a name the file
+    really has** (§9, slice 163; R-566).
+
+    The plan used to take the wanted name whether or not the file got it: where the name was taken,
+    the rename was skipped and the plan pointed at somebody else's file. `In Extremo/Kompass zur
+    Sonne` and `Saltatio Mortis/Sturm aufs Paradies` were left that way by the update of 2026-10-10,
+    each with a file the plan no longer named and an entry whose file was not there.
+    """
+    old, new = album_dir / track.filename, album_dir / wanted
+    if old.exists() and not new.exists():
+        if old.parent != album_dir:
+            emptied.add(old.parent)     # a disc folder this pass is taking the files out of
+        new.parent.mkdir(parents=True, exist_ok=True)
+        old.rename(new)
+        on_track(track, "renamed")
+    elif new.exists() and not old.exists() and not _owner_of(plan, wanted, besides=track):
+        pass                            # it already has that name — moved by hand, or by a pass that stopped
+    else:
+        if old.exists():
+            whose = _owner_of(plan, wanted, besides=track)
+            line = (f"{track.number:02d} {track.title}: not renamed to {wanted} — "
+                    + (f"that is {whose.number:02d} {whose.title}'s file" if whose else "a file of that name is there"))
+            say(f"  {line}")
+            log.warning("%s", line)
+        return False
+    rename_sidecar(album_dir, track.filename, wanted)  # the lyrics follow the audio
+    track.filename = wanted
+    save_plan(plan, album_dir)
+    return True
+
+
+def _renames_first(plan: AlbumPlan, album_dir: Path, on_track: Callable[[PlanTrack, str], None],
+                   emptied: set[Path], say: Callable[[str], None]) -> None:
+    """Every finished track's rename, before any file is fetched (§9, slice 163).
+
+    A name another moving track still holds is taken once that one has moved; names that only
+    trade places among moving tracks go through a temporary name; a name held by anything else is
+    not taken at all, and the track keeps the name it has.
+    """
+    moving = [t for t in plan.tracks if t.state == "done" and t.filename != wanted_filename(plan, t)
+              and (album_dir / t.filename).exists()]
+    while moving:
+        done = [t for t in moving if not (album_dir / wanted_filename(plan, t)).exists()
+                and _rename_into_place(plan, album_dir, t, wanted_filename(plan, t), on_track, emptied, say)]
+        if done:
+            moving = [t for t in moving if t not in done]
+            continue
+        # nothing could move. What is left either trades names among itself — a cycle, or a chain
+        # into one — or waits on a file that is not moving at all, and only the first can be helped:
+        # shrink to the tracks whose wanted name another of them holds, until that is stable
+        trading = list(moving)
+        while True:
+            held = {t.filename for t in trading}
+            kept = [t for t in trading if wanted_filename(plan, t) in held]
+            if len(kept) == len(trading):
+                break
+            trading = kept
+        if not trading:
+            break           # each of these waits on somebody else's file; `_rename_into_place` said so
+        for n, t in enumerate(trading):
+            aside = f".noaap-moving-{n}{Path(t.filename).suffix}"
+            (album_dir / t.filename).rename(album_dir / aside)
+            rename_sidecar(album_dir, t.filename, aside)
+            t.filename = aside
+        save_plan(plan, album_dir)
+        moving = trading     # every name they wanted is free now; the rest wait, and were told
 
 
 def _follow_source(whose: Callable[[PlanTrack], Source], track: PlanTrack) -> None:
