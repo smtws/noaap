@@ -1440,3 +1440,11 @@ export function completeRows(offered = []) {
              can: Boolean(best) && !slot.video, ref: best?.ref || null };
   });
 }
+
+/** The id an album has after a write job moved it, or null (§9, slice 164): a folder album's id is its
+ * folder, and an apply that moves the folder re-points the plan — so the panel asks the job. */
+export function movedTo(job, id) {
+  const results = Array.isArray(job?.result) ? job.result : [job?.result];
+  const now = results.map((r) => r?.plan?.source_id).find(Boolean);
+  return now && now !== id ? now : null;
+}

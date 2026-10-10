@@ -21,3 +21,10 @@ test("nothing typed, nothing kept", () => {
   assert.deepEqual(unsavedEdits([]), []);
   assert.deepEqual(unsavedEdits([{ row: "a", name: "artist", value: "X", shown: "X" }]), []);
 });
+
+test("a moved album's new id comes from the job", async () => {
+  const { movedTo } = await import("../../src/noaap/webui/logic.mjs");
+  assert.equal(movedTo({ result: [{ plan: { source_id: "/m/A Band/An Album" } }] }, "/m/a band/an album"), "/m/A Band/An Album");
+  assert.equal(movedTo({ result: [{ plan: { source_id: "/m/x" } }] }, "/m/x"), null);
+  assert.equal(movedTo(null, "/m/x"), null);
+});

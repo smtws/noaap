@@ -435,12 +435,24 @@ class FolderSource:
         # disc sub-folders every file was disc 1, so `Saltatio Mortis — Sturm aufs Paradies`, a 2-CD
         # set kept flat whose second disc repeats two titles at the same numbers, read as one
         # `Hochzeitstanz` and one `Habgier und Tod` — the other file of each a "copy" — and an
-        # update then numbered the plan against that. Only where the files state **two or more**
-        # discs is their word taken: a folder whose files all say disc 1 reads as it always did.
+        # update then numbered the plan against that. Their word is taken **only where it is the
+        # answer to a question the numbers ask**: the track numbers repeat, and the stated discs
+        # make every disc-and-number pair unique. Measured on the library (R-568): 31 flat albums
+        # state two discs, and in most of them it is a stale tag — noaap's own retag had written a
+        # running number 1…22 and left the owner's disc tag alone — so taking it moved `Babylon`
+        # to 2-08. Those numbers do not repeat, and those folders read as they always did.
         if not discs:
-            stated = {(r[2].get("discnumber") or r[3].get("discnumber")) for r in rows} - {None}
-            if len(stated) > 1:
-                rows = [(r[2].get("discnumber") or r[3].get("discnumber") or r[0], *r[1:]) for r in rows]
+            def stated(r: Any) -> int | None:
+                return r[2].get("discnumber") or r[3].get("discnumber")
+
+            def number(r: Any) -> int | None:
+                return r[2].get("tracknumber") or r[3].get("tracknumber")
+
+            numbers = [number(r) for r in rows if number(r)]
+            pairs = [(stated(r), number(r)) for r in rows]
+            if len({stated(r) for r in rows} - {None}) > 1 and len(set(numbers)) < len(numbers) \
+                    and None not in {d for d, _ in pairs} and len(set(pairs)) == len(pairs):
+                rows = [(stated(r), *r[1:]) for r in rows]
         tracks: dict[Any, list[Any]] = {}
         for row in rows:
             disc, path, tags, named, measured = row

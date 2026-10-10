@@ -1,4 +1,4 @@
-import { CLAIM_LABEL, LENGTH, completeRows, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
+import { CLAIM_LABEL, LENGTH, completeRows, movedTo, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
@@ -2393,8 +2393,11 @@ async function applyIdentify(p, button) {
                + "\n\nThis is what the check listed. Nothing you typed yourself is changed.")) return;
   const id = await submit("identify", { id: p.source_id }, button);
   if (id == null) return;
-  await jobSettled(id, 4800);
+  const job = await jobSettled(id, 4800);
   lastIdentify = null;                           // the album has changed: look again
+  // **a folder album the apply moved has a new id** (§9, slice 164): the panel follows it there
+  const moved = movedTo(job, p.source_id);
+  if (moved && currentAlbum?.source_id === p.source_id) currentAlbum = { ...currentAlbum, source_id: moved };
   await poll();
   await refreshAlbumPanel();
 }

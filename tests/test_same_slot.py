@@ -333,3 +333,61 @@ def test_the_name_scheme_with_a_disc_is_read():
     from noaap.sources_folder import from_name
     got = from_name(Path("Saltatio Mortis - Sturm aufs Paradies - 2-02 - Hochzeitstanz.mp3"))
     assert (got["discnumber"], got["tracknumber"], got["title"]) == (2, 2, "Hochzeitstanz")
+
+
+def _seated(titles_lengths, release, mbids=None):
+    plan = build_plan(vol1())
+    plan.tracks = plan.tracks[:len(titles_lengths)]
+    for n, (t, (title, length)) in enumerate(zip(plan.tracks, titles_lengths)):
+        t.title, t.file_length = title, float(length)
+        t.mbid = (mbids or {}).get(n)
+    return _seat(plan, release, pinned=True)
+
+
+def test_a_whole_title_is_seated_before_a_bracket_stripped_one():
+    """Scorpions — `Life Goes Around (Previously Unreleased)` came first and took the plain song's seat."""
+    seats = _seated([("Rhythm of Love", 200), ("Life Goes Around (Previously Unreleased)", 266),
+                     ("Life Goes Around", 222), ("Still Loving You", 300), ("Wind of Change", 310)],
+                    [{"title": "Rhythm of Love", "length": 200_000}, {"title": "Life Goes Around", "length": 221_000},
+                     {"title": "Still Loving You", "length": 300_000}, {"title": "Wind of Change", "length": 310_000}])
+    assert seats[2]["title"] == "Life Goes Around" and 1 not in seats
+
+
+def test_a_whole_title_beats_a_closer_length():
+    """Utopia — the plain song (432 s) is closer to the Kellerkind version's 432 s than to its own 435 s."""
+    seats = _seated([("Phantasai, lieb' Phantasai!", 432), ("Phantasai, lieb' Phantasai! (Kellerkind version)", 431),
+                     ("Utopia", 300), ("Imperium", 280)],
+                    [{"title": "Phantasai, lieb' Phantasai!", "length": 435_000},
+                     {"title": "Phantasai, lieb' Phantasai! (Kellerkind version)", "length": 432_000},
+                     {"title": "Utopia", "length": 300_000}, {"title": "Imperium", "length": 280_000}])
+    assert seats[0]["length"] == 435_000 and seats[1]["length"] == 432_000
+
+
+def test_a_track_keeps_the_recording_it_already_is():
+    """Sinnfonie — `Leb!` twice on the release and twice in the folder, from another edition: the
+    recording each track already carries decides, so an update does not reshuffle them by length."""
+    release = [{"title": "Leb!", "length": 261_000, "recording": {"id": "r-1-06"}},
+               {"title": "Leb!", "length": 256_000, "recording": {"id": "r-3-07"}},
+               {"title": "Sinnfonie", "length": 200_000, "recording": {"id": "r-x"}},
+               {"title": "Vogelfrei", "length": 210_000, "recording": {"id": "r-y"}}]
+    seats = _seated([("Leb!", 231), ("Leb!", 261), ("Sinnfonie", 200), ("Vogelfrei", 210)], release,
+                    mbids={0: "r-1-06", 1: "r-3-07"})
+    assert seats[0]["recording"]["id"] == "r-1-06" and seats[1]["recording"]["id"] == "r-3-07"
+
+
+def test_a_stale_disc_tag_under_running_numbers_is_not_a_second_disc(tmp_path, opus_template):
+    """R-568: `Hans Söllner — Babylon` — numbers 1…11 written by an earlier retag, the owner's disc
+    tag (2) left on four files. The numbers do not repeat, so the folder is one disc, as before."""
+    from mutagen.oggopus import OggOpus
+
+    from noaap import sources
+    album = tmp_path / "Hans Söllner" / "Babylon"
+    album.mkdir(parents=True)
+    for n in range(1, 12):
+        f = album / f"Hans Söllner - Babylon - {n:02d} - Song {n}.opus"
+        shutil.copy(opus_template, f)
+        t = OggOpus(f)
+        t.update({"title": f"Song {n}", "tracknumber": str(n), "discnumber": "2" if n > 7 else "1"})
+        t.save()
+    c = sources.get("folder", Config()).collection(str(album))
+    assert {e.disc for e in c.entries} == {1} and sorted(e.number for e in c.entries) == list(range(1, 12))

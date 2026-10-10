@@ -343,7 +343,36 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     """plan track index -> one of `mb_tracks`, or None if too few fit."""
     unused = list(range(len(mb_tracks)))
     matches: dict[int, dict[str, Any]] = {}
+    def pick(t: PlanTrack, among: list[int]) -> int:
+        """Of several release tracks that could be this one: the recording it already is, else the
+        closest length (§9, slice 164)."""
+        if len(among) == 1:
+            return among[0]
+        already = t.mbid or getattr(t, "known_recording", None)   # the stored plan's, on a fresh read
+        if already and (held := [j for j in among if (mb_tracks[j].get("recording") or {}).get("id") == already]):
+            return held[0]
+        mine = t.file_length or t.duration
+        if not mine:
+            return among[0]
+        return min(among, key=lambda j: abs((mb_tracks[j].get("length") or 0) / 1000 - mine)
+                   if mb_tracks[j].get("length") else float("inf"))
+
+    # **the whole title first** (§9, slice 164): `Life Goes Around (Previously Unreleased)` came before
+    # the plain `Life Goes Around` in the plan, its bracket-stripped name matched the release's one
+    # `Life Goes Around`, and the plain song was left without a seat. A name that matches whole is
+    # seated before any name that only matches without its brackets.
     for i, t in enumerate(plan.tracks):
+        # (and the same take by its brackets: `… - Aggro Mix` keys like `… (Aggro mix)`, and whether a
+        # dash names a take is a question of its own — queued, not answered here)
+        whole = [j for j in unused if key(mb_tracks[j]["title"]) == key(t.title)
+                 and takes(mb_tracks[j]["title"]) == takes(t.title)]
+        if whole:
+            j = pick(t, whole)
+            matches[i] = mb_tracks[j]
+            unused.remove(j)
+    for i, t in enumerate(plan.tracks):
+        if i in matches:
+            continue
         want = key(core(t.title))
         # **one take is not another** (§9, slice 163): `core` strips the brackets, so the plain
         # `Saigon und Bagdad` was seated on the release's `Saigon und Bagdad (Club Mix)` — the
@@ -353,12 +382,10 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
                 if key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title)]
         if not same:
             continue
-        # **and one title twice on a release is told apart by its length** (§9, slice 164):
-        # `Sturm aufs Paradies` has `Orpheus` at 1-09 (294 s) and 2-06 (401 s); the first exact
-        # name took the 401-s file to 1-09 and left the typo'd 294-s `Orpheues` for 2-06
-        mine = t.file_length or t.duration
-        j = min(same, key=lambda j: abs((mb_tracks[j].get("length") or 0) / 1000 - mine)
-                if mine and mb_tracks[j].get("length") else 0) if len(same) > 1 else same[0]
+        # **and one title twice on a release is told apart by what the track already is, then by
+        # its length** (§9, slice 164): `Sturm aufs Paradies` has `Orpheus` at 1-09 (294 s) and 2-06
+        # (401 s); the first exact name took the 401-s file to 1-09
+        j = pick(t, same)
         matches[i] = mb_tracks[j]
         unused.remove(j)
     # **a second pass, and only where nothing else is near** (§9, slice 149). Every exact title is

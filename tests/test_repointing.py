@@ -587,3 +587,31 @@ def test_a_track_whose_audio_is_another_candidates_keeps_its_own_id(tmp_path, on
     assert tracks_elsewhere(plan, album) == []
     assert point_at(plan, album) is False
     assert plan.tracks[0].video_id == str(owners), "the owner's copy, as it was"
+
+
+def test_an_update_that_moves_an_album_points_its_plan_at_the_new_folder(tmp_path, one_second_of_sound):
+    """R-568: the library-wide update moved eight adopted albums into the release's spelling and
+    left their plans naming the folder they had left; the next update failed on each."""
+    root = tmp_path / "collection"
+    album = an_album(root / "a band" / "an album", ["One"], one_second_of_sound,
+                     artist="A Band", album="An Album")
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    shutil.move(root / "A Band" / "An Album", album)
+    shutil.rmtree(root / "A Band")
+    plan = load_plan(album)
+    plan.folder = "a band/an album"
+    plan.source_id = plan.source_url = str(album)
+    plan.cover_url = str(album)
+    for track in plan.tracks:
+        track.video_id = str(album / track.filename)
+        track.sync_candidates()
+    save_plan(plan, album)
+
+    service = a_library(root, retag_adopted=True, rename_adopted=True)
+    service.update_all(deep=True)
+
+    moved = root / "A Band" / "An Album"
+    assert moved.is_dir(), "the update moved it into the scheme"
+    after = load_plan(moved)
+    assert after.source_id == after.source_url == str(moved), after.source_id
+    assert points_elsewhere(after, moved) is False

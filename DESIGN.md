@@ -4404,9 +4404,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    294-s `Orpheues` for 2-06; where one title is on a release more than once, the file goes to the
    one closest in length. Proof: a dry update of the mended copy proposes no swap and no fold — only
    the five bonus tracks back to disc 2, `Orpheus` to 2-06 and the typo's title.
-   **Its reach, measured from the plans** (no file read): 43 flat albums of the library state two or
-   more discs in their files; in 31 of them the plan's discs differ from what the files say, so the
-   next update will number those by their files.
+   **Its reach, measured — and what that changed** (R-568). From the plans, 43 flat albums state two
+   or more discs in their files and 31 of them disagree with the plan, so all 31 were updated dry on
+   the share. The first run found three faults in this very slice: (a) in most of the 31 the second
+   disc is a **stale tag** — an earlier noaap retag wrote running numbers 1…22 and left the owner's
+   disc tag alone — and taking it moved `Babylon` to 2-08; the stated disc is now taken only where the
+   **track numbers repeat** and the stated discs make every disc-and-number pair unique, which is the
+   shape of `Sturm aufs Paradies` and of none of those. (b) The length tie-break overrode a whole-title
+   match (`Utopia`: the plain `Phantasai…` 1 s closer to the Kellerkind version's length) and a
+   bracket-stripped title took a plain one's seat (`Scorpions`: `Life Goes Around (Previously
+   Unreleased)`); a release is now seated **whole titles first**, and among equal names the recording
+   the track already is wins before any length. (c) That recording was unknown to the lookup — a fresh
+   read of a folder carries no recording ids — so `Sinnfonie`, another edition than its release, traded
+   its two `Leb!` on every update; the fresh read now takes each track's recording id from the plan.
+   The final dry run proposes changes for two albums only, both right: `Sturm aufs Paradies` (bonus disc
+   back to disc 2, `Orpheus` 2-06, the typo's title) and `Utopia` (`20 Schritte Freiheit, Teil 3` to
+   the 2-13 its file states). And one more fault the run surfaced in `update` itself: the apply had
+   moved eight adopted albums into the release's spelling and left their plans naming the old folder,
+   so this run could not read them; `update` now re-points a plan at the folder it has just moved it
+   to, as `repair` already did (slice 130). The eight still need one `repair` to be re-pointed.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

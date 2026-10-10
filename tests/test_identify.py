@@ -96,6 +96,12 @@ def the_album(app):
     return app.state()["albums"][0]["id"]
 
 
+def moved_to(job, source_id):
+    """The album's id after an apply: a folder album that was moved is re-pointed (§9, slice 164)."""
+    results = job.result if isinstance(job.result, list) else [job.result]
+    return next((r["plan"]["source_id"] for r in results if r and r.get("plan")), source_id)
+
+
 # -- the two steps -------------------------------------------------------------------------------
 
 
@@ -139,9 +145,11 @@ def test_a_matched_release_outranks_the_files_own_tags(collection):
     app = an_app(collection, mb)
     source_id = the_album(app)
 
-    settled(app, app.submit("identify", {"id": source_id}))
+    job = settled(app, app.submit("identify", {"id": source_id}))
 
-    after = load_plan(app.album(source_id)[0])
+    # the apply moved the folder into the release's name, and the plan now says where it is
+    # (§9, slice 164): the result carries the album's id after the move
+    after = load_plan(app.album(moved_to(job, source_id))[0])
     assert after.album == "CULT", "the matched release's own title"
     assert after.auto.get("album") == "CULT"
     assert after.mbid == RELEASE
@@ -200,9 +208,9 @@ def test_a_field_the_user_typed_is_not_overwritten(collection):
     save_plan(plan, album_dir)
     app.library_changed()
 
-    settled(app, app.submit("identify", {"id": source_id}))
+    job = settled(app, app.submit("identify", {"id": source_id}))
 
-    assert load_plan(app.album(source_id)[0]).album == "What I Call It"
+    assert load_plan(app.album(moved_to(job, source_id))[0]).album == "What I Call It"
 
 
 def test_an_unknown_album_is_refused(collection):

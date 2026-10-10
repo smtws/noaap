@@ -353,6 +353,17 @@ class Service:
         here = find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None
         if here and (pin := carry_the_pin(here[1], plan)):
             self.log(f"  the release you pinned: {pin}")
+        if here:
+            # **the recording each track already is goes into the lookup** (§9, slice 164): a fresh
+            # read of a folder knows no recording ids, so where a release lists one title twice —
+            # `Sinnfonie`'s `Leb!` on disc 1 and disc 3, from another edition than the owner's — the
+            # seat fell to the lengths and an update traded the two files' places
+            # A hint for the seat only, not the track's `mbid`: a track that has one is not looked
+            # up on its own, and the plan it is merged into keeps its own value anyway.
+            ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid}
+            for mine, same in zip(plan.tracks, as_the_plan_knows_them(here[1], plan).tracks):
+                if known := ids.get(same.video_id):
+                    mine.known_recording = known
         if not self.may_look_up(plan):
             self.log("  nothing about this album is looked up anywhere: its audio came from a source "
                      "one person paid for (set \"lookups\": true in its plan to change that)")
@@ -436,6 +447,12 @@ class Service:
             for line in wrote:
                 self.log(f"  {line}")
             album_dir = relocate(old_dir, plan, self.library, for_album(self.cfg, plan))
+            # **a move and its re-point are one pass in `update` too** (§9, slice 164; R-568): the
+            # library-wide apply of 2026-10-10 moved eight adopted albums into the release's
+            # spelling (`Das Beste Aus…` → `Das Beste aus…`) and left their plans naming the folder
+            # they had left — so the next update could not read them at all
+            if point_at(plan, album_dir):
+                self.log("  re-pointed at its own folder, which this pass has just moved it to")
         else:
             if report_only:
                 self.log(f"not in the library yet: {plan.folder}")
