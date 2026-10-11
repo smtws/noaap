@@ -89,3 +89,16 @@ def strip_self_feat(artist: str, title: str) -> str:
 def key(s: str) -> str:
     """Comparison key: case- and punctuation-insensitive."""
     return re.sub(r"\W+", "", s.casefold())
+
+
+_AND = re.compile(r"&|(?<!\w)(?:and|und)(?!\w)")
+
+
+def title_key(s: str) -> str:
+    """`key` for a song or album title, with `&`, `and` and `und` as one word (§9, slice 165).
+
+    MusicBrainz spells In Extremo's `Saigon und Bagdad` as `Saigon & Bagdad`; under `key` the two
+    are three letters apart, too far for a typo, so the file found no seat and an update put it past
+    the release's last track. Only whole words: `Undead` and `Sandman` keep their letters.
+    """
+    return key(_AND.sub(" ", s.casefold()))

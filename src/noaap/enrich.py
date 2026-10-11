@@ -22,7 +22,7 @@ from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
 from .plan import owner_artist_of, refresh_derived
-from .text import key, move_feat
+from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
 
@@ -157,8 +157,8 @@ def artist_matches(ours: str, ac: list[dict[str, Any]]) -> bool:
 
 
 def pick_recording(artist: str, title: str, recordings: list[dict[str, Any]]) -> dict[str, Any] | None:
-    want, feat = key(core(title)), feat_text(title)
-    ok = [r for r in recordings if key(core(r.get("title", ""))) == want and artist_matches(artist, r.get("artist-credit", []))]
+    want, feat = title_key(core(title)), feat_text(title)
+    ok = [r for r in recordings if title_key(core(r.get("title", ""))) == want and artist_matches(artist, r.get("artist-credit", []))]
     if not ok:
         return None
 
@@ -254,7 +254,7 @@ def release_candidates(plan: AlbumPlan, releases: list[dict[str, Any]], title: s
     ok = [
         r
         for r in releases
-        if key(core(r.get("title", ""))) == key(core(want))
+        if title_key(core(r.get("title", ""))) == title_key(core(want))
         and version_markers(r.get("title", "")) == version_markers(want)
         and artist_matches(plan.albumartist, r.get("artist-credit", []))
         and (any_count or abs(int(r.get("track-count") or 0) - n) <= 1)
@@ -364,7 +364,7 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     for i, t in enumerate(plan.tracks):
         # (and the same take by its brackets: `… - Aggro Mix` keys like `… (Aggro mix)`, and whether a
         # dash names a take is a question of its own — queued, not answered here)
-        whole = [j for j in unused if key(mb_tracks[j]["title"]) == key(t.title)
+        whole = [j for j in unused if title_key(mb_tracks[j]["title"]) == title_key(t.title)
                  and takes(mb_tracks[j]["title"]) == takes(t.title)]
         if whole:
             j = pick(t, whole)
@@ -373,13 +373,13 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     for i, t in enumerate(plan.tracks):
         if i in matches:
             continue
-        want = key(core(t.title))
+        want = title_key(core(t.title))
         # **one take is not another** (§9, slice 163): `core` strips the brackets, so the plain
         # `Saigon und Bagdad` was seated on the release's `Saigon und Bagdad (Club Mix)` — the
         # release spells the plain one `Saigon & Bagdad` — and an update renamed the file to the
         # mix's number while the mix's own file held that name
         same = [j for j in unused
-                if key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title)]
+                if title_key(core(mb_tracks[j]["title"])) == want and takes(mb_tracks[j]["title"]) == takes(t.title)]
         if not same:
             continue
         # **and one title twice on a release is told apart by what the track already is, then by
@@ -396,15 +396,15 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     for i, t in enumerate(plan.tracks):
         if i in matches:
             continue
-        want = key(core(t.title))
-        close = [j for j in unused if near_enough(want, key(core(mb_tracks[j]["title"])))
+        want = title_key(core(t.title))
+        close = [j for j in unused if near_enough(want, title_key(core(mb_tracks[j]["title"])))
                  and takes(mb_tracks[j]["title"]) == takes(t.title)]
         if len(close) != 1:
             continue
-        their_title = key(core(mb_tracks[close[0]]["title"]))
+        their_title = title_key(core(mb_tracks[close[0]]["title"]))
         rivals = [k for k, other in enumerate(plan.tracks)
                   if k != i and k not in matches
-                  and near_enough(key(core(other.title)), their_title)]
+                  and near_enough(title_key(core(other.title)), their_title)]
         if not rivals:
             matches[i] = mb_tracks[close[0]]
             unused.remove(close[0])
@@ -465,10 +465,10 @@ def says_offer(one: dict[str, Any]) -> str:
 
 def _fits(plan: AlbumPlan, mb_tracks: list[dict[str, Any]]) -> int:
     """How many of the plan's titles are somewhere in this release — the number a refusal hangs on."""
-    left = [key(core(t.get("title", ""))) for t in mb_tracks]
+    left = [title_key(core(t.get("title", ""))) for t in mb_tracks]
     n = 0
     for track in plan.tracks:
-        want = key(core(track.title))
+        want = title_key(core(track.title))
         if want in left:
             left.remove(want)
             n += 1
@@ -586,7 +586,7 @@ def _seatable(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[dict[str,
     """
     mine = len(plan.tracks)
     ok = [r for r in releases
-          if key(core(r.get("title", ""))) == key(core(plan.album))
+          if title_key(core(r.get("title", ""))) == title_key(core(plan.album))
           and version_markers(r.get("title", "")) == version_markers(plan.album)
           and artist_matches(plan.albumartist, r.get("artist-credit", []))
           and int(r.get("track-count") or 0) >= mine]
@@ -608,9 +608,9 @@ def _seats_by_whole_title(plan: AlbumPlan, release: dict[str, Any]) -> dict[int,
     free = list(range(len(tracks)))
     out: dict[int, dict[str, Any]] = {}
     for i, mine in enumerate(plan.tracks):
-        want = key(mine.title)
+        want = title_key(mine.title)
         for j in free:
-            if key(tracks[j]["title"]) == want:
+            if title_key(tracks[j]["title"]) == want:
                 out[i] = tracks[j]
                 free.remove(j)
                 break

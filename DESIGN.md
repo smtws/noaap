@@ -4423,6 +4423,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    moved eight adopted albums into the release's spelling and left their plans naming the old folder,
    so this run could not read them; `update` now re-points a plan at the folder it has just moved it
    to, as `repair` already did (slice 130). The eight still need one `repair` to be re-pointed.
+165. ✅ **`&`, `and` and `und` are one word in a title** (2026-10-11, R-573, P121). The proof run
+   after the repair of the twelve showed one line that would undo it: `In Extremo / Kompass zur Sonne`,
+   `Saigon und Bagdad: 1-07 → 1-15`. The release spells the song `Saigon & Bagdad`; under `key` the two
+   are three letters apart, more than a typo may be (slice 149), so the file found no seat and the
+   update numbered it past the release's last track. Slice 163 had read the same release and kept the
+   plain song off the mix's seat, which was right, but no seat at all is still wrong. Titles are now
+   compared by `title_key`, which is `key` after `&`, `and` and `und` (whole words only, so `Undead`
+   and `Sandman` keep their letters) are made one word: in every seat pass, in release and recording
+   lookups by title, and in `complete`'s "the album has it" check. Artist names keep `key`. Proof: a
+   dry update of a copy of the repaired album seats `07` on the release's 07 and moves nothing; it
+   proposes the release's spelling for the title, as it does for any title MusicBrainz names.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

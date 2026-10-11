@@ -16,7 +16,7 @@ from typing import Any
 
 from .enrich import core, credit_phrase, near_enough, takes
 from .models import AlbumPlan
-from .text import key
+from .text import key, title_key
 
 # a medium that holds pictures, not sound: its tracks are reported, never searched (R-562, 2)
 VIDEO_FORMATS = ("dvd", "blu-ray", "vhs", "video", "vcd", "umd")
@@ -50,7 +50,7 @@ class Slot:
 
 
 def comparable(title: str) -> str:
-    return key(core(title or ""))
+    return title_key(core(title or ""))
 
 
 def same_song(ours: str, theirs: str) -> bool:

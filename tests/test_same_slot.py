@@ -193,7 +193,42 @@ def test_one_take_is_not_another_when_seating_a_release():
                {"title": "Saigon & Bagdad", "position": 7, "disc": 1},
                {"title": "Saigon und Bagdad (Club Mix)", "position": 14, "disc": 1}]
     seats = _seat(plan, release, pinned=True)
-    assert sorted(seats) == [0, 1, 2, 3, 5] and seats[5]["position"] == 14   # the plain one is not seated
+    # the mix on its own seat; and since slice 165 `&` and `und` are one word, so the plain one has 7
+    assert seats[5]["position"] == 14 and seats[4]["position"] == 7
+
+
+def test_and_und_ampersand_are_one_word_in_a_seat():
+    """The proof's case (R-573): MB `Saigon & Bagdad` 238 s, the file `Saigon und Bagdad` 235 s with no
+    recording id, a release of 14 — the file is seated on 07, and nothing is left for a number past 14."""
+    plan = build_plan(vol1())
+    plan.tracks = plan.tracks[:2]
+    plain, mix = plan.tracks
+    plain.title, plain.mbid, plain.file_length = "Saigon und Bagdad", None, 234.73
+    mix.title, mix.file_length = "Saigon und Bagdad (Club Mix)", 233.0
+    release = [{"title": f"Song {n}", "position": n, "disc": 1, "length": 200_000} for n in range(1, 15)]
+    release[6] = {"title": "Saigon & Bagdad", "position": 7, "disc": 1, "length": 238_000}
+    release[13] = {"title": "Saigon und Bagdad (Club Mix)", "position": 14, "disc": 1, "length": 233_000}
+    seats = _seat(plan, release, pinned=True)
+    assert seats == {0: release[6], 1: release[13]}
+
+
+@pytest.mark.parametrize(("ours", "theirs", "same"), [
+    ("Saigon und Bagdad", "Saigon & Bagdad", True),
+    ("Rock and Roll", "Rock & Roll", True),
+    ("Tom & Jerry", "Tom und Jerry", True),
+    ("Undead", "Dead", False),          # whole words only
+    ("Sandman", "Sman", False),
+    ("Enter Sandman", "Enter Sandman", True),
+])
+def test_title_key_folds_the_three_ands(ours, theirs, same):
+    from noaap.text import title_key
+    assert (title_key(ours) == title_key(theirs)) is same
+
+
+def test_complete_counts_an_ampersand_slot_as_had():
+    from noaap.complete import same_song
+    assert same_song("Saigon und Bagdad", "Saigon & Bagdad")
+    assert not same_song("Saigon und Bagdad", "Saigon & Bagdad (Club Mix)")
 
 
 # -- the mend: a plan that names files it does not have (R-566 item 3) ----------------------------
