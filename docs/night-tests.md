@@ -278,3 +278,28 @@ The 16 excused rows of night 1, re-examined for the page:
 - **I-431 (6)** — "Remove empty folders" is never sent by the settings save.
 - **I-431 (7)** — a key removal is dropped when the provider changes in the same save.
 - **I-433** — the page's merge has no way to the server's `new`.
+
+### Re-walk on 1.52.0 (2026-10-11, R-580/R-581)
+
+The rows that found something, walked again on 1.52.0 = c3a0121, the release with P122. The server
+was run from `~/.local/noaap-release` on port 8911 over the same copies, and the harness was the same
+own headless Chrome with real input events. Results are in `harness/results-rewalk.jsonl`. **13 rows, 13 pass.**
+The two keyboard rows of I-426 are one row here. The two trim rows of I-432 also carry finding 11:
+the words survive a cut and come back byte for byte. The night's server-gone and poll rows are walked
+again with them.
+
+| row | for | observed | proof | verdict |
+|---|---|---|---|---|
+| Enter in the filter (I-426) | I-426 (both keyboard rows) | 20/20 on the matching card; misses [] | 47 log line(s) | pass |
+| player position bar (I-427) | I-427 | 1400px: pos [809, 809, 809, 809, 809], player h 68, note cut [False, False, False, False, False], page scroll False, save-trim inside True, jobs abov… | 230 log line(s) | pass |
+| exceptions box stays open (I-428) | I-428 | closed at first True; tick → {'tags': True}, box open after the job True; untick (no reopen) → {}, open True; another album's box open False | 2 log line(s) | pass |
+| Re-check source (I-429) | I-429 | {'Ever Dream': (['POST /api/update HTTP/1.1'], 'Update Nightwish — Ever Dream', 'done', '3/3 tracks done', []), 'Glasses Empty': (['POST /api/fetch H… | 2 log line(s) | pass |
+| jobs panel held click (I-430) | I-430 | 'log' pressed for 120 ms on a running job: opened 20/20 ([True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, T… | 534 log line(s) | pass |
+| Remove empty folders saved (I-431 6) | I-431 (6) | (wanted, /api/settings, config, box on reopen) = [(True, True, True, True), (False, False, False, False)] | 2 log line(s) | pass |
+| key removal with a provider change (I-431 7) | I-431 (7) | key set True; ' ' then provider none (row hidden True), Save → key False, align none, config value '' | 2 log line(s) | pass |
+| disc + trim fields + Save (I-432) | I-432 + finding 11 | disc 2 + trim 0:05: job done, 285.81 s → 280.7 s, words '[00:02.07] Ever felt away with me' → '[00:00.03] Just once that all I need'; back: job done,… | 2 log line(s) | pass |
+| player trim (I-432) | I-432 + finding 11 | The Wayfarer: pass — Nightwish - Ever Dream - 03 - The Wayfarer.mp3: untouched True; save 12–40 → (header, decoded) (28.0, 27.99); save 15–40 → (25.0… | 6 log line(s) | pass |
+| merge takes in new albums (I-433) | I-433 | check '1 tracks here, 178 there 0 pairs, 0 ambiguous, 1 the library does not have 0 to replace, 0 to fill, 0 to keep, 0 undecided nothing would be ad… | 2 log line(s), jpeg rw-merge-new.jpg | pass |
+| server gone mid-session, and back | night-2 row | SIGTERM to pid 3710968 → notice after 7.8s: 'The noaap server is not reachable. Start it with noaap serve (or install it: noaap service install). Ret… | 3 log line(s) | pass |
+| poll cadence (busy) | night-2 row | 20 gaps over 15 s of a deep update: median 0.71, min 0.7, max 0.74 | 80 log line(s) | pass |
+| poll cadence (idle) | night-2 row | idle /api/state gaps [8.01, 8.01, 8.01] | 36 log line(s) | pass |
