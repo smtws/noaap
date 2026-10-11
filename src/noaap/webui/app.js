@@ -3130,12 +3130,16 @@ async function saveSettings(ev) {
       // a field the chosen providers do not use is not shown and not sent, which leaves whatever the
       // config holds for it alone (§9, slice 92)
       ...shownTiming(f),
-      // only sent when something was typed: an empty field means "leave the key as it is"
+      // only sent when something was typed: an empty field means "leave the key as it is". **Typed
+      // is enough, shown or not** (P122, I-431): a space typed to remove a key, then the provider set
+      // to none in the same save, hid the row — and the removal was never sent
       ...Object.fromEntries((state.settings.timing?.vendors || [])
-        .filter((v) => shows(f, `key:${v}`) && f[`timing_${v}_key`]?.value)
+        .filter((v) => f[`timing_${v}_key`]?.value)
         .map((v) => [`timing_${v}_key`, f[`timing_${v}_key`].value.trim()])),
       // what every album should have (§9, slice 100): the state the library is in
       ...Object.fromEntries(STATE_SWITCHES.map(([key]) => [key, f[`state_${key}`].checked])),
+      // the one box of the panel that was never sent (P122, I-431): the server always took it
+      remove_empty_folders: f.remove_empty_folders.checked,
     });
     toast("✓ Settings saved — they apply from the next job", "done");
     $("#settings").hidden = true;

@@ -4527,6 +4527,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    last line, the cancel button's "Stopping…", the log pane — and the panel's children are replaced
    only when a job joins or leaves. Proof in the browser: 20 of 20 held presses open the log, and log
    plus Cancel still stop a deep update ("Stopping…", then cancelled).
+175. ✅ **What the settings panel shows is what it saves** (2026-10-11, P122 item 11; I-431).
+   - The "Remove empty folders" box was the one field the save never sent, although the server always
+     took it, so ticking it changed nothing.
+   - A key typed into its field is now sent whether or not its row is shown. A space typed to remove a
+     key, followed by setting the provider to none in the same save, hid the row, and the removal never
+     left the page: the key stayed in the config while the panel said it was gone.
+   An empty field still means "leave the key as it is". Proof in the browser: the box saved on and then
+   off, echoed by `/api/settings`, written to the config and shown again; a key removed together with
+   a provider change is gone from `/api/settings` and from the config.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
