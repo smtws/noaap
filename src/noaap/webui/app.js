@@ -1698,12 +1698,17 @@ function renderAlbum() {
 // **What this one album is excepted from** (§9, slice 100). The settings say what every album should
 // have and every pass brings an album to them; this is the only thing kept per album, it can only take
 // something away, and nothing but this writes one.
+let exceptionsOpenFor = null;   // the album whose exceptions box a person has open
+
 function exceptionsFor(p) {
   const wanted = state.settings?.state || {};
   const mine = p.exceptions || {};
   const said = saysExceptions(mine);
   const stopped = heldBack(wanted, mine);
-  const box = h("details", { class: "exceptions" },
+  // **an open box stays open** (P122, I-428): every tick runs a job, the job's end rebuilds the panel,
+  // and the box came back closed — so un-ticking what was just ticked needed a second open
+  const box = h("details", { class: "exceptions", open: exceptionsOpenFor === p.source_id,
+    ontoggle: (e) => { exceptionsOpenFor = e.currentTarget.open ? p.source_id : null; } },
     h("summary", { class: "muted" },
       said ? `This album is excepted: ${said}` : "This album follows the library's settings"),
     h("div", { class: "muted" },

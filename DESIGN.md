@@ -4507,6 +4507,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - 390 px: bar 288 px.
    At every width the trim buttons stay inside the player, the jobs stay above it, and the page never
    scrolls sideways.
+172. ✅ **An open exceptions box stays open** (2026-10-11, P122 item 8; I-428). Every tick in an album's
+   "This album follows the library's settings" box runs a job, the job's end rebuilds the panel, and
+   the box came back closed, so un-ticking what had just been ticked needed a second open. The page
+   now remembers which album's box a person has open and builds it open again. Proof in the browser:
+   tick and untick without reopening (plan `{tags: true}` → `{}`), with the box open throughout; another
+   album's box opens closed.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
