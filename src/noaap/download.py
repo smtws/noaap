@@ -653,6 +653,8 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                             + (f", else from {archive}" if archive else ""))
             else:
                 said.append(f"a cover would be saved beside the album from {address[0]}")
+    if want is not None and want.cover_beside:
+        said += cover_would(plan, album_dir)
     if want is not None and not want.cover_embedded:
         cover = None
     if library is not None and rename:
@@ -1431,6 +1433,13 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
             log.warning("%s is not a picture this program can read, and is left as it is", q)
     if existing:
         data = existing.read_bytes()
+        if not fetch:
+            # **a look is not a write** (§9, slice 179; P127). `repair --dry-run` asks this for the
+            # bytes it compares the tracks with, and the branches below renamed, squared or replaced
+            # the file on the way: on 2026-10-11 a check replaced `Sonata Arctica/For the Sake of
+            # Revenge/cover.jpg` on the share, and left the plan recording the picture it had removed.
+            # `would_do` says what they would do (`cover_would`); only a pass that may fetch does it.
+            return data
         existing = _named_for_what_it_is(existing, data)
         ours = plan.cover_fetched.get("sha1") == _sha1(data)
         if ours and (square := square_if_padded(data)):  # saved before covers were squared
@@ -1463,6 +1472,31 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
     elif addresses:
         log.debug("no picture in the files of %s", album_dir)
     return None
+
+
+def cover_would(plan: AlbumPlan, album_dir: Path) -> list[str]:
+    """What `_cover` would do to a cover already beside the album, one line each; nothing is touched.
+
+    The three things it does there, said in the order it does them (§9, slice 179; P127): a name the
+    bytes disagree with is corrected, a padded cover of ours is squared, and a cover of ours is
+    fetched again when the plan has an address it has not tried yet.
+    """
+    beside = sorted(album_dir.glob(f"{COVER_STEM}.*"))
+    existing = next((p for p in beside if image_mime(p.read_bytes())), None)
+    if existing is None:
+        return []
+    said: list[str] = []
+    data = existing.read_bytes()
+    ext = (image_mime(data) or "").split("/")[-1].replace("jpeg", "jpg")
+    if ext and existing.suffix.lower() != f".{ext}" and not existing.with_name(f"{existing.stem}.{ext}").exists():
+        said.append(f"{existing.name} would be renamed {existing.stem}.{ext}, which is what it holds")
+    if plan.cover_fetched.get("sha1") != _sha1(data):
+        return said   # somebody's own cover: used as it is, never replaced
+    if square_if_padded(data):
+        said.append("the cover would be squared")
+    if plan.cover_url and plan.cover_url not in (plan.cover_fetched.get("url"), plan.cover_fetched.get("tried")):
+        said.append(f"the cover would be fetched again from {plan.cover_url}, and replaced if that answers")
+    return said
 
 
 def _asks_its_source(plan: AlbumPlan) -> bool:

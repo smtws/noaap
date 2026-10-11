@@ -145,6 +145,10 @@ def test_the_album_now_has_a_cover_and_nothing_is_reported(tmp_path, one_second_
     got = _cover(plan, album, source, fetch=False)
 
     assert got == GIF, "the cover is there and is used"
+    # a look renames nothing (§9, slice 179; P127): only a pass that may write corrects the name
+    assert (album / "cover.jpg").is_file() and not (album / "cover.gif").exists()
+
+    assert _cover(plan, album, source, fetch=True) == GIF
     assert (album / "cover.gif").is_file() and not (album / "cover.jpg").exists()
 
 

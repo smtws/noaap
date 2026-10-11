@@ -4596,6 +4596,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `repair --dry-run` names exactly the three as would-be re-pointed, and nothing else;
    - `repair` re-points them;
    - the update dry run after reads all three: 0 new, 0 gone, no change, no error.
+179. ✅ **A dry run never writes a cover** (2026-10-11, R-595, P127). `repair --dry-run` over the 246
+   albums of slice 178 replaced `Sonata Arctica/For the Sake of Revenge/cover.jpg` on the share.
+   - What happened: the check asked `_cover(fetch=False)` for the bytes on disk, to compare the tracks
+     with them. The cover was one this program had saved, from the release group, and the plan named
+     the release's own address. That branch fetched the new address and wrote it, and `fetch=False`
+     did not guard it.
+   - The plan was not saved, since a check saves nothing, so it kept recording the picture that had
+     just been removed. The apply took the new file for the owner's and embedded it in 15 tracks.
+   - The same path could also rename a cover whose name its bytes contradict, and square a padded
+     one of ours.
+   - Now `_cover(fetch=False)` returns what is on disk and touches nothing. `cover_would` says what a
+     pass that may write would do: "cover.jpg would be renamed cover.gif …", "the cover would be
+     squared", "the cover would be fetched again from <address>, and replaced if that answers".
+     `would_do` carries those lines wherever a cover beside the album is wanted, so the album is not
+     skipped, and the apply's `run` does the work once and records it.
+   - `update --dry-run` never reached this path; its check reports from the plan alone.
+   - Test: an album with a cover of ours and a newer address. The repair and update dry runs leave
+     every file's bytes and mtime as they were and say the line; the apply fetches once, writes once
+     and records the new picture. It fails on 6c48040.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
