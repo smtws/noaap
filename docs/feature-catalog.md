@@ -5,7 +5,7 @@ help, the HTTP surface from `web.py`, the settings from `Config`, the page's con
 `app.js`, the providers from the modules that implement them. Regenerate with
 `scratchpad/p115/catalog.py` (R-543).
 
-**221 user-visible features**, enumerated: **21 commands** with **95 flags** and 13 subcommands, **13 HTTP endpoints**, **24 write actions**, **41 settings**, **5 timing providers**, **4 audio sources**, and the page's five areas (its individual buttons are grouped under those, not counted one by one).
+**222 user-visible features**, enumerated: **21 commands** with **95 flags** and 13 subcommands, **13 HTTP endpoints**, **25 write actions**, **41 settings**, **5 timing providers**, **4 audio sources**, and the page's five areas (its individual buttons are grouped under those, not counted one by one).
 
 ## Getting music in
 
@@ -68,7 +68,7 @@ help, the HTTP surface from `web.py`, the settings from `Config`, the page's con
 ## The web UI
 
 - **read endpoints**: `/api/album` (G6), `/api/audio` (C5), `/api/cancel` (G6), `/api/cover` (C2), `/api/details` (G6), `/api/job` (G6), `/api/lyrics` (G6), `/api/mbseed` (G6), `/api/recycle` (G6), `/api/settings` (G6), `/api/state` (C1), `/api/thumb` (G6), `/api/tracks` (C1)
-- **write actions (`POST /api/<action>`)**: `align` (C4 G11), `arrived` (C4 E1), `check_lyrics` (C4 G7), `cover` (C2 C4), `delete_album` (C4 G8), `delete_track` (C4 G8), `draft` (C4 G11), `edit` (C4 G7), `empty_recycle` (C4 G8), `except` (C4 G7), `fetch` (C4 G8), `identify` (C3 C4), `lyrics` (C4), `lyrics_track` (C4 G7), `open` (C4 G8), `prune` (C4 G8), `publish_lyrics` (C4 G7), `repair` (C4 G8), `restore` (C4 G8), `save_lyrics` (C4 G7), `take_in` (C4 G8), `take_plain_lyrics` (C4 G7), `trim_channel` (C4 G7), `update` (C4 G8)
+- **write actions (`POST /api/<action>`)**: `align` (C4 G11), `arrived` (C4 E1), `check_lyrics` (C4 G7), `complete` (P120), `cover` (C2 C4), `delete_album` (C4 G8), `delete_track` (C4 G8), `draft` (C4 G11), `edit` (C4 G7), `empty_recycle` (C4 G8), `except` (C4 G7), `fetch` (C4 G8), `identify` (C3 C4), `lyrics` (C4), `lyrics_track` (C4 G7), `open` (C4 G8), `prune` (C4 G8), `publish_lyrics` (C4 G7), `repair` (C4 G8), `restore` (C4 G8), `save_lyrics` (C4 G7), `take_in` (C4 G8), `take_plain_lyrics` (C4 G7), `trim_channel` (C4 G7), `update` (C4 G8)
 - **controls on the page**: 29 labelled buttons, 21 elements with their own key/input handling (`#artist-all`, `#artist-new`, `#artist-update`, `#bin`, `#gear`, `#grid`, `#length-filter`, `#libfilter`, `#needs-you-filter`, `#open`, `#p-from-start`, `#p-next`, `#p-play`, `#p-pos`, `#p-prev`, `#p-set-end`, `#p-set-start`, `#p-trim-clear`, `#p-trim-save`, `#play-matches`, `#theme`)
 
 ## Settings
@@ -125,4 +125,4 @@ help, the HTTP surface from `web.py`, the settings from `Config`, the page's con
 ---
 
 
-**221 features**, of which **205** are covered by a test in `night-tests.md` and **16** are named there with the reason they are not. Checked by `scratchpad/p115/cover.py`, which fails on a feature that is neither.
+**222 features**, of which **206** are covered by a test in `night-tests.md` and **16** are named there with the reason they are not. Checked by `scratchpad/p115/cover.py`, which fails on a feature that is neither.
