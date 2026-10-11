@@ -4513,6 +4513,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    now remembers which album's box a person has open and builds it open again. Proof in the browser:
    tick and untick without reopening (plan `{tags: true}` → `{}`), with the box open throughout; another
    album's box opens closed.
+173. ✅ **"Re-check source" means something for a folder too** (2026-10-11, P122 item 9; I-429). The
+   button sent `fetch` with the album's source address, the server keeps only http(s) addresses, and
+   for the 1,303 albums adopted from folders the answer was a 400 and the toast "no URLs". `update` now
+   also takes one album's id, which it reads in full, as Identify does. The button sends that whenever
+   the source is not an address, and an address is fetched as before. Proof in the browser: `Ever
+   Dream` (a folder) → `POST /api/update`, "Update Nightwish — Ever Dream" done; MDL Vol. 20 (YouTube)
+   → `POST /api/fetch`, done.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

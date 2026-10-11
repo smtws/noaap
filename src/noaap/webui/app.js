@@ -1675,7 +1675,11 @@ function renderAlbum() {
       exceptionsFor(p),
       h("div", { class: "actions" },
         h("button", { type: "submit" }, "Save changes (rename + retag + trim)"),
-        h("button", { class: "quiet", type: "button", onclick: (e) => submit("fetch", { urls: [p.source_url] }, e.currentTarget) }, "Re-check source"),
+        // a source that is an address is fetched again; anything else — an adopted folder — is read
+        // again in full by an update of this one album (P122, I-429)
+        h("button", { class: "quiet", type: "button", onclick: (e) => (/^https?:\/\//.test(p.source_url || "")
+          ? submit("fetch", { urls: [p.source_url] }, e.currentTarget)
+          : submit("update", { id: p.source_id }, e.currentTarget)) }, "Re-check source"),
         h("button", { class: "quiet", type: "button",
           title: "Look up the lyrics of every track that has none yet (LRCLIB), as a .lrc file beside it and in its tags.\nShift+click looks up all of them again — lyrics you wrote yourself are kept either way.",
           onclick: (e) => submit("lyrics", { id: p.source_id, refetch: e.shiftKey }, e.currentTarget) }, "Fetch lyrics"),

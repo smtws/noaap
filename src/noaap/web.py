@@ -1268,6 +1268,17 @@ class App:
                                         target=source_id)
             case "update":
                 deep = bool(body.get("deep"))
+                if body.get("id"):
+                    # **one album, read in full** (P122, I-429): what "Re-check source" means for a
+                    # source that is not an address — an adopted folder had the button and a 400
+                    found = self.album(str(body["id"]))
+                    if not found:
+                        raise ValueError("unknown album")
+                    album_dir, plan = found
+                    where = str(album_dir.relative_to(self.library))
+                    return self.jobs.submit("update", f"Update {plan.albumartist} — {plan.album}",
+                                            lambda s: s.update_all(deep=True, only=[where]),
+                                            target=plan.source_id)
                 artist = str(body.get("artist") or "").strip() or None
                 label = f"Update {artist}" if artist else "Update the library"
                 return self.jobs.submit("update", label + (" (full)" if deep else ""), lambda s: s.update_all(deep=deep, artist=artist))
