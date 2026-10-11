@@ -4487,6 +4487,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    (`[00:13.06]` → `[00:00.26]`), and the reset gave back the walk's backup byte for byte. On the
    share, read only: 15 trimmed tracks in 8 albums; 3 of them have no words today (Apocalyptica 4,
    Lord of the Lost 1, My Dark Lullabies Vol. 1 2), which a trim may have deleted.
+170. ✅ **Enter in the filter lands on a card that is really there** (2026-10-11, P122 item 6; I-426).
+   Typed and answered within 0.3 s, Enter left the focus on `<body>` in 6 of 6 tries. `filterNow`
+   repaints the grid in slices (slice 155), and the focus went to the first card of the grid being
+   replaced; the paint then threw that card away, and having started while the field had the focus it
+   had nothing to give the focus back to. While a paint is under way the focus now waits for it, and
+   the paint that honours the wish clears it, so a later paint cannot take the focus from somewhere
+   else. Proof in the browser against the checkout: 5 names × Enter after 0, 0.05, 0.3 and 1.5 s →
+   20 of 20 on the matching card.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

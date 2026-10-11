@@ -462,17 +462,35 @@ function renderLibrary() {
 // A paint that a newer one supersedes is abandoned, and `gridShows` is only set once the cards are
 // actually in, so an abandoned paint never claims the grid shows something it does not.
 let gridRun = 0;
+// **Enter in the filter lands on a card that is really there** (P122, I-426): the focus was given to
+// the first card of the grid being replaced, and the paint then threw that card away — typed and
+// answered within 0.3 s, the focus ended on <body> in 6 of 6 tries. While a paint is under way the
+// focus waits for it; `focusAfterPaint` is cleared by the paint that honours it, and never outlives it.
+let gridPainting = false;
+let focusAfterPaint = false;
+
+function focusFirstCard() {
+  if (gridPainting) focusAfterPaint = true;
+  else $("#grid").querySelector(".card")?.focus();
+}
 
 async function paintGrid(grid, albums, signature) {
   const mine = ++gridRun;
+  gridPainting = true;
   // rebuilding throws away the focused card, which would break arrow-key navigation
   const focused = document.activeElement?.closest?.("#grid .card")?.dataset.id;
   const made = document.createDocumentFragment();
   const whole = await inSlices(albums, (a) => made.append(card(a)),
                                { ms: SLICE_MS, wanted: () => gridRun === mine, pause: yieldNow });
-  if (!whole) return;
+  if (!whole) return;            // a newer paint is under way and will finish what this one began
   gridShows = signature;
   grid.replaceChildren(made);
+  gridPainting = false;
+  if (focusAfterPaint) {
+    focusAfterPaint = false;
+    grid.querySelector(".card")?.focus();
+    return;
+  }
   // preventScroll: a rebuild must not drag the viewport to the focused card - it would
   // pull an open album editor out of view whenever a download changes something
   if (focused) grid.querySelector(`.card[data-id="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
@@ -678,7 +696,7 @@ $("#libfilter").addEventListener("keydown", (e) => {
   // Enter and Escape are answers, not typing: they take effect at once, ahead of the idle wait
   if (e.key === "Enter") {
     filterNow(e.target.value.trim());
-    $("#grid").querySelector(".card")?.focus();
+    focusFirstCard();
   } else if (e.key === "Escape" && (libFilter || e.target.value)) {
     e.stopPropagation();
     e.target.value = "";
