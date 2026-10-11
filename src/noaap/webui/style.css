@@ -176,25 +176,26 @@ tr.playing td.num .n { color: var(--accent); font-weight: 700; }
 .rail { position: sticky; top: 4.75rem; height: calc(100vh - 7.5rem); display: flex; flex-direction: column;
   justify-content: space-evenly; padding: .25rem .15rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
-body.has-player .rail { height: calc(100vh - 13.5rem); }
+body.has-player .rail { height: calc(100vh - 9rem - var(--player-h, 4.5rem)); }
 .rail button { padding: .1rem .3rem; font-size: .7rem; line-height: 1.25; background: none; border: 0; color: var(--muted); cursor: pointer; }
 .rail button:hover, .rail button:focus-visible { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 4px; }
 .to-top { position: fixed; right: 1rem; bottom: 1rem; z-index: 5; width: 2.4rem; height: 2.4rem; padding: 0;
   border-radius: 50%; font-size: 1.1rem; background: var(--panel); border: 1px solid var(--edge); color: var(--fg); cursor: pointer; }
 .to-top:hover { border-color: var(--accent); color: var(--accent); }
-body.has-player .to-top { bottom: 6.5rem; }
+body.has-player .to-top { bottom: calc(var(--player-h, 4.5rem) + 2rem); }
 @media (max-width: 720px) { .rail { display: none; } }
 .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; display: grid; grid-template-columns: auto minmax(8rem, 16rem) auto 1fr;
   gap: 1rem; align-items: center; padding: .6rem 1rem; background: var(--panel); border-top: 1px solid var(--line); box-shadow: 0 -6px 20px #0003; }
+.p-info { min-width: 0; }
 .p-cover { width: 3rem; height: 3rem; border-radius: 6px; object-fit: cover; background: var(--line); }
 .p-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-artist { font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-controls { display: flex; gap: .35rem; align-items: center; }
 button.icon { padding: .35rem .6rem; line-height: 1; }
 button.big { width: 2.6rem; height: 2.6rem; border-radius: 50%; padding: 0; font-size: 1rem; }
-.p-seek { display: flex; gap: .6rem; align-items: center; font-size: .8rem; }
+.p-seek { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: center; font-size: .8rem; min-width: 0; }
 /* one line: position, trim region and both handles share the same bar */
-.p-bar { position: relative; flex: 1; height: 1.2rem; }
+.p-bar { position: relative; flex: 1 1 18rem; min-width: min(18rem, 60vw); height: 1.2rem; }
 .p-line, .p-keep { position: absolute; top: 50%; height: .35rem; transform: translateY(-50%); border-radius: 3px; pointer-events: none; }
 .p-line { left: 0; right: 0; background: color-mix(in srgb, var(--ink) 20%, transparent); }
 .p-keep { background: var(--accent); opacity: .5; }
@@ -209,11 +210,15 @@ button.big { width: 2.6rem; height: 2.6rem; border-radius: 50%; padding: 0; font
 .p-handle { position: absolute; top: 50%; z-index: 2; width: .55rem; height: 1.1rem; margin: -.55rem 0 0 -.275rem; padding: 0; border-radius: 3px;
   background: var(--accent); border: 1px solid var(--panel); cursor: ew-resize; touch-action: none; }
 .p-handle:focus-visible { outline: 2px solid var(--ink); }
-.p-trim-actions { display: flex; gap: .3rem; align-items: center; }
-@media (max-width: 40rem) { .p-trim-actions { flex-wrap: wrap; } }
-body.has-player .jobs { bottom: 5.5rem; }
-body.has-player .toasts { bottom: 6rem; }
-body.has-player main { padding-bottom: 16rem; }
+/* **the bar keeps its room; the trim tools go to a line of their own when they do not fit** (P122,
+   I-427): they took the row and left the seek bar 44–140 px of a 1385 px player. The player grows
+   instead, and what sits above it follows its real height (`--player-h`, set by app.js). The note
+   still gives way before a button does; its whole text is its tooltip. */
+.p-trim-actions { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; min-width: 0; flex: 1 1 auto; }
+.p-trim-actions > button { margin-left: 0; }  /* `button.small` pushes a lone one to the end */
+body.has-player .jobs { bottom: calc(var(--player-h, 4.5rem) + 1rem); }
+body.has-player .toasts { bottom: calc(var(--player-h, 4.5rem) + 1.5rem); }
+body.has-player main { padding-bottom: calc(var(--player-h, 4.5rem) + 11.5rem); }
 @media (max-width: 40rem) {
   .player { grid-template-columns: auto 1fr auto; }
   .p-seek { grid-column: 1 / -1; }
@@ -377,7 +382,7 @@ tr:hover .grip, tr:focus-within .grip, .grip:hover { color: var(--ink); }
 tr.dragging { opacity: .55; }
 tr.dragging .grip, .grip:active { cursor: grabbing; }
 tr.dragging td { background: var(--panel); }
-.p-target { font-size: .8rem; white-space: nowrap; }
+.p-target { font-size: .8rem; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .p-target.warn { color: var(--warn); }
 .p-target.bad { color: var(--bad); }
 .p-target.good { color: var(--ok, var(--muted)); }

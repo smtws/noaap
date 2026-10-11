@@ -4495,6 +4495,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the paint that honours the wish clears it, so a later paint cannot take the focus from somewhere
    else. Proof in the browser against the checkout: 5 names × Enter after 0, 0.05, 0.3 and 1.5 s →
    20 of 20 on the matching card.
+171. ✅ **The seek bar keeps its room** (2026-10-11, P122 item 7; I-427). In a 1385 px player the trim
+   row — four buttons and the length note — left the position bar 44–140 px, so one pixel was 3.6 s
+   of a 2:40 track. The bar now asks for 18 rem (60 vw at the most), and the trim tools go to a line of
+   their own when they do not fit beside it. The player grows instead, and what sits above it — jobs,
+   toasts, the rail, the way back up — follows its real height through `--player-h`, which a
+   ResizeObserver sets. On a phone the player was also wider than the screen: its title column,
+   which never wraps, had no `min-width: 0`. Measured in the browser on MDL Vol. 20, tracks 1–5:
+   - 1400 px: bar 809 px, one line;
+   - 1024 px: bar 433 px, two lines;
+   - 390 px: bar 288 px.
+   At every width the trim buttons stay inside the player, the jobs stay above it, and the page never
+   scrolls sideways.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

@@ -3135,6 +3135,17 @@ document.addEventListener("keydown", (e) => {
 
 // -- player ----------------------------------------------------------------------------
 
+// what sits above the player — jobs, toasts, the rail, the way back up — sits above its real height,
+// which is one line or two depending on whether the trim tools fit beside the bar (P122, I-427)
+let playerWatch = null;
+function followPlayerHeight() {
+  if (playerWatch || !("ResizeObserver" in window)) return;
+  const player = $("#player");
+  playerWatch = new ResizeObserver(() =>
+    document.body.style.setProperty("--player-h", `${player.getBoundingClientRect().height}px`));
+  playerWatch.observe(player);
+}
+
 const audio = $("#audio");
 let queue = []; // [{ album, video_id, title, artist }]
 let qi = -1;
@@ -3185,6 +3196,7 @@ function playIndex(i, at = null) {
   audio.play().catch((e) => toast(`Cannot play: ${e.message}`, "failed"));
   $("#player").hidden = false;
   document.body.classList.add("has-player");
+  followPlayerHeight();
   $("#p-cover").src = `/api/cover?id=${encodeURIComponent(t.album)}`;
   $("#p-title").textContent = t.title;
   $("#p-artist").textContent = `${t.artist} · ${t.albumName}`;
@@ -3355,15 +3367,15 @@ function renderTarget(t, total) {
   if (gap == null) {
     box.className = "muted p-target";
     box.textContent = `${now}keeping ${asTime(kept)} — nobody knows how long this song is`;
-    box.title = "No MusicBrainz or LRCLIB length for this track, so there is nothing to aim at.";
+    box.title = `${box.textContent}\nNo MusicBrainz or LRCLIB length for this track, so there is nothing to aim at.`;
     return;
   }
   const off = Math.abs(gap);
   box.className = "p-target " + (kept < ref * LENGTH.stub ? "bad" : off > LENGTH.big ? "warn" : off > LENGTH.slack ? "" : "good");
   box.textContent = `${now}keeping ${asTime(kept)} · ${source} ${asTime(ref)} · ${gap > 0 ? "+" : "−"}${off.toFixed(1)}s`;
-  box.title = off > LENGTH.slack
+  box.title = `${box.textContent}\n` + (off > LENGTH.slack
     ? `Still ${off.toFixed(1)} s ${gap > 0 ? "longer" : "shorter"} than ${source} says the song is. Save when you are happy; the ⏱ mark follows the file, not the marks.`
-    : `Within ${LENGTH.slack} s of ${source}'s length — the ⏱ mark goes quiet at this length.`;
+    : `Within ${LENGTH.slack} s of ${source}'s length — the ⏱ mark goes quiet at this length.`);
 }
 
 // the text fields in the album view are the same value: keep them in step
