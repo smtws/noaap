@@ -4536,6 +4536,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    An empty field still means "leave the key as it is". Proof in the browser: the box saved on and then
    off, echoed by `/api/settings`, written to the config and shown again; a key removed together with
    a provider change is gone from `/api/settings` and from the config.
+176. ✅ **The page's merge can take whole albums too** (2026-10-11, P122 item 12; I-433). The server
+   always took `new` — the albums the other side has and this library does not — but the take-in
+   section had no way to send it. Its own check then told the person to use `--new`, a flag of the
+   command line, and to run `noaap merge --apply`. Merge now has a box, "Also the albums this library
+   does not have", that is sent with the check and with the apply, and the report speaks the page's
+   words when the page asked: the hint names the box, it is left out once the albums were asked for,
+   and the last line says "Apply does it". The command line's wording is unchanged. Proof in the
+   browser on an adopted copy of J.B.O's `Ich will Lärm`: the check lists the album, and the apply
+   takes it in, two files.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

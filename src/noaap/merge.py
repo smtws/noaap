@@ -133,7 +133,7 @@ def describe(proposal: Proposal) -> list[str]:
 
 
 def report(found: Survey, *, verdicts: Iterable[Verdict] | None = None, show_unpaired: bool = True,
-           applying: bool = False) -> list[str]:
+           applying: bool = False, new: bool = False, page: bool = False) -> list[str]:
     """The whole pass, album by album, in the order a person would look at it."""
     wanted = set(verdicts) if verdicts else {Verdict.REPLACE, Verdict.FILL, Verdict.UNDECIDED}
     lines: list[str] = []
@@ -159,13 +159,18 @@ def report(found: Survey, *, verdicts: Iterable[Verdict] | None = None, show_unp
         lines.append(f"{len(found.pairing.ambiguous)} track(s) match more than one here and are left alone")
     if show_unpaired and found.pairing.unpaired:
         albums = len(unpaired_albums(found))
+        # **the way to them, in the words of where it is read** (P122, I-433): the page has a box,
+        # not a flag — and once they were asked for, the list of them follows instead
+        how = ("" if new else " — tick “Also the albums this library does not have” to take them in"
+               if page else " — `--new` fetches those albums")
         lines.append(f"{len(found.pairing.unpaired)} track(s) in {albums} album(s) are not in this "
-                     "library at all — `--new` fetches those albums")
+                     f"library at all{how}")
     if counts["undecided"]:
         lines.append(f"{counts['undecided']} undecided pair(s) "
                      + ("are listed on their tracks" if applying else "would be listed on their tracks")
                      + " with both files' numbers — the ⇄ panel offers each one, and refusing is remembered")
-    lines.append("about to do it." if applying else "nothing was changed. `noaap merge --apply` does it.")
+    lines.append("about to do it." if applying else "nothing was changed. Apply does it." if page
+                 else "nothing was changed. `noaap merge --apply` does it.")
     return lines
 
 

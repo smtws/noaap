@@ -2221,7 +2221,7 @@ class Service:
             from . import merge as merge_pass
 
             found = merge_pass.survey(folder, self.library, log=self.log)
-            for line in merge_pass.report(found, applying=not dry_run):
+            for line in merge_pass.report(found, applying=not dry_run, new=new, page=True):
                 self.log(line)
             if new:
                 # **the albums this library does not have at all** (§9, slice 92, the `--new` half):

@@ -479,6 +479,21 @@ def test_the_report_names_the_albums_not_just_the_tracks(tmp_path):
                for line in lines)
 
 
+def test_the_page_is_told_about_its_box_not_a_flag(tmp_path):
+    """P122, I-433: the page's check told a person to use `--new`, on a page with no such thing."""
+    source = library(tmp_path / "source", plan_with("Intake", "One", "Elsewhere", "Also"))
+    target = library(tmp_path / "target", plan_with("Album", "One"))
+    found = survey(source, target, judge=fixed(Verdict.KEEP))
+
+    page = report(found, page=True)
+    assert any(line.endswith("to take them in") and "Also the albums this library does not have" in line
+               for line in page)
+    assert page[-1] == "nothing was changed. Apply does it."
+    asked = report(found, page=True, new=True)
+    assert any(line.endswith("are not in this library at all") for line in asked), "asked for: no hint"
+    assert not any("--new" in line for line in page + asked)
+
+
 # -- and the ones nobody could decide (§9, slice 55) --------------------------------------------------
 #
 # The acceptance run of P52 found that the 288 undecided pairs left no trace in the library at all:

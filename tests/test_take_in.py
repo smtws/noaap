@@ -132,10 +132,14 @@ def test_a_merge_check_holds_every_line_the_command_prints(both, judged):
     outcome = service(library, log).take_in(other, "merge", dry_run=True)
     assert outcome.status == "ok"
 
-    printed = merge_pass.report(judged(other, library), applying=False)
+    # the same report, in the page's words (P122, I-433): only the way to the next step differs
+    printed = merge_pass.report(judged(other, library), applying=False, page=True)
     assert printed, "the pass had nothing to say, so this case would prove nothing"
     missing = [line for line in printed if line not in log]
     assert missing == []
+    command = merge_pass.report(judged(other, library), applying=False)
+    assert [a for a, b in zip(command, printed, strict=True) if a != b] == \
+        [line for line in command if "--new" in line or "merge --apply" in line]
 
 
 def test_an_adopt_check_holds_every_line_the_command_prints(foreign):

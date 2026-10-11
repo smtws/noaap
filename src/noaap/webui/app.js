@@ -2587,6 +2587,14 @@ function takeInSection() {
           "a folder outside the collection: each file is copied there whole before its first write, "
           + "which is the only way back byte for byte. Costs as much disk as the collection.")),
       keep));
+  // **merge can take whole albums too** (P122, I-433): the server always took `new`, and the check told
+  // a person to use `--new` — a flag of the command line, on a page that offered no such thing
+  const fresh = h("input", { type: "checkbox", class: "take-in-new" });
+  const mergeChoices = h("label", { class: "setting take-in-merge" },
+    h("span", {}, h("strong", {}, "Also the albums this library does not have"),
+      h("small", { class: "muted" }, "copied in whole, as they are there — without this, merge only brings in better copies "
+        + "of tracks the library already has")),
+    fresh);
   const note = h("div", { class: "muted take-in-note" });
   const check = h("button", { class: "quiet", type: "button" }, "Check");
   const apply = h("button", { class: "quiet", type: "button" }, "Apply");
@@ -2602,11 +2610,16 @@ function takeInSection() {
     listing.textContent = said.matches ? (lastTakeIn.lines.join("\n") || "nothing to do") : "";
   };
   folder.addEventListener("input", update);
-  mode.addEventListener("change", () => { choices.hidden = mode.value !== "take-in"; update(); });
+  mode.addEventListener("change", () => {
+    choices.hidden = mode.value !== "take-in";
+    mergeChoices.hidden = mode.value !== "merge";
+    update();
+  });
+  fresh.addEventListener("change", () => { lastTakeIn = null; update(); });   // a check for the other answer is not this one
   // Enter in a path field would submit the settings form, which is not what anybody means by it
   folder.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); check.click(); } });
   // what the two buttons send: the folder, the way of taking it in, and — for a take-in — its switches
-  const asked = () => (mode.value !== "take-in" ? {} : {
+  const asked = () => (mode.value === "merge" ? { new: fresh.checked } : mode.value !== "take-in" ? {} : {
     names: names.value, keep_originals: keep.value.trim(),
     ...Object.fromEntries([...switches].map(([key, box]) => [key, box.checked])),
   });
@@ -2630,6 +2643,7 @@ function takeInSection() {
     h("label", { class: "setting" },
       h("span", {}, h("strong", {}, "How"), h("small", { class: "muted" }, "the same ways the command line offers")),
       mode),
+    mergeChoices,
     choices,
     note,
     h("div", { class: "actions" }, check, apply),
