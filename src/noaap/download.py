@@ -437,8 +437,16 @@ def relocate(album_dir: Path, plan: AlbumPlan, library: Path, want: Treatment | 
                 "there, so it stays")
         return album_dir
     target.parent.mkdir(parents=True, exist_ok=True)
+    was = album_dir.resolve()
     album_dir.rename(target)
     plan.folder = wanted_folder(plan)
+    # **a plan whose source is its own folder follows that folder** (§9, slice 178; P126): the apply
+    # of 2026-10-10 renamed 246 adopted albums and left `source_url`, `source_id` and
+    # `cover_fallback_url` on the name they had left, so the next update handed a path that no longer
+    # existed to yt-dlp. Moved here, the plan is written once, by whoever saves it next, with both.
+    follow_folder(plan, album_dir, target)
+    if was != album_dir:
+        follow_folder(plan, was, target)
     try:
         album_dir.parent.rmdir()  # the old artist folder, only if now empty
     except OSError:
@@ -799,6 +807,40 @@ def _point_track_at(track: PlanTrack, file: Path, album_dir: Path | None = None)
     return True
 
 
+# every address of a plan's own that may name its folder: what a folder album was read from and
+# where its pictures were, the second of which nothing re-pointed until P126
+FOLDER_FIELDS = ("source_url", "source_id", "cover_url", "cover_fallback_url")
+
+
+def _moved_with(value: Any, old: str, new: str) -> str | None:
+    """`value` as it reads once the folder `old` is called `new`; None when it is not in `old`.
+
+    By whole path segments: `What Lies Beneath (Special Edition)` is not inside `What Lies Beneath`.
+    """
+    said = str(value or "")
+    if said == old:
+        return new
+    if said.startswith(old + "/"):
+        return new + said[len(old):]
+    return None
+
+
+def follow_folder(plan: AlbumPlan, old: Path | str, new: Path | str) -> bool:
+    """Move every address in `old` (the folder, or a file inside it) to `new`. True when any moved.
+
+    Only what names that folder moves: a URL, or a folder somewhere else an album was taken in from,
+    does not start with it and stays exactly as it was.
+    """
+    was, now = os.path.normpath(str(old)), os.path.normpath(str(new))
+    changed = False
+    for name in FOLDER_FIELDS:
+        moved = _moved_with(getattr(plan, name, None), was, now)
+        if moved is not None and moved != getattr(plan, name):
+            setattr(plan, name, moved)
+            changed = True
+    return changed
+
+
 def _source_points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
     """Whether this folder-sourced plan says its album is somewhere it is not (§9, slice 125).
 
@@ -819,7 +861,10 @@ def _source_points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
     here = str(album_dir)
     for value in (plan.source_id, plan.source_url, plan.cover_url):
         said = str(value or "")
-        if not said.startswith("/") or said.startswith(here):
+        # by whole segments (P126): 20 of the 246 stale plans named a folder whose name *begins*
+        # with the new one's — `What Lies Beneath (Special Edition)` in `What Lies Beneath` — and a
+        # plain prefix test called those "here" and left them for ever
+        if not said.startswith("/") or _moved_with(said, here, here) is not None:
             continue
         where = Path(said)
         if not where.exists() or _under_a_staging_folder(where):
@@ -849,14 +894,20 @@ def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
     """
     changed = False
     if _source_points_elsewhere(plan, album_dir):
-        was = (plan.source_id, plan.source_url, plan.cover_url)
+        was = (plan.source_id, plan.source_url, plan.cover_url, plan.cover_fallback_url)
+        # the fallback picture first, from the folder the plan *did* name (P126): 234 of the 246
+        # stale plans had it there — the folder itself, or its cover.jpg — and nothing moved it
+        if said := str(plan.source_url or plan.source_id or ""):
+            moved = _moved_with(plan.cover_fallback_url, os.path.normpath(said), str(album_dir))
+            if moved is not None:
+                plan.cover_fallback_url = moved
         plan.source_id = plan.source_url = str(album_dir)
         if str(plan.cover_url or "").startswith("/"):
             # beside the album if it is there; otherwise the folder itself, which is the address the
             # provider gives for "the picture is inside one of the files"
             beside = next((q for q in sorted(album_dir.glob(f"{COVER_STEM}.*"))), None)
             plan.cover_url = str(beside or album_dir)
-        changed = (plan.source_id, plan.source_url, plan.cover_url) != was
+        changed = (plan.source_id, plan.source_url, plan.cover_url, plan.cover_fallback_url) != was
     moved: dict[str, str] = {}
     for track in tracks_elsewhere(plan, album_dir):
         was_id = str(track.video_id)

@@ -454,12 +454,14 @@ class Service:
             wrote = changes_from(existing, plan)
             for line in wrote:
                 self.log(f"  {line}")
+            pointed_at = (plan.source_url, plan.source_id, plan.cover_url, plan.cover_fallback_url)
             album_dir = relocate(old_dir, plan, self.library, for_album(self.cfg, plan))
+            followed = pointed_at != (plan.source_url, plan.source_id, plan.cover_url, plan.cover_fallback_url)
             # **a move and its re-point are one pass in `update` too** (§9, slice 164; R-568): the
             # library-wide apply of 2026-10-10 moved eight adopted albums into the release's
             # spelling (`Das Beste Aus…` → `Das Beste aus…`) and left their plans naming the folder
             # they had left — so the next update could not read them at all
-            if point_at(plan, album_dir):
+            if point_at(plan, album_dir) or followed:
                 self.log("  re-pointed at its own folder, which this pass has just moved it to")
         else:
             if report_only:
@@ -852,6 +854,13 @@ class Service:
         skipped = lengths = 0
         for i, (album_dir, plan) in enumerate(albums, 1):
             self.log(f"=== [{i}/{len(albums)}] {plan.albumartist} — {plan.album}")
+            # **a folder that is gone is said as such, and never reaches yt-dlp** (§9, slice 178; P126).
+            # The dry run of 2026-10-11 failed 246 albums with `ERROR: [generic] '<path>' is not a
+            # valid URL` — true, and useless: the album was right there, under a new name.
+            if gone := _folder_gone(plan, album_dir):
+                self.log(f"  failed: {gone}")
+                outcomes.append(Outcome("failed", plan, album_dir, gone))
+                continue
             self._look_at_the_discs(plan, album_dir, report_only)
             if not deep and (unchanged := self._unchanged(plan)):
                 skipped += 1
@@ -1341,6 +1350,10 @@ class Service:
             found = sources.get(name, self.cfg, self._cancel)
             if found.handles(address):
                 return found
+        if _looks_like_a_path(address):
+            # nobody claims it because it is not there; the default provider would only hand it to
+            # yt-dlp, which calls it "not a valid URL" (P126)
+            raise sources.SourceError(f"there is no folder at {address}")
         return self.yt
 
     @staticmethod
@@ -2068,6 +2081,7 @@ class Service:
             # **a plan that says its album is somewhere it is not is re-pointed** (§9, slice 125),
             # before the skip: a cover address under a staging folder that no longer exists cannot be
             # read, and an album it keeps out of the skip is an album nothing ever finishes with.
+            named = Path(str(plan.source_url or plan.source_id or "")).name
             repointed = point_at(plan, album_dir)
             if repointed and not dry_run:
                 save_plan(plan, album_dir)
@@ -2108,8 +2122,11 @@ class Service:
             # and read as the previous album's: 13 of them in one check, each naming the *next*
             # album's folder, and the first with no header above it at all.
             if repointed:
+                # the name the plan *had* (P126): the folder's own name said nothing a reader could
+                # check, and for a rename that changed only the case it read as no change at all
                 self.log(f"  {'would be ' if dry_run else ''}re-pointed at its own folder "
-                         f"(its plan named {album_dir.name!r} elsewhere)")
+                         f"(its plan named {named!r}"
+                         + (" elsewhere)" if named == album_dir.name else ")"))
                 pointed += 1
             if dry_run:
                 # **the dry run names what the real run would do to the files** (§9, slice 85). It used
@@ -2127,7 +2144,9 @@ class Service:
             save_plan(plan, album_dir)
             want = for_album(self.cfg, plan)
             stayed: list[str] = []
+            pointed_at = (plan.source_url, plan.source_id, plan.cover_url, plan.cover_fallback_url)
             album_dir = relocate(album_dir, plan, self.library, want, say=stayed.append)
+            followed = pointed_at != (plan.source_url, plan.source_id, plan.cover_url, plan.cover_fallback_url)
             for line in stayed:
                 # **a collision is a finding, not a log-file footnote** (§9, slice 133)
                 self.log(f"  {line}")
@@ -2139,7 +2158,7 @@ class Service:
             # left 13 plans naming the folder they had just left, a second apply fixed 13 and left the
             # one it had moved itself, and a third was needed for that. Asked again here, where the
             # album is where it is going to stay, it is the same pass that moved it.
-            if point_at(plan, album_dir):
+            if point_at(plan, album_dir) or followed:
                 if not repointed:
                     self.log("  re-pointed at its own folder, which this pass has just moved it to")
                     pointed += 1
@@ -2836,6 +2855,25 @@ class Service:
                 self.log(f"{t.title}: audio now from {t.effective_id} (was {took})")
         album_dir = relocate(album_dir, plan, self.library, for_album(self.cfg, plan))
         return self.execute(plan, album_dir)
+
+
+def _looks_like_a_path(address: str) -> bool:
+    """A filesystem path rather than an address any provider could fetch."""
+    return "://" not in address and address.startswith(("/", "~", "./", "../"))
+
+
+def _folder_gone(plan: AlbumPlan, album_dir: Path) -> str | None:
+    """The sentence for a plan read from a folder that is not there any more, else None (P126)."""
+    said = str(plan.source_url or plan.source_id or "")
+    if not _looks_like_a_path(said):
+        return None
+    try:
+        if Path(said).expanduser().is_dir():
+            return None
+    except OSError:
+        pass
+    return (f"the folder this album was read from is gone ({said}); the album is in {album_dir} — "
+            "`noaap repair` points its plan there")
 
 
 def _minutes(audio: Path) -> str:

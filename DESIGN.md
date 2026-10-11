@@ -4571,6 +4571,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    (`Metalizer`: 14 → 26 titles; `The Art of War`: 14 → 16; `The War to End All Wars`: same titles,
    3.9 s closer). The other eleven were ties, which this rule would have kept, and which differ only
    in spelling.
+178. ✅ **A plan whose source is its own folder follows that folder** (2026-10-11, R-590, P126). The
+   library-wide apply of 2026-10-10 ran on a build from before the re-point in `update`. It renamed 246
+   adopted albums, and each plan kept `source_url`, `source_id` and `cover_fallback_url` on the name the
+   folder had left: 113 differed by case only, 234 had a stale fallback. The dry run of 2026-10-11
+   handed each of those paths to yt-dlp and failed all 246 with `'<path>' is not a valid URL`.
+   - `relocate` moves every address that names the folder, or a file in it, together with the
+     folder (`follow_folder`, by whole path segments). The plan then carries both, and whoever saves
+     it next writes both. A URL, or a folder elsewhere that an album was taken in from, stays as it
+     was.
+   - `point_at` (used by repair and update) now also moves `cover_fallback_url`. It compares paths
+     by whole segments: 20 of the 246 named a folder whose name *begins* with the new one's (`What
+     Lies Beneath (Special Edition)` against `What Lies Beneath`). A plain prefix test had called
+     those "here", so no repair would ever have mended them.
+   - `update` never hands a filesystem path to yt-dlp. A folder that is gone fails in one sentence,
+     naming the stored path and the folder the album is in; a path no provider claims raises
+     "there is no folder at …".
+   - repair names the folder the plan *had* named, not the current one. For a case-only rename,
+     the current name read as no change at all.
+   Proof on copies of three of the 246 (`Shed My Skin`: case only, fallback the folder; `What Lies
+   Beneath`: a longer old name, fallback its cover.jpg; `The Better Life (Rarities Edition)`: another
+   wording, fallback its cover.jpg):
+   - the update dry run before repair fails each in that sentence;
+   - `repair --dry-run` names exactly the three as would-be re-pointed, and nothing else;
+   - `repair` re-points them;
+   - the update dry run after reads all three: 0 new, 0 gone, no change, no error.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
