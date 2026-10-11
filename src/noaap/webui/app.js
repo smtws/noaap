@@ -2110,22 +2110,57 @@ function downloadPicked(e) {
 
 function cancelButton(job) {
   if (!["queued", "running"].includes(job.state)) return null;
-  const asked = (job.log || []).at(-1) === "cancel requested…";
-  return h("button", { class: "quiet cancel", type: "button", disabled: asked, title: "Stop after the current step; finished tracks are kept",
+  return h("button", { class: "quiet cancel", type: "button", title: "Stop after the current step; finished tracks are kept",
     onclick: async (e) => {
       e.stopPropagation();
       setWorking(e.currentTarget, true);
       try { await api("/api/cancel", { id: job.id }); schedulePoll(200); } catch (err) { toast(err.message, "failed"); }
-    } }, asked ? "Stopping…" : "Cancel");
+    } }, "Cancel");
 }
 
+// **a row is updated where it stands, never rebuilt** (P122, I-430). `fill` used to build every row and
+// its buttons again on each poll — 0.7 s while a job runs — so a press on "log" or "Cancel" that a
+// poll fell inside ended on a new button and was no click at all: 2 of 10 presses of 120 ms were lost.
+// A job's row and its buttons now live as long as the job is listed; only their text changes.
 function renderJobs() {
   const recent = state.jobs.filter((j) => ["queued", "running"].includes(j.state) || Date.now() / 1000 - (j.finished || 0) < 120).slice(0, 4);
-  fill($("#jobs"), recent.map((j) =>
-    h("div", { class: `job ${j.state}`, "data-id": j.id },
-      h("div", {}, h("strong", {}, j.label), " ", h("span", { class: "badge" }, j.state), " ", cancelButton(j), " ",
-        h("button", { class: "quiet", type: "button", onclick: () => { openLog = openLog === j.id ? null : j.id; poll(); } }, openLog === j.id ? "hide log" : "log")),
-      openLog === j.id ? h("pre", { id: `log-${j.id}` }) : h("div", { class: "line" }, (j.log || []).at(-1) || ""))));
+  const box = $("#jobs");
+  const had = new Map([...box.children].map((el) => [el.dataset.id, el]));
+  const rows = recent.map((j) => jobRow(j, had.get(String(j.id))));
+  const same = rows.length === box.children.length && rows.every((el, i) => box.children[i] === el);
+  if (!same) box.replaceChildren(...rows);
+}
+
+function jobRow(j, row) {
+  if (!row) {
+    const logButton = h("button", { class: "quiet log-toggle", type: "button",
+      onclick: () => { openLog = openLog === j.id ? null : j.id; poll(); } }, "log");
+    row = h("div", { "data-id": j.id },
+      h("div", { class: "job-head" }, h("strong", {}, j.label), " ", h("span", { class: "badge" }), " ",
+        h("span", { class: "cancel-slot" }), " ", logButton),
+      h("div", { class: "line" }));
+  }
+  row.className = `job ${j.state}`;
+  row.querySelector(".badge").textContent = j.state;
+  const slot = row.querySelector(".cancel-slot");
+  const asked = (j.log || []).at(-1) === "cancel requested…";
+  const cancel = slot.querySelector("button");
+  if (!["queued", "running"].includes(j.state)) slot.replaceChildren();
+  else if (!cancel) slot.replaceChildren(cancelButton(j));
+  if (asked && slot.querySelector("button")) {
+    const b = slot.querySelector("button");
+    b.disabled = true;
+    b.textContent = "Stopping…";
+  }
+  row.querySelector(".log-toggle").textContent = openLog === j.id ? "hide log" : "log";
+  const body = row.lastElementChild;
+  if (openLog === j.id) {
+    if (body.tagName !== "PRE") row.replaceChild(h("pre", { id: `log-${j.id}` }), body);
+  } else {
+    if (body.tagName === "PRE") row.replaceChild(h("div", { class: "line" }), body);
+    row.lastElementChild.textContent = (j.log || []).at(-1) || "";
+  }
+  return row;
 }
 
 function renderLog(job) {

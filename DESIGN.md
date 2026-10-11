@@ -4520,6 +4520,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    the source is not an address, and an address is fetched as before. Proof in the browser: `Ever
    Dream` (a folder) → `POST /api/update`, "Update Nightwish — Ever Dream" done; MDL Vol. 20 (YouTube)
    → `POST /api/fetch`, done.
+174. ✅ **A job's row lives as long as the job is listed** (2026-10-11, P122 item 10; I-430). The jobs
+   panel was rebuilt by `fill` on every poll, which is every 0.7 s while a job runs. A press on "log" or
+   "Cancel" that a poll fell inside started on one button and ended on its replacement, which is no
+   click at all: 2 of 10 presses of 120 ms were lost. Each row is now updated where it stands — state,
+   last line, the cancel button's "Stopping…", the log pane — and the panel's children are replaced
+   only when a job joins or leaves. Proof in the browser: 20 of 20 held presses open the log, and log
+   plus Cancel still stop a deep update ("Stopping…", then cancelled).
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
