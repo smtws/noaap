@@ -352,6 +352,10 @@ class Service:
         here = find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None
         if here and (pin := carry_the_pin(here[1], plan)):
             self.log(f"  the release you pinned: {pin}")
+        elif here and here[1].mbid:
+            # **and the release it already is, unpinned, goes in first** (§9, slice 177; R-584): a
+            # search result takes its place only by fitting strictly better
+            plan.known_release = here[1].mbid
         if here:
             # **the recording each track already is goes into the lookup** (§9, slice 164): a fresh
             # read of a folder knows no recording ids, so where a release lists one title twice —
@@ -360,9 +364,14 @@ class Service:
             # A hint for the seat only, not the track's `mbid`: a track that has one is not looked
             # up on its own, and the plan it is merged into keeps its own value anyway.
             ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid}
+            names = {t.video_id: t.title for t in here[1].tracks}
             for mine, same in zip(plan.tracks, as_the_plan_knows_them(here[1], plan).tracks):
                 if known := ids.get(same.video_id):
                     mine.known_recording = known
+                # and the title the plan holds for it: what a stored release is measured against
+                # (§9, slice 177), where the file's own tag may name the take less exactly
+                if title := names.get(same.video_id):
+                    mine.known_title = title
         if not self.may_look_up(plan):
             self.log("  nothing about this album is looked up anywhere: its audio came from a source "
                      "one person paid for (set \"lookups\": true in its plan to change that)")

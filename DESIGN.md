@@ -4545,6 +4545,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    and the last line says "Apply does it". The command line's wording is unchanged. Proof in the
    browser on an adopted copy of J.B.O's `Ich will Lärm`: the check lists the album, and the apply
    takes it in, two files.
+177. ✅ **An album's stored release is the first candidate of every lookup** (2026-10-11, R-584, P124;
+   finding 12). The deep dry run over the 40 albums the cheap check had skipped proposed to replace
+   three releases that fitted their albums exactly:
+   - `Catching Up With Depeche Mode`: the 1985 release, with `Somebody (remix)` as the plan has it,
+     was to give way to the 1987 one with a plain `Somebody`.
+   - `Speak & Spell`: the 1981 US release, with `New Life (remix)` and `(Schizo mix)`, was to give way
+     to another edition.
+   - `Das Ich — Lava (Asche)`: seated against its own release by title, with one track past the last.
+
+   An unpinned album's stored release was simply not a candidate. The fresh read carried no mbid, so
+   a search decided, and the files' own tags (`Somebody`, `Schwarzer Stern`) name the take less
+   exactly than the plan does. Now:
+   - `update` hands the stored release, and each track's stored title and recording, to the lookup.
+   - The stored release goes first, and a search result replaces it only when it fits strictly
+     better by one measure: the plan's titles with the same take, then the recordings the tracks
+     already are, then lengths at least 1 s closer on average. It never replaces a stored release
+     that has every title with its take.
+   - A track whose recording id is on the release is seated there before any title is compared.
+   - `(final)`, `(Voices)` and `(reworked by …)` are takes like `(remix)`.
+
+   Proof: a deep dry run with this code on the share, writing nothing, on the three albums plus
+   `Black Celebration` (applied the day before) proposes nothing for any of them. The P117 apply
+   had replaced a stored mbid on 14 albums. Judged by this measure, three replacements were right
+   (`Metalizer`: 14 → 26 titles; `The Art of War`: 14 → 16; `The War to End All Wars`: same titles,
+   3.9 s closer). The other eleven were ties, which this rule would have kept, and which differ only
+   in spelling.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

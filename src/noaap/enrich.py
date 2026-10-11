@@ -113,7 +113,10 @@ def version_markers(title: str) -> set[str]:
 # what a bracket says beyond `VERSION_MARKERS`: German spellings, and the words a sleeve uses for
 # another take of one song — `Saigon und Bagdad (Club Mix)`, `Schau in Mein Gesicht (Akkustik
 # Version)`. Not `version` on its own: `(Album Version)` is the same take as the plain title.
-_OTHER_TAKES = re.compile(r"\b(mix|edit|akustik|akkustik|orchester|live)\b", re.I)
+# **and at release level too** (§9, slice 177; R-584): `Fly on the Windscreen (final)`, `Any Second Now
+# (Voices)`, `Schwarzer Stern (reworked by Terminal Choice)` are takes a release names, and an update
+# that crossed them replaced an edition that had them with one that did not.
+_OTHER_TAKES = re.compile(r"\b(mix|edit|akustik|akkustik|orchester|live|final|voices|reworked)\b", re.I)
 
 
 def takes(title: str) -> set[str]:
@@ -357,11 +360,24 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
         return min(among, key=lambda j: abs((mb_tracks[j].get("length") or 0) / 1000 - mine)
                    if mb_tracks[j].get("length") else float("inf"))
 
+    # **the recording a track already is, first of all** (§9, slice 177; R-584): `Das Ich — Lava (Asche)`
+    # names its files `Schwarzer Stern` and `Schwarzer Stern (by Terminal Choice)`, the release calls
+    # them `(remix)` and `(reworked by Terminal Choice)`, and only the recording ids the plan already
+    # held said which was which — a deep read seated them by title and put one past the last track
+    for i, t in enumerate(plan.tracks):
+        if not (known := t.mbid or getattr(t, "known_recording", None)):
+            continue
+        held = [j for j in unused if (mb_tracks[j].get("recording") or {}).get("id") == known]
+        if len(held) == 1:
+            matches[i] = mb_tracks[held[0]]
+            unused.remove(held[0])
     # **the whole title first** (§9, slice 164): `Life Goes Around (Previously Unreleased)` came before
     # the plain `Life Goes Around` in the plan, its bracket-stripped name matched the release's one
     # `Life Goes Around`, and the plain song was left without a seat. A name that matches whole is
     # seated before any name that only matches without its brackets.
     for i, t in enumerate(plan.tracks):
+        if i in matches:
+            continue
         # (and the same take by its brackets: `… - Aggro Mix` keys like `… (Aggro mix)`, and whether a
         # dash names a take is a question of its own — queued, not answered here)
         whole = [j for j in unused if title_key(mb_tracks[j]["title"]) == title_key(t.title)
@@ -441,6 +457,45 @@ def carry_the_pin(existing: AlbumPlan, fresh: AlbumPlan) -> str | None:
     return pin
 
 
+def fit_measure(plan: AlbumPlan, release: dict[str, Any]) -> tuple[int, int, float]:
+    """How well a release fits this album, by one measure (§9, slice 177; R-584): how many of the
+    titles the plan holds the release has **with the same take**, then how many tracks are the recording they
+    already were, then — smaller is better — how far the lengths are apart on average."""
+    left = [t for one in media_of(release) for t in one]
+    same = recs = 0
+    off: list[float] = []
+    for t in plan.tracks:
+        title = getattr(t, "known_title", None) or t.title     # the plan's own, on a fresh read
+        hit = next((m for m in left if title_key(m["title"]) == title_key(title)
+                    and takes(m["title"]) == takes(title)), None)
+        if hit is None:
+            continue
+        left.remove(hit)
+        same += 1
+        known = t.mbid or getattr(t, "known_recording", None)
+        if known and (hit.get("recording") or {}).get("id") == known:
+            recs += 1
+        if (mine := t.file_length or t.duration) and (theirs := hit.get("length")):
+            off.append(abs(mine - int(theirs) / 1000))
+    return same, recs, round(sum(off) / len(off), 1) if off else float("inf")
+
+
+#: lengths that differ by less than this on average are the same record measured twice
+LENGTH_TIE = 1.0
+
+
+def strictly_better(plan: AlbumPlan, found: dict[str, Any], stored: dict[str, Any]) -> bool:
+    """Whether a release a search found fits this album strictly better than the one it already is."""
+    theirs, ours = fit_measure(plan, found), fit_measure(plan, stored)
+    if ours[0] == len(plan.tracks):
+        return False                     # the stored release has every title, with its take
+    if theirs[0] != ours[0]:
+        return theirs[0] > ours[0]
+    if theirs[1] != ours[1]:
+        return theirs[1] > ours[1]
+    return ours[2] - theirs[2] >= LENGTH_TIE
+
+
 def release_rank(cand: dict[str, Any], release: dict[str, Any],
                  matches: dict[int, dict[str, Any]]) -> tuple[Any, ...]:
     """Which of several fitting releases this album is: best first (§9, slice 147).
@@ -512,6 +567,11 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         every = candidates
     else:
         every = release_candidates(plan, mb.search_releases(plan.albumartist, core(plan.album)))
+        # **the release this album already is goes first** (§9, slice 177; R-584): it was not a
+        # candidate at all, so a deep read let the search's order replace `Catching Up With Depeche
+        # Mode` 1985, which has `Somebody (remix)` as the file does, with 1987, which has `Somebody`
+        if stored := getattr(plan, "known_release", None):
+            every = [{"id": stored, "stored": True}, *[c for c in every if c.get("id") != stored]]
         if not every and (said := disc_in_name(plan.album)):
             # **the folder is one disc of a set** (§9, slice 146): no release is called
             # `Requiembryo (CD 1)`, so ask for `Requiembryo` and let one medium answer.
@@ -537,6 +597,11 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
             fits.append((release_rank(cand, release, matches), cand, release, matches))
     if fits:
         _, cand, release, matches = min(fits, key=lambda f: f[0])
+        if kept := next((f for f in fits if f[1].get("stored")), None):
+            # a search result replaces the stored release only when it fits strictly better, and
+            # never when the stored one fits every title with its take
+            if kept[1] is not cand and not strictly_better(plan, release, kept[2]):
+                _, cand, release, matches = kept
         rg = release.get("release-group") or cand.get("release-group") or {}
         plan.offered = []      # something fitted, so there is nothing left for a person to choose
         _set(plan, "album", release["title"], matched=True)
