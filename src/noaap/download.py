@@ -24,6 +24,7 @@ from . import captions
 from .cover import square_if_padded
 from .lyrics import (
     LyricsAPI,
+    follow_cut,
     read_sidecar,
     reconcile,
     rename_sidecar,
@@ -1081,12 +1082,15 @@ def run(
 
         if track.state == "done" and final.exists():
             cut = failed_trim = False
+            was_trimmed = track.trimmed
             try:
                 if cut := apply_trim(album_dir, track, final):
                     track.tagged = None  # the new file needs its tags again
                     track.error = None  # a trim that was refused before has now gone through
-                    if track.lyrics is not None and lyrics is not None:
-                        track.lyrics = None  # the file is a different length: match it again
+                    # **the words follow the cut, and LRCLIB is not asked** (§9, slice 169; R-579):
+                    # this used to clear the status so the same pass looked the cut length up, and
+                    # where LRCLIB had nothing of that length the sidecar was unlinked
+                    follow_cut(album_dir, track, was_trimmed, original_path(album_dir, track).with_suffix(".lrc"))
                     on_track(track, "trimmed")
             except RuntimeError as e:
                 # the trim points stay: they are what the user asked for, and the next run tries

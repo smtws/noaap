@@ -491,6 +491,87 @@ def write_sidecar(album_dir: Path, track: PlanTrack, text: str, length: float | 
     return path
 
 
+LRC_STAMP = re.compile(r"\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]")
+
+
+def _seconds(minutes: str, rest: str) -> float:
+    return int(minutes) * 60 + float(rest.replace(":", "."))
+
+
+def _stamp(at: float) -> str:
+    whole = round(at * 100)
+    return f"[{whole // 6000:02d}:{(whole % 6000) / 100:05.2f}]"
+
+
+def shifted_lrc(text: str, start: float, length: float | None) -> str:
+    """Timed words for a file cut at `start`: every stamp moved by the cut, a line that falls before
+    the new zero dropped, a stamp past the new end held at it (§9, slice 169; R-579). Lines without a
+    stamp — a header, plain words — are kept as they are."""
+    out = []
+    for line in text.splitlines():
+        lead = STAMPS.match(line)
+        if not lead:
+            out.append(line)
+            continue
+        stamps = [_seconds(m, r) - start for m, r in LRC_STAMP.findall(lead.group(0))]
+        kept = [min(at, length) if length is not None else at for at in stamps if at >= 0]
+        if not kept:
+            continue
+        gap = lead.group(0)[len(lead.group(0).rstrip()):]      # the space after the stamps stays
+        out.append("".join(_stamp(at) for at in kept) + gap + line[lead.end():])
+    return "\n".join(out)
+
+
+def follow_cut(album_dir: Path, track: PlanTrack, was_trimmed: str | None, kept: Path) -> str:
+    """**A cut never deletes words and never asks LRCLIB** (§9, slice 169; R-579, finding 11).
+
+    The words a track had before its first cut are kept beside its untouched original (`kept`); every
+    cut writes them again shifted by the cut's start, and a reset puts them back byte for byte. A
+    sidecar somebody edited after the last cut is what the next cut starts from, its stamps moved back
+    by that cut's start. Plain words stay as they are. Provenance and status are left alone.
+    Returns what was done, for the log ("" when there were no words).
+    """
+    here = sidecar_path(album_dir, track.filename)
+    # only a record that disagrees is an edit: a sidecar from before records were kept is undecided,
+    # and stays for `reconcile` and `update_track` to judge as they always have
+    edited = here.exists() and track.lyrics_sha is not None and sidecar_sha(album_dir, track) != track.lyrics_sha
+    said = _follow_cut(album_dir, track, was_trimmed, kept, here, edited)
+    if edited and track.provenance.get("lyrics") != Provenance.USER:
+        # an edit the plan has not heard of yet is somebody's: moving its stamps does not make it
+        # ours, so the record stays what it was and the pass's `reconcile` calls it theirs
+        track.provenance["lyrics"] = Provenance.USER
+    return said
+
+
+def _follow_cut(album_dir: Path, track: PlanTrack, was_trimmed: str | None, kept: Path, here: Path,
+                edited: bool) -> str:
+    if not was_trimmed or edited or not kept.exists():
+        if not here.exists():
+            kept.unlink(missing_ok=True)       # no words: nothing to keep, nothing stale left behind
+            return ""
+        text = here.read_text(encoding="utf-8")
+        old_start = float((was_trimmed or "0-").partition("-")[0] or 0)
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        if was_trimmed and old_start and status_of(text) == SYNCED:
+            kept.write_text(shifted_lrc(text, -old_start, None).rstrip("\n") + "\n", encoding="utf-8")
+        else:
+            kept.write_bytes(here.read_bytes())
+    if not track.trimmed:
+        here.write_bytes(kept.read_bytes())
+        track.lyrics_sha = sidecar_sha(album_dir, track)
+        return "words put back"
+    words = kept.read_text(encoding="utf-8")
+    if status_of(words) != SYNCED:
+        here.write_bytes(kept.read_bytes())
+        track.lyrics_sha = sidecar_sha(album_dir, track)
+        return "plain words kept"
+    start = track.trim_start or 0.0
+    end = track.trim_end
+    length = (end - start) if end is not None else None
+    write_sidecar(album_dir, track, shifted_lrc(words, start, length))
+    return f"words moved by {start:.2f} s"
+
+
 STALE_BY = 1.0  # seconds: less than this is the same recording measured twice, not another file
 
 

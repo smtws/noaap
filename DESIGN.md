@@ -4468,6 +4468,25 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    Proof on the walk's copy through the page: the check said "02 would take back its kept original
    ref-cf75… — the file is that original cut at 12.50-40.40", the apply put Phantom back byte-equal to
    the share, and a second check found nothing.
+169. ✅ **A cut never deletes words and never asks LRCLIB** (2026-10-11, R-579, P122 item 5; finding 11).
+   The walk's `Phantom of the Opera` lost its .lrc, and the trace found where. After a successful cut,
+   `run` cleared the track's lyrics status so that the same pass would look the new length up; LRCLIB
+   had nothing of 28 s, and `update_track` unlinked the sidecar. It was not binned and not reported:
+   1,960 characters of synced words were gone in the save that cut the file. Now the words follow the
+   cut instead:
+   - The words a track has before its first cut are kept beside its untouched original
+     (`.originals/<key>.lrc`).
+   - Every cut writes them again with each stamp moved by the cut's start. A line before the new zero
+     is dropped, and a stamp past the new end is held at the end.
+   - A reset puts the kept words back byte for byte.
+   - Words somebody edited after the last cut are what the next cut starts from, moved back by that
+     cut's start.
+   - Plain words stay as they are, and provenance and status are untouched.
+   - LRCLIB is asked again only on "Look up again" or "Fetch lyrics".
+   Proof on the copy through the page: `Ever Dream` cut at 12.8–40.4 kept its words, moved
+   (`[00:13.06]` → `[00:00.26]`), and the reset gave back the walk's backup byte for byte. On the
+   share, read only: 15 trimmed tracks in 8 albums; 3 of them have no words today (Apocalyptica 4,
+   Lord of the Lost 1, My Dark Lullabies Vol. 1 2), which a trim may have deleted.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

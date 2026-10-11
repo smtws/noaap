@@ -431,7 +431,7 @@ def test_an_edited_sidecar_survives_the_lookup_a_trim_triggers(tmp_path, yt):
     track = plan.tracks[0]
     edited(album_dir, track)
 
-    track.trim_start = 0.2  # clears the status and asks again against the new length
+    track.trim_start = 0.2  # the words follow the cut (§9, slice 169) — and stay the user's
     run(plan, album_dir, yt, download=False, lyrics=api)
     assert track.provenance["lyrics"] == Provenance.USER
     assert read_sidecar(album_dir, track) == "mine, not lrclib's"
@@ -524,18 +524,22 @@ def test_lyrics_the_user_wrote_are_never_overwritten(tmp_path, yt):
     assert OggOpus(album_dir / track.filename)["lyrics"] == ["mine"]
 
 
-def test_a_trim_makes_the_track_be_matched_again(tmp_path, yt):
-    """The match is gated on the file's length, so a cut file has to be looked up afresh."""
+def test_a_trim_moves_the_words_and_asks_nobody(tmp_path, yt):
+    """**A cut never asks LRCLIB** (§9, slice 169; R-579). It used to look the cut length up afresh,
+    and where LRCLIB had nothing of that length the words were unlinked (finding 11)."""
+    from noaap.lyrics import shifted_lrc
+
     api = FakeLyrics()
     plan, album_dir = album(tmp_path, yt, api)
     track = plan.tracks[0]
     assert track.lyrics == "synced"
+    asked = len(api.asked)
 
     track.trim_start = 0.2
     run(plan, album_dir, yt, download=False, lyrics=api)
-    assert len(api.asked) == 3  # this one was looked up a second time
-    assert api.asked[-1][2] < api.asked[0][2]  # against the length it has now, not the old one
-    assert read_sidecar(album_dir, track) == SYNCED_LRC  # and its timestamps are left alone
+    assert len(api.asked) == asked, "nobody was asked"
+    assert read_sidecar(album_dir, track) == shifted_lrc(SYNCED_LRC, 0.2, None)
+    assert track.lyrics == "synced"
 
 
 def test_plain_lyrics_are_written_as_they_are(tmp_path, yt):
