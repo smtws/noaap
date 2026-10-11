@@ -133,11 +133,12 @@ def test_an_album_noaap_fetched_is_untouched_by_any_of_this(collection, tmp_path
     for t in plan.tracks:
         t.state = "done"
         t.filename = Path(t.video_id).name
+    before = [t.filename for t in plan.tracks]
 
     run(plan, collection, folder(), track_source=lambda t: folder(), download=False)
 
-    assert [t.filename for t in plan.tracks] != [Path(t.video_id).name for t in plan.tracks], \
-        "an ordinary album is still renamed into noaap's scheme"
+    # against the names they had, not their ids: since slice 180 the id goes with the renamed file
+    assert [t.filename for t in plan.tracks] != before, "an ordinary album is still renamed into noaap's scheme"
     assert (collection / plan.tracks[0].filename).is_file()
 
 

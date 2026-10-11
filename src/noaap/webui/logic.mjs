@@ -187,6 +187,19 @@ export function refLabel(ref) {
   return ref.split("/").filter(Boolean).slice(-2).join("/");
 }
 
+/** A track's own ref, labelled by the file it is now (§9, slice 180; P128).
+ *
+ * A folder track's ref is its file's path, and until 1.56.0 a rename left it on the old name: the
+ * panel then offered `…/17 - Nachtschleife 'Nach Sendeschluss'.mp3` for a file called `14 - …`. The
+ * file beside the plan is what the track is, so a self-path ref is shown by the name it has. */
+export function trackRefLabel(track, ref, folder) {
+  if (ref && track && ref === track.video_id && track.filename && folder
+      && String(ref).includes(`/${folder}/`)) {
+    return refLabel(`${folder}/${track.filename}`);
+  }
+  return refLabel(ref);
+}
+
 /** Labels for a set of refs at once: the shortest tail that tells each of them apart (§9, slice 77).
  *
  * Two copies of one song in two libraries with the same layout have the same album folder and the
@@ -236,7 +249,7 @@ export function awaitingChoice(track) {
 // `copy` is the listed candidate being taken, where the user is answering the pass rather than
 // naming a video: then this is another copy of the same song, not another recording of it, and the
 // confirm has to say which (§9, slice 55).
-export function sourceChange(track, wanted, copy = null) {
+export function sourceChange(track, wanted, copy = null, folder = null) {
   const to = wanted || track.video_id;
   if (to === effectiveId(track)) return null;
   const marks = track.trim_start != null || track.trim_end != null
@@ -246,8 +259,8 @@ export function sourceChange(track, wanted, copy = null) {
     `\u201c${track.artist} \u2013 ${track.title}\u201d`,
     "",
     wanted
-      ? `Take the audio from ${refLabel(to)} instead of the source's own ${refLabel(track.video_id)}.`
-      : `Back to the source's own ${refLabel(track.video_id)}.`,
+      ? `Take the audio from ${refLabel(to)} instead of the source's own ${trackRefLabel(track, track.video_id, folder)}.`
+      : `Back to the source's own ${trackRefLabel(track, track.video_id, folder)}.`,
     copy ? "The track is fetched again from that copy."
          : "The track is downloaded again \u2014 it is a different recording.",
   ];

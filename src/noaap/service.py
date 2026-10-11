@@ -37,11 +37,11 @@ from .download import (
     needs_a_recut,
     point_at,
     relocate,
-    resolved,
     rewritten,
     run,
     save_plan,
     says_the_old_name,
+    track_named,
     would_do,
 )
 from .enrich import carry_the_pin, enrich, pinned_release
@@ -461,7 +461,7 @@ class Service:
             # library-wide apply of 2026-10-10 moved eight adopted albums into the release's
             # spelling (`Das Beste Aus…` → `Das Beste aus…`) and left their plans naming the folder
             # they had left — so the next update could not read them at all
-            if point_at(plan, album_dir) or followed:
+            if point_at(plan, album_dir, say=self.log) or followed:
                 self.log("  re-pointed at its own folder, which this pass has just moved it to")
         else:
             if report_only:
@@ -2082,7 +2082,7 @@ class Service:
             # before the skip: a cover address under a staging folder that no longer exists cannot be
             # read, and an album it keeps out of the skip is an album nothing ever finishes with.
             named = Path(str(plan.source_url or plan.source_id or "")).name
-            repointed = point_at(plan, album_dir)
+            repointed = point_at(plan, album_dir, say=self.log)
             if repointed and not dry_run:
                 save_plan(plan, album_dir)
             # **and the one question that cannot drift from the apply: what would the apply do?**
@@ -2158,7 +2158,7 @@ class Service:
             # left 13 plans naming the folder they had just left, a second apply fixed 13 and left the
             # one it had moved itself, and a third was needed for that. Asked again here, where the
             # album is where it is going to stay, it is the same pass that moved it.
-            if point_at(plan, album_dir) or followed:
+            if point_at(plan, album_dir, say=self.log) or followed:
                 if not repointed:
                     self.log("  re-pointed at its own folder, which this pass has just moved it to")
                     pointed += 1
@@ -2474,8 +2474,7 @@ class Service:
         # **the id the plan file shows is an id** (P116, I-404): an adopted track is stored as
         # `./file.mp3` and loaded as the absolute path, so the one a user copied out of
         # `.noaap.json` was refused as "no such track"
-        video_id = resolved(video_id, album_dir)
-        track = next((t for t in plan.tracks if t.video_id == video_id), None)
+        track = track_named(plan, album_dir, video_id)
         if not track:
             return Outcome("failed", message="no such track")
         entry = self._bin(album_dir, plan, track, DELETED, audio=_inside(album_dir, track.filename))

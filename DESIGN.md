@@ -4615,6 +4615,30 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - Test: an album with a cover of ours and a newer address. The repair and update dry runs leave
      every file's bytes and mtime as they were and say the line; the apply fetches once, writes once
      and records the new picture. It fails on 6c48040.
+180. ✅ **A folder track's id follows its file** (2026-10-11, R-601, P128). The update of the 18 albums
+   moved their tracks into their seats and left every renamed track's `video_id` on its old name.
+   A read of the share afterwards found 3561 ids in 602 albums naming a file that is not there.
+   - Why it mattered: the player, trim, words and delete only compared the id as a string, so nothing
+     showed. A re-fetch did not: a source switch, an audio choice or a failed track asks the folder
+     provider for the id's file, and that failed with "no separate audio stream (the file is no longer
+     at …)". `point_at` re-pointed such ids, but `update` asks it before `run` renames anything.
+   - `run` now notes which tracks' ids are their own file before any rename. After the renames it
+     gives each one its file's new path: candidate, override, refusals, the source's last listing,
+     the kept originals (`follow_all`, all aside first so a shift can move) and `lyrics_for_source`.
+     So update, repair, a take-in and every other pass that renames carry the id along.
+   - `_point_track_at` takes `lyrics_for_source` with the id. Left behind, a re-pointed timed track
+     read as "timed for another file".
+   - An id naming another track's file is stale too (`tracks_elsewhere`), and is re-pointed at the
+     track's own file. `run` never fetches a track whose source is a neighbour's file: it fails with
+     a sentence naming that track and `noaap repair`.
+   - One id, one track: a re-point that would give two tracks one id is refused with one sentence
+     naming both, and that album's plan is left as it was (`id_clash`).
+   - `delete --track` and the service's delete take the file's current name as well as the id. The
+     source panel labels a track's own ref by the file it has now (`trackRefLabel`).
+   - Tests: a seat cycle through temporary names, a re-tagged title through `update`, a re-pointed
+     timed track, a neighbour's file, a clash, a delete by the current name. They fail on 165a045.
+     Proof on copies of `J.B.O/Meister der Musik` (seat moves, one track cut and timed) and
+     `Goethes Erben/Gewaltberechtigt` (two ids left behind by the 18-album update).
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

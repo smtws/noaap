@@ -561,7 +561,7 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             expect=lambda name, folder=where: recorded.get(f"{folder}/{name}"),
             track_source=service._track_source(plan), on_track=_counted(done, service.on_track),
             check=service.check, download=False)
-        if point_at(plan, here):
+        if point_at(plan, here, say=log):
             # **the pass that moved and renamed them records where they now are** (§9, slice 130).
             # The folder provider's ref is the source file's own path, and `run` above has just given
             # every file the scheme's name — so without this every track of every album the take-in

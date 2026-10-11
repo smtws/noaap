@@ -56,7 +56,7 @@ from .tag import (
 )
 from .treatment import Treatment, drops_comments, drops_wm_frames, renames, retags
 from .trim import apply as apply_trim
-from .trim import follow, original_path, starts_before_zero
+from .trim import follow, follow_all, original_path, starts_before_zero
 from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
@@ -116,6 +116,19 @@ def resolved(value: Any, album_dir: Path) -> Any:
         return value
     rest = value[len(HERE):]
     return str(album_dir / rest) if rest else str(album_dir)
+
+
+def track_named(plan: AlbumPlan, album_dir: Path, said: str) -> PlanTrack | None:
+    """The track a person names: by its id as the plan file shows it, or by the file it has now.
+
+    **Either name works** (§9, slice 180; P128). A folder track's id is its file's path, and until
+    1.56.0 a rename left the id on the old name — so the only name that found a track was one that
+    is not on disk any more. The id still answers first; the file is asked only when no id is it."""
+    said = str(resolved(said, album_dir))
+    if (track := next((t for t in plan.tracks if t.video_id == said), None)) is not None:
+        return track
+    file = Path(said) if said.startswith("/") else album_dir / said
+    return next((t for t in plan.tracks if t.filename and album_dir / t.filename == file), None)
 
 
 def read_plan(path: Path, album_dir: Path) -> AlbumPlan:
@@ -775,9 +788,79 @@ def tracks_elsewhere(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
         if not here.is_file() or Path(said) == here:
             continue    # nothing to point at, or already pointing at it
         where = Path(said)
-        if not where.exists() or _under_a_staging_folder(where):
+        # **a neighbour's file is not this track's** (§9, slice 180; P128): after a seat shift whose
+        # ids stayed behind, 01's id names the file 02 has now. It exists, so it looked right — and a
+        # re-fetch would have copied 02's audio in under 01's name.
+        if not where.exists() or _under_a_staging_folder(where) or _held_by_another(plan, track, where, album_dir):
             out.append(track)
     return out
+
+
+def _held_by_another(plan: AlbumPlan, track: PlanTrack, where: Path, album_dir: Path) -> PlanTrack | None:
+    """The other track of this plan whose own file `where` is."""
+    return next((t for t in plan.tracks
+                 if t is not track and t.filename and album_dir / t.filename == where), None)
+
+
+def id_clash(plan: AlbumPlan, moves: list[tuple[PlanTrack, Path]]) -> str | None:
+    """One sentence when these re-points would give two tracks one id; None when they would not.
+
+    **One id, one track** (§9, slice 180; P128): every lookup by id answers with the first track that
+    has it — the player, a delete, an edit — so a second one is never made, whatever it would fix."""
+    final = {id(t): str(t.video_id) for t in plan.tracks}
+    for track, file in moves:
+        final[id(track)] = str(file)
+    wanted = {str(file) for _, file in moves}
+    seen: dict[str, PlanTrack] = {}
+    for track in plan.tracks:
+        said = final[id(track)]
+        if said in wanted and (other := seen.get(said)) is not None:
+            return (f"not re-pointed: {other.number:02d} {other.title} and {track.number:02d} {track.title} "
+                    f"would both be {Path(said).name} — this album's plan is left as it was")
+        seen[said] = track
+    return None
+
+
+def _move_ids(plan: AlbumPlan, album_dir: Path, moves: list[tuple[PlanTrack, Path]]) -> bool:
+    """Give each track its file's path, its kept originals and the source's last listing with it."""
+    moved: dict[str, str] = {}
+    for track, file in moves:
+        was = str(track.video_id)
+        if _point_track_at(track, file):
+            moved[was] = str(track.video_id)
+    if not moved:
+        return False
+    follow_all(album_dir, list(moved.items()))   # the kept originals go with the ids (§9, slice 168)
+    if ids := (plan.source_state or {}).get("ids"):
+        # what the source looked like last time, so the cheap skip still recognises it
+        plan.source_state["ids"] = [moved.get(str(one), one) for one in ids]
+    return True
+
+
+def _self_pointing(plan: AlbumPlan, album_dir: Path) -> list[tuple[PlanTrack, Path]]:
+    """The tracks whose id is their own file beside the plan, with that file — what a rename must carry."""
+    return [(t, album_dir / t.filename) for t in plan.tracks
+            if t.filename and t.effective_id == t.video_id and str(t.video_id) == str(album_dir / t.filename)]
+
+
+def _follow_renames(plan: AlbumPlan, album_dir: Path, following: list[tuple[PlanTrack, Path]],
+                    say: Callable[[str], None]) -> list[tuple[PlanTrack, Path]]:
+    """**A rename takes the id with it** (§9, slice 180; P128). Returns what is still to follow.
+
+    The update of 2026-10-11 moved 18 albums' tracks into their seats and left every renamed track's
+    id on the old name; 3561 ids in 602 albums of the share named a file that was not there."""
+    moves = [(t, album_dir / t.filename) for t, was in following
+             if album_dir / t.filename != was and (album_dir / t.filename).is_file()]
+    if not moves:
+        return following
+    if clash := id_clash(plan, moves):
+        say(f"  {clash}")
+        log.warning("%s", clash)
+        return []
+    if _move_ids(plan, album_dir, moves):
+        save_plan(plan, album_dir)
+    done = {id(t) for t, _ in moves}
+    return [(t, was) for t, was in following if id(t) not in done]
 
 
 def _point_track_at(track: PlanTrack, file: Path, album_dir: Path | None = None) -> bool:
@@ -802,6 +885,10 @@ def _point_track_at(track: PlanTrack, file: Path, album_dir: Path | None = None)
     if track.source_override == was:
         track.source_override = now
     track.refused_candidates = [now if ref == was else ref for ref in track.refused_candidates]
+    if track.lyrics_for_source == was:
+        # the words were timed for this file, whatever it is called (§9, slice 180; P128): left
+        # behind, every re-pointed timed track read as "timed for another file"
+        track.lyrics_for_source = now
     track.video_id = now
     track.sync_candidates()
     if album_dir is not None:
@@ -886,7 +973,7 @@ def _under_a_staging_folder(path: Path) -> bool:
     return False
 
 
-def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
+def point_at(plan: AlbumPlan, album_dir: Path, say: Callable[[str], None] | None = None) -> bool:
     """Say where this album and its files are. True when anything changed.
 
     What the plain pass records, which is what a staged one should have recorded (§9, slice 125) —
@@ -894,6 +981,11 @@ def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
     source really is a folder elsewhere that is still there keeps that address even while a track of
     it needs re-pointing, and the other way round.
     """
+    moves = [(t, album_dir / t.filename) for t in tracks_elsewhere(plan, album_dir)]
+    if moves and (clash := id_clash(plan, moves)):
+        (say or (lambda line: None))(f"  {clash}")
+        log.warning("%s", clash)
+        return False
     changed = False
     if _source_points_elsewhere(plan, album_dir):
         was = (plan.source_id, plan.source_url, plan.cover_url, plan.cover_fallback_url)
@@ -910,16 +1002,7 @@ def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
             beside = next((q for q in sorted(album_dir.glob(f"{COVER_STEM}.*"))), None)
             plan.cover_url = str(beside or album_dir)
         changed = (plan.source_id, plan.source_url, plan.cover_url, plan.cover_fallback_url) != was
-    moved: dict[str, str] = {}
-    for track in tracks_elsewhere(plan, album_dir):
-        was_id = str(track.video_id)
-        if _point_track_at(track, album_dir / track.filename, album_dir):
-            moved[was_id] = str(track.video_id)
-            changed = True
-    if moved and (ids := (plan.source_state or {}).get("ids")):
-        # what the source looked like last time, so the cheap skip above still recognises it
-        plan.source_state["ids"] = [moved.get(str(one), one) for one in ids]
-    return changed
+    return _move_ids(plan, album_dir, moves) or changed
 
 
 def tails_to_drop(plan: AlbumPlan, album_dir: Path, want: Treatment | None = None) -> int:
@@ -1096,6 +1179,7 @@ def run(
         # of them in one real library.
         save_plan(plan, album_dir)
     parts = album_dir / PARTS_DIR
+    following = _self_pointing(plan, album_dir)   # asked before any rename, under the names they had
 
     rename, retag = renames(plan, want), retags(plan, want)
     drop, drop_wm = drops_comments(plan, want), drops_wm_frames(plan, want)
@@ -1115,6 +1199,7 @@ def run(
         # before the rename carried the new audio to 13. A take-in (`keep`) puts each original
         # aside under its old name first, so it keeps the one-track-at-a-time order.
         _renames_first(plan, album_dir, on_track, emptied, say)
+    following = _follow_renames(plan, album_dir, following, say)
     for track in plan.tracks:
         check()
         # **the original goes aside before anything happens to the file** (§9, slice 99), under the
@@ -1233,6 +1318,16 @@ def run(
             on_track(track, "missing")
             continue
 
+        if (neighbour := _held_by_another(plan, track, Path(str(track.effective_id)), album_dir)) is not None:
+            # **never another track's file** (§9, slice 180; P128): an id a seat shift left behind
+            # names the file the next track has now, and a copy of it would be that track's audio
+            track.state = "failed"
+            track.error = (f"its source names {neighbour.number:02d} {neighbour.title}'s file "
+                           f"({neighbour.filename}), not its own — run `noaap repair`")
+            track.error_kind = Failure.NO_AUDIO_STREAM
+            save_plan(plan, album_dir)
+            on_track(track, "failed")
+            continue
         if track.channel is None:
             _follow_source(whose, track)  # whose upload this really is, and how long it runs
         for attempt in range(1, ATTEMPTS + 1):
@@ -1298,6 +1393,7 @@ def run(
             log.warning("the source is blocking requests (bot check) - stopping this album")
             break
 
+    _follow_renames(plan, album_dir, following, say)   # the renames a take-in makes one by one
     if all(t.state == "done" or not t.in_source for t in plan.tracks) and parts.exists():
         shutil.rmtree(parts)  # only our own scratch dir, and only when nothing is left to resume
     # **a disc folder this pass emptied is this pass's own mess** (§9, slice 102). Bringing a

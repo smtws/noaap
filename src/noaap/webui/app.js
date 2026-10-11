@@ -3,7 +3,7 @@ import { CLAIM_LABEL, LENGTH, completeRows, movedTo, unsavedEdits, alignNotice, 
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
          nearMiss, nudged, numberByDisc, oneVideo, ourLength, pollFailureIsOffline, pollPlan,
-         POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength,
+         POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength, trackRefLabel,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
          copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
          repairState, sourceLabel, sourceOpen, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
@@ -886,7 +886,7 @@ function resetMark(plan, track, name, label = null) {
 async function resetField(plan, track, name, button, what) {
   if (name === "source") {
     // going back is a source change like any other, and costs the same (§9, slice 34)
-    const change = sourceChange(track, null);
+    const change = sourceChange(track, null, null, plan.folder);
     if (change && !confirm(change.lines.join("\n"))) return;
   }
   const edits = track ? { tracks: [{ video_id: track.video_id, reset: [name] }] } : { reset: [name] };
@@ -911,7 +911,7 @@ function sourceMark(p, t) {
   const waiting = awaitingChoice(t).length;
   return h("button", { class: "quiet small src-pick" + (own ? " on" : "") + (waiting ? " waiting" : ""), type: "button",
     title: waiting ? `Another copy of this song is here and nothing could choose between them \u2014 open to compare and decide`
-      : own ? `Audio from ${refLabel(own)}, not the source's ${refLabel(t.video_id)} \u2014 click to change it or go back`
+      : own ? `Audio from ${refLabel(own)}, not the source's ${trackRefLabel(t, t.video_id, p.folder)} \u2014 click to change it or go back`
       : "Take the audio from another video \u2014 the same song without the film around it",
     onclick: (e) => toggleSource(e.currentTarget, p, t) }, "\u21c4");
 }
@@ -943,8 +943,8 @@ function sourcePanel(p, t) {
     onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.parentElement.querySelector("button.use").click(); } } });
   return h("div", { class: "source-panel" },
     h("div", { class: "muted" }, `${t.artist} \u2014 ${t.title} \u00b7 audio from `,
-      here && here.url ? h("a", { href: here.url, target: "_blank", rel: "noopener" }, refLabel(id))
-                       : h("span", { title: id }, refLabel(id)),
+      here && here.url ? h("a", { href: here.url, target: "_blank", rel: "noopener" }, trackRefLabel(t, id, p.folder))
+                       : h("span", { title: id }, trackRefLabel(t, id, p.folder)),
       t.source_override ? " \u2014 yours, not the playlist's video " : " \u2014 the playlist's own video",
       t.source_override ? resetMark(p, t, "source", "audio source") : null),
     h("div", { class: "panel-actions" }, field,
@@ -969,7 +969,8 @@ function candidateList(p, t) {
     // libraries of the same shape had the same two-part label, and only the numbers told them apart
     ...((labels) => all.map((c) => h("div", { class: "candidate" + (c.ref === id ? " on" : "") },
       c.url ? h("a", { href: c.url, target: "_blank", rel: "noopener" }, labels.get(c.ref) || refLabel(c.ref))
-            : h("span", { title: c.ref }, labels.get(c.ref) || refLabel(c.ref)),
+            : h("span", { title: c.ref }, c.ref === t.video_id ? trackRefLabel(t, c.ref, p.folder)
+                                                         : labels.get(c.ref) || refLabel(c.ref)),
       h("span", { class: "muted" }, candidateLine(c, c.ref === id, refused.has(c.ref))),
       c.ref === id || refused.has(c.ref) ? null
         : h("button", { class: "small", type: "button",
@@ -983,7 +984,7 @@ function candidateList(p, t) {
 }
 
 async function takeCandidate(button, p, t, ref) {
-  const change = sourceChange(t, ref === t.video_id ? null : ref, t.candidates?.find((c) => c.ref === ref));
+  const change = sourceChange(t, ref === t.video_id ? null : ref, t.candidates?.find((c) => c.ref === ref), p.folder);
   if (!change || !confirm(change.lines.join("\n"))) return;
   await submit("edit", { id: p.source_id, edits: { tracks: [{ video_id: t.video_id, take: ref }] } }, button);
   await refreshAlbumPanel();
@@ -1006,7 +1007,7 @@ function useSource(button, p, t, text, note) {
       + "a playlist or a channel cannot be a track's source.";
     return;
   }
-  const change = sourceChange(t, chosen === t.video_id ? null : chosen);
+  const change = sourceChange(t, chosen === t.video_id ? null : chosen, null, p.folder);
   if (!change) {
     note.textContent = "That is already where this track's audio comes from.";
     return;

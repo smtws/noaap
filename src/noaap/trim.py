@@ -146,6 +146,35 @@ def follow(album_dir: Path, was: str, now: str) -> int:
     return moved
 
 
+def follow_all(album_dir: Path, pairs: list[tuple[str, str]]) -> int:
+    """Several ids changed at once: their originals change names together (§9, slice 180; P128).
+
+    One at a time, a seat shift could not move: 01's original wants the name 02's still has. Every
+    one goes aside first, then each takes its new name — or, where that name belongs to an original
+    no id here moved away from, goes back to the one it had."""
+    aside: list[tuple[Path, Path, str]] = []
+    for n, (was, now) in enumerate(pairs):
+        if was == now:
+            continue
+        for kept in originals_of(album_dir, was):
+            out = kept.with_name(f".noaap-following-{n}-{kept.name}")
+            kept.rename(out)
+            aside.append((out, kept, now))
+    moved = 0
+    for out, kept, now in aside:
+        target = kept.with_name(f"{ref_key(now, album_dir)}{kept.suffix}")
+        if target.exists():
+            if not kept.exists():
+                out.rename(kept)
+            else:
+                log.warning("kept original %s: neither %s nor its old name is free; left as %s",
+                            kept.name, target.name, out.name)
+            continue
+        out.rename(target)
+        moved += 1
+    return moved
+
+
 def pcm_digest(path: Path) -> str | None:
     """What a file sounds like, as a digest of its decoded samples — the same for two cuts of one
     original at the same points, whatever container wrote them."""

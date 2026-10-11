@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { candidateLine, effectiveId, oneVideo, refLabel, sourceChange, timingNotice } from "../../src/noaap/webui/logic.mjs";
+import { candidateLine, effectiveId, oneVideo, refLabel, sourceChange, timingNotice, trackRefLabel } from "../../src/noaap/webui/logic.mjs";
 
 const table = JSON.parse(readFileSync(new URL("../shared/video_ids.json", import.meta.url))).cases;
 
@@ -101,4 +101,16 @@ test("the one in use says so, and a refused one says that instead", () => {
 
 test("a candidate with nothing measured still renders", () => {
   assert.equal(candidateLine({ ref: "x", added_by: "source" }, false, false), "source");
+});
+
+test("a track's own ref is labelled by the file it has now (slice 180, P128)", () => {
+  const t = { video_id: "/music/A Band/An Album/A Band - An Album - 17 - Old.mp3",
+              filename: "A Band - An Album - 14 - Old.mp3", candidates: [] };
+  assert.equal(trackRefLabel(t, t.video_id, "A Band/An Album"), "An Album/A Band - An Album - 14 - Old.mp3");
+  assert.equal(trackRefLabel(t, "dQw4w9WgXcQ", "A Band/An Album"), "dQw4w9WgXcQ", "another ref keeps its own label");
+  assert.equal(trackRefLabel(t, t.video_id, null), refLabel(t.video_id), "without the folder, the ref as it is");
+  const yt = { video_id: "aaaaaaaaaaa", filename: "01 x.opus" };
+  assert.equal(trackRefLabel(yt, yt.video_id, "A Band/An Album"), "aaaaaaaaaaa");
+  const change = sourceChange(t, "bbbbbbbbbbb", null, "A Band/An Album");
+  assert.ok(change.lines.some((l) => l.includes("An Album/A Band - An Album - 14 - Old.mp3")), change.lines);
 });
