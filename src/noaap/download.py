@@ -55,7 +55,7 @@ from .tag import (
 )
 from .treatment import Treatment, drops_comments, drops_wm_frames, renames, retags
 from .trim import apply as apply_trim
-from .trim import original_path, starts_before_zero
+from .trim import follow, original_path, starts_before_zero
 from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
@@ -769,7 +769,7 @@ def tracks_elsewhere(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
     return out
 
 
-def _point_track_at(track: PlanTrack, file: Path) -> bool:
+def _point_track_at(track: PlanTrack, file: Path, album_dir: Path | None = None) -> bool:
     """Give one track the path its file is really at — candidate, override and refusals with it.
 
     `video_id` is not alone: `sync_candidates` keeps a `Candidate` per ref, so changing the id without
@@ -793,6 +793,8 @@ def _point_track_at(track: PlanTrack, file: Path) -> bool:
     track.refused_candidates = [now if ref == was else ref for ref in track.refused_candidates]
     track.video_id = now
     track.sync_candidates()
+    if album_dir is not None:
+        follow(album_dir, was, now)   # the kept original goes with the id (§9, slice 168)
     return True
 
 
@@ -857,7 +859,7 @@ def point_at(plan: AlbumPlan, album_dir: Path) -> bool:
     moved: dict[str, str] = {}
     for track in tracks_elsewhere(plan, album_dir):
         was_id = str(track.video_id)
-        if _point_track_at(track, album_dir / track.filename):
+        if _point_track_at(track, album_dir / track.filename, album_dir):
             moved[was_id] = str(track.video_id)
             changed = True
     if moved and (ids := (plan.source_state or {}).get("ids")):

@@ -4452,6 +4452,22 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    failed; any such job ends as failed, its last line says how many, and the page's ✗ toast carries
    that line. Proof through the page on the walk's copy: a new trim on the track whose original is lost
    ends "✗ … 1 trim(s) could not be applied — each track says why".
+168. ✅ **A kept original goes wherever its track's id goes** (2026-10-11, R-578, P122 item 3). With
+   slice 166 in, the walk's `Phantom of the Opera` still could not be put back. Its original had been
+   kept under a key made of the track's whole path, and the path was `…/02 - Phantom Of The Opera.mp3`,
+   the name the file had before P117 renamed it. A later pass re-pointed the id at the new name, the
+   key changed with it, and no track owned the original any more. Now:
+   - A folder track's original is keyed by its path inside the album, so a library that is moved or
+     remounted keeps every original.
+   - Every pass that changes an id moves the kept original along: `point_at` and a source folder
+     found again.
+   - An original kept under the old whole-path key is renamed on first use.
+   - A repair names every kept original no track owns ("kept original without a track"). Where
+     exactly one cut track is that original cut at its own points — the same decoded samples — the
+     repair gives the original back to that track, with a dry line first and the apply after.
+   Proof on the walk's copy through the page: the check said "02 would take back its kept original
+   ref-cf75… — the file is that original cut at 12.50-40.40", the apply put Phantom back byte-equal to
+   the share, and a second check found nothing.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

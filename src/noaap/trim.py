@@ -79,19 +79,135 @@ def key(ref: str) -> str:
     return ref if ref and set(ref) <= SAFE else "ref-" + hashlib.sha256(ref.encode()).hexdigest()[:16]
 
 
+def ref_key(ref: str, album_dir: Path | None = None) -> str:
+    """The name a kept original carries for this ref.
+
+    **A folder's ref is a path, and only the part inside the album says which file it is** (§9, slice 168; R-578).
+    Keyed by the whole path, an original belonged to one place on one machine: the walk's copy of
+    `Ever Dream` re-pointed `…/02 - Phantom Of The Opera.mp3` at `…/02 - Phantom of the Opera.mp3`,
+    the key changed with it, and the cut file could never be put back. A library moved, remounted or
+    renamed did the same to every original it had. A ref that is not a path is keyed as it was.
+    """
+    text = str(ref)
+    if text.startswith("./"):
+        return key(text[2:])
+    if text.startswith("/"):
+        # inside the album: the path from the album down (a disc folder is part of the name); a file
+        # somewhere else entirely keeps its whole path, which is what it is
+        for root in ((album_dir, album_dir.resolve()) if album_dir else ()):
+            try:
+                return key(str(Path(text).relative_to(root)))
+            except ValueError:
+                continue
+        return key(text)
+    return key(text)
+
+
 def original_path(album_dir: Path, track: PlanTrack) -> Path:
     """Where this track's untouched download is kept, in the track's own format.
 
     Keyed by the **effective** id: a track pointed at another video (§9, slice 34) holds another
     recording, and the two must never be cut from each other's original.
     """
-    return album_dir / ORIGINALS / f"{key(track.effective_id)}.{track.ext}"
+    return album_dir / ORIGINALS / f"{ref_key(track.effective_id, album_dir)}.{track.ext}"
 
 
 def originals_of(album_dir: Path, ref: str) -> list[Path]:
-    """Every original kept for one ref, whatever format it was taken in."""
+    """Every original kept for one ref, whatever format it was taken in — and under the key the ref
+    had before slice 168, which was the whole path."""
     folder = album_dir / ORIGINALS
-    return sorted(folder.glob(f"{key(ref)}.*")) if folder.is_dir() else []
+    if not folder.is_dir():
+        return []
+    names = {ref_key(ref, album_dir), key(str(ref))}
+    return sorted(p for name in names for p in folder.glob(f"{name}.*"))
+
+
+def adopt_legacy(album_dir: Path, track: PlanTrack) -> bool:
+    """An original kept under its track's whole path is given the name it has now (§9, slice 168)."""
+    now = original_path(album_dir, track)
+    was = album_dir / ORIGINALS / f"{key(track.effective_id)}.{track.ext}"
+    if was == now or now.exists() or not was.exists():
+        return False
+    was.rename(now)
+    return True
+
+
+def follow(album_dir: Path, was: str, now: str) -> int:
+    """A track's id changed: its kept originals change their name with it (§9, slice 168; R-578).
+
+    Every pass that re-points a track — `point_at`, `find_again`, a source folder found again — calls
+    this, so an original is never left under a name no track has. Returns how many moved."""
+    moved = 0
+    for kept in originals_of(album_dir, was):
+        target = kept.with_name(f"{ref_key(now, album_dir)}{kept.suffix}")
+        if target != kept and not target.exists():
+            kept.rename(target)
+            moved += 1
+    return moved
+
+
+def pcm_digest(path: Path) -> str | None:
+    """What a file sounds like, as a digest of its decoded samples — the same for two cuts of one
+    original at the same points, whatever container wrote them."""
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "s16le", "-ac", "2", "-ar", "44100", "-"],
+                              capture_output=True, timeout=600)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return hashlib.sha256(done.stdout).hexdigest() if done.returncode == 0 and done.stdout else None
+
+
+def unowned(album_dir: Path, tracks: list[PlanTrack]) -> list[Path]:
+    """The kept originals no track of this album has a name for."""
+    folder = album_dir / ORIGINALS
+    if not folder.is_dir():
+        return []
+    owned = {kept for t in tracks for ref in {t.effective_id, t.video_id, *(c.ref for c in t.candidates)}
+             for kept in originals_of(album_dir, ref)}
+    return sorted(p for p in folder.iterdir() if p.is_file() and p not in owned)
+
+
+def cut_from(original: Path, track: PlanTrack, file: Path) -> bool:
+    """Whether `file` is this original cut at the track's recorded points: the same samples."""
+    start, _, end = (track.trimmed or "").partition("-")
+    if not start:
+        return False
+    probe = file.with_name(f".noaap-probe{file.suffix}")
+    command = ["ffmpeg", "-v", "error", "-y", "-i", str(original), "-ss", start]
+    if end:
+        command += ["-to", end]
+    command += [*(["-c:a", "flac"] if track.ext == "flac" else ["-c", "copy"]),
+                "-avoid_negative_ts", "make_zero", str(probe)]
+    try:
+        if subprocess.run(command, capture_output=True, timeout=600).returncode != 0:
+            return False
+        ours = pcm_digest(file)
+        return ours is not None and ours == pcm_digest(probe)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    finally:
+        probe.unlink(missing_ok=True)
+
+
+def re_own(album_dir: Path, tracks: list[PlanTrack], apply: bool) -> list[str]:
+    """Kept originals no track owns: named, and given back where exactly one cut track is that original
+    cut at its own points (§9, slice 168; R-578). One line per original, for the repair to print."""
+    said: list[str] = []
+    waiting = [t for t in tracks if t.trimmed and t.filename and not original_path(album_dir, t).exists()
+               and (album_dir / t.filename).is_file()]
+    for kept in unowned(album_dir, tracks):
+        fits = [t for t in waiting if kept.suffix == f".{t.ext}" and cut_from(kept, t, album_dir / t.filename)]
+        if len(fits) == 1:
+            track = fits[0]
+            if apply:
+                kept.rename(original_path(album_dir, track))
+                waiting.remove(track)
+            said.append(f"{track.number:02d} {'took back' if apply else 'would take back'} its kept original "
+                        f"{kept.name} — the file is that original cut at {track.trimmed}")
+        else:
+            said.append(f"kept original without a track: {kept.name}"
+                        + (f" — {len(fits)} tracks could be its cut, so it is left" if fits else ""))
+    return said
 
 
 def kept_originals(album_dir: Path, track: PlanTrack) -> list[Path]:
@@ -126,6 +242,7 @@ def holds(path: Path, ext: str) -> bool:
 
 def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
     """Bring `path` in line with the track's trim points. True if the file changed."""
+    adopt_legacy(album_dir, track)
     wanted = signature(track)
     if wanted == (track.trimmed or ""):
         if not wanted or starts_before_zero(path) is None:

@@ -19,6 +19,7 @@ from pathlib import Path
 from . import identity
 from .models import AlbumPlan, PlanTrack
 from .sources_folder import AUDIO
+from .trim import follow
 
 
 @dataclass(frozen=True)
@@ -233,7 +234,7 @@ def look_for_source(album_dir: Path, plan: AlbumPlan, root: Path,
     return Resourced(source_of(plan), fresh.source_id or str(folder), refs, decoded), ""
 
 
-def re_source(plan: AlbumPlan, found: Resourced, address: str) -> int:
+def re_source(plan: AlbumPlan, found: Resourced, address: str, album_dir: Path | None = None) -> int:
     """Point the album at the folder it is in now. Its own files are not touched.
 
     The refs are the provider's, read from its own listing of that folder; `address` is what the plan
@@ -251,6 +252,8 @@ def re_source(plan: AlbumPlan, found: Resourced, address: str) -> int:
             track.source_override = new
         track.video_id = new
         track.sync_candidates()
+        if album_dir is not None:
+            follow(album_dir, old, new)   # the kept original goes with the id (§9, slice 168)
         changed += 1
     if plan.source_url == source_of(plan):
         plan.source_url = address

@@ -110,8 +110,7 @@ from .timing import (
 )
 from .timing import kind_for as timing_kind
 from .treatment import for_album, held_back, renames, says_exceptions, with_exception
-from .trim import ORIGINALS, kept_originals, originals_of
-from .trim import key as trim_key
+from .trim import ORIGINALS, kept_originals, originals_of, re_own, ref_key
 
 log = logging.getLogger(__name__)
 
@@ -1916,7 +1915,7 @@ class Service:
         self.log(f"  {'source' if apply else 'would point'} of “{plan.album}”: {found.was} → {found.now}")
         done = {"sources": 0, "would_source": 1, "left": 0, "decoded": found.decoded}
         if apply:
-            moved_mod.re_source(plan, found, found.now)
+            moved_mod.re_source(plan, found, found.now, album_dir)
             done["sources"], done["would_source"] = 1, 0
         return done
 
@@ -2022,6 +2021,9 @@ class Service:
             # R-566): after `find_again`, which answers the 1.5.0 plans — and a track it gave its
             # file back is still asked whether its title and number are its file's own
             mended = mend(plan, album_dir, given_back=[t for t in lost_before if (album_dir / t.filename).is_file()])
+            # **a kept original no track owns is named, and given back where exactly one cut track is
+            # that original cut at its own points** (§9, slice 168; R-578)
+            owned_back = re_own(album_dir, plan.tracks, apply=not dry_run)
             # after `find_again`, which is cheap and asks the provider: only what is still missing is
             # worth decoding for (§9, slice 66)
             elsewhere = self.find_moved(plan, album_dir, apply=apply and not dry_run) if find_moved else {}
@@ -2083,13 +2085,15 @@ class Service:
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not discs and not would \
-                    and not repointed and not mended \
+                    and not repointed and not mended and not owned_back \
                     and before == (plan.albumartist, [(t.artist, t.title) for t in plan.tracks], len(plan.tracks)):
                 continue
             self.log(f"=== {plan.albumartist} — {plan.album}"
                      + (f" ({filled} track(s) measured)" if filled else ""))
             for line in mended:
                 self.log(f"  {'would mend' if dry_run else 'mended'}: {line}")
+            for line in owned_back:
+                self.log(f"  {line}")
             # **under its album's header** (§9, slice 130, R-484 item 2). The question is asked before
             # the skip, which is before the header is printed — so the line used to come out above it
             # and read as the previous album's: 13 of them in one check, each naming the *next*
@@ -2637,7 +2641,7 @@ class Service:
             shutil.move(str(audio), back)
         if original := entry.original:
             (album_dir / ORIGINALS).mkdir(exist_ok=True)
-            shutil.move(str(original), album_dir / ORIGINALS / f"{trim_key(track.effective_id)}{original.suffix}")
+            shutil.move(str(original), album_dir / ORIGINALS / f"{ref_key(track.effective_id, album_dir)}{original.suffix}")
         said = ""
         if words := entry.words:
             if read_sidecar(album_dir, track):
