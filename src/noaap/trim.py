@@ -19,9 +19,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import mutagen
 from mutagen import MutagenError
-from mutagen.mp4 import MP4
-from mutagen.oggopus import OggOpus
 
 from .models import PlanTrack
 
@@ -100,13 +99,29 @@ def kept_originals(album_dir: Path, track: PlanTrack) -> list[Path]:
     return originals_of(album_dir, track.effective_id)
 
 
+#: the containers a file of each extension may be (mutagen's class names). **Every extension a
+#: library holds, not the two noaap downloads** (§9, slice 166; I-432): this knew only MP4 and
+#: Ogg Opus, so the kept original of every adopted mp3 and flac read as "not mp3" — the first cut
+#: worked, because no original existed yet, and every later change or reset of that trim refused.
+CONTAINERS = {
+    "mp3": ("MP3",), "flac": ("FLAC",), "m4a": ("MP4",), "mp4": ("MP4",), "aac": ("AAC", "MP4"),
+    "opus": ("OggOpus",), "ogg": ("OggVorbis", "OggOpus", "OggFLAC"), "oga": ("OggVorbis", "OggOpus", "OggFLAC"),
+    "wav": ("WAVE",), "aif": ("AIFF",), "aiff": ("AIFF",), "wma": ("ASF",), "ape": ("MonkeysAudio",),
+    "wv": ("WavPack",), "mpc": ("Musepack",),
+}
+
+
 def holds(path: Path, ext: str) -> bool:
     """Is this file really the format its name claims? A copy is not proof of a container."""
     try:
-        MP4(path) if ext in ("m4a", "mp4") else OggOpus(path)
+        found = mutagen.File(path)
     except (MutagenError, OSError):
         return False
-    return True
+    if found is None:
+        return False
+    wanted = CONTAINERS.get(ext.lower().lstrip("."))
+    # an extension this table does not know is held by any audio mutagen can read
+    return wanted is None or type(found).__name__ in wanted
 
 
 def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
@@ -164,7 +179,10 @@ def apply(album_dir: Path, track: PlanTrack, path: Path) -> bool:
     if track.trim_end is not None:
         # still the original's own timeline: `-to` is absolute even when `-ss` is an output option
         command += ["-to", f"{track.trim_end:.3f}"]
-    command += ["-c", "copy", "-avoid_negative_ts", "make_zero", str(cut)]
+    # **FLAC is encoded again, which for FLAC is lossless** (§9, slice 166): a stream copy leaves the
+    # original's STREAMINFO, so a cut of 4.9 s still says 10 s to every player that reads the header
+    codec = ["-c:a", "flac"] if track.ext == "flac" else ["-c", "copy"]
+    command += [*codec, "-avoid_negative_ts", "make_zero", str(cut)]
     try:
         subprocess.run(command, check=True, capture_output=True, text=True, errors="replace")
     except (subprocess.CalledProcessError, FileNotFoundError) as e:

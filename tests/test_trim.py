@@ -415,3 +415,62 @@ def test_a_file_that_starts_at_zero_is_left_alone(tmp_path, tone):
 
     assert apply(tmp_path, track, tmp_path / "t.opus") is False, "nothing to do twice"
     assert (tmp_path / "t.opus").read_bytes() == digest
+
+
+# -- every container a library holds (§9, slice 166; I-432) ----------------------------------------
+#
+# `holds` knew only MP4 and Ogg Opus, so the kept original of an adopted mp3 or flac read as "not
+# mp3": the first cut worked (no original yet) and every later change or reset refused, while the
+# job said done. Each format is cut, put back byte for byte, and cut again from its kept original.
+
+ENCODERS = {"mp3": ["-c:a", "libmp3lame"], "flac": ["-c:a", "flac"], "m4a": ["-c:a", "aac"],
+            "opus": ["-c:a", "libopus"], "ogg": ["-c:a", "libvorbis"], "wav": ["-c:a", "pcm_s16le"]}
+
+
+def a_tone(tmp_path, ext):
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg not installed")
+    path = tmp_path / f"tone.{ext}"
+    done = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=10", *ENCODERS[ext], str(path)],
+                          capture_output=True)
+    if done.returncode:
+        pytest.skip(f"this ffmpeg cannot write {ext}")
+    return path
+
+
+@pytest.mark.parametrize("ext", sorted(ENCODERS))
+def test_every_format_is_cut_put_back_and_cut_again(tmp_path, ext):
+    from noaap.trim import holds, original_path
+
+    tone = a_tone(tmp_path, ext)
+    plan = build_plan(vol1())
+    track = plan.tracks[0]
+    track.ext, track.filename = ext, f"t.{ext}"
+    path = tmp_path / track.filename
+    shutil.copy(tone, path)
+    before = path.read_bytes()
+
+    track.trim_start, track.trim_end = 2.0, 7.0
+    assert apply(tmp_path, track, path) is True
+    assert holds(original_path(tmp_path, track), ext), f"the kept {ext} original is a {ext}"
+    assert 4.4 < duration(path) < 5.6
+
+    track.trim_start = 3.0                     # a change: from the kept original, not the cut
+    assert apply(tmp_path, track, path) is True
+    assert 3.4 < duration(path) < 4.6
+
+    track.trim_start = track.trim_end = None   # the reset the page's "reset" + "save trim" sends
+    assert apply(tmp_path, track, path) is True
+    assert path.read_bytes() == before, "put back byte for byte"
+    assert track.trimmed is None
+
+
+@pytest.mark.parametrize(("ext", "other"), [("mp3", "opus"), ("flac", "mp3"), ("opus", "m4a"), ("m4a", "flac")])
+def test_a_file_of_another_format_is_not_held(tmp_path, ext, other):
+    from noaap.trim import holds
+
+    tone = a_tone(tmp_path, other)
+    named = tmp_path / f"misnamed.{ext}"
+    shutil.copy(tone, named)
+    assert not holds(named, ext)
+    assert holds(tone, other)

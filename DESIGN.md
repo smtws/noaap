@@ -4434,6 +4434,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    lookups by title, and in `complete`'s "the album has it" check. Artist names keep `key`. Proof: a
    dry update of a copy of the repaired album seats `07` on the release's 07 and moves nothing; it
    proposes the release's spelling for the title, as it does for any title MusicBrainz names.
+166. ✅ **A trim on any format can be changed and taken back** (2026-10-11, R-576, P122 item 1). The
+   page walk of P120 trimmed an mp3 of an adopted album, reset it, and found the file still cut while
+   the plan and the page said the trim was gone (I-432). `trim.holds`, which asks whether a kept original
+   really is the format its name says, tried `MP4` for m4a and `OggOpus` for everything else, so every
+   mp3 and flac original read as "not mp3". The first cut worked because no original existed yet;
+   every later change or reset refused, and the job still said done. `holds` now asks mutagen what the
+   file is and compares it with a table of every extension a library holds. A FLAC cut is now encoded
+   again (lossless for FLAC) rather than stream-copied, because a copy keeps the original's STREAMINFO,
+   so a 4.9 s cut said 10 s to every player that reads the header. Proof on copies through the page:
+   an mp3 and a flac track are cut to 28 s, cut again to 25 s from the kept original, and put back byte
+   for byte; a repair puts the walk's cut `Ever Dream` back byte for byte.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

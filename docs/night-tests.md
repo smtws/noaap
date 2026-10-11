@@ -128,7 +128,7 @@ so each row carries the server's own log lines. Screenshots exist only where the
 Lullabies Vol. 20, or the settings, bin or jobs (R-574 rule 4). Every other row proves by DOM
 assertion + log line.
 
-**106 rows: 95 pass, 10 findings (I-426 – I-433), 1 not reachable.**
+**107 rows (the last record per row in `results.jsonl`): 95 pass, 11 finding rows — nine findings, I-426 – I-433 — and 1 not reachable.**
 - **Not reachable:** draft / align / ⚖ check need a model load. `noaap.service` stayed active the
   whole night (pid 1505534, RSS 859 MB, MemAvailable 18.3–19.0 GB). Under R-556 / R-574 rule 3 nothing
   was loaded; the service was never stopped by me.
@@ -167,6 +167,7 @@ The 16 excused rows of night 1, re-examined for the page:
 | needs-you-filter | click 'n need you', click again | '8 need you' → ['Das Elfte Gebot', 'Fasan Alarm', 'Mosqueteros', 'Sex Is Muss', 'Vol. 20 - Glasses Empty'] | 1 log line(s) | pass |
 | theme | click ◐ ×3, ◐ once more, reload | cycle ['dark/Theme: dark (click to change)', 'light/Theme: light (click to change)', 'auto/Theme: automatic (click to change)']; … | 23 log line(s) | pass |
 | artist view + artist-all | click artist 'Feuerschwanz' on a card, then 'Show all artists' | title 'Feuerschwanz', 2 cards, actions shown True; 'Show all' → 17 | DOM | pass |
+| keyboard: / Enter Escape | /, type, Enter, Enter, Escape | '/' focus libfilter; Enter → card ''; Enter opened None; Escape closed True | DOM | **finding** I-426 |
 | to-top | wheel down 1500 px, click ↑ | ↑ shown after wheel True; scrollY 0 after click True | DOM | pass |
 | rail (initials) | click 'W' in the rail | rail 'ACDFGIJKLMNWZ'; W → focus 'Warkings — Armageddon' | DOM | pass |
 | grid key P / card ▶ | focus the MDL card, press P | P on the MDL card → playing 'Schandmaul · Vol. 20 - Glasses Empty / Der Teufel hat den Schnaps gemacht . . .' | 4 log line(s) | pass |
