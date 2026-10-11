@@ -127,6 +127,9 @@ class Job:
     result: Any = None
     created: float = field(default_factory=time.time)
     finished: float | None = None
+    # **a step that did not happen is not a job that did** (§9, slice 167; R-576 item 2): a trim
+    # refused inside a save or a repair is written on the track and logged, and the job said done
+    trims_failed: int = 0
 
     def summary(self, full: bool = False) -> dict[str, Any]:
         d = {"id": self.id, "kind": self.kind, "label": self.label, "state": self.state, "lane": self.lane,
@@ -230,6 +233,9 @@ class Jobs:
                     job.state = "blocked"
                 elif any(isinstance(o, Outcome) and o.status in ("failed", "incomplete") for o in outcomes):
                     job.state = "failed"
+                elif job.trims_failed:
+                    job.state = "failed"
+                    job.log.append(f"{job.trims_failed} trim(s) could not be applied — each track says why")
                 else:
                     job.state = "done"
             except Cancelled:
@@ -409,7 +415,7 @@ class App:
         # one hold on the graphics card for the whole server, so the models stay loaded from one
         # track to the next and the idle window is the one thing that gives them back (§9, slice 82)
         self.engines = Engines()
-        self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _append(job, f"{what}: {t.number:02d} {t.artist} - {t.title}"), cancel=job.cancel, engines=self.engines))
+        self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _on_track(job, t, what), cancel=job.cancel, engines=self.engines))
         self.jobs = Jobs(self._service_factory, release=self.engines.let_go,
                          wrote=self.wrote_one, idle_seconds=cfg.timing_card_idle_seconds)
         self.details = Details(lambda: sources.get(None, self.cfg))
@@ -1637,6 +1643,13 @@ def _asset_hash(name: str) -> str:
     from a browser cache."""
     data = _asset(name) + b"".join(_asset(dep) for dep in IMPORTS.get(name, ()))
     return hashlib.sha1(data).hexdigest()[:10]
+
+
+def _on_track(job: Job, track: Any, what: str) -> None:
+    """One track's step, in the job's log — and counted where it means the job did not do it."""
+    if what == "trim failed":
+        job.trims_failed += 1
+    _append(job, f"{what}: {track.number:02d} {track.artist} - {track.title}")
 
 
 def _append(job: Job, line: str) -> None:

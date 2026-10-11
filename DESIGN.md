@@ -4445,6 +4445,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    so a 4.9 s cut said 10 s to every player that reads the header. Proof on copies through the page:
    an mp3 and a flac track are cut to 28 s, cut again to 25 s from the kept original, and put back byte
    for byte; a repair puts the walk's cut `Ever Dream` back byte for byte.
+167. ✅ **A step that did not happen is not a job that did** (2026-10-11, R-576, P122 item 2). Behind
+   I-432 sat a second fault: the refused trim was written on the track and logged as "trim failed",
+   and the save that asked for it still finished as done. The page toasted ✓, and a repair that could
+   not put two files back said "1 album(s) tidied up". A job now counts the trims its tracks report as
+   failed; any such job ends as failed, its last line says how many, and the page's ✗ toast carries
+   that line. Proof through the page on the walk's copy: a new trim on the track whose original is lost
+   ends "✗ … 1 trim(s) could not be applied — each track says why".
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
