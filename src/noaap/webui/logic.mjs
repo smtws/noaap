@@ -851,6 +851,33 @@ export function trackRows(rows, fields = "[name=number]") {
             && tr.querySelector(fields));
 }
 
+/** The track row before or after this one, past whatever is open under a track (§9, slice 189).
+ *
+ * The lyrics editor and the source picker are rows with their track's `data-id`; Alt+↓ took the
+ * one under a track as the track to pass, and the move threw half way (q13). `rows` is every row
+ * of the table in order; `dir` is -1 or +1. */
+export function nextTrack(rows, row, dir) {
+  const tracks = trackRows(rows);
+  const at = tracks.indexOf(row);
+  return at < 0 ? null : tracks[at + dir] ?? null;
+}
+
+/** The table's rows for a new order of its tracks, each track followed by what is open under it,
+ * in the order it was open (§9, slice 189). `order` is the track rows in their new order. */
+export function withPanels(rows, order) {
+  const tracks = new Set(trackRows(rows));
+  const under = new Map();
+  for (const r of rows || []) {
+    if (tracks.has(r)) continue;
+    const id = r.dataset?.id;
+    if (!under.has(id)) under.set(id, []);
+    under.get(id).push(r);
+  }
+  const out = order.flatMap((tr) => [tr, ...(under.get(tr.dataset.id) || [])]);
+  const placed = new Set(out);
+  return out.concat([...(rows || [])].filter((r) => !placed.has(r)));   // nothing is dropped
+}
+
 /** What the header's recycle-bin button says, and whether it is there at all (§9, slice 91).
  *
  * The bin used to live at the bottom of the settings panel, where the user did not think it belonged.

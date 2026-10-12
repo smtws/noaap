@@ -6,7 +6,7 @@ import { CLAIM_LABEL, LENGTH, completeRows, movedTo, unsavedEdits, alignNotice, 
          POLL_CEILING_MS, publishConfirm, publishState, refLabel, refLength, trackRefLabel,
          EXCEPTION_LABELS, STATE_SWITCHES, binLabel, browserLabel, candidateLine, clearedSource,
          copyLabels, dialogFields, heldBack, removeConfirm, saysExceptions,
-         repairState, sourceLabel, sourceOpen, sourceRows, syncEntry, trackRows, trimGuard, awaitingChoice,
+         repairState, sourceLabel, sourceOpen, sourceRows, syncEntry, trackRows, nextTrack, withPanels, trimGuard, awaitingChoice,
          resetKind, roundMark, watchesAfter, watchesWithout,
          scrollForActive, scrollToLine, searchTerms, seedConfirm, shifted, sourceChange, stampOf, takeInState,
          tapped, tenth,
@@ -1754,8 +1754,9 @@ async function setException(p, key, on, control) {
 let rowDrag = null;  // NB the trim handles have their own `dragging`
 const movedRows = new Set();  // rows the user has put somewhere since the last save
 
+// the track rows only: an open lyrics or source row carries its track's id too (§9, slice 189)
 function rowsOf(tbody) {
-  return [...tbody.querySelectorAll("tr")].filter((tr) => tr.dataset.id);
+  return trackRows(tbody.querySelectorAll("tr"));
 }
 
 // each disc counts from 1 again, so the column never shows two 3s mid-edit
@@ -1784,11 +1785,10 @@ function moveRowTo(row, over) {
   const after = movedRow(before, row.dataset.id, over.dataset.id);
   if (after === before) return;
   const byId = new Map(rowsOf(tbody).map((tr) => [tr.dataset.id, tr]));
-  for (const { id, disc } of after) {
-    const tr = byId.get(id);
-    tr.querySelector("[name=disc]").value = disc;
-    tbody.append(tr);  // appending in the new order is the new order
-  }
+  const all = [...tbody.querySelectorAll("tr")];
+  for (const { id, disc } of after) byId.get(id).querySelector("[name=disc]").value = disc;
+  // appending in the new order is the new order — with what is open under a track going with it
+  for (const tr of withPanels(all, after.map(({ id }) => byId.get(id)))) tbody.append(tr);
   movedRows.add(row.dataset.id);  // a moved row keeps its per-disc number often enough to matter
   renumberRows(tbody);
 }
@@ -1823,8 +1823,9 @@ document.addEventListener("keydown", (e) => {
   if (!e.altKey || !["ArrowUp", "ArrowDown"].includes(e.key)) return;
   const row = e.target.closest?.("#album tbody tr[data-id]");
   if (!row) return;
-  const sibling = e.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
-  if (!sibling?.dataset.id) return;
+  // past the next *track*, whatever is open under one (§9, slice 189; q13)
+  const sibling = nextTrack(row.parentElement.querySelectorAll("tr"), row, e.key === "ArrowUp" ? -1 : +1);
+  if (!sibling) return;
   e.preventDefault();
   moveRowTo(row, sibling);
   (e.target.closest("td")?.querySelector(".grip") ? e.target : row.querySelector("[name=number]"))?.focus?.();

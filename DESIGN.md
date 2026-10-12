@@ -4856,6 +4856,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      400 → 385, 201, 105; 360 → 345, 161, 105. A row is 162 px tall there, against 117 at 500 and 49
      at 1400. 1400 is as it was (page 1385, 8 headers over 8 cells). At 360 the lyrics row under a
      track is the full width of the table (279 of 279), and Alt+↓ still moves a track.
+189. ✅ **A track moves past tracks, not past what is open under one** (2026-10-12, R-629/R-630, q13;
+   seen in I-474). With a track's lyrics open, Alt+↓ on that track did not move it. Measured on
+   1.64.0 at 1400 px: `TypeError: Cannot read properties of null (reading 'value')` and nothing
+   moved; an Alt+↑ after it left two tracks numbered 2. A lyrics or source
+   row under a track carries the track's `data-id` (that is how it is found and closed again).
+   Three places took "a row with a `data-id`" to mean a track:
+   - the keyboard move took `nextElementSibling` as the track to pass;
+   - `rowsOf()`, which the move, the drag and the renumbering all read, listed the open row as a
+     second row of the same track;
+   - a drag over an open row offered that row as the place to go.
+   An open row has no `[name=disc]`, so the move threw half way, after part of the renumbering.
+   - **A track row is what `trackRows()` says it is**: the rule a save has used since slice 89,
+     a row with a `data-id` that is not a panel. `rowsOf()` asks it. The keyboard move passes the
+     previous or next track row, whatever is open between (`nextTrack`, in `logic.mjs` beside
+     `trackRows`). A drag over an open row then counts as a drag over its track by itself: the
+     row it names is that track's.
+   - **What is open under a track goes with it.** After a move, each open row is put back directly
+     under its own track, in the order it was in (`withPanels`, in `logic.mjs`). A move does not
+     close anything, and nothing ends up under the wrong track.
+   - Tests: `nextTrack` and `withPanels` in node with an open row in the list. In a real browser
+     at 1400 and 360 px: Alt+↓ with the lyrics open under track 1, Alt+↑ back, no error, the
+     numbers 1, 2, 3 in order, and the lyrics row under its own track.
+   - Measured on a copy of Heilig, lyrics open under track 1, at 1400 and at 360 px. Alt+↓ gives
+     `1 Unsterblich, 2 Sanctus, [lyrics of Sanctus], 3 …`; Alt+↑ gives the original order back with
+     the lyrics under Sanctus. No error at either width. A drag of the grip, with lyrics open and
+     without, moves with no error, and the open row stays under its track.
+   - Nothing else changes: the order a save sends, the per-disc numbering (`movedRow`,
+     `numberByDisc`) and what an unopened album does are as before.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
