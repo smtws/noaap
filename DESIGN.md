@@ -4768,6 +4768,33 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      tracks.
    - Tests fail on 194d127. Proof: dry and apply on a copy with no cover beside, a picture inside a
      track and a stray picture.
+186. ✅ **The album's track table fits a narrow window** (2026-10-12, R-623/R-624; noted in R-580).
+   At a 500 px window the album panel was 631 px wide and the page scrolled sideways
+   (`scrollWidth` 647). Measured per column at 500 px: play 36, # 80, artist 45, title 38, disc 36,
+   **trim 235**, **✓♪✕ 114**. Two cells would not shrink: the trim cell holds its two 4.6rem inputs,
+   the length and ⇉ in one flex row; the actions cell is `white-space: nowrap` (from `td.src`). Artist
+   and title, the two fields a person actually reads, were squeezed to 32 and 26 px. And the
+   header was wrong as well: at ≤ 40rem `td.src` ("from") is hidden but its `th` was not, so the
+   headers ran one column off from the cells.
+   - At ≤ 40rem (the breakpoint the panel already uses), only inside `#album`:
+     - the trim cell's row wraps, so its two inputs stack and the length and ⇉ go under them;
+     - the actions cell wraps (`white-space: normal`), so ✓, ♪ and ✕ stack instead of lying side
+       by side; they keep their 28 px touch size;
+     - the "from" header gets `class="src"` and hides with its column;
+     - the trim inputs are 3.6rem (`12:34` still fits), and disc, trim and ✓♪✕ take `width: 1%`,
+       so the room left over goes to artist and title, not to the cells that only hold buttons.
+   - Nothing is taken away. Every field and button that is there at 1400 px is there at 500 px.
+     Rows get taller instead of the page getting wider.
+   - The check is a measurement, not a reading of the CSS: a headless browser opens an album at
+     640 px (the breakpoint) and 500 px and reads `document.documentElement.scrollWidth`, which must
+     not exceed the window, and counts one shown header per shown cell. It is a test gated by
+     `NOAAP_BROWSER=1` (it needs Chrome), plus tests on the CSS rules and the header that run
+     everywhere.
+   - Measured after, on a copy of Heilig: 640 px → page 625, artist 146, title 143; 500 px → page
+     485, artist 77, title 72 (before: page 647, artist 45, title 38).
+   - Not reached: below about 420 px the table still needs about 403 px (play 36, # 80, artist and
+     title at their least, disc 36, trim 70, ✓♪✕ 47, plus the panel's padding). A phone width wants
+     a row laid out on two lines, which is a layout of its own and not this slice.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

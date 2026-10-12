@@ -122,6 +122,16 @@ button.cancel { margin-left: auto; flex: none; }
 .job pre { max-height: 16rem; overflow: auto; white-space: pre-wrap; font-size: .78rem; margin: .4rem 0 0; }
 .job button { padding: .1rem .5rem; font-size: .78rem; }
 @media (max-width: 40rem) { .fields { grid-template-columns: 1fr; } td.src { display: none; } }
+/* **a narrow window makes rows taller, never the page wider** (§9, slice 186). At 500 px the trim
+   cell's two inputs side by side and the ✓♪✕ cell that would not wrap made the panel 631 px wide.
+   The "from" header hides with its column (`th.src` gets the same rule as `td.src`). */
+@media (max-width: 40rem) {
+  th.src { display: none; }
+  #album td.trim .cell-row { flex-wrap: wrap; }
+  #album td.trim input { width: 3.6rem; }   /* "12:34" still fits; the room goes to artist and title */
+  #album td.actions-cell { white-space: normal; }
+  #album td.disc, #album td.trim, #album td.actions-cell { width: 1%; }   /* as narrow as they go */
+}
 .login { font-size: .85rem; color: var(--muted); display: flex; gap: .4rem; align-items: center; }
 select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: .4rem .5rem; }
 

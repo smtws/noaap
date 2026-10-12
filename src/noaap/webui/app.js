@@ -1671,7 +1671,7 @@ function renderAlbum() {
             title: "The order you set is kept through every update. Click to hand it back: nothing is renumbered now, but the next update may put the album in the source's order again.",
             onclick: (e) => resetField(p, null, "order", e.currentTarget, "the track order") }, `${PROV.user} \u21ba`))
         : null,
-      h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", { title: "position in the album" }, "#"), h("th", {}, "Artist"), h("th", {}, "Title"), h("th", { title: "each disc is numbered from 1" }, "disc"), h("th", { title: "cut the front / play until — for label idents and previews" }, "trim"), h("th", {}, "from"), h("th", {}, ""))), h("tbody", {}, rows)),
+      h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", { title: "position in the album" }, "#"), h("th", {}, "Artist"), h("th", {}, "Title"), h("th", { title: "each disc is numbered from 1" }, "disc"), h("th", { title: "cut the front / play until — for label idents and previews" }, "trim"), h("th", { class: "src" }, "from"), h("th", {}, ""))), h("tbody", {}, rows)),
       skipped.length ? h("details", {}, h("summary", { class: "muted" }, `${skipped.length} skipped`), h("ul", {}, skipped)) : null,
       exceptionsFor(p),
       h("div", { class: "actions" },
