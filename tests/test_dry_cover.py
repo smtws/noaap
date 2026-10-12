@@ -66,7 +66,7 @@ def test_neither_dry_run_touches_a_file_and_the_apply_writes_once(tmp_path, one_
 
     service.repair(dry_run=True)
     assert everything(root) == before, "a check changed a file"
-    assert f"  the cover would be fetched again from {NEW}, and replaced if that answers" in said, said
+    assert f"  the cover would be fetched again from {NEW}, and replaced only if the picture differs from the one beside the album" in said, said
 
     service.update_all(report_only=True, deep=True)
     assert everything(root) == before, "an update check changed a file"
@@ -102,7 +102,7 @@ def test_a_look_neither_renames_nor_squares(tmp_path):
     lines = cover_would(plan, album)
     assert "cover.jpg would be renamed cover.png, which is what it holds" in lines, lines
     assert "the cover would be squared" in lines
-    assert f"the cover would be fetched again from {NEW}, and replaced if that answers" in lines
+    assert f"the cover would be fetched again from {NEW}, and replaced only if the picture differs from the one beside the album" in lines
 
 
 def test_somebodys_own_cover_is_never_offered_for_replacing(tmp_path):

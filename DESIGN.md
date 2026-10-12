@@ -4639,6 +4639,28 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      timed track, a neighbour's file, a clash, a delete by the current name. They fail on 165a045.
      Proof on copies of `J.B.O/Meister der Musik` (seat moves, one track cut and timed) and
      `Goethes Erben/Gewaltberechtigt` (two ids left behind by the 18-album update).
+181. ✅ **The cover record stays true** (2026-10-12, R-606/R-607, P129). The share's passes of
+   2026-10-11 left cover lines a reader could not trust.
+   - A lookup that gives no release (a MusicBrainz 503, none fitted, or no lookup at all in `reread`)
+     is not a different release. `keep_the_release` carries the stored release's cover address,
+     fallback, group and mbid into the merge, so `Policy of Truth` no longer trades its archive front
+     for `./cover.jpg`. The check says "MusicBrainz gave no release this time: … kept and not compared".
+   - A signed YouTube thumbnail (`i*.ytimg.com …?sqp=…&rs=…`) is compared and recorded as its path
+     plus `v=` (`cover_key`, applied in `written` and every comparison). The rule is the YouTube
+     provider's own (`sources.register_address_key`). A fetch takes the address the read in hand gave.
+     `plan --verify` counts a dropped signature on its own line, not as a change. `Lord of the
+     Lost/Swan Songs II` is no longer a cover change on every check.
+   - The check names an archive address for a cover to be saved only when a HEAD says it answers
+     (`caa_answers`); otherwise "could not fetch <url> (answered 404)", or "no cover would be saved"
+     (which, like the hedged line, does not keep an album out of the skip). The fetch-again line says
+     it compares pictures. In the run, a fetch again leaves one line: replaced, the same picture (now
+     left unwritten), or not fetched with the answer. A folder with no picture in its files says so.
+   - A fetch again goes behind a release front to its group's (`_again_from`). The 19 release fronts
+     of 2026-10-11 were a 404 and every one of their groups answered.
+   - The repair names an ids-only fault as "re-pointed N track id(s) at their files". The folder line
+     is kept for a plan whose folder really was elsewhere.
+   - Tests fail on e4c1367. Proof on copies of `Lord of the Lost/Swan Songs II`, `Sagittarius/The
+     Kingdom Come`, `Rammstein/Rosenrot` and `Eisbrecher/Ewiges Eis` (503 through the test seam).
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

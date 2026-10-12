@@ -163,6 +163,23 @@ def register(name: str, make: Any) -> None:
     _MAKERS[name] = make
 
 
+_ADDRESS_KEYS: list[Any] = []
+
+
+def register_address_key(key: Any) -> None:
+    """A provider's way of saying which part of its addresses is the picture and which is only the
+    moment it was asked for (§9, slice 181). Only the provider knows its own address shapes."""
+    _ADDRESS_KEYS.append(key)
+
+
+def address_key(url: str) -> str:
+    """The address as it is compared and recorded: what every provider's own rule leaves of it."""
+    _load()
+    for key in _ADDRESS_KEYS:
+        url = key(url)
+    return url
+
+
 def known() -> list[str]:
     """Every provider there is. Loads them first: asking what exists before anything has been
     fetched used to answer "none", which is only true until the first import (§9, slice 57)."""

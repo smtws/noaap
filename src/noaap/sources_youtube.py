@@ -118,3 +118,22 @@ class YouTubeSource:
 
 
 sources.register(sources.DEFAULT, YouTubeSource)
+
+
+_SIGNED_THUMB = re.compile(r"^https://i\d*\.ytimg\.com/")
+
+
+def unsigned(url: str) -> str:
+    """A thumbnail address without its signature: the path and `v=` say which picture it is, `sqp=`
+    and `rs=` only when it was asked for (§9, slice 181; P129). Anything else is left as it is."""
+    if not _SIGNED_THUMB.match(url) or "?" not in url:
+        return url
+    base, _, query = url.partition("?")
+    pairs = [p.partition("=") for p in query.split("&") if p]
+    if not any(k in ("sqp", "rs") for k, _, _ in pairs):
+        return url
+    kept = [f"{k}={v}" for k, _, v in pairs if k == "v"]
+    return base + (f"?{'&'.join(kept)}" if kept else "")
+
+
+sources.register_address_key(unsigned)

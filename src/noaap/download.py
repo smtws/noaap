@@ -33,7 +33,7 @@ from .lyrics import (
     write_sidecar,
 )
 from .models import AlbumPlan, Candidate, Failure, PlanTrack, Provenance
-from .plan import clashing_names, refresh_derived, wanted_filename, wanted_folder
+from .plan import clashing_names, cover_key, refresh_derived, wanted_filename, wanted_folder
 from .precautions import Unsafe, empty_under, put_aside, safely
 from .sources import Blocked, NoAudio, Source, SourceError
 from .sources_folder import is_hidden_name
@@ -278,11 +278,23 @@ def written(plan: AlbumPlan, album_dir: Path) -> dict[str, Any]:
     whether a save would change it; both ask here rather than rebuilding the rule, because a second
     copy of it is a second thing to get wrong.
     """
-    out = kept_private(narrow_candidates(portable(plan.to_dict(), album_dir)), plan.provider)
+    out = _unsigned(kept_private(narrow_candidates(portable(plan.to_dict(), album_dir)), plan.provider))
     # **only a plan that really holds one says so.** Every YouTube and SoundCloud album keeps
     # schema 1 and stays byte-for-byte what it was, readable by ytalbum 0.9.1 and by every noaap
     # up to 1.5.0 (R-207, ruling 1).
     out["schema"] = 2 if _has_relative(out) else 1
+    return out
+
+
+def _unsigned(out: dict[str, Any]) -> dict[str, Any]:
+    """Every cover address the plan records, without a thumbnail's signature (§9, slice 181; P129)."""
+    for key in ("cover_url", "cover_fallback_url"):
+        if out.get(key):
+            out[key] = cover_key(out[key])
+    for record in (out.get("cover_fetched"), out.get("auto")):
+        for key in ("url", "tried", "cover_url"):
+            if isinstance(record, dict) and isinstance(record.get(key), str):
+                record[key] = cover_key(record[key])
     return out
 
 
@@ -660,12 +672,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
             # its files, which is why the line hedges — but a Cover Art Archive front is a definite
             # address, and a reader asking "will this album get a cover?" deserves to see it. The
             # user's `Apocalyptica/Cult` had a pinned release and a check that said nothing at all.
-            archive = next((a for a in address if a.startswith(f"{CAA}/")), None)
-            if address[0] == str(album_dir):
-                said.append("a cover would be saved beside the album" + MAYBE_COVER
-                            + (f", else from {archive}" if archive else ""))
-            else:
-                said.append(f"a cover would be saved beside the album from {address[0]}")
+            said.append(_would_save(address, album_dir))
     if want is not None and want.cover_beside:
         said += cover_would(plan, album_dir)
     if want is not None and not want.cover_embedded:
@@ -1170,7 +1177,7 @@ def run(
     # a property of the pass. Before that, only a download fetched one, so `repair` could never add
     # the cover a setting asks for — and a take-in's own switch for it did nothing at all.
     cover = _cover(plan, album_dir, source,
-                   fetch=want.cover_beside if want is not None else download)
+                   fetch=want.cover_beside if want is not None else download, say=say)
     if plan.cover_fetched != recorded:
         # **the record of a cover we just wrote is saved now, not when a track happens to change**
         # (§9, slice 64). The plan is written above and then only again by a track that did something,
@@ -1512,7 +1519,8 @@ def cover_candidates(url: str, source: Source | None = None) -> list[str]:
     return better(url) if better else [url]
 
 
-def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True) -> bytes | None:
+def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True,
+           say: Callable[[str], None] = lambda line: None) -> bytes | None:
     """The album cover, kept as cover.* in the album folder.
 
     A cover the user put there is always used. One we saved ourselves is replaced once a
@@ -1542,14 +1550,9 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
             existing.unlink()
             data = _save_cover(plan, album_dir, plan.cover_fetched.get("url", ""), square)
             existing = next(album_dir.glob(f"{COVER_STEM}.*"))
-        if not ours or not plan.cover_url or plan.cover_url in (plan.cover_fetched.get("url"), plan.cover_fetched.get("tried")):
+        if not ours or not plan.cover_url or _tried(plan, plan.cover_url):
             return data
-        new = _download_cover(plan.cover_url, source)
-        plan.cover_fetched["tried"] = plan.cover_url
-        if not new:
-            return data
-        existing.unlink()
-        return _save_cover(plan, album_dir, *new)
+        return _again(plan, album_dir, source, existing, data, say)
 
     if not fetch:
         return None
@@ -1567,7 +1570,103 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True)
                     f" — {'; '.join(dict.fromkeys(why))}" if why else "")
     elif addresses:
         log.debug("no picture in the files of %s", album_dir)
+        # one line where the check promised a try (§9, slice 181): the four of 2026-10-11 said nothing
+        say("no cover was saved: there is no picture in its files")
     return None
+
+
+def _again(plan: AlbumPlan, album_dir: Path, source: Source, existing: Path, data: bytes,
+           say: Callable[[str], None]) -> bytes:
+    """A cover of ours, fetched again from a newer address — **and one line on what came of it**.
+
+    The repair of 2026-10-11 fetched 20 covers again and said nothing about any of them: 19 answered
+    404 and one brought the same picture, which was written over itself (§9, slice 181; P129 item 3).
+    """
+    asked, why = plan.cover_url, []
+    for url in (addresses := _again_from(plan)):
+        if not (found := _download_cover(url, source, why)):
+            continue
+        new = square_if_padded(found[1]) or found[1]
+        if _sha1(new) == plan.cover_fetched.get("sha1"):
+            plan.cover_fetched["url"] = url
+            if url != asked:
+                plan.cover_fetched["tried"] = asked
+            say(f"the cover fetched again from {url} is the picture already beside the album — left as it is")
+            return data
+        existing.unlink()
+        saved = _save_cover(plan, album_dir, url, found[1])
+        if url != asked:
+            plan.cover_fetched["tried"] = asked     # the group's picture, and the release had none
+        say(f"the cover was replaced from {url}")
+        return saved
+    plan.cover_fetched["tried"] = asked
+    say(f"the cover was not fetched again from {' or '.join(addresses)}: "
+        f"{'; '.join(dict.fromkeys(why)) or 'no picture there'} — the one beside the album stays")
+    return data
+
+
+NO_COVER = "no cover would be saved"
+
+
+def _would_save(addresses: list[str], album_dir: Path) -> str:
+    """The dry run's line for a cover to be saved beside the album: **only an address that answers**.
+
+    The repair check of 2026-10-11 announced six covers "saved beside the album from" the archive,
+    and five of those fronts were a 404 (§9, slice 181; P129 item 3). So each archive address is
+    looked at the way a check may look — a HEAD, which reads nothing — in the order the real pass
+    tries them, and the line names the first that answers. The album's own folder still hedges,
+    because whether a picture is in its files is the same work as finding it.
+    """
+    hedged, failed = False, []
+    for url in addresses:
+        if url == str(album_dir):
+            hedged = True
+            continue
+        if url.startswith(f"{CAA}/") and (no := caa_answers(url)) is not None:
+            failed.append(f"{url} ({no})")
+            continue
+        return "a cover would be saved beside the album" + (f"{MAYBE_COVER}, else from {url}" if hedged
+                                                             else f" from {url}")
+    could_not = f"could not fetch {'; '.join(failed)}" if failed else ""
+    if hedged:
+        return "a cover would be saved beside the album" + MAYBE_COVER + (f" — {could_not}" if failed else "")
+    return f"{NO_COVER}: {could_not or 'there is nowhere to ask'}"
+
+
+def caa_answers(url: str) -> str | None:
+    """None where the archive has a picture at this address, else what it answered (§9, slice 181).
+
+    Asked with a HEAD, so a check reads no picture and writes nothing; the archive answers a front
+    with a redirect to `archive.org`, which is followed.
+    """
+    from urllib.parse import urlsplit
+
+    import httpx
+
+    from . import user_agent
+
+    host = urlsplit(url).hostname
+    try:
+        r = httpx.head(url, timeout=20, follow_redirects=True, headers={"User-Agent": user_agent()})
+    except Exception as e:
+        return f"{host} could not be reached: {type(e).__name__}"
+    return None if r.status_code == 200 else f"{host} answered {r.status_code}"
+
+
+def _tried(plan: AlbumPlan, url: str | None) -> bool:
+    """Whether the cover beside the album already came from this address, or a fetch of it failed."""
+    return cover_key(url) in {cover_key(plan.cover_fetched.get("url")), cover_key(plan.cover_fetched.get("tried"))}
+
+
+def _again_from(plan: AlbumPlan) -> list[str]:
+    """Where a cover of ours is fetched again: the plan's address, and **behind a release's archive
+    front, its group's** (§9, slice 181; P129 item 4). On 2026-10-11, 19 releases answered 404 and
+    every one of their groups answered with a picture."""
+    out = [plan.cover_url] if plan.cover_url else []
+    group = caa_group_front(plan.release_group)
+    if out and out[0].startswith(f"{CAA}/release/") and group and group != out[0]:
+        out.append(group)
+    return out
 
 
 def cover_would(plan: AlbumPlan, album_dir: Path) -> list[str]:
@@ -1590,8 +1689,12 @@ def cover_would(plan: AlbumPlan, album_dir: Path) -> list[str]:
         return said   # somebody's own cover: used as it is, never replaced
     if square_if_padded(data):
         said.append("the cover would be squared")
-    if plan.cover_url and plan.cover_url not in (plan.cover_fetched.get("url"), plan.cover_fetched.get("tried")):
-        said.append(f"the cover would be fetched again from {plan.cover_url}, and replaced if that answers")
+    if plan.cover_url and not _tried(plan, plan.cover_url):
+        # **and what it compares** (§9, slice 181): the picture it gets with the one beside the album
+        again = _again_from(plan)
+        said.append(f"the cover would be fetched again from {again[0]}"
+                    + (f", else from {again[1]}" if len(again) > 1 else "")
+                    + ", and replaced only if the picture differs from the one beside the album")
     return said
 
 

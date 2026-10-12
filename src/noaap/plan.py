@@ -586,6 +586,38 @@ def as_the_plan_knows_them(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     return out
 
 
+def cover_key(url: str | None) -> str | None:
+    """A cover address as it is compared and recorded: a signed thumbnail without its signature.
+
+    YouTube signs a playlist's thumbnail afresh on every read, so the same picture came back under
+    a new address each time, and `Lord of the Lost/Swan Songs II` was announced as a cover change by
+    every check (§9, slice 181; P129). Which part of an address is the picture is the provider's to
+    say (`sources.address_key`). A fetch never uses the stored form: it takes the address the read
+    in hand just gave, which is the only one signed for now.
+    """
+    if not isinstance(url, str):
+        return url
+    from . import sources
+
+    return sources.address_key(url)
+
+
+def keep_the_release(fresh: AlbumPlan, existing: AlbumPlan) -> None:
+    """A lookup that gave no release leaves what the last one that did gave (§9, slice 181; P129).
+
+    A 503, or a search where none fitted, is not an answer about this album — and the merge took the
+    fresh plan's cover address over the stored one, so the release's archive front became the
+    folder's own `cover.jpg` and stayed that way (`Depeche Mode/Policy of Truth`, 2026-10-11).
+    So the fresh plan carries the stored release's addresses into the merge, and the merge has
+    nothing to change. What the lookup weighed (`offered`) is still its own answer where it has one.
+    """
+    fresh.cover_url, fresh.cover_fallback_url = existing.cover_url, existing.cover_fallback_url
+    fresh.release_group = fresh.release_group or existing.release_group
+    fresh.mbid = fresh.mbid or existing.mbid
+    if not fresh.offered:
+        fresh.offered = list(existing.offered or [])
+
+
 def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     """Bring an existing plan up to date with a fresh one from the same source (DESIGN.md slice 3).
 
@@ -988,7 +1020,7 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
     for name in ("albumartist", "album", "year", "mbid", "kind"):
         if line := _one(name, getattr(was, name, None), getattr(now, name, None)):
             out.append(line)
-    if (was.cover_url or "") != (now.cover_url or "") and now.cover_url:
+    if (cover_key(was.cover_url) or "") != (cover_key(now.cover_url) or "") and now.cover_url:
         out.append(f"cover: from {now.cover_url}")
     # **the releases a lookup weighed are not a change it would write** (§9, slice 158; R-530).
     # Slice 145 put them here, so that a check would mention them at all — and once `merge_plans`

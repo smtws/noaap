@@ -24,6 +24,7 @@ from .download import (
     written,
 )
 from .models import AlbumPlan, PlanTrack, SourceRef, kept
+from .plan import cover_key
 from .service import Service, collection_address, exit_code
 from .sources import Cancelled, NotSupported, SourceError
 
@@ -651,7 +652,7 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         print("set the library first: noaap config --library PATH", file=sys.stderr)
         return 2
     paths = sorted(root.glob(f"*/*/{PLAN_FILE}"))
-    identical = filled = converted = reshapes = 0
+    identical = filled = converted = reshapes = unsigned = 0
     faults: list[str] = []
     moved: list[str] = []
     unknown: dict[str, int] = {}
@@ -689,6 +690,11 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         # conversion and not a value that changed behind the owner's back (§9, slice 60)
         bump = [c for c in changed if c[0] == "schema"] if refs else []
         changed = [c for c in changed if c not in refs and c not in bump]
+        # **a thumbnail's signature is not the picture** (§9, slice 181): a save writes the address
+        # without it, and that is the rule doing its work, not a value changing behind anybody's back
+        signed = [c for c in changed if isinstance(c[1], str) and c[1] != c[2] and cover_key(c[1]) == c[2]]
+        changed = [c for c in changed if c not in signed]
+        unsigned += len(signed)
         converted += len(refs)
         reshapes += bool(reshaped)
         if refs and not (gone or changed):
@@ -696,7 +702,7 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
         if gone or changed:
             faults.append(f"{where}: would lose {gone}" if gone
                           else f"{where}: would change {[f'{k}: {b!r} -> {a!r}' for k, b, a in changed[:3]]}")
-        elif not refs and not reshaped:
+        elif not refs and not reshaped and not signed:
             # **the three counts are exclusive.** A converted plan is neither byte-identical nor a
             # plan gaining defaults, and counting it twice would make the totals lie (§9, slice 60).
             if as_saved(after) == raw:
@@ -707,6 +713,7 @@ def _verify_plans(cfg: Config, library: Path | None) -> int:
           + (f"{converted} ref(s) in {len(moved)} plan(s) would become relative, " if converted else "")
           + (f"{reshapes} plan(s) would have their copies written in the shape ytalbum 0.9.1 reads, "
              if reshapes else "")
+          + (f"{unsigned} cover address(es) would be written without their signature, " if unsigned else "")
           + f"{len(faults)} would lose or change something")
     for key, n in sorted(unknown.items()):
         print(f"  unknown field {key!r} on {n} plan(s) — written by a newer noaap, carried through")

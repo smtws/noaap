@@ -27,8 +27,10 @@ from .cover import square_if_padded
 from .download import (
     COVER_STEM,
     MAYBE_COVER,
+    NO_COVER,
     PARTS_DIR,
     PLAN_FILE,
+    _source_points_elsewhere,
     artists_without_albums,
     find_plan,
     iter_plans,
@@ -42,6 +44,7 @@ from .download import (
     save_plan,
     says_the_old_name,
     track_named,
+    tracks_elsewhere,
     would_do,
 )
 from .enrich import carry_the_pin, enrich, pinned_release
@@ -74,6 +77,7 @@ from .plan import (
     build_plan,
     changes_from,
     drop_album_name,
+    keep_the_release,
     merge_plans,
     refresh_derived,
     set_single_album_name,
@@ -378,6 +382,7 @@ class Service:
         # **asked in this order on purpose**: reading `self.mb` builds the client, and building it
         # creates a cache file — for an album nothing may be asked about, even that is more than
         # nothing (R-259, queued; found in the live run's own cache directory)
+        stats = {"release": 0}
         if self.may_look_up(plan) and (mb := self.mb):
             stats = enrich(plan, mb, progress=lambda m: (self.check(), self.log(f"  {m}")),
                            source=self.source_for(plan))
@@ -390,6 +395,11 @@ class Service:
             # album-wide judgement is made again, on the final titles
             if dropped := drop_album_name(plan.album, plan.tracks):
                 self.log(f"  {dropped} track title(s) lost the repeated album name")
+        if here and here[1].mbid and not stats["release"]:
+            # **no release this time is not a different release** (§9, slice 181; P129 item 1)
+            keep_the_release(plan, here[1])
+            self.log("  MusicBrainz gave no release this time: the release, cover and group on record "
+                     "are kept and not compared")
         if named := set_single_album_name(plan):  # a single is its song, under whatever name it ended up with
             self.log(f"  the single is named after its track: “{named}”")
 
@@ -780,6 +790,8 @@ class Service:
             track.video_id = known.video_id  # the same recording, whatever file is best today
             track.sync_candidates()
 
+        if plan.mbid:
+            keep_the_release(fresh, plan)   # nothing was asked, so nothing answered (slice 181)
         merged = merge_plans(plan, fresh)
         merged.keep_names, merged.keep_tags = plan.keep_names, plan.keep_tags
         merged.adopted = plan.adopted
@@ -1962,6 +1974,7 @@ class Service:
         if line := says_the_old_name(self.library):
             self.log(line)
         lengths = retags = renames = pointed = cased = stuck = 0
+        ids_pointed = [0, 0]   # albums, tracks: re-pointed at their files with the folder already right
         moved_total = {"moved": 0, "would_move": 0, "left": 0, "decoded": 0}
         # the whole library decides the spellings; `only` decides what is *touched*, and what is
         # *asked of MusicBrainz* (§9, slice 138, R-497)
@@ -2082,6 +2095,11 @@ class Service:
             # before the skip: a cover address under a staging folder that no longer exists cannot be
             # read, and an album it keeps out of the skip is an album nothing ever finishes with.
             named = Path(str(plan.source_url or plan.source_id or "")).name
+            # **which fault it was, asked before it is mended** (§9, slice 181; q7): 596 albums of
+            # the share were "re-pointed at its own folder (its plan named 'X' elsewhere)" where
+            # only their track ids had been stale — the folder they named was this one
+            folder_was_elsewhere = _source_points_elsewhere(plan, album_dir)
+            ids_moving = len(tracks_elsewhere(plan, album_dir))
             repointed = point_at(plan, album_dir, say=self.log)
             if repointed and not dry_run:
                 save_plan(plan, album_dir)
@@ -2104,7 +2122,7 @@ class Service:
             # looking at it again. But a reader asking "will this album get a cover?" must still see
             # that it will be tried: the user's `Apocalyptica/Cult` had a pinned release and a check
             # that said nothing at all about a cover.
-            would = [line for line in everything if MAYBE_COVER not in line]
+            would = [line for line in everything if MAYBE_COVER not in line and not line.startswith(NO_COVER)]
             if not misplaced and not borrowed and not filled and not stale and not refound \
                     and not swept.get("binned") and not elsewhere.get("moved") \
                     and not elsewhere.get("sources") and not recut and not discs and not would \
@@ -2121,13 +2139,18 @@ class Service:
             # the skip, which is before the header is printed — so the line used to come out above it
             # and read as the previous album's: 13 of them in one check, each naming the *next*
             # album's folder, and the first with no header above it at all.
-            if repointed:
+            if repointed and folder_was_elsewhere:
                 # the name the plan *had* (P126): the folder's own name said nothing a reader could
                 # check, and for a rename that changed only the case it read as no change at all
                 self.log(f"  {'would be ' if dry_run else ''}re-pointed at its own folder "
                          f"(its plan named {named!r}"
                          + (" elsewhere)" if named == album_dir.name else ")"))
                 pointed += 1
+            elif repointed:
+                self.log(f"  {'would re-point' if dry_run else 're-pointed'} {ids_moving} track id(s) "
+                         "at their files")
+                ids_pointed[0] += 1
+                ids_pointed[1] += ids_moving
             if dry_run:
                 # **the dry run names what the real run would do to the files** (§9, slice 85). It used
                 # to stop here, so renames and retags — which happen inside `run` below — were never
@@ -2151,7 +2174,7 @@ class Service:
                 # **a collision is a finding, not a log-file footnote** (§9, slice 133)
                 self.log(f"  {line}")
             stuck += len(stayed)
-            self._run(plan, album_dir, download=False)
+            self._run(plan, album_dir, download=False, say=lambda line: self.log(f"  {line}"))
             # **a move, a rename and the re-point of what they touched are one pass** (§9, slice 130).
             # The question above is asked before the skip, which is before the folder moves and before
             # `_run` renames the files — so on the user's share `repair --apply` moved 15 folders and
@@ -2186,6 +2209,9 @@ class Service:
         if pointed:
             log_it = "would be re-pointed" if dry_run else "re-pointed"
             self.log(f"{pointed} plan(s) {log_it} at their own album folder")
+        if ids_pointed[0]:
+            self.log(f"{ids_pointed[1]} track id(s) in {ids_pointed[0]} album(s) "
+                     f"{'would be re-pointed' if dry_run else 're-pointed'} at their files")
         if stuck:
             self.log(f"{stuck} album folder(s) could not move: something is already there")
         self.log(f"{len(outcomes)} album(s) {'would be tidied up' if dry_run else 'tidied up'}")

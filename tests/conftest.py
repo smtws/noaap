@@ -38,6 +38,9 @@ def isolated(tmp_path_factory, monkeypatch):
     # test that is *about* the watcher replaces the same hook with its own collector and drives the
     # loop by hand.
     monkeypatch.setattr("noaap.timing._in_the_background", lambda watch: None)
+    # **a check looks at the Cover Art Archive** (§9, slice 181), with a HEAD per front; no test
+    # reaches it, and every address answers unless a test says otherwise
+    monkeypatch.setattr("noaap.download.caa_answers", lambda url: None)
     return started
 
 @pytest.fixture(scope="session")

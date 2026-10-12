@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from noaap.download import load_plan, save_plan
+from noaap.download import _unsigned, load_plan, save_plan
 from noaap.models import AlbumPlan
 
 PLANS = sorted((Path(__file__).parent / "fixtures" / "plans").glob("*.json"))
@@ -105,7 +105,8 @@ def test_a_plan_survives_the_disk(path: Path, tmp_path: Path) -> None:
     save_plan(plan, tmp_path)
     back = load_plan(tmp_path)
     assert back is not None
-    assert back.to_dict() == plan.to_dict()
+    # a thumbnail's signature is the one thing a save leaves out on purpose (§9, slice 181)
+    assert back.to_dict() == _unsigned(plan.to_dict())
 
 
 def test_a_plan_from_a_later_version_survives_unchanged() -> None:

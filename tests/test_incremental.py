@@ -11,7 +11,7 @@ from mutagen.oggopus import OggOpus
 
 from noaap.download import find_plan, load_plan, relocate, run
 from noaap.models import Collection, Entry, Provenance
-from noaap.plan import build_plan, merge_plans
+from noaap.plan import build_plan, cover_key, merge_plans
 
 FIXTURES = Path(__file__).parent.parent / "design-fixtures"
 JPEG = b"\xff\xd8\xff\xe0" + b"\0" * 64
@@ -276,7 +276,8 @@ def test_our_cover_is_upgraded_when_a_better_source_appears(tmp_path, yt):
     plan = build_plan(vol1())
     album_dir = tmp_path / plan.folder
     run(plan, album_dir, yt)
-    assert load_plan(album_dir).cover_fetched["url"] == plan.cover_url
+    # recorded without the thumbnail's signature (§9, slice 181)
+    assert load_plan(album_dir).cover_fetched["url"] == cover_key(plan.cover_url)
 
     square = b"\xff\xd8\xff\xe0" + b"\2" * 64
     yt.art = lambda url: square if "coverartarchive" in url else JPEG
