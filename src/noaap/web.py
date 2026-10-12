@@ -45,6 +45,7 @@ from .config import Config
 from .cover import THUMB_SIDE
 from .cover import thumbnail as make_thumbnail
 from .download import COVER_STEM, PLAN_FILE, _download_cover, iter_plans, load_plan, read_plan
+from .jobtable import JobTable, elapsed_since
 from .lyrics import needs_you, publishable, read_sidecar, reconcile, timings_stale
 from .mb import WEB as MB_WEB
 from .mb import seed_release, seed_url, seedable
@@ -130,6 +131,7 @@ class Job:
     # **a step that did not happen is not a job that did** (§9, slice 167; R-576 item 2): a trim
     # refused inside a save or a repair is written on the track and logged, and the job said done
     trims_failed: int = 0
+    began: float | None = None   # monotonic, when it started running (§9, slice 184)
 
     def summary(self, full: bool = False) -> dict[str, Any]:
         d = {"id": self.id, "kind": self.kind, "label": self.label, "state": self.state, "lane": self.lane,
@@ -152,8 +154,11 @@ class Jobs:
     def __init__(self, make_service: Callable[[Job], Service], release: Callable[[], Any] | None = None,
                  wrote: Callable[[], Any] | None = None,
                  idle_seconds: float = CARD_IDLE, sleep: Callable[[float], None] = time.sleep,
-                 now: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.monotonic, table: JobTable | None = None) -> None:
         self.make_service = make_service
+        # **what ran, on disk** (§9, slice 184): the server's jobs, for whoever reads them after a
+        # restart. Only the server passes one; the CLI's and the tests' have none.
+        self.table = table
         self._jobs: dict[int, Job] = {}
         self._ids = itertools.count(1)
         self._queues: dict[str, queue.Queue[tuple[Job, Callable[[Service], Any]]]] = {"write": queue.Queue(), "read": queue.Queue()}
@@ -216,14 +221,27 @@ class Jobs:
             job.log.append("cancel requested…" if job.state == "running" else "cancelled before it started")
             if job.state == "queued":
                 job.state, job.finished = "cancelled", time.time()
+                self._record_end(job)
         return job
+
+    def _record(self, job: Job) -> None:
+        if self.table:
+            self.table.started(job.id, job.kind, job.label, job.target, job.lane)
+
+    def _record_end(self, job: Job) -> None:
+        if self.table:
+            why = next((line for line in reversed(job.log) if line.strip()
+                        and not line.startswith("Traceback")), None) if job.state == "failed" else None
+            self.table.ended(job.id, job.kind, job.label, job.target, job.lane, job.state,
+                             elapsed_since(job.began), why)
 
     def _work(self, lane: str) -> None:
         while True:
             job, action = self._queues[lane].get()
             if job.cancel.is_set():
                 continue  # cancelled while queued
-            job.state = "running"
+            job.state, job.began = "running", time.monotonic()
+            self._record(job)
             try:
                 with self.idle:   # nothing lets go of the card while this runs (§9, slice 82)
                     result = action(self.make_service(job))
@@ -254,6 +272,7 @@ class Jobs:
                 job.state = "failed"
             finally:
                 job.finished = time.time()
+                self._record_end(job)
                 if job.lane == "write":
                     with contextlib.suppress(Exception):
                         self.wrote(job.target)
@@ -417,7 +436,8 @@ class App:
         self.engines = Engines()
         self._service_factory = service_factory or (lambda job: Service(cfg, self.library, log=lambda s: _append(job, s), on_track=lambda t, what: _on_track(job, t, what), cancel=job.cancel, engines=self.engines))
         self.jobs = Jobs(self._service_factory, release=self.engines.let_go,
-                         wrote=self.wrote_one, idle_seconds=cfg.timing_card_idle_seconds)
+                         wrote=self.wrote_one, idle_seconds=cfg.timing_card_idle_seconds,
+                         table=JobTable(config_mod.state_dir() / "jobs.jsonl"))
         self.details = Details(lambda: sources.get(None, self.cfg))
         self._track_index: dict[str, Any] = {"version": "", "albums": {}}
         # a service with no job behind it, for the questions the page asks while nothing is running

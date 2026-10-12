@@ -58,6 +58,13 @@ class TimingUnavailable(RuntimeError):
     """Asked of a provider that cannot do it, or is not installed. Never a crash, always a message."""
 
 
+# here rather than beside the card code, so the service can tell this failure from the others
+# without importing a provider (§9, slice 184)
+CARD_RAN_OUT = ("the graphics card ran out of memory part way through, so this job has no answer and "
+                "nothing was written. Try again when whatever else is using the card has finished, or "
+                'set timing_device = "cpu" to stop using it altogether')
+
+
 @dataclass
 class TimedLine:
     """One line of words and where it starts, in the **file's** clock (§9, slice 35).

@@ -13,6 +13,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
@@ -94,6 +95,7 @@ from .text import key as text_key
 from .text import move_feat, strip_self_feat
 from .timing import (
     ALIGN,
+    CARD_RAN_OUT,
     LISTEN,
     TRANSCRIBE,
     Engines,
@@ -1257,14 +1259,15 @@ class Service:
             # it for itself wrote 27 words of Russian boilerplate over a four-minute German song,
             # and we are holding the lyric. Where the words cannot say, it detects as before.
             hint = language_hint(lines)
-            with self._what_it_listens_to(audio) as listen_to:
+            with self._on_record(plan, track, method), self._what_it_listens_to(audio) as listen_to:
                 heard = engine.heard(listen_to, language=hint, check=self.check, **where)
             self.log(f"heard {len(heard.timed)} words with a time")
             timed = place_by_listening(lines, heard)
         else:
             self.log(f"aligning {len(lines)} lines of {track.title} with {engine.name} "
                      f"· {_minutes(audio)} of audio")
-            timed = engine.align(audio, lines, check=self.check, **where)
+            with self._on_record(plan, track, ALIGN):
+                timed = engine.align(audio, lines, check=self.check, **where)
         placed = len(lines) - len(timed.unplaced)
         for said in (timed.parameters.get("not_heard") or "").split("; "):
             if said:
@@ -1307,7 +1310,7 @@ class Service:
         # touches this module (§9, slice 36)
         from .timing_local import separated_voice
 
-        with tempfile.TemporaryDirectory(prefix="noaap-voice-") as tmp:
+        with self._on_record(plan, track, TRANSCRIBE), tempfile.TemporaryDirectory(prefix="noaap-voice-") as tmp:
             voice = separated_voice(audio, Path(tmp) / "voice.wav", self.log, self.check)
             heard = "the separated voice" if voice else "the mixed track"
             self.log(f"asking {engine.name} to draft the words of {track.title} · "
@@ -1538,8 +1541,36 @@ class Service:
         A provider somewhere else has no answer to this and is not asked: `{}` then, and the call
         below is the one it always was (§9, slice 82).
         """
+        # why the job left the card, where it did: said to the journal when the job ends (§9, slice 184)
+        self._left_the_card = None
+        ask = getattr(engine, "device_and_reason", None)
+        if ask:
+            device, self._left_the_card = ask(capability)
+            return {"device": device}
         decide = getattr(engine, "device_now", None)
         return {"device": decide(capability)} if decide else {}
+
+    @contextmanager
+    def _on_record(self, plan: AlbumPlan, track: Any, what: str):
+        """One WARNING line when a timing job ran off the card or lost it (§9, slice 184; R-589 item 2).
+
+        The job log said so already, and nobody reads a job log afterwards: the service's journal is
+        at WARNING, so this is the one place a person looking back over a night can find it. One
+        line per album — each of these jobs is one track of one album — with the device, the
+        reason and how long it took.
+        """
+        started = time.monotonic()
+        where = f"{plan.albumartist} — {plan.album}, {track.number:02d} {track.title} ({what})"
+        try:
+            yield
+        except TimingUnavailable as e:
+            if str(e) == CARD_RAN_OUT:
+                log.warning("timing lost the card part way through: %s · device cuda · out of memory, "
+                            "nothing written · %.1f s", where, time.monotonic() - started)
+            raise
+        if getattr(self, "_left_the_card", None):
+            log.warning("timing ran on the processor, not the card: %s · device cpu · %s · %.1f s",
+                        where, self._left_the_card, time.monotonic() - started)
 
     def sync_lyrics(self, source_id: str) -> Outcome:
         """Make the plan agree with the `.lrc` files beside the tracks, and the tags with the plan.
@@ -1616,7 +1647,8 @@ class Service:
         where = self._where_it_runs(engine, ALIGN)
         self.log(f"{track.title}: lrclib's entry is {apart:.0f} s from this file — asking the aligner "
                  f"whether its {len(words)} lines belong to it")
-        timed = engine.align(album_dir / track.filename, words, check=self.check, **where)
+        with self._on_record(plan, track, ALIGN):
+            timed = engine.align(album_dir / track.filename, words, check=self.check, **where)
         span = self._fit_number(timed.parameters.get("own_span"))
         unplaced = len(timed.unplaced) / max(1, len(words))
         say = fit_verdict(span, unplaced)

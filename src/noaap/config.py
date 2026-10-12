@@ -52,6 +52,12 @@ def cache_dir(name: str = NAME) -> Path:
     return Path(base) / name
 
 
+def state_dir(name: str = NAME) -> Path:
+    """What the server keeps about itself between runs: today the job table (§9, slice 184)."""
+    base = os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state"
+    return Path(base) / name
+
+
 def config_path() -> Path:
     return config_dir() / "config.toml"
 

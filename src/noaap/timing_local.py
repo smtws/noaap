@@ -35,6 +35,7 @@ from typing import Any
 
 from .timing import (
     ALIGN,
+    CARD_RAN_OUT,
     LISTEN,
     TRANSCRIBE,
     VERIFY_LOST,
@@ -78,9 +79,6 @@ CARD_NEEDS = {ALIGN: 3500, TRANSCRIBE: 3800, LISTEN: 3800}
 USES = {ALIGN: ("aligner", "separator"), LISTEN: ("listener",), TRANSCRIBE: ("listener",)}
 CARD_SLOWER = 11        # times as long on the processor, measured on the same track
 WHISPER_CARD = 3616     # MiB the second opinion holds once loaded, if this provider is holding it
-CARD_RAN_OUT = ("the graphics card ran out of memory part way through, so this job has no answer and "
-                "nothing was written. Try again when whatever else is using the card has finished, or "
-                'set timing_device = "cpu" to stop using it altogether')
 CUDA_FULL = ("the graphics card has no room left for the second opinion beside the aligner and the "
              "separator; checking on the processor instead, which is slower but gives the same answer")
 CUDA_TRAP = ("ctranslate2 wants CUDA 12's libcublas and the installed torch brought a different one; "
@@ -170,12 +168,20 @@ class LocalTiming:
         the question, so that what is left holding the card is only what this job reuses — and that
         much really is room rather than an obstacle.
         """
+        return self.device_and_reason(what)[0]
+
+    def device_and_reason(self, what: str = ALIGN) -> tuple[str, str | None]:
+        """`device_now`, and why it is not the card where the card was wanted (§9, slice 184).
+
+        The reason is the room the card had. A processor that was configured, or is the only device
+        here, is a choice and has none: only a job pushed off the card is worth a line in the journal.
+        """
         try:
             device = self.resolved_device()
         except ImportError:
-            return "cpu"   # no torch on this machine at all; the job itself says so in a moment
+            return "cpu", None   # no torch on this machine at all; the job itself says so in a moment
         if device != "cuda":
-            return device
+            return device, None
         self.keep_only_what_it_uses(what)
         needs = CARD_NEEDS.get(what, CARD_NEEDS[ALIGN])
         try:
@@ -186,12 +192,12 @@ class LocalTiming:
                 room += WHISPER_CARD   # loaded, and this job is the kind that reuses it
         except Exception:  # a torch too old to ask, or a driver that will not say: try the card
             log.debug("could not ask the card how much room it has", exc_info=True)
-            return device
+            return device, None
         if room >= needs:
-            return device
-        self.log(f"the graphics card has {free} MiB free of {total} and this needs about {needs} — "
-                 f"running on the processor instead, which takes about {CARD_SLOWER}× as long")
-        return "cpu"
+            return device, None
+        why = f"the graphics card has {free} MiB free of {total} and this needs about {needs}"
+        self.log(f"{why} — running on the processor instead, which takes about {CARD_SLOWER}× as long")
+        return "cpu", why
 
     # -- the work ----------------------------------------------------------------------
 

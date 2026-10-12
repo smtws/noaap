@@ -4712,6 +4712,49 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      /dev/nvidia0, /dev/nvidiactl") and the run ends holding the card. With the fake torch alone the
      next opener is `test_nearmiss`. With both: 2441 passed, and `card_watch` saw 0 card files in
      2407 looks.
+184. ✅ **What the server ran is on record after the fact** (2026-10-12, R-614, P132; the janitor's
+   R-589 item 2). A timing job that ran on the processor because the card had no room, or that
+   lost the card half way through (`CARD_RAN_OUT`), said so only in its own job log. The service
+   logs at WARNING, so the journal showed nothing. Jobs live in memory and are forgotten past
+   `KEEP_FINISHED`, so after a restart nothing says what ran.
+   - **One WARNING line per album** for the three timing jobs (`align_lyrics`, `draft_lyrics`,
+     `check_near_lyrics`). Each is one track of one album. The line goes out on logger
+     `noaap.service` when the job ends, with the album, the track, the kind, the device, the reason
+     and the seconds it took:
+     `timing ran on the processor, not the card: <artist> — <album>, 05 <title> (align) · device cpu · <room> · 312.4 s`
+     `timing lost the card part way through: <artist> — <album>, 05 <title> (align) · device cuda · out of memory, nothing written · 41.2 s`.
+     `CARD_RAN_OUT` moves to `timing.py` so the service can tell this failure from the others
+     without importing a provider.
+     The reason for a fallback is the room the card had: `device_and_reason` on the local provider
+     returns it, and `device_now` is its first half. A processor that was configured
+     (`timing_device = "cpu"`) or is the only device is a choice, not a fallback, and is not a line.
+   - Left out: the second opinion moving to the processor inside an alignment (`CUDA_FULL`,
+     `CUDA_TRAP`). The job itself ran on the card and its log says so. Also the timing server
+     (`timing_serve.py`): it is sent audio, not an album.
+   - **The job table on disk**: `$XDG_STATE_HOME/noaap/jobs.jsonl` (default
+     `~/.local/state/noaap/jobs.jsonl`), `config.state_dir()`. Only the server writes it. The CLI's
+     `Jobs` and the tests' have no table unless one is given.
+   - One JSON object per line, appended and flushed per record, one lock around the write:
+     `{"ts", "run", "id", "event": "start"|"end", "kind", "label", "album", "lane"}`. An end adds
+     `"outcome"` (the job's final state) and `"seconds"`. A failed end adds `"why"`: its last log
+     line, 300 characters at most. `album` is the job's `target` (the album's source id) where the
+     job knows one, else null. `run` names the server process (`<start time>-<pid>`), because job
+     ids start again at 1 with every server.
+   - A start is written when the job begins running, not when it is queued. A job cancelled while
+     queued gets only an end, with `"outcome": "cancelled"`.
+   - **Rotation**: before an append, a file past 4 MiB becomes `jobs.jsonl.1`, replacing the one
+     before. At most two files, about 8 MiB, which holds some ten thousand jobs.
+   - **What a restart reads back**: only the current file, and only to close what the last server
+     left open. Each start with no end, from a run that is not this one, gets an end with
+     `"outcome": "interrupted"` and no seconds. Nothing is resumed and the page's job list starts
+     empty, as before. The table is for the person reading it afterwards, not for the server.
+   - A table that cannot be written (a read-only disk, a full one) costs one WARNING and nothing
+     else. A job never fails over its record.
+   - Tests fail on 6ea4be8 (12 of 15; the three that pass are the "says nothing" cases). Proof: the
+     checkout's `noaap serve` on a copy of Heilig under its own systemd user unit, with the card's
+     room and the aligner faked (no model, no CUDA context). It gave one WARNING for a job pushed
+     to the processor and one for a job that lost the card, four starts and four ends, and after a
+     stop in the middle of a job the next server closed it as `interrupted`.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
