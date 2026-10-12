@@ -4755,6 +4755,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      room and the aligner faked (no model, no CUDA context). It gave one WARNING for a job pushed
      to the processor and one for a job that lost the card, four starts and four ends, and after a
      stop in the middle of a job the next server closed it as `interrupted`.
+185. ✅ **A cover from the album's own files says so** (2026-10-12, R-621, q10). A cover taken
+   from the pictures inside the tracks was announced as `a cover was saved beside the album from
+   /mnt/…/Sagittarius/The Kingdom Come`: a folder path where every other cover line has a web
+   address, and nothing saying the picture came out of the album's own files.
+   - The apply: `a cover was saved beside the album from the files in <folder>`.
+   - The check: `a cover would be saved beside the album from the files in <folder>, if one of them
+     holds a picture[, else from <address>]`. `MAYBE_COVER` is now `, if one of them holds a
+     picture`; the skip and the total still tell this hedge from a promise by it.
+   - The job log on the page is these same lines; nothing else changes. A stray picture under a
+     name of its own (`sagottarius.jpg`) is still the user's and left alone: "the files" are the
+     tracks.
+   - Tests fail on 194d127. Proof: dry and apply on a copy with no cover beside, a picture inside a
+     track and a stray picture.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

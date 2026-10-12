@@ -636,7 +636,16 @@ SHOWN = 60
 #: the one line `would_do` ends with that promises nothing — the picture may not be in there at all.
 #: A caller deciding whether an album needs a pass at all has to be able to tell it from the rest
 #: (§9, slice 124), or an album with no cover beside it is never skipped again.
-MAYBE_COVER = " if a picture can be found in its files"
+MAYBE_COVER = ", if one of them holds a picture"
+
+
+def from_its_files(album_dir: Path | str) -> str:
+    """Where a cover in the album's own files comes from, said as that (§9, slice 185; q10).
+
+    The folder's path alone read like an address, beside every other cover line's web address,
+    and said nothing about the picture coming out of the album's own files.
+    """
+    return f"the files in {album_dir}"
 
 
 def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
@@ -1561,7 +1570,8 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True,
     for url in addresses:
         if found := _download_cover(url, source, why):
             # said, as every other outcome is (§9, slice 182): Heilig's cover came with no line at all
-            say(f"a cover was saved beside the album from {url}")
+            said = from_its_files(url) if album_dir is not None and url == str(album_dir) else url
+            say(f"a cover was saved beside the album from {said}")
             saved = _save_cover(plan, album_dir, *found)
             if plan.cover_url and cover_key(url) != cover_key(plan.cover_url):
                 plan.cover_fetched["tried"] = plan.cover_url   # asked first, and it had none
@@ -1630,11 +1640,13 @@ def _would_save(addresses: list[str], album_dir: Path) -> str:
         if url.startswith(f"{CAA}/") and (no := caa_answers(url)) is not None:
             failed.append(f"{url} ({no})")
             continue
-        return "a cover would be saved beside the album" + (f"{MAYBE_COVER}, else from {url}" if hedged
+        files = f" from {from_its_files(album_dir)}{MAYBE_COVER}"
+        return "a cover would be saved beside the album" + (f"{files}, else from {url}" if hedged
                                                              else f" from {url}")
     could_not = f"could not fetch {'; '.join(failed)}" if failed else ""
     if hedged:
-        return "a cover would be saved beside the album" + MAYBE_COVER + (f" — {could_not}" if failed else "")
+        return (f"a cover would be saved beside the album from {from_its_files(album_dir)}{MAYBE_COVER}"
+                + (f" — {could_not}" if failed else ""))
     return f"{NO_COVER}: {could_not or 'there is nowhere to ask'}"
 
 

@@ -173,9 +173,9 @@ def test_an_assignment_does_keep_the_album(tmp_path, one_second_of_sound):
 
 
 def test_the_one_line_that_promises_nothing_does_not_keep_an_album(tmp_path, one_second_of_mp3):
-    """`would_do` ends with "a cover would be saved beside the album if a picture can be found in
-    its files" where the only place to look is the album's own files. It promises nothing, and an
-    album with no cover beside it would otherwise never be skipped again.
+    """`would_do` ends with "a cover would be saved beside the album from the files in <folder>, if
+    one of them holds a picture" where the only place to look is the album's own files. It promises
+    nothing, and an album with no cover beside it would otherwise never be skipped again.
 
     A cover that really can be had says where from, and that does keep the album.
     """

@@ -275,7 +275,7 @@ def test_the_check_names_the_archive_without_holding_the_album_open(tmp_path, on
     cover_lines = [line for line in said if "a cover would be saved" in line]
     assert cover_lines, said
     assert caa_release_front(RELEASE) in cover_lines[0], cover_lines
-    assert "if a picture can be found in its files" in cover_lines[0]
+    assert f"from the files in {album}, if one of them holds a picture" in cover_lines[0]
 
 
 def test_a_hedged_cover_line_alone_does_not_un_skip_an_album(tmp_path, one_second_of_sound):

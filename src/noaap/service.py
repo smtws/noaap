@@ -1511,7 +1511,8 @@ class Service:
         # ("…, else from <group>"); one that names nothing but the files promises nothing.
         saved = [line for line in lines
                  if line.startswith("the cover would be")
-                 or (line.startswith("a cover would be saved beside the album") and " from " in line)]
+                 or (line.startswith("a cover would be saved beside the album")
+                     and (MAYBE_COVER not in line or ", else from " in line))]
         work += saved
         want = for_album(self.cfg, plan)
         if any(line.startswith("a cover would be saved") for line in saved) and want.cover_embedded:
