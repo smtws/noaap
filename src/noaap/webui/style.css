@@ -132,6 +132,32 @@ button.cancel { margin-left: auto; flex: none; }
   #album td.actions-cell { white-space: normal; }
   #album td.disc, #album td.trim, #album td.actions-cell { width: 1%; }   /* as narrow as they go */
 }
+/* **a track row on two lines at phone width** (§9, slice 188; q12). Below 420 px seven cells side by
+   side have a floor of about 403 px. The same cells, in the same order, are placed on two lines:
+     ▶ · # · title
+     artist · disc · trim · ✓♪✕
+   with the trim's two inputs and the three buttons each stacked, so title and artist get the room.
+   The header row names columns that no longer exist, so it goes; every field has its aria-label
+   and artist and title a placeholder. A row's expansion (lyrics, source) spans the whole width. */
+@media (max-width: 26.25rem) {
+  #album table, #album tbody { display: block; }
+  #album thead { display: none; }
+  #album tbody tr.track {
+    display: grid; grid-template-columns: auto auto 1fr auto auto auto; column-gap: .25rem; align-items: center;
+    grid-template-areas: "play num title title title title" "artist artist artist disc trim actions";
+    border-bottom: 1px solid var(--line); padding: .2rem 0;
+  }
+  #album tbody tr.track > td { border-bottom: 0; width: auto; padding: .15rem .2rem; }
+  #album tr.track > td.play { grid-area: play; }
+  #album tr.track > td.num { grid-area: num; }
+  #album tr.track > td.title { grid-area: title; }
+  #album tr.track > td.actions-cell { grid-area: actions; white-space: normal; }
+  #album tr.track > td.artist { grid-area: artist; }
+  #album tr.track > td.disc { grid-area: disc; }
+  #album tr.track > td.trim { grid-area: trim; }
+  #album tr.track input[name=artist], #album tr.track input[name=title] { width: 100%; }
+  #album tbody tr:not(.track), #album tbody tr:not(.track) > td { display: block; }
+}
 .login { font-size: .85rem; color: var(--muted); display: flex; gap: .4rem; align-items: center; }
 select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: .4rem .5rem; }
 

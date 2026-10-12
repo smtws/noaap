@@ -4823,6 +4823,39 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      are used; only the host is redirected. Release 500: one line, nothing recorded, the next check
      offers it again. Release 404 and group 500 (the I-471 shape): the same. Release and group 404:
      `tried` written, and the next check is silent.
+188. ✅ **A track row on two lines at phone width** (2026-10-12, R-625/R-628, q12; the rest of
+   slice 186). Below about 420 px the album's track table still needs about 403 px, because seven
+   cells side by side have a floor of their own: play 36, # 80, disc 36, trim 70, ✓♪✕ 47, and
+   artist and title at their least. A 360 px phone scrolls sideways, and artist and title are about
+   40 px each there.
+   - At ≤ 26.25rem (420 px) a track row is no longer a table row. It is a two-line grid:
+     line 1: ▶ · # (grip and position) · title (the rest of the line);
+     line 2: artist (the rest of the line) · disc · trim · ✓♪✕, with the trim's two inputs and
+     the three buttons each stacked. The title gets the first line because it is the field a
+     person reads and edits most; disc, trim and ✓♪✕ together take about 150 px of the second.
+     It is the same cells in the same DOM order, placed with `grid-template-areas` by class. No
+     second copy of a row exists for small screens, so an edit, a drag or a keyboard move behaves
+     as it does at any width.
+   - **The header rule for the two-line form**: the header row is hidden there. Its labels name
+     columns that no longer exist, and every field already carries its `aria-label`. Artist and
+     title get a `placeholder` naming them, so a field that has been emptied still says what it is.
+   - A row's expansion (the lyrics row under a track: `tr.lyrics`, its one cell spanning the
+     table) spans both columns of the grid as before.
+   - The playing row, the drag-to-move row and the hover play button keep their classes. Only
+     the layout changes.
+   - Between 421 and 640 px the table layout of slice 186 stays (measured to fit down to 420), and
+     a grid there would cost the column headers for nothing. ≥ 641 px is untouched.
+   - The check is the browser measurement of slice 186 at 400 and 360 px as well: `scrollWidth`
+     not past the window, no header shown, every cell of the row shown, the title at least 150 px
+     and the artist at least 100 px wide. Tests on the CSS rules, the row's class and the
+     placeholders run everywhere.
+   - In `app.js`: the track row gets `class="track"` (an expansion row also has `data-id`, so the
+     layout needs a name for the row it lays out), its artist and title cells get classes, and the
+     two inputs get placeholders.
+   - Measured on a copy of Heilig (input widths, px): 420 → page 405, title 221, artist 105;
+     400 → 385, 201, 105; 360 → 345, 161, 105. A row is 162 px tall there, against 117 at 500 and 49
+     at 1400. 1400 is as it was (page 1385, 8 headers over 8 cells). At 360 the lyrics row under a
+     track is the full width of the table (279 of 279), and Alt+↓ still moves a track.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

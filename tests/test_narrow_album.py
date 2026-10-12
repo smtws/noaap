@@ -57,8 +57,10 @@ def test_the_from_header_goes_with_its_column():
 
 @pytest.mark.skipif(not os.environ.get("NOAAP_BROWSER") or not shutil.which("google-chrome"),
                     reason="set NOAAP_BROWSER=1 (and have google-chrome) to measure in a real browser")
-@pytest.mark.parametrize("width", [640, 500])
+@pytest.mark.parametrize("width", [640, 500, 400, 360])
 def test_no_sideways_scroll_with_an_album_open(library, opus_template, width):
+    """≤ 420 px is the two-line row of slice 188: no header row, every cell of the row still shown,
+    and title (the line to itself) and artist with room to be read. Above it, a header for every column shown."""
     import httpx
     import websockets
     from test_incremental import FakeYouTube
@@ -121,11 +123,13 @@ def test_no_sideways_scroll_with_an_album_open(library, opus_template, width):
             assert await until("!document.querySelector('#album').hidden && "
                                "document.querySelectorAll('#album tbody tr[data-id]').length > 0")
             await asyncio.sleep(0.5)
-            return await ev("""({scroll: document.documentElement.scrollWidth, window: innerWidth,
+            return await ev("""(() => { const row = document.querySelector('#album tbody tr[data-id]'),
+                                 wide = (n) => Math.round(row.querySelector(`[name=${n}]`).getBoundingClientRect().width);
+                                 return {scroll: document.documentElement.scrollWidth, window: innerWidth,
                                  headers: [...document.querySelectorAll('#album thead th')]
-                                   .filter(t => getComputedStyle(t).display !== 'none').length,
-                                 cells: [...document.querySelector('#album tbody tr[data-id]').children]
-                                   .filter(t => getComputedStyle(t).display !== 'none').length})""")
+                                   .filter(t => getComputedStyle(t).display !== 'none' && t.offsetParent).length,
+                                 cells: [...row.children].filter(t => getComputedStyle(t).display !== 'none').length,
+                                 artist: wide('artist'), title: wide('title')}; })()""")
 
     try:
         got = asyncio.run(measure())
@@ -136,4 +140,40 @@ def test_no_sideways_scroll_with_an_album_open(library, opus_template, width):
         srv.shutdown()
 
     assert got["scroll"] <= got["window"], got
-    assert got["headers"] == got["cells"], f"a header for every column that is shown: {got}"
+    if width <= 420:
+        assert got["headers"] == 0, f"the two-line row has no header row: {got}"
+        assert got["cells"] == 7, f"nothing is taken away: {got}"
+        assert got["title"] >= 150 and got["artist"] >= 100, f"room to read them: {got}"
+    else:
+        assert got["headers"] == got["cells"], f"a header for every column that is shown: {got}"
+
+
+# -- the two-line row at phone width (slice 188; q12) ---------------------------------------------
+
+
+def media_rules(query: str) -> dict[str, str]:
+    css = re.sub(r"/\*.*?\*/", "", (WEBUI / "style.css").read_text(encoding="utf-8"), flags=re.S)
+    rules: dict[str, str] = {}
+    for m in re.finditer(re.escape(f"@media ({query}) {{"), css):
+        depth, i = 1, m.end()
+        while depth:
+            depth += {"{": 1, "}": -1}.get(css[i], 0)
+            i += 1
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css[m.end():i - 1]):
+            for one in selector.split(","):
+                rules[" ".join(one.split())] = rules.get(" ".join(one.split()), "") + body
+    return rules
+
+
+def test_a_track_row_is_a_two_line_grid_at_phone_width():
+    rules = media_rules("max-width: 26.25rem")
+    row = rules.get("#album tbody tr.track", "")
+    assert re.search(r"display\s*:\s*grid", row) and "grid-template-areas" in row, rules
+    assert re.search(r"display\s*:\s*none", rules.get("#album thead", "")), "no header row in that form"
+
+
+def test_the_track_row_and_its_fields_are_named_for_the_layout():
+    js = (WEBUI / "app.js").read_text(encoding="utf-8")
+    assert '? "track playing" : "track"' in js, "the track row says it is one, so an expansion row is not laid out as a track"
+    assert re.search(r'name: "artist"[^)]*placeholder: "artist"', js), "an emptied field still says what it is"
+    assert re.search(r'name: "title"[^)]*placeholder: "title"', js)

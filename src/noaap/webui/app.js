@@ -1601,7 +1601,7 @@ function renderAlbum() {
   const field = (label, name, value, type = "text") =>
     h("label", {}, h("span", {}, label, " ", resetMark(p, null, name)), h("input", { type, name, value: value ?? "" }));
   const rows = p.tracks.map((t) =>
-    h("tr", { "data-id": t.video_id, class: isPlaying(p.source_id, t.video_id) ? "playing" : "" },
+    h("tr", { "data-id": t.video_id, class: isPlaying(p.source_id, t.video_id) ? "track playing" : "track" },
       h("td", { class: "play" },
         t.state === "done" ? h("button", { class: "row-play", type: "button", title: "Play from here", "aria-label": `Play ${t.title}`,
           onclick: () => playAlbum(p.source_id, p.tracks.filter((x) => x.state === "done").findIndex((x) => x.video_id === t.video_id)) }, "▶") : null),
@@ -1610,8 +1610,8 @@ function renderAlbum() {
           onpointerdown: startRowDrag }, "⋮⋮"),
         h("input", { type: "number", name: "number", class: "num", min: "1", step: "1", value: t.number,
           "aria-label": `position of ${t.title}`, title: "Position — change it and the album keeps your order" }))),
-      h("td", {}, h("input", { type: "text", name: "artist", value: t.artist, "aria-label": "artist" })),
-      h("td", {}, h("input", { type: "text", name: "title", value: t.title, "aria-label": "title" })),
+      h("td", { class: "artist" }, h("input", { type: "text", name: "artist", value: t.artist, "aria-label": "artist", placeholder: "artist" })),
+      h("td", { class: "title" }, h("input", { type: "text", name: "title", value: t.title, "aria-label": "title", placeholder: "title" })),
       h("td", { class: "disc" },
         h("input", { type: "number", name: "disc", class: "disc", min: "1", step: "1", value: t.disc,
           "aria-label": `disc of ${t.title}`, title: "Which disc this track belongs to" })),
