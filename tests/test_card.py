@@ -17,6 +17,7 @@ only when asked for.
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import types
 
@@ -468,6 +469,12 @@ def test_running_out_of_memory_half_way_through_is_one_sentence(monkeypatch):
     """No traceback: there is nothing in a stack trace that the person waiting can act on."""
     from noaap.timing_local import CARD_RAN_OUT, LocalTiming
 
+    # **the torch of this test, not the real one** (§9, slice 183; P131). Letting go asks torch to
+    # empty its pool, and with the real torch already imported by an earlier test that made a CUDA
+    # context on the card the user's service runs on.
+    emptied: list[int] = []
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: True, empty_cache=lambda: emptied.append(1))))
     engine = LocalTiming(device="cuda")
     engine.log = lambda s: None
     engine._models[("de", "cuda")] = object()      # something is loaded, and should be let go
@@ -481,6 +488,7 @@ def test_running_out_of_memory_half_way_through_is_one_sentence(monkeypatch):
     assert str(raised.value) == CARD_RAN_OUT
     assert "ran out of memory" in str(raised.value) and "cpu" in str(raised.value)
     assert engine._models == {}, "what the failed run held goes back for the next attempt"
+    assert emptied, "and torch's pool is asked to give the card back"
 
 
 def test_any_other_failure_is_still_a_failure(monkeypatch):

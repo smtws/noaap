@@ -1,8 +1,15 @@
 """Every test runs isolated: own cache/config dirs, no PO-token server, no lrclib.net."""
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
+
+# **no card for the test process, before anything can import torch** (§9, slice 183; P131). Nine
+# tests reached the real torch's CUDA through `release_gpu_memory()`, `resolved_device()` or
+# `card_room()` once an earlier test had imported it; with no device visible the driver is never
+# opened (measured: no `/dev/nvidia*`, `is_available()` False). `never_the_card` below checks it.
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import pytest
 
@@ -19,6 +26,43 @@ class NoLyrics:
 
     def by_id(self, lrclib_id):
         return None
+
+
+def cards_open() -> set[str]:
+    """The graphics card's device files this process holds (§9, slice 183).
+
+    Once a process has made a CUDA context the driver keeps `/dev/nvidia*` open until it exits, so a
+    test that touched the card leaves this behind, whichever library did it — torch, ctranslate2,
+    onnxruntime. Asking torch would see only torch.
+    """
+    found = set()
+    for fd in os.listdir("/proc/self/fd") if os.path.isdir("/proc/self/fd") else ():
+        try:
+            target = os.readlink(f"/proc/self/fd/{fd}")
+        except OSError:
+            continue
+        if target.startswith("/dev/nvidia"):
+            found.add(target)
+    return found
+
+
+@pytest.fixture(autouse=True)
+def never_the_card(request):
+    """**No unit test opens the graphics card** (§9, slice 183; P131). One did, through
+    `release_gpu_memory()` with the real torch already imported by an earlier test: a CUDA context of
+    a few hundred MB that stayed with the test process, on the card the user's service runs on."""
+    before = cards_open()
+    yield
+    if opened := cards_open() - before:
+        pytest.fail(f"{request.node.nodeid} opened the graphics card: {', '.join(sorted(opened))}")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """And the run as a whole: a card held at the end fails it, whoever opened it."""
+    if held := cards_open():
+        session.config.pluginmanager.get_plugin("terminalreporter").write_line(
+            f"the test process holds the graphics card: {', '.join(sorted(held))}", red=True)
+        session.exitstatus = 1
 
 
 REAL_ARCHIVE_COVER = noaap.download._archive_cover   # for the tests about that function itself

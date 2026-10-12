@@ -4686,6 +4686,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - The closing total counts files, not lines: a file retagged and given the picture is one write.
    - Tests fail on 7be5661. Constructed proof on a copy of Heilig with its group and cover taken away
      and a title edited ahead of its file.
+183. ✅ **No unit test opens the graphics card** (2026-10-12, R-613, P131; the janitor's R-589 item 1).
+   `tests/test_card.py::test_running_out_of_memory_half_way_through_is_one_sentence` let a failed
+   alignment go through `release_gpu_memory()`. With the real torch already imported by an earlier
+   test, that made a CUDA context: a few hundred MB held by the test process, on the card the user's
+   service runs on. Alone it opened nothing, which is why it went unseen.
+   - The test now gives the provider a fake torch (`sys.modules["torch"]`, the seam the other card
+     tests use) and checks that the pool is still asked to empty.
+   - The guard reads the process's open files (`/proc/self/fd`) rather than patching torch.
+     A CUDA context keeps `/dev/nvidia*` open until its process exits, whichever library made it
+     (torch, ctranslate2, onnxruntime), and a patched `torch.cuda` would see only torch. An autouse
+     fixture fails the test that first opened one, by name. `pytest_sessionfinish` fails the run if
+     the process holds one at the end.
+   - `scripts/card_watch.py` runs a command and watches it and all its children from outside, five
+     looks a second. It is the proof that nothing else (a subprocess, a server a test starts)
+     touches the card either.
+   - The guard only catches the first opener: after that the files are open and later tests start
+     with them. A run with `release_gpu_memory` wrapped found 8 more tests reaching the real torch's
+     CUDA, in `test_nearmiss` (4), `test_timing_cloud` (3) and `test_web` (1). `resolved_device()`
+     and `card_room()` reach it too, without going through the release.
+   - So conftest sets `CUDA_VISIBLE_DEVICES=""` before anything can import torch. Measured: no
+     `/dev/nvidia*` opened, `is_available()` False, `mem_get_info()` raises. Without it all three
+     are open after one call. The fd guard stays as the check that this holds.
+   - On 0a54278 with the guard: the test above fails ("opened the graphics card: /dev/nvidia-uvm,
+     /dev/nvidia0, /dev/nvidiactl") and the run ends holding the card. With the fake torch alone the
+     next opener is `test_nearmiss`. With both: 2441 passed, and `card_watch` saw 0 card files in
+     2407 looks.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
