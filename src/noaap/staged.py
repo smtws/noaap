@@ -613,8 +613,8 @@ def take_in_staged(service: Any, root: Path, choices: intake.Choices | None = No
             raise config_mod.Refused(f"--only {', '.join(empty)}: no album under that path")
         chosen = set(albums)
         refs = [ref for ref in refs if Path(ref.url) in chosen]
-        chose = [root / Path(value.strip("/")) for value in only]
-        log(intake.says_only(only, albums))
+        chose = [root / intake.under_root(value, root) for value in only]   # every value chose an album above
+        log(intake.says_only(only, albums, root))
     sized = album_sizes(root, source, albums)
     # why each folder was passed over, for the section this pass ends with (R-410, ruling 2)
     why_refused: dict[str, str] = {}

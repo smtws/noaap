@@ -855,7 +855,7 @@ class Service:
             return albums
         by_dir = dict(albums)
         chosen, missed = under_only(list(by_dir), self.library, values)
-        self.log(says_only(values, chosen))
+        self.log(says_only(values, chosen, self.library))
         for value in missed:
             self.log(f"  nothing under {value!r} — no album of the library is there")
         return [(d, by_dir[d]) for d in chosen]

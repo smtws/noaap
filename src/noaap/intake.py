@@ -206,6 +206,22 @@ def albums_under(root: Path, source: Any) -> list[Path]:
     return [Path(ref.url) for ref in album_refs(root, source)]
 
 
+def under_root(value: str, root: Path) -> str | None:
+    """`value` as a path relative to `root`: as it is when it is relative, the part under the root
+    when it is an absolute path inside it (q15; R-638), else None. Asked of the root as written and
+    resolved, and of the value as written and resolved, so a link on either side still matches."""
+    path = Path(value)
+    if not path.is_absolute():
+        return value.strip("/")
+    for here in dict.fromkeys((path, path.resolve())):
+        for top in dict.fromkeys((root, root.resolve())):
+            try:
+                return str(here.relative_to(top))
+            except ValueError:
+                continue
+    return None
+
+
 def under_only(albums: Iterable[Path], root: Path, only: Iterable[str]) -> tuple[list[Path], list[str]]:
     """The albums `--only` chooses, and the values that chose nothing (R-417, point 1).
 
@@ -215,23 +231,35 @@ def under_only(albums: Iterable[Path], root: Path, only: Iterable[str]) -> tuple
     everywhere. **The root and the library stay the collection**, which is the point: every name the
     scheme gives is the one the whole pass would give.
     """
-    wanted = [tuple(text_key(part) for part in Path(value.strip("/")).parts) for value in only]
+    only = list(only)
+    # **an absolute path under the root is that path's part under it** (q15; R-638): it used to lose
+    # its leading `/` and be matched as `home/…` relative to the root. One outside the root is None.
+    taken = [under_root(value, root) for value in only]
+    wanted = [None if rel is None else tuple(text_key(part) for part in Path(rel).parts) for rel in taken]
     chosen: list[Path] = []
     hit = [False] * len(wanted)
     for album in albums:
         parts = tuple(text_key(part) for part in album.relative_to(root).parts)
         for n, want in enumerate(wanted):
-            if parts[:len(want)] == want:
+            if want is not None and parts[:len(want)] == want:
                 chosen.append(album)
                 hit[n] = True
                 break
     return chosen, [value for value, found in zip(only, hit, strict=True) if not found]
 
 
-def says_only(only: Iterable[str], chosen: Iterable[Path]) -> str:
-    """`only: Crematory (21 albums)` — the first thing a run of a part of a collection says."""
+def says_only(only: Iterable[str], chosen: Iterable[Path], root: Path | None = None) -> str:
+    """`only: Crematory (21 albums)` — the first thing a run of a part of a collection says.
+
+    An absolute value is named by the path it was taken as, under the root, and where it came from:
+    `only: Apocalyptica/Apocalyptica (from /…/lib/Apocalyptica/Apocalyptica)` (q15)."""
     n = len(list(chosen))
-    return "only: " + ", ".join(str(value) for value in only) + f" ({n} album{'s' if n != 1 else ''})"
+
+    def named(value: str) -> str:
+        rel = under_root(value, root) if root is not None and Path(value).is_absolute() else None
+        return f"{rel} (from {value})" if rel is not None else str(value)
+
+    return "only: " + ", ".join(named(str(value)) for value in only) + f" ({n} album{'s' if n != 1 else ''})"
 
 
 def folder_clashes(refs: Iterable[Any], root: Path) -> dict[str, list[Path]]:
@@ -461,8 +489,8 @@ def take_in(service: Any, root: Path, choices: Choices | None = None, *, dry_run
             raise config_mod.Refused(f"--only {', '.join(empty)}: no album under that path")
         chosen = set(folders)
         refs = [ref for ref in refs if Path(ref.url) in chosen]
-        chose = [root / Path(value.strip("/")) for value in only]
-        log(says_only(only, folders))
+        chose = [root / under_root(value, root) for value in only]   # every value chose an album above
+        log(says_only(only, folders, root))
     log(f"{len(folders)} album folder(s) under {root}")
     log(f"  {choices.says()}")
     for line in says_lookups_off(service, choices):

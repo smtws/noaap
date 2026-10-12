@@ -4916,6 +4916,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      samples (PCM digest), 11 tags and 1 picture kept and `file_length` 205.92. Only that file and
      the plan changed. The check after it is silent about headers.
 
+191. ✅ **`--only` takes an absolute path under the library** (2026-10-12, R-638, q15).
+   `update --only /home/…/po-p138/lib/Apocalyptica/Apocalyptica`, with that `lib` as the library,
+   said "nothing under … — no album of the library is there". `under_only` stripped the value's
+   leading `/` and matched `home/tordt/…` as a path relative to the root, which never matches.
+   - `under_root(value, root)`: a relative value is what it was. An absolute one is its part under
+     the root, asked of the root as written and resolved and of the value as written and resolved,
+     so a link on either side matches. One outside the root chooses nothing and is said as before.
+   - The run says which path it took: `only: Apocalyptica/Apocalyptica (from /…/lib/Apocalyptica/
+     Apocalyptica) (1 album)`. One rule serves `update`, `repair`, `adopt`, `merge` and `take-in`.
+     The two take-in passes built the chosen folders with the same `strip("/")`, and use
+     `under_root` now too.
+
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
 - **Fix wrong data where it enters,** not where it shows up. If a number is wrong on a
