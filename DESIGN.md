@@ -4661,6 +4661,31 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      is kept for a plan whose folder really was elsewhere.
    - Tests fail on e4c1367. Proof on copies of `Lord of the Lost/Swan Songs II`, `Sagittarius/The
      Kingdom Come`, `Rammstein/Rosenrot` and `Eisbrecher/Ewiges Eis` (503 through the test seam).
+182. ✅ **An update check names what its apply would write** (2026-10-12, R-609–R-611, P130, q5).
+   `Letzte Instanz/Heilig`'s plan was seated on its pinned release and its files lagged. The update
+   check said `0 new, 0 no longer in the source`; the apply wrote a release group, saved the group's
+   cover and rewrote 14 files to hold it. The check compared the plan with the plan, never the files.
+   - For every album it reads, the check now prints `_file_work`. That is `would_do` (the same
+     `renames`/`retags` the apply's `run` uses) for the files: renames, retags, rewrites, a folder
+     move. It adds a cover the apply would save from an address that answers (read-only HEAD,
+     slice 181) and the files without a picture that would then get it. A total closes the check,
+     as in repair's.
+   - The apply asks the same two functions (`changes_from`, `_file_work`) and logs their lines before
+     it acts, so the check's list and the apply's cannot drift.
+   - `changes_from` also names the release group, the fallback cover address, a changed recording id
+     and the length at MusicBrainz. A fallback that only moves between the album's folder and the
+     cover file inside it is the same picture by two names and is not a line. Left out on purpose: `offered` (a question for a person,
+     slice 158), and `source_state`/`skipped` (the cheap skip's own bookkeeping of the source's
+     listing; what they mean shows as tracks new or gone).
+   - Not for an album the cheap skip passes by. The skip is one request to the source; answering this
+     means reading every file's tags, which is the cost of a deep read, for every album, on every
+     update. `--deep` reads them all.
+   - A first cover save in the run says `a cover was saved beside the album from <url>`. Where the
+     picture came from an address behind the plan's own, that address is recorded as `tried`, so
+     the next check does not offer to fetch it again.
+   - The closing total counts files, not lines: a file retagged and given the picture is one write.
+   - Tests fail on 7be5661. Constructed proof on a copy of Heilig with its group and cover taken away
+     and a title edited ahead of its file.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

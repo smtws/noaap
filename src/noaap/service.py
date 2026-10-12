@@ -113,7 +113,7 @@ from .timing import (
     with_gaps,
 )
 from .timing import kind_for as timing_kind
-from .treatment import for_album, held_back, renames, says_exceptions, with_exception
+from .treatment import for_album, held_back, renames, retags, says_exceptions, with_exception
 from .trim import ORIGINALS, kept_originals, originals_of, re_own, ref_key
 
 log = logging.getLogger(__name__)
@@ -262,6 +262,7 @@ class Service:
         self.yt = yt or sources.get(None, cfg, cancel)
         self._cancel = cancel
         self._mb = mb
+        self._file_work_seen: Counter[str] = Counter()   # what an update check found for the files
         self._lrclib = lrclib
         # what MusicBrainz calls each artist key, asked once per key per pass (§9, slice 138)
         self._artist_names: dict[str, str | None] = {}
@@ -453,6 +454,9 @@ class Service:
                 self._settle_artist(plan)   # read-only, and part of what a real run would write
                 for line in (said := changes_from(existing, plan)):
                     self.log(f"  {line}")
+                for line in (work := self._file_work(plan, old_dir)):
+                    self.log(f"  {line}")
+                said = said + work
                 return Outcome("reported", plan, old_dir, f"{len(said)} change(s)", changes=said,
                                offered=list(plan.offered or []))
             # **and the apply says what it wrote, not only that it ran** (§9, slice 154; R-519
@@ -461,7 +465,9 @@ class Service:
             # fetched or the titles it had rewritten. The same list the check offered, in the past
             # tense, so the two can be read against each other.
             self._settle_artist(plan)  # before the folder is chosen, or the album stays put
-            wrote = changes_from(existing, plan)
+            # **the check's lines, asked of the same two functions** (§9, slice 182; R-611): what the
+            # record gets and what the files get, so the apply's list and the check's cannot drift
+            wrote = changes_from(existing, plan) + self._file_work(plan, old_dir)
             for line in wrote:
                 self.log(f"  {line}")
             pointed_at = (plan.source_url, plan.source_id, plan.cover_url, plan.cover_fallback_url)
@@ -864,6 +870,7 @@ class Service:
             self.log(f"no albums{f' by {artist}' if artist else ''} in {self.library}")
         outcomes: list[Outcome] = []
         skipped = lengths = 0
+        self._file_work_seen = Counter()
         for i, (album_dir, plan) in enumerate(albums, 1):
             self.log(f"=== [{i}/{len(albums)}] {plan.albumartist} — {plan.album}")
             # **a folder that is gone is said as such, and never reaches yt-dlp** (§9, slice 178; P126).
@@ -893,6 +900,10 @@ class Service:
             self.log(f"{skipped} of {len(albums)} albums were unchanged")
         if lengths:
             self.log(f"{lengths} track(s) {'would get' if report_only else 'got'} the length of their file")
+        if report_only and (self._file_work_seen["renamed"] or self._file_work_seen["rewritten"]):
+            # the total repair's check gives, for the same question (§9, slice 85)
+            self.log(f"{self._file_work_seen['renamed']} file(s) would be renamed and "
+                     f"{self._file_work_seen['rewritten']} audio file(s) would be rewritten (their tags)")
         return outcomes
 
     def measure_lengths(self, plan: AlbumPlan, album_dir: Path, *, dry_run: bool = False) -> int:
@@ -1470,6 +1481,46 @@ class Service:
                 self.log("sending the isolated voice, not the recording: a speech service hears "
                          "nothing through a band")
             yield voice or audio
+
+    def _file_work(self, plan: AlbumPlan, album_dir: Path) -> list[str]:
+        """What an apply of this merged plan would do to the album's files, one line each (§9, slice 182).
+
+        `Letzte Instanz/Heilig`'s plan had been seated on its release for days and its files had not:
+        the check compared the plan with the plan and said nothing, and the apply renamed 9 files and
+        retagged 14. These are `would_do`'s lines — the question `repair --dry-run` asks, with the
+        same `renames`/`retags` the apply's `run` uses — and the cover an apply would save where an
+        address says it answers, with the files that would then be rewritten to hold it.
+        """
+        try:
+            lines = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library,
+                             for_album(self.cfg, plan))
+        except Exception as e:  # a report may not fail over a file it cannot read
+            return [f"what an apply would do to the files could not be read: {e}"]
+        work = [line for line in lines
+                if re.match(r"\d\d ", line) or line.startswith(("⚠", "the album folder would move"))]
+        self._file_work_seen["renamed"] += sum(bool(re.match(r"\d\d would be renamed", line)) for line in work)
+        # files, not lines: one file can be retagged and given the picture in the same write
+        rewritten = {line[:2] for line in work
+                     if re.match(r"\d\d (would be retagged|would be rewritten|would get the album's picture)", line)}
+        # **and the cover an apply would save, where an address says it answers** (§9, slice 182).
+        # Heilig's apply saved its group's front and rewrote all 14 files to hold it, after a check
+        # that said nothing. A hedged line counts where it names an address behind the files
+        # ("…, else from <group>"); one that names nothing but the files promises nothing.
+        saved = [line for line in lines
+                 if line.startswith("the cover would be")
+                 or (line.startswith("a cover would be saved beside the album") and " from " in line)]
+        work += saved
+        want = for_album(self.cfg, plan)
+        if any(line.startswith("a cover would be saved") for line in saved) and want.cover_embedded:
+            from .tag import embedded_cover
+
+            held = [t for t in plan.tracks if t.state == "done" and (album_dir / t.filename).exists()
+                    and embedded_cover(album_dir / t.filename) is None]   # what is in a file is said by its bytes
+            if held and retags(plan, want):
+                work.append(f"{len(held)} file(s) without a picture would get the album's once it is saved")
+                rewritten |= {f"{t.number:02d}" for t in held}
+        self._file_work_seen["rewritten"] += len(rewritten)
+        return work
 
     def _cover_of(self, plan: AlbumPlan, album_dir: Path) -> bytes | None:
         """The cover bytes a tidying pass would embed: whatever is on disk, never fetched."""

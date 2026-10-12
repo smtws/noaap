@@ -180,7 +180,11 @@ def test_the_archive_is_fetched_here_and_not_by_the_provider(monkeypatch):
     """`source.art` is the provider's own way of getting a picture: the folder provider reads a path
     and raises `no cover in …` for anything else, so handing it a `coverartarchive.org` address could
     only ever fail — which is the other half of why the user's pin never got a cover."""
+    from conftest import REAL_ARCHIVE_COVER
+
     import noaap.download as dl
+
+    monkeypatch.setattr(dl, "_archive_cover", REAL_ARCHIVE_COVER)   # this function is the case
 
     asked = []
 
@@ -205,7 +209,11 @@ def test_the_archive_is_fetched_here_and_not_by_the_provider(monkeypatch):
 
 
 def test_only_the_archive_and_its_redirect_target_are_fetched(monkeypatch):
+    from conftest import REAL_ARCHIVE_COVER
+
     import noaap.download as dl
+
+    monkeypatch.setattr(dl, "_archive_cover", REAL_ARCHIVE_COVER)   # this function is the case
 
     monkeypatch.setattr("httpx.get", lambda url, **kw: (_ for _ in ()).throw(
         AssertionError(f"should not have been fetched: {url}")))
@@ -216,7 +224,11 @@ def test_only_the_archive_and_its_redirect_target_are_fetched(monkeypatch):
 
 
 def test_an_archive_that_says_no_is_a_reason_not_a_silence(monkeypatch):
+    from conftest import REAL_ARCHIVE_COVER
+
     import noaap.download as dl
+
+    monkeypatch.setattr(dl, "_archive_cover", REAL_ARCHIVE_COVER)   # this function is the case
 
     class Missing:
         status_code = 404

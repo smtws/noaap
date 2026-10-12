@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import noaap.download
 import noaap.pot
 import noaap.service
 
@@ -18,6 +19,14 @@ class NoLyrics:
 
     def by_id(self, lrclib_id):
         return None
+
+
+REAL_ARCHIVE_COVER = noaap.download._archive_cover   # for the tests about that function itself
+
+
+def _no_archive(url, why=None):
+    if why is not None and "coverartarchive.org" in url:
+        why.append("coverartarchive.org answered 404 (a test)")
 
 
 @pytest.fixture(autouse=True)
@@ -38,9 +47,11 @@ def isolated(tmp_path_factory, monkeypatch):
     # test that is *about* the watcher replaces the same hook with its own collector and drives the
     # loop by hand.
     monkeypatch.setattr("noaap.timing._in_the_background", lambda watch: None)
-    # **a check looks at the Cover Art Archive** (§9, slice 181), with a HEAD per front; no test
-    # reaches it, and every address answers unless a test says otherwise
-    monkeypatch.setattr("noaap.download.caa_answers", lambda url: None)
+    # **no test reaches the Cover Art Archive** (§9, slices 181–182): neither the check's HEAD nor
+    # the fetch. The two agree — nothing answers — unless a test says otherwise. A fetch that went
+    # out for real made a test pass alone and fail in the suite, whenever the archive was slow.
+    monkeypatch.setattr("noaap.download.caa_answers", lambda url: "coverartarchive.org answered 404 (a test)")
+    monkeypatch.setattr("noaap.download._archive_cover", _no_archive)
     return started
 
 @pytest.fixture(scope="session")

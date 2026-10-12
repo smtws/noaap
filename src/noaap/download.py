@@ -1560,7 +1560,12 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True,
     addresses = [url for url in _cover_addresses(plan, album_dir) if url]
     for url in addresses:
         if found := _download_cover(url, source, why):
-            return _save_cover(plan, album_dir, *found)
+            # said, as every other outcome is (§9, slice 182): Heilig's cover came with no line at all
+            say(f"a cover was saved beside the album from {url}")
+            saved = _save_cover(plan, album_dir, *found)
+            if plan.cover_url and cover_key(url) != cover_key(plan.cover_url):
+                plan.cover_fetched["tried"] = plan.cover_url   # asked first, and it had none
+            return saved
     # **an album of somebody's own whose files hold no picture is not a problem to report.** Most of
     # them do not: 269 of 2000 files in the reference collection carry one, so a take-in of 700
     # albums would warn about hundreds of them. A published address that failed still warns.

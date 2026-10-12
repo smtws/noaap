@@ -1022,6 +1022,18 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
             out.append(line)
     if (cover_key(was.cover_url) or "") != (cover_key(now.cover_url) or "") and now.cover_url:
         out.append(f"cover: from {now.cover_url}")
+    # **and every record the merge writes that a person could ask about** (§9, slice 182; P130). The
+    # group was written by `update` with no line at all: `Letzte Instanz/Heilig`'s check said nothing
+    # and its apply wrote the group the cover then came from.
+    # A fallback that only moves between the album's folder and the cover file inside it is the
+    # same picture by two names — the folder read says the file once there is one — so it is said
+    # only where an address on the web is part of it.
+    if (cover_key(was.cover_fallback_url) or "") != (cover_key(now.cover_fallback_url) or "") \
+            and now.cover_fallback_url \
+            and "://" in f"{was.cover_fallback_url or ''} {now.cover_fallback_url}":
+        out.append(f"cover, if that has none: from {now.cover_fallback_url}")
+    if line := _one("release group", was.release_group, now.release_group):
+        out.append(line)
     # **the releases a lookup weighed are not a change it would write** (§9, slice 158; R-530).
     # Slice 145 put them here, so that a check would mention them at all — and once `merge_plans`
     # stopped dropping them, an album where *nothing fitted* reported "1 change(s)" and offered an
@@ -1045,6 +1057,11 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
                        f"{track.disc}-{track.number:02d}")
         if not before.mbid and track.mbid:
             out.append(f"{track.number:02d} {track.title}: a recording id")
+        elif before.mbid and track.mbid and before.mbid != track.mbid:
+            out.append(f"{track.number:02d} {track.title}: another recording id ({before.mbid} → {track.mbid})")
+        if track.mb_length and before.mb_length != track.mb_length:
+            out.append(f"{track.number:02d} {track.title}: length at MusicBrainz "
+                       f"{before.mb_length or 'nothing'} → {track.mb_length}")
         # **a track the source has dropped is kept and flagged, not removed** (slice 3), so this is
         # where it is seen — not in the leftovers below, which `merge_plans` rarely leaves anything in
         if before.in_source and not track.in_source:
