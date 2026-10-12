@@ -239,6 +239,62 @@ def re_own(album_dir: Path, tracks: list[PlanTrack], apply: bool) -> list[str]:
     return said
 
 
+#: seconds a FLAC's header may differ from what it holds before it is said to lie (§9, slice 190)
+HEADER_SLACK = 0.1
+
+
+def decoded_seconds(path: Path) -> float | None:
+    """How long a file plays, counted from its decoded samples rather than read from its header."""
+    try:
+        rate = int(mutagen.File(path).info.sample_rate)
+        done = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a", "-ac", "1",
+                               "-f", "s16le", "-"], capture_output=True, timeout=600)
+    except (MutagenError, OSError, AttributeError, TypeError, subprocess.TimeoutExpired):
+        return None
+    return len(done.stdout) / 2 / rate if done.returncode == 0 and rate else None
+
+
+def stale_header(track: PlanTrack, path: Path) -> tuple[float, float] | None:
+    """(what the file holds, what its header says), where a cut FLAC's header lies (§9, slice 190).
+
+    A FLAC cut with a stream copy — every version before slice 166 — keeps the original's
+    STREAMINFO: `Apocalyptica/04 Bittersweet` holds 205.92 s and its header says 208.18 s. Asked of
+    a cut track's FLAC only; one decode each. Opus takes its length from the stream's own granule
+    positions, and the 14 cut Opus tracks of the share all agree (2026-10-12)."""
+    if not track.trimmed or track.ext != "flac" or not path.is_file():
+        return None
+    try:
+        says = float(mutagen.File(path).info.length)
+    except (MutagenError, OSError, AttributeError):
+        return None
+    holds_ = decoded_seconds(path)
+    return (holds_, says) if holds_ is not None and abs(says - holds_) > HEADER_SLACK else None
+
+
+def true_header(path: Path) -> None:
+    """Write the FLAC again from itself, so its header says what it holds (§9, slice 190).
+
+    Lossless: FLAC to FLAC, the picture stream copied, the tags carried (the pass writes them again
+    after, as after any cut). The new file replaces the old one only if its decoded samples are the
+    old one's and its header now agrees; otherwise it is thrown away and `RuntimeError` says why."""
+    fresh = path.with_name(f".noaap-header{path.suffix}")
+    try:
+        done = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-map", "0", "-c:a", "flac",
+                               "-c:v", "copy", "-map_metadata", "0", str(fresh)],
+                              capture_output=True, text=True, errors="replace", timeout=600)
+        if done.returncode != 0:
+            raise RuntimeError(f"the header could not be written again: {done.stderr.strip()[:200]}")
+        sound = pcm_digest(path)
+        if sound is None or pcm_digest(fresh) != sound:
+            raise RuntimeError("the header was not written again: the new file would not sound the same")
+        holds_, says = decoded_seconds(fresh), float(mutagen.File(fresh).info.length)
+        if holds_ is None or abs(says - holds_) > HEADER_SLACK:
+            raise RuntimeError("the header was not written again: the new one did not agree either")
+        fresh.replace(path)
+    finally:
+        fresh.unlink(missing_ok=True)
+
+
 def kept_originals(album_dir: Path, track: PlanTrack) -> list[Path]:
     """Every original kept for this track, whatever format it was taken in."""
     return originals_of(album_dir, track.effective_id)

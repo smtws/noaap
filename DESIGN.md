@@ -4882,8 +4882,39 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      `1 Unsterblich, 2 Sanctus, [lyrics of Sanctus], 3 …`; Alt+↑ gives the original order back with
      the lyrics under Sanctus. No error at either width. A drag of the grip, with lyrics open and
      without, moves with no error, and the open row stays under its track.
-   - Nothing else changes: the order a save sends, the per-disc numbering (`movedRow`,
-     `numberByDisc`) and what an unopened album does are as before.
+190. ✅ **A cut file's header says how long the file is** (2026-10-12, R-633/R-634, q14; found
+   in I-476, corrected in I-477). `Apocalyptica/Apocalyptica/04 Bittersweet` records the cut
+   `0.00-205.90`. Its audio is that cut: 205.92 s decoded, sample for sample the original up to
+   there. Its FLAC header (STREAMINFO `total_samples` 9992569) still says the original's 208.18 s.
+   Every reader of the header believed it: mutagen, `ffprobe` duration, the plan's `file_length`,
+   and I-476, which called the cut missing.
+   - **Root cause.** A FLAC cut with a stream copy (`ffmpeg -i original -ss … -to … -c copy …`)
+     keeps the original's STREAMINFO. Reproduced on a generated 10 s FLAC cut to 7 s: header
+     10.000 s, decoded 7.008 s, with and without an embedded picture. Slice 166 (v1.52.0,
+     2026-10-11) already encodes a FLAC cut again (`-c:a flac`, lossless), which writes a true
+     header, locally and on the NFS share (7.000 / 7.000). This file was last written on
+     2026-10-05 by a version before that. The cutter needs no change; a regression test pins it
+     (after a cut, header samples = decoded samples).
+   - **The check** (`would_do`), for a track with a cut on record and a FLAC file: decode it once
+     and compare with the header. More than 0.1 s apart:
+     `04 the file holds 205.9 s, its header says 208.2 s — the header will be rewritten`.
+     `needs_a_recut` lists such a track too, so the repair's skip does not pass the album by.
+   - **The apply** encodes the file again from itself (`-c:a flac`, lossless; the picture stream
+     copied; tags written again by the pass, as after any cut). The new file replaces the old one
+     only if its decoded samples are identical to the old one's and its header now agrees.
+     Otherwise it is discarded and the reason logged. Then `file_length` is measured again.
+   - **Why only FLAC.** A decode of the 15 cut tracks on the share (2026-10-12): one header lies,
+     this one. The other 14 are Opus, whose length comes from the stream's own granule positions,
+     and all agree within 0.02 s. Nothing in that count asks for a second container.
+   - Dropped from the first draft of this slice: recognising "a cut on record that is not in the
+     file" by the header's length. That was the wrong premise, and on this file it would have cut
+     again a file that was already cut.
+   - Tests fail on 00efebc (4 of 5). The one that passes is the cutter's own regression test,
+     because the cutter has been right since slice 166. Proof on a copy of the album that already
+     carried its pending retags (applied with 1.65.0 first). The check named the one line. The
+     apply rewrote the header to 9884160 samples = 205.920 s, the decoded length, with the same
+     samples (PCM digest), 11 tags and 1 picture kept and `file_length` 205.92. Only that file and
+     the plan changed. The check after it is silent about headers.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

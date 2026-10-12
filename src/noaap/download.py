@@ -56,7 +56,7 @@ from .tag import (
 )
 from .treatment import Treatment, drops_comments, drops_wm_frames, renames, retags
 from .trim import apply as apply_trim
-from .trim import follow, follow_all, original_path, starts_before_zero
+from .trim import follow, follow_all, original_path, stale_header, starts_before_zero, true_header
 from .trim import signature as trim_signature
 
 log = logging.getLogger(__name__)
@@ -704,6 +704,10 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         if trim_signature(track) != (track.trimmed or ""):
             said.append(f"{track.number:02d} would be cut to its trim points"
                         if trim_signature(track) else f"{track.number:02d} would be put back untrimmed")
+        elif lies := stale_header(track, final if final.exists() else here):
+            # **a cut file's header says how long the file is** (§9, slice 190; q14)
+            said.append(f"{track.number:02d} the file holds {lies[0]:.1f} s, its header says {lies[1]:.1f} s "
+                        "— the header will be rewritten")
         elif trim_signature(track) and (before := starts_before_zero(final if final.exists() else here)) is not None:
             # cut to the right points by a version that left the clock before zero (§9, slice 86)
             kept = original_path(album_dir, track)
@@ -1102,7 +1106,7 @@ def needs_a_recut(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
                 or trim_signature(track) != (track.trimmed or ""):
             continue
         path = album_dir / track.filename
-        if path.exists() and starts_before_zero(path) is not None:
+        if path.exists() and (starts_before_zero(path) is not None or stale_header(track, path)):
             out.append(track)
     return out
 
@@ -1252,6 +1256,17 @@ def run(
                 track.error, failed_trim = str(e), True
                 log.warning("%s: %s", track.filename, e)
                 on_track(track, "trim failed")
+            if not cut and not failed_trim and (lies := stale_header(track, final)):
+                # **a cut file's header says how long the file is** (§9, slice 190; q14): written
+                # again from itself, the samples proved the same, the tags written again below
+                try:
+                    true_header(final)
+                    cut = True
+                    track.tagged = None
+                    say(f"{track.number:02d} the header now says {lies[0]:.1f} s, what the file holds "
+                        f"(it said {lies[1]:.1f} s)")
+                except RuntimeError as e:
+                    log.warning("%s: %s", track.filename, e)
             measured = cut or track.file_length is None  # measured once, then only when it changes
             if measured:
                 track.file_length, track.file_length_by = measure(final)
