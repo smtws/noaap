@@ -1567,15 +1567,24 @@ def _cover(plan: AlbumPlan, album_dir: Path, source: Source, fetch: bool = True,
         return None
     why: list[str] = []
     addresses = [url for url in _cover_addresses(plan, album_dir) if url]
+    down: dict[str, str] = {}   # address → why, where the archive was down rather than empty (§9, slice 187)
     for url in addresses:
-        if found := _download_cover(url, source, why):
+        here: list[str] = []
+        found = _download_cover(url, source, here)
+        why += here
+        if not found and (outage := _down(here)):
+            down[url] = outage
+        if found:
             # said, as every other outcome is (§9, slice 182): Heilig's cover came with no line at all
             said = from_its_files(url) if album_dir is not None and url == str(album_dir) else url
             say(f"a cover was saved beside the album from {said}")
             saved = _save_cover(plan, album_dir, *found)
-            if plan.cover_url and cover_key(url) != cover_key(plan.cover_url):
+            if plan.cover_url and cover_key(url) != cover_key(plan.cover_url) and plan.cover_url not in down:
                 plan.cover_fetched["tried"] = plan.cover_url   # asked first, and it had none
             return saved
+    if down:
+        url, outage = next(iter(down.items()))
+        say(f"no cover was saved: {url}: {outage}{AGAIN_NEXT_TIME}")
     # **an album of somebody's own whose files hold no picture is not a problem to report.** Most of
     # them do not: 269 of 2000 files in the reference collection carry one, so a take-in of 700
     # albums would warn about hundreds of them. A published address that failed still warns.
@@ -1599,7 +1608,16 @@ def _again(plan: AlbumPlan, album_dir: Path, source: Source, existing: Path, dat
     """
     asked, why = plan.cover_url, []
     for url in (addresses := _again_from(plan)):
-        if not (found := _download_cover(url, source, why)):
+        here: list[str] = []
+        found = _download_cover(url, source, here)
+        why += here
+        if not found and (down := _down(here)):
+            # **an archive that is down has not answered** (§9, slice 187; q11): nothing is recorded,
+            # the picture stays, and the next check offers this again. The group is not asked after
+            # a release that was down: it answers "the release has none", which nobody has said.
+            say(f"the cover was not fetched again from {url}: {down}{AGAIN_NEXT_TIME}")
+            return data
+        if not found:
             continue
         new = square_if_padded(found[1]) or found[1]
         if _sha1(new) == plan.cover_fetched.get("sha1"):
@@ -1791,6 +1809,22 @@ def _cover_addresses(plan: AlbumPlan, album_dir: Path | None = None) -> list[str
     return [url for url in found if url]
 
 
+class Outage(str):
+    """A reason that is not the archive's answer: it was down (§9, slice 187; q11).
+
+    A 5xx, a 429, a timeout, a connection that failed. A `str`, so every caller that joins the
+    reasons into a line still does; only the callers that record what an address said ask which.
+    """
+
+
+AGAIN_NEXT_TIME = " — asked again next time"
+
+
+def _down(why: list[str]) -> str | None:
+    """The first reason in `why` that is an outage, if there is one."""
+    return next((w for w in why if isinstance(w, Outage)), None)
+
+
 def _archive_cover(url: str, why: list[str] | None = None) -> bytes | None:
     """The Cover Art Archive's bytes, fetched here rather than by a provider (§9, slice 141).
 
@@ -1816,11 +1850,13 @@ def _archive_cover(url: str, why: list[str] | None = None) -> bytes | None:
         if r.status_code == 200 and image_mime(r.content):
             return r.content
         if why is not None:
-            why.append(f"{urlsplit(url).hostname} answered {r.status_code}")
+            said = f"{urlsplit(url).hostname} answered {r.status_code}"
+            # **a 404 is an answer, a 500 is not** (§9, slice 187): nothing is known about the address
+            why.append(Outage(said) if r.status_code >= 500 or r.status_code == 429 else said)
     except Exception as e:
         log.debug("cover %s not available: %s", url, e)
         if why is not None:
-            why.append(str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__)
+            why.append(Outage(str(e).strip().splitlines()[0][:160] if str(e).strip() else type(e).__name__))
     return None
 
 

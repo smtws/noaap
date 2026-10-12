@@ -4795,6 +4795,34 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - Not reached: below about 420 px the table still needs about 403 px (play 36, # 80, artist and
      title at their least, disc 36, trim 70, ✓♪✕ 47, plus the panel's padding). A phone width wants
      a row laid out on two lines, which is a layout of its own and not this slice.
+187. ✅ **An archive that is down has not answered** (2026-10-12, R-624/R-626, q11; seen in I-471).
+   `Die Happy/No Nuts No Glory` and `Lordi/To Beast or Not to Beast` were fetched again: the release
+   front answered 404, the group front answered **500**. The pass wrote `tried`, said "the one
+   beside the album stays", and the next check no longer offered the fetch. A server error was
+   counted as the archive's answer, and one bad minute ended the offer for good.
+   - **What is an answer and what is not.** A 404 (or any other 4xx) is the archive's answer: there
+     is no picture there. A 5xx, a 429, a timeout or a connection that fails is an outage. Nothing is
+     known about the address, so nothing is recorded about it. `_archive_cover` marks such a reason
+     as an `Outage` (a `str`, so every caller that joins the reasons into a line still does).
+   - **The fetch again** (release → group, `_again`) walks its addresses as before. A 404 moves on to
+     the next. An outage at any address stops the walk: no `tried`, `cover_fetched` untouched, the
+     picture beside the album untouched, and one line:
+     `the cover was not fetched again from <url>: coverartarchive.org answered 500 — asked again next time`.
+     The group is not asked after an outage of the release. The group is the answer to "the release
+     has none", and a release that is down has not said that.
+   - **The first fetch** (no cover beside the album) still goes on past an outage to the next
+     address. An album with no picture should get one if an address answers. But a release that was
+     down is not recorded as `tried`, so the next check offers the release again and the group's
+     picture is replaced only if the release's differs. If nothing answered and something was down,
+     the line says so with the same `— asked again next time`.
+   - The check needs no change. It offers the fetch again for as long as `tried` does not name the
+     address, and an outage no longer writes it.
+   - Tests fail on 38e37d1 (6 of 7; the one that passes is two 404s ending the offer, as before).
+     Proof on a copy of `Die Happy/No Nuts No Glory` with its `tried` taken away, run through the CLI
+     with coverartarchive.org answered by a local stub. The real `_archive_cover` and `caa_answers`
+     are used; only the host is redirected. Release 500: one line, nothing recorded, the next check
+     offers it again. Release 404 and group 500 (the I-471 shape): the same. Release and group 404:
+     `tried` written, and the next check is silent.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
