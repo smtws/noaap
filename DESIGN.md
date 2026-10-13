@@ -4953,6 +4953,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      source dropped still goes last, because a curator's order is the content (slice 3).
    - The lines are logged after `existing album …` and are not changes: a kept seat offers no
      apply.
+193. ✅ **A per-track lookup gives the same answer on every pass** (2026-10-13, R-650 2, q17).
+   `Various Artists/Classic Rock Hits` is an adopted compilation with no matched release. Two of
+   its tracks changed back and forth between versions:
+   - 32 `We’re Not Gonna Take It (Single Version)`. MusicBrainz has no `(Single Version)` of it,
+     so `enrich_track` kept our title by writing MusicBrainz' spelling with our bracket put back.
+     1.50.0 met a recording spelled `’` and wrote it over the file's `'`; 1.56–1.68 meet one
+     spelled `'` and wanted it back. Now a firsthand title stays letter for letter, and
+     MusicBrainz' spelling waits in `auto`, as `_set` does it.
+   - 49 `Milk and Alcohol`. A fresh read of a folder knows no recording ids, so every pass
+     searched again and offered the search's first answer: 35084d78 on 2026-10-10, a031426b since.
+     A track whose stored plan has a recording (`known_recording`) is no longer searched; the merge
+     keeps the stored one. The release lookup is untouched: it still seats such a track against a
+     release.
+   - The same mechanism produced the `another recording id` lines on compilations: MDL Vol. 14
+     (applied in round A) and Vol. 15 (q19). From this version on they are not offered again.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

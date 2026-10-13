@@ -223,6 +223,12 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
         # "(Live)", "(Behind The Scenes Documentary)": the artist is confirmed, but this is
         # not that recording - keep our title, attach no recording id, and take no length
         # from it either (a live cut measured against the studio one reads as 2 minutes off)
+        if t.provenance.get("title") in FIRSTHAND:
+            # **our title, letter for letter** (§9, slice 193; q17): `title` is MusicBrainz' spelling
+            # with our bracket put back, so `We’re Not Gonna Take It (Single Version)` in the file
+            # came back as `We're …` and a pass that met the other recording first wrote `’` again
+            t.auto["title"] = title
+            return True
         t.title = t.auto["title"] = title
         # **and keeping a title must not cost it its standing** (§9, slice 153; R-525). This wrote
         # `SOURCE_TITLE` over whatever was there, so a `file_tags` title that survived one lookup
@@ -860,7 +866,12 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
                 progress(f"MusicBrainz: the release you pinned ({pinned}) does not answer for this "
                          "album — nothing taken from it")
 
-        todo = [t for t in plan.tracks if not t.mbid and _worth_looking_up(plan, t)]
+        # **a recording the album already has is not asked for again** (§9, slice 193; q17): a fresh
+        # read knows no ids, so every deep pass searched `Milk and Alcohol` anew and took whichever
+        # recording the search put first — 35084d78 on 2026-10-10, a031426b since. The release
+        # lookup above still seats it against a release; this search has no better answer.
+        todo = [t for t in plan.tracks if not t.mbid and not getattr(t, "known_recording", None)
+                and _worth_looking_up(plan, t)]
         for i, t in enumerate(todo, 1):
             progress(f"MusicBrainz: track {i}/{len(todo)} {t.artist} - {t.title}")
             stats["looked_up"] += 1
