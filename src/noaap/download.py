@@ -761,7 +761,10 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
             continue
         wanted_tags = build_tags(plan, track, text)
         kept = kept_from_the_file(plan)
-        for key in kept:                       # what the file already answers better than the plan
+        # **held back only where the writer holds them back** (§9, slice 196; q21): on an adopted
+        # album (`keep_unknown`). On noaap's own album the writer puts the plan's recording id over
+        # the file's, and a check that held it back said nothing about a file the apply rewrote.
+        for key in kept if plan.adopted else ():   # what the file already answers better than the plan
             if have.get(key):
                 wanted_tags.pop(key, None)
         diffs = differences(have, wanted_tags)

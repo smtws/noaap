@@ -4986,6 +4986,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `_file_work` adds `N track(s) would be downloaded: 07 Flammen, 08 Die Suche`. The check
      prints it per album, and the apply prints it before it fetches. The check's closing line adds
      `, and N track(s) would be downloaded`. `execute`'s `downloading N of M` counts the same tracks.
+196. ✅ **A recording id the apply rewrites is a line of the check** (2026-10-13, R-656, q21).
+   `would_do` held back `KEEP_IF_PRESENT` (lyrics and the release and recording ids) wherever the
+   file had a value, on every album. The writer holds them back only with `keep_unknown`, which
+   means an adopted album. On noaap's own album it writes the plan's value. A file holding
+   recording X under a plan that says Y was therefore rewritten by the apply, after a check that
+   named only the plan's `another recording id` line.
+   - The check now holds them back where the writer does: `plan.adopted`. The line reads
+     `NN would be retagged: musicbrainz_trackid “X” → “Y”`.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
