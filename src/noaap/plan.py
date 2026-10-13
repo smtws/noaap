@@ -714,14 +714,52 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         merged.tracks = sorted(ordered + rest, key=lambda t: (t.disc, t.number))
         return refresh_derived(merged)
 
+    was = {id(t): (t.disc, t.number) for t in merged.tracks if t.video_id in known}
     for number, t in enumerate(ordered, 1):
         fresh_track = fresh_by_id[t.video_id]
         t.number, t.disc = (fresh_track.number, fresh_track.disc) if len(ordered) == len(fresh.tracks) else (number, fresh_track.disc)
     last = max((t.number for t in ordered), default=0)
     for i, t in enumerate(rest, 1):
         t.number, t.disc = last + i, max((f.disc for f in fresh.tracks), default=1)
+    merged.seat_notes = keep_the_seats(rest, ordered, was)
     merged.tracks = ordered + rest
     return refresh_derived(merged)
+
+
+def keep_the_seats(rest: list[PlanTrack], ordered: list[PlanTrack],
+                   was: dict[int, tuple[int, int]]) -> list[str]:
+    """A track the source still lists but this read skipped keeps the seat it has (§9, slice 192; q16).
+
+    It was counted on after the last: a video the read skips — `Feuerschwanz — Walhalligalli`'s
+    `Metnotstand im Märchenland` is uploaded by another channel than the album's — went from 04 to 15
+    of 14, and on `Best Of (YouTube)` from 01 to 20 while the other nineteen moved up one. Where a
+    listed track would land on a seat somebody keeps, **neither moves** (R-648, 2 b), and one line
+    names both. Returns those lines; the tracks are changed in place.
+    """
+    notes: list[str] = []
+    kept: dict[tuple[int, int], PlanTrack] = {}
+    for t in rest:
+        if (seat := was.get(id(t))) is None or not t.in_source:
+            continue    # one the source dropped goes last, as always (slice 3): the curator's order rules
+        if seat != (t.disc, t.number):
+            notes.append(f"{seat[0]}-{seat[1]:02d} {t.title}: keeps its seat — the source lists it, "
+                         "this read skipped it")
+        t.disc, t.number = seat
+        kept[seat] = t
+    changed = True
+    while changed:
+        changed = False
+        for t in ordered:
+            seat, mine = (t.disc, t.number), was.get(id(t))
+            if mine is None or seat == mine or seat not in kept or kept[seat] is t:
+                continue
+            notes.append(f"{seat[0]}-{seat[1]:02d} {kept[seat].title} and {mine[0]}-{mine[1]:02d} {t.title}: "
+                         f"neither moves — the source puts the second on {seat[0]}-{seat[1]:02d}, "
+                         "where the first stays")
+            t.disc, t.number = mine
+            kept[mine] = t
+            changed = True
+    return notes
 
 
 def _same_slot_new_video(merged: AlbumPlan, fresh: AlbumPlan, listed: set[str]) -> None:

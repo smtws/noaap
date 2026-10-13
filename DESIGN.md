@@ -4927,6 +4927,32 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      Apocalyptica) (1 album)`. One rule serves `update`, `repair`, `adopt`, `merge` and `take-in`.
      The two take-in passes built the chosen folders with the same `strip("/")`, and use
      `under_root` now too.
+192. ✅ **A track moves only onto a seat the release has, and only when it is that track**
+   (2026-10-13, R-642 §5, R-648, q16). The library-wide deep dry (I-481) offered 88 moves on 20
+   albums. 22 of them went onto seats the release does not have: `Das Ich — Alter Ego` put
+   `09 Kingdott` (two edits from `Kindgott`) at 16 of 15, and `dArtagnan — Felsenfest` put a track
+   at 3-19 of a disc of 18. 20 went onto seats whose length is not the file's: `Mono Inc. — Together
+   Till The End` stored one recording for both `Out in the Fields` (1-04, 246 s; 3-04, 216 s) and
+   for four more pairs, and the stored id swapped each pair between discs 1 and 3.
+   - `_places`: a match moves its file when the file is within `LENGTH_SLACK` (5 s) of the slot's
+     MusicBrainz length, or when its title is the slot's whole title and unique on the release. A
+     live album such as `Depeche Mode — 101` is minutes off and still moves. A match on the seat
+     it already has is no move. Any other match is refused, and nothing of it is written.
+   - A track that does not move keeps its seat (`known_seat`, the stored plan's), and the run
+     says so in one line. Where a moving track would land on a kept seat, neither moves, and one
+     line names both and the slot. A fresh playlist has no seat to keep, so its unmatched tracks
+     are counted on after the release, as before.
+   - `pick` and the stored-recording pass: one recording stored for two files is no evidence
+     about either. A stored recording whose length is not the file's yields to one whose length
+     is. The fresh read now carries the stored seat and measured length (`known_length`) as well.
+   - `merge_plans` (`keep_the_seats`): the copy proof found the other half. Sometimes the source
+     still lists a video but this read skipped it. `Feuerschwanz — Walhalligalli`'s `Metnotstand
+     im Märchenland` comes from another channel, and `dArtagnan — Felsenfest`'s `My Love's in
+     Germany` too. Such a track counted as gone and went last (04 → 15 of 14, 1-05 → 3-19). Now it
+     keeps its seat, and a listed track the read would number onto it keeps its own. A video the
+     source dropped still goes last, because a curator's order is the content (slice 3).
+   - The lines are logged after `existing album …` and are not changes: a kept seat offers no
+     apply.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

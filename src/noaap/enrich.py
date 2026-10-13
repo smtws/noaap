@@ -15,13 +15,14 @@ import difflib
 import logging
 import math
 import re
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
 from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import owner_artist_of, refresh_derived
+from .plan import FOLDER, LENGTH_SLACK, owner_artist_of, refresh_derived
 from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
@@ -341,6 +342,23 @@ def near_enough(a: str, b: str) -> bool:
     return edits(a, b) <= max(1, int(0.15 * max(len(a), len(b))))
 
 
+def file_seconds(t: PlanTrack) -> float | None:
+    """How long this track's file is: measured, else what the stored plan measured, else the video."""
+    return t.file_length or getattr(t, "known_length", None) or t.duration or None
+
+
+def mb_seconds(m: dict[str, Any]) -> float | None:
+    """How long MusicBrainz says a release's track is, in seconds."""
+    length = m.get("length") or (m.get("recording") or {}).get("length")
+    return int(length) / 1000 if length else None
+
+
+def length_fits(mine: float, m: dict[str, Any]) -> bool:
+    """Whether a file of `mine` seconds is the length of this release track (`LENGTH_SLACK`)."""
+    theirs = mb_seconds(m)
+    return bool(theirs) and abs(theirs - mine) <= LENGTH_SLACK
+
+
 def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
           pinned: bool = False) -> dict[int, dict[str, Any]] | None:
     """plan track index -> one of `mb_tracks`, or None if too few fit."""
@@ -352,23 +370,32 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
         if len(among) == 1:
             return among[0]
         already = t.mbid or getattr(t, "known_recording", None)   # the stored plan's, on a fresh read
+        mine = file_seconds(t)
         if already and (held := [j for j in among if (mb_tracks[j].get("recording") or {}).get("id") == already]):
-            return held[0]
-        mine = t.file_length or t.duration
+            # **unless its length says otherwise** (§9, slice 192; q16): `Mono Inc. — Together Till
+            # The End` stored one recording for both `Out in the Fields`, 1-04 (246 s) and 3-04
+            # (216 s), and the stored id took the 246-s file to 3-04 and the 216-s one to 1-04
+            if not mine or length_fits(mine, mb_tracks[held[0]]) \
+                    or not any(length_fits(mine, mb_tracks[j]) for j in among):
+                return held[0]
         if not mine:
             return among[0]
-        return min(among, key=lambda j: abs((mb_tracks[j].get("length") or 0) / 1000 - mine)
-                   if mb_tracks[j].get("length") else float("inf"))
+        return min(among, key=lambda j: abs(mb_seconds(mb_tracks[j]) - mine)
+                   if mb_seconds(mb_tracks[j]) else float("inf"))
 
     # **the recording a track already is, first of all** (§9, slice 177; R-584): `Das Ich — Lava (Asche)`
     # names its files `Schwarzer Stern` and `Schwarzer Stern (by Terminal Choice)`, the release calls
     # them `(remix)` and `(reworked by Terminal Choice)`, and only the recording ids the plan already
     # held said which was which — a deep read seated them by title and put one past the last track
+    knowns = Counter(t.mbid or getattr(t, "known_recording", None) for t in plan.tracks)
     for i, t in enumerate(plan.tracks):
         if not (known := t.mbid or getattr(t, "known_recording", None)):
             continue
+        if knowns[known] > 1:
+            continue    # one recording stored for two files says nothing about either (slice 192)
         held = [j for j in unused if (mb_tracks[j].get("recording") or {}).get("id") == known]
-        if len(held) == 1:
+        if len(held) == 1 and ((mine := file_seconds(t)) is None or length_fits(mine, mb_tracks[held[0]])
+                               or not mb_seconds(mb_tracks[held[0]])):
             matches[i] = mb_tracks[held[0]]
             unused.remove(held[0])
     # **the whole title first** (§9, slice 164): `Life Goes Around (Previously Unreleased)` came before
@@ -624,14 +651,19 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         plan.release_group = rg.get("id") or plan.release_group
 
         next_number = max((int(m["position"]) for m in matches.values()), default=0) + 1
+        places, plan.seat_notes, refused = _places(plan, release, matches)
+        for i in refused:
+            del matches[i]       # not this recording: nothing of it is written either
         for i, t in enumerate(plan.tracks):
             if m := matches.get(i):
                 artist, title = move_feat(credit_phrase(m.get("artist-credit") or release["artist-credit"]), m["title"])
                 _set(t, "title", title, matched=True)
                 _set(t, "artist", artist, matched=True)
-                t.number, t.disc, t.mbid = int(m["position"]), int(m["disc"]), m["recording"]["id"]
+                t.mbid = m["recording"]["id"]
                 if length := m.get("length") or m["recording"].get("length"):
                     t.mb_length = round(int(length) / 1000, 1)
+            if i in places:
+                t.disc, t.number = places[i]
             else:
                 t.number, next_number = next_number, next_number + 1
         plan.tracks.sort(key=lambda t: (t.disc, t.number))
@@ -640,6 +672,82 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
     # about nine releases is what made the user think identification only works by luck.
     plan.offered = sorted(looked.values(), key=lambda o: (-(o["matched"] or 0), o["date"] or "9999"))
     return False
+
+
+def seat_of(t: PlanTrack, plan: AlbumPlan) -> tuple[int, int]:
+    """Where this track sits now. **A folder's file says it** (R-375): `Das Ich — Alter Ego`'s plan
+    already held `Kingdott` at 16 while its file still said 09. Anything else: the stored plan's seat
+    on a fresh read, else its own."""
+    if plan.provider == FOLDER:
+        return (t.disc, t.number)
+    return getattr(t, "known_seat", None) or (t.disc, t.number)
+
+
+def _places(plan: AlbumPlan, release: dict[str, Any], matches: dict[int, dict[str, Any]]
+            ) -> tuple[dict[int, tuple[int, int]], list[str], set[int]]:
+    """Where each track goes: `{plan index: (disc, number)}`, the lines that say what stayed, and the
+    matches refused as not being that recording (§9, slice 192; q16, R-648).
+
+    **A track moves only onto a seat the release has, and only when it is that track.** It used to
+    take whatever position its match had, and a track nothing matched was counted on after the
+    release's last: on the share `Das Ich — Alter Ego` put its `09 Kingdott` at 16 of 15,
+    `dArtagnan — Felsenfest` one track at 3-19 of a disc of 18, and `Mono Inc. — Together Till The
+    End` swapped five pairs of same-titled songs between discs 1 and 3, each file onto the other's
+    length. Now a match moves its file when the file is the slot's length (`LENGTH_SLACK`), or when
+    its title is the slot's whole title and no other track of the release has that title — a live
+    album is minutes off its studio lengths and still the release's `Black Celebration`. A match
+    that is neither is refused; a match on the seat it already has is no move and needs neither.
+    Whatever is not moved keeps the seat it has, and where a moving
+    track would land on a seat somebody keeps, **neither moves** and one line names both.
+
+    Only for an album already in the library, or one whose source states its numbers: a fresh
+    playlist has no seat to keep, and its tracks nothing matched are counted on as before.
+    """
+    flat = [t for one in media_of(release) for t in one]
+    names = Counter(title_key(m["title"]) for m in flat)
+    keeps = any(getattr(t, "known_seat", None) for t in plan.tracks) or plan.provider == FOLDER
+    places: dict[int, tuple[int, int]] = {}
+    notes: list[str] = []
+    refused: set[int] = set()
+    for i, m in matches.items():
+        t = plan.tracks[i]
+        mine = file_seconds(t)
+        whole = title_key(t.title) == title_key(m["title"]) and names[title_key(m["title"])] == 1
+        stays = (int(m["disc"]), int(m["position"])) == seat_of(t, plan)    # not a move: nothing to earn
+        if stays or (mine and length_fits(mine, m)) or whole:
+            places[i] = (int(m["disc"]), int(m["position"]))
+            continue
+        refused.add(i)
+        d, n = seat_of(t, plan)
+        theirs = mb_seconds(m)
+        notes.append(f"{d}-{n:02d} {t.title}: keeps its seat — the release's {m['disc']}-{int(m['position']):02d} "
+                     f"“{m['title']}” is {f'{theirs:.0f} s' if theirs else 'of no known length'}, "
+                     f"the file {f'{mine:.0f} s' if mine else 'of no known length'}")
+    if not keeps:
+        return {i: s for i, s in places.items() if i not in refused}, notes, refused
+    kept = {i: seat_of(t, plan) for i, t in enumerate(plan.tracks) if i not in places}
+    last = max((int(m["position"]) for m in matches.values()), default=0)
+    for n, i in enumerate((i for i in kept if i not in refused), 1):
+        if kept[i][1] != last + n:   # where it would have gone: said only where it does not go
+            t = plan.tracks[i]
+            notes.append(f"{kept[i][0]}-{kept[i][1]:02d} {t.title}: keeps its seat — no track of the release fits it")
+    changed = True
+    while changed:
+        changed = False
+        held = {seat: i for i, seat in kept.items()}
+        for i, seat in list(places.items()):
+            if seat == seat_of(plan.tracks[i], plan) or seat not in held:
+                continue
+            other = plan.tracks[held[seat]]
+            notes.append(f"{seat[0]}-{seat[1]:02d} {other.title} and {seat_of(plan.tracks[i], plan)[0]}-"
+                         f"{seat_of(plan.tracks[i], plan)[1]:02d} {plan.tracks[i].title}: neither moves — the release "
+                         f"puts the second on {seat[0]}-{seat[1]:02d}, where the first stays")
+            del places[i]
+            kept[i] = seat_of(plan.tracks[i], plan)
+            changed = True
+            break
+    places.update(kept)
+    return places, notes, refused
 
 
 def _seatable(plan: AlbumPlan, releases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -739,6 +847,8 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
             else:
                 progress(f"MusicBrainz: looking for the release “{plan.album}”")
             stats["release"] = int(enrich_release(plan, mb))
+            for line in getattr(plan, "seat_notes", ()):
+                progress(line)      # every seat that stays where a move was offered (slice 192)
             if plan.offered and not stats["release"]:
                 # **the number, then the list** (§9, slice 145): `0/0 tracks matched` and silence
                 # about nine releases is what made the user think identification works by luck.

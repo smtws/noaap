@@ -372,9 +372,15 @@ class Service:
             # up on its own, and the plan it is merged into keeps its own value anyway.
             ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid}
             names = {t.video_id: t.title for t in here[1].tracks}
+            stored = {t.video_id: t for t in here[1].tracks}
             for mine, same in zip(plan.tracks, as_the_plan_knows_them(here[1], plan).tracks):
                 if known := ids.get(same.video_id):
                     mine.known_recording = known
+                # **and the seat it has and the length its file was measured at** (§9, slice 192;
+                # q16): a seat nothing on the release earns is kept, and a seat is earned by length
+                if (was := stored.get(same.video_id)) is not None:
+                    mine.known_seat = (was.disc, was.number)
+                    mine.known_length = was.file_length
                 # and the title the plan holds for it: what a stored release is measured against
                 # (§9, slice 177), where the file's own tag may name the take less exactly
                 if title := names.get(same.video_id):
@@ -449,6 +455,10 @@ class Service:
             plan = merge_plans(existing, plan)
             gone = sum(not t.in_source for t in plan.tracks)
             self.log(f"existing album {old_dir.relative_to(self.library)}: {new} new, {gone} no longer in the source")
+            # **every seat kept where a move was offered, said and not counted** (§9, slice 192):
+            # a kept seat is the absence of a change, so it is no reason to offer an apply
+            for line in getattr(plan, "seat_notes", ()):
+                self.log(f"  {line}")
             if report_only:
                 # **and what it would change about the album itself** (§9, slice 142). This used to
                 # stop at the line above: `0 new, 0 no longer in the source` and not a word about the
