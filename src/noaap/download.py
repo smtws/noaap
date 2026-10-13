@@ -347,6 +347,27 @@ def lost_files(album_dir: Path, plan: AlbumPlan) -> list[str]:
             if t.state == "done" and t.filename and not (album_dir / t.filename).is_file()]
 
 
+def to_fetch(plan: AlbumPlan, album_dir: Path) -> list[PlanTrack]:
+    """Every track an apply's `run` would download, asked the way `run` asks it (§9, slice 195; q20).
+
+    A track the source still lists that is not finished, failed or not, and a finished one whose
+    file is under neither the name it has nor the name it would get — except on an adopted album,
+    which is never fetched again (slice 61). `Crematory/Crematory`'s round-A check said nothing about
+    its 2 failed tracks without a file; the apply then downloaded both.
+    """
+    def has_its_file(t: PlanTrack) -> bool:
+        return any((album_dir / name).is_file() for name in {t.filename, wanted_filename(plan, t)} if name)
+
+    return [t for t in plan.tracks
+            if t.in_source and not (t.state == "done" and (plan.keep_names or has_its_file(t)))]
+
+
+def fetch_line(tracks: list[PlanTrack]) -> str:
+    """The one line a check and an apply give for `to_fetch`'s tracks (§9, slice 195)."""
+    return (f"{len(tracks)} track(s) would be downloaded: "
+            + ", ".join(f"{t.number:02d} {t.title}" for t in tracks))
+
+
 def lost_albums(library: Path) -> list[tuple[Path, list[str]]]:
     """Every album holding a finished track whose own file is not where the plan says (§9, slice 60).
 

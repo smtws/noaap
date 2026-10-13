@@ -33,6 +33,7 @@ from .download import (
     PLAN_FILE,
     _source_points_elsewhere,
     artists_without_albums,
+    fetch_line,
     find_plan,
     iter_plans,
     load_plan,
@@ -44,6 +45,7 @@ from .download import (
     run,
     save_plan,
     says_the_old_name,
+    to_fetch,
     track_named,
     tracks_elsewhere,
     would_do,
@@ -732,7 +734,7 @@ class Service:
                    on_track=self.on_track, check=self.check, **kw)
 
     def execute(self, plan: AlbumPlan, album_dir: Path) -> Outcome:
-        todo = sum(t.state != "done" and t.in_source for t in plan.tracks)
+        todo = len(to_fetch(plan, album_dir))   # what the check counted (§9, slice 195)
         self.log(f"downloading {todo} of {len(plan.tracks)} tracks into {album_dir}")
         self._run(plan, album_dir, say=self.log,
                   lyrics=self.lrclib if self.may_look_up(plan) else None)
@@ -912,10 +914,12 @@ class Service:
             self.log(f"{skipped} of {len(albums)} albums were unchanged")
         if lengths:
             self.log(f"{lengths} track(s) {'would get' if report_only else 'got'} the length of their file")
-        if report_only and (self._file_work_seen["renamed"] or self._file_work_seen["rewritten"]):
+        seen = self._file_work_seen
+        if report_only and (seen["renamed"] or seen["rewritten"] or seen["downloaded"]):
             # the total repair's check gives, for the same question (§9, slice 85)
-            self.log(f"{self._file_work_seen['renamed']} file(s) would be renamed and "
-                     f"{self._file_work_seen['rewritten']} audio file(s) would be rewritten (their tags)")
+            self.log(f"{seen['renamed']} file(s) would be renamed and "
+                     f"{seen['rewritten']} audio file(s) would be rewritten (their tags)"
+                     + (f", and {seen['downloaded']} track(s) would be downloaded" if seen["downloaded"] else ""))
         return outcomes
 
     def measure_lengths(self, plan: AlbumPlan, album_dir: Path, *, dry_run: bool = False) -> int:
@@ -1534,6 +1538,11 @@ class Service:
                 work.append(f"{len(held)} file(s) without a picture would get the album's once it is saved")
                 rewritten |= {f"{t.number:02d}" for t in held}
         self._file_work_seen["rewritten"] += len(rewritten)
+        # **and every track it would download** (§9, slice 195; q20): round A's check named none of
+        # `Crematory/Crematory`'s 2 failed tracks without a file, and its apply downloaded both
+        if fetched := to_fetch(plan, album_dir):
+            work.append(fetch_line(fetched))
+            self._file_work_seen["downloaded"] += len(fetched)
         return work
 
     def _cover_of(self, plan: AlbumPlan, album_dir: Path) -> bytes | None:

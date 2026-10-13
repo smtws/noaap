@@ -4977,6 +4977,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      chooses that folder and what is in it, compared part by part as written. A value that names
      no folder is matched by its text key as before, which is what lets `crematory` find
      `Crematory`. One rule serves `update`, `repair`, `adopt`, `merge` and `take-in`.
+195. ✅ **A check names every track its apply would download** (2026-10-13, R-656, q20).
+   Round A's check of `Crematory/Crematory` named no tracks. Its plan held 07 `Flammen` and
+   08 `Die Suche` as failed, with no file, and the apply downloaded both (`downloading 2 of 10`).
+   - `to_fetch` answers as `run` does. It takes a track the source still lists that is not
+     finished, failed or not. It also takes a finished track whose file is under neither its own
+     name nor the name it would get, except on an adopted album (slice 61).
+   - `_file_work` adds `N track(s) would be downloaded: 07 Flammen, 08 Die Suche`. The check
+     prints it per album, and the apply prints it before it fetches. The check's closing line adds
+     `, and N track(s) would be downloaded`. `execute`'s `downloading N of M` counts the same tracks.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
