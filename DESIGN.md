@@ -4968,6 +4968,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      release.
    - The same mechanism produced the `another recording id` lines on compilations: MDL Vol. 14
      (applied in round A) and Vol. 15 (q19). From this version on they are not offered again.
+194. ✅ **`--only <path>` chooses exactly the folder at that path** (2026-10-13, R-652, q18).
+   Round A listed `Feuerschwanz/10 Jahre Feuerschwanz Live`, and the pass also ran the separate
+   folder `10 Jahre Feuerschwanz (live)`. Matched part by part through `text_key`, `Live` and
+   `(live)` are one name. Round B took `Mono Inc/Together till the End` and `Saltatio Mortis/Zirkus
+   Zeitgeist- Ohne Strom und Stecker` along the same way.
+   - `under_only`: a value whose path names a folder under the root, relative or absolute,
+     chooses that folder and what is in it, compared part by part as written. A value that names
+     no folder is matched by its text key as before, which is what lets `crematory` find
+     `Crematory`. One rule serves `update`, `repair`, `adopt`, `merge` and `take-in`.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

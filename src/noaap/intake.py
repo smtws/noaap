@@ -235,13 +235,21 @@ def under_only(albums: Iterable[Path], root: Path, only: Iterable[str]) -> tuple
     # **an absolute path under the root is that path's part under it** (q15; R-638): it used to lose
     # its leading `/` and be matched as `home/…` relative to the root. One outside the root is None.
     taken = [under_root(value, root) for value in only]
-    wanted = [None if rel is None else tuple(text_key(part) for part in Path(rel).parts) for rel in taken]
+    # **a path that names a folder chooses that folder and nothing else** (§9, slice 194; q18, R-652):
+    # by text key alone, `--only "Feuerschwanz/10 Jahre Feuerschwanz Live"` also took the separate
+    # folder `10 Jahre Feuerschwanz (live)`, and round A ran an album nobody had listed. The text key
+    # stays for a value that names no folder, which is what lets `crematory` find `Crematory`.
+    exact = [rel is not None and (root / rel).is_dir() for rel in taken]
+    wanted = [None if rel is None else tuple(Path(rel).parts) if whole else
+              tuple(text_key(part) for part in Path(rel).parts)
+              for rel, whole in zip(taken, exact, strict=True)]
     chosen: list[Path] = []
     hit = [False] * len(wanted)
     for album in albums:
-        parts = tuple(text_key(part) for part in album.relative_to(root).parts)
+        mine = album.relative_to(root).parts
+        keyed = tuple(text_key(part) for part in mine)
         for n, want in enumerate(wanted):
-            if want is not None and parts[:len(want)] == want:
+            if want is not None and (mine if exact[n] else keyed)[:len(want)] == want:
                 chosen.append(album)
                 hit[n] = True
                 break
