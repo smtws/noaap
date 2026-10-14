@@ -771,9 +771,14 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                 wanted_tags.pop(key, None)
         diffs = differences(have, wanted_tags)
         changed = [_change(key, have.get(key), wanted_tags[key]) for key in diffs]
-        # an adopted album's other fields are left alone, so the dry run must not claim they go
-        gone = ([] if plan.adopted else
-                [key for key in have if key not in wanted_tags and key not in kept])
+        # an adopted album's other fields are left alone, so the dry run must not claim they go —
+        # **but noaap's own album is written whole** (§9, slice 206; R-700): its writer deletes every
+        # key and writes the plan's, so a kept key the plan no longer has goes too, and the check
+        # said nothing about it. On an adopted album only a recording id taken back is dropped.
+        refused = [key for key in ("musicbrainz_trackid",)
+                   if str(have.get(key) or "") in track.refused_recordings]
+        gone = (refused if plan.adopted else
+                [key for key in have if key not in wanted_tags])
         if gone or (diffs and not only_padding(have, wanted_tags, diffs)):
             said.append(f"{track.number:02d} would be retagged: "
                         + "; ".join(changed + [f"{key} would be dropped" for key in gone]
@@ -1127,6 +1132,8 @@ def _already_right(plan: AlbumPlan, track: PlanTrack, path: Path, cover: bytes |
     # the words in the file after the pass claimed to have removed them.
     if not theirs and any(key not in wanted for key in have):
         return False
+    if str(have.get("musicbrainz_trackid") or "") in track.refused_recordings:
+        return False    # a recording id taken back goes from any file (§9, slice 206)
     return cover is None or embedded_cover(path) == cover
 
 

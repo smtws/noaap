@@ -725,6 +725,12 @@ def tag_file(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None 
     return writer(path, plan, track, cover, lyrics, keep_unknown, drop_comments, drop_wm_frames)
 
 
+def _refused(track: PlanTrack, value: str | None) -> bool:
+    """A recording id this track took back (§9, slice 206): a file that still says it is told otherwise,
+    on an album whose own fields are otherwise left alone too."""
+    return bool(value) and value in getattr(track, "refused_recordings", ())
+
+
 def _wanted(plan: AlbumPlan, track: PlanTrack, lyrics: str | None, keep_unknown: bool,
             present: Any) -> dict[str, str]:
     """The tags to write: all of them, or all but the ones this file already answers better."""
@@ -754,6 +760,8 @@ def _tag_vorbis(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | No
             del audio[key]
     for key, value in tags.items():
         audio[key] = [value]
+    if _refused(track, (audio.get("musicbrainz_trackid") or [None])[0]):
+        del audio["musicbrainz_trackid"]
 
     if kind(path) == "flac":
         if cover and (shown := as_jpeg(cover)) and (mime := image_mime(shown)):
@@ -813,6 +821,8 @@ def _tag_id3(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
             id3.setall(frame, [TXXX(encoding=3, desc=frame[5:], text=[tags[key]])])
         else:
             id3.setall(frame, [ID3_FRAMES[frame](encoding=3, text=[tags[key]])])
+    if _refused(track, str(id3.get(ID3_KEYS["musicbrainz_trackid"]) or "")):
+        id3.delall(ID3_KEYS["musicbrainz_trackid"])
     # ID3 carries each number and its total in one frame, so these two are set here rather than by
     # the loop above: `TRCK` as track/of, `TPOS` as disc/of (§9, slice 102).
     on_this_disc = plan.disc_length(track.disc)
@@ -884,6 +894,9 @@ def _tag_mp4(path: Path, plan: AlbumPlan, track: PlanTrack, cover: bytes | None,
     for key, atom in MP4_KEYS.items():
         if value := tags.get(key):
             audio[atom] = [value.encode() if atom.startswith("----") else value]
+    held = (audio.tags or {}).get(MP4_KEYS["musicbrainz_trackid"])
+    if held and _refused(track, bytes(held[0]).decode(errors="replace") if not isinstance(held[0], str) else held[0]):
+        del audio[MP4_KEYS["musicbrainz_trackid"]]
     audio["trkn"] = [(track.number, plan.disc_length(track.disc))]   # a 0 total is "not known"
     if (discs := max(t.disc for t in plan.tracks)) > 1:
         audio["disk"] = [(track.disc, discs)]   # the only writer that had the disc total right

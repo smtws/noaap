@@ -5112,6 +5112,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      Windows Media frames.
    - The summary counts that set, and the files that would get a saved cover join it the same way.
    - The lines themselves are unchanged.
+206. ✅ **A stored per-track recording longer than its video is taken back** (2026-10-14,
+   R-698/R-699/R-700, q29). Slice 204 keeps a lookup from attaching one, but the merge keeps a
+   stored id against a fresh None, so the 17 attached before it stayed. Example:
+   `Feuerschwanz — Sex Is Muss` 1-01 `Ketzerei`, a 100-s video, held `e5332cbe` of 215.5 s.
+   - `longer_than_its_video` covers an album with no release id whose audio is the playlist's own
+     video (no `source_override`, which also leaves slice 202's pairs alone), with a stored
+     `mb_length` longer than the video by more than `LENGTH_SLACK`.
+   - The merge clears such an id before it takes the fresh, gated answer, and puts it in the track's
+     `refused_recordings` (additive). A refused id is never attached again: a search answer of no
+     known length passes slice 204's gate, as `Methämmer` 1-03's `e1c99981` does.
+   - One change line: `01 Ketzerei: the recording id e5332cbe… (215.5 s) is longer than the video
+     (100 s) and goes — the lookup gives none` (or `gives <id> (<len> s | of no known length)`).
+   - The files: on an adopted album the writer keeps the file's fields (`keep_unknown`) but drops a
+     refused `musicbrainz_trackid`; `_already_right` no longer calls a file holding one right.
+   - **The check now says what the apply drops** (R-700). On noaap's own album the writer deletes
+     every key and writes the plan's, so a kept key (`KEEP_IF_PRESENT`) the plan no longer has goes
+     too. `would_do` held those back on every album and said nothing; it now says
+     `<key> would be dropped`. On an adopted album it names only a refused recording id.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

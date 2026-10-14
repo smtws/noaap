@@ -671,9 +671,15 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
             pass    # the file stays, and so do its title and recording: it is not this video's audio
         elif f:
             _merge_fields(t, f, TRACK_FIELDS)
-            if t.provenance.get("title") != Provenance.USER:
+            if longer_than_its_video(t, merged):
+                # the fresh lookup answers again, gated, and the old id is never this track's again
+                t.refused_recordings.append(t.mbid)
+                t.mbid, t.mb_length = None, None
+            refused = f.mbid in t.refused_recordings
+            if t.provenance.get("title") != Provenance.USER and not refused:
                 t.mbid = f.mbid or t.mbid
-            t.mb_length = f.mb_length or t.mb_length
+            if not refused:
+                t.mb_length = f.mb_length or t.mb_length
             if not t.source_override:
                 # both describe the *video*, and a track pointed at another one (§9, slice 34) is not
                 # taking its audio from the playlist's: its uploader decides which channel-wide
@@ -735,6 +741,19 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     merged.seat_notes = keep_the_seats(rest, ordered, was)
     merged.tracks = ordered + rest
     return refresh_derived(merged)
+
+
+def longer_than_its_video(t: PlanTrack, plan: AlbumPlan) -> bool:
+    """**A stored recording longer than its video is not this track's** (§9, slice 206; q29, R-698).
+
+    Slice 204 keeps a per-track lookup from attaching one, but the merge keeps a stored id against a
+    fresh None, so the 17 attached before it stayed: `Feuerschwanz — Sex Is Muss` 1-01 `Ketzerei`, a
+    100-s video, held `e5332cbe` of 215.5 s. Only where the lookup was per track — an album with no
+    release id — and the audio is the playlist's own video (no `source_override`, which also leaves
+    slice 202's pairs alone); a recording of no known length is not asked about.
+    """
+    return (not plan.mbid and not t.source_override and bool(t.mbid and t.mb_length and t.duration)
+            and t.mb_length > t.duration + LENGTH_SLACK)
 
 
 def fits(file_seconds: float | None, mb_seconds: float | None) -> bool:
@@ -1173,11 +1192,19 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
         if (before.disc, before.number) != (track.disc, track.number):
             out.append(f"{before.title}: {before.disc}-{before.number:02d} → "
                        f"{track.disc}-{track.number:02d}")
-        if not before.mbid and track.mbid:
+        cleared = before.mbid != track.mbid and longer_than_its_video(before, now)
+        if cleared:
+            # one line for the whole of slice 206: what goes, why, and what the lookup gives instead
+            out.append(f"{track.number:02d} {track.title}: the recording id {before.mbid} ({before.mb_length} s) "
+                       f"is longer than the video ({before.duration:.0f} s) and goes"
+                       + (f" — the lookup gives {track.mbid}"
+                          + (f" ({track.mb_length} s)" if track.mb_length else " (of no known length)")
+                          if track.mbid else " — the lookup gives none"))
+        elif not before.mbid and track.mbid:
             out.append(f"{track.number:02d} {track.title}: a recording id")
         elif before.mbid and track.mbid and before.mbid != track.mbid:
             out.append(f"{track.number:02d} {track.title}: another recording id ({before.mbid} → {track.mbid})")
-        if track.mb_length and before.mb_length != track.mb_length:
+        if track.mb_length and before.mb_length != track.mb_length and not cleared:
             out.append(f"{track.number:02d} {track.title}: length at MusicBrainz "
                        f"{before.mb_length or 'nothing'} → {track.mb_length}")
         # **a track the source has dropped is kept and flagged, not removed** (slice 3), so this is

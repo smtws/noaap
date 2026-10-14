@@ -25,10 +25,11 @@ def an_album(dropped_s=219.6, listed_s=237.6, twin_rec=REC):
     for t in existing.tracks:
         t.state, t.file_length = "done", 200.0
     four = existing.tracks[3]
-    four.mbid, four.mb_length, four.file_length = REC, SLOT, dropped_s
+    # each video the length of its file, as on the share (slice 206 asks the video's length)
+    four.mbid, four.mb_length, four.file_length, four.duration = REC, SLOT, dropped_s, dropped_s
     twin = copy.deepcopy(four)
     twin.video_id, twin.number, twin.filename = "OFFICIALVID", 14, "14 twin.opus"
-    twin.mbid, twin.file_length = twin_rec, listed_s
+    twin.mbid, twin.file_length, twin.duration = twin_rec, listed_s, listed_s
     existing.tracks.append(twin)
     return existing, four, twin
 
