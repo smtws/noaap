@@ -5083,6 +5083,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - One line says so: `1-15 My Immortal (Strings Version): its seat is 1-15 Bring Me to Life
      (Demo)'s — goes last as 1-21`.
    - A new entry on a free seat is placed as before.
+204. ✅ **A per-track lookup does not take a recording longer than the video** (2026-10-14, R-688,
+   q26 option A). The new `Going Under` video on `Evanescence — Fallen (Deluxe)` (218 s) was given
+   `954b2a1f`, the São Paulo 2023 live recording (261 s). MusicBrainz gave ten answers, all scored
+   100 and none of them the studio recording; that one won only because it was the one answer on an
+   official album.
+   - `pick_recording(…, seconds)` refuses a recording longer than the video by more than
+     `LENGTH_SLACK` and takes the next in rank (here `f9686f62`, no known length).
+   - The gate is one-sided: a shorter recording passes. A video with film around the song is
+     longer than its recording, and the trim suggestion cuts to that length.
+   - A recording of no known length passes.
+   - The gate applies only to the recording that would be attached. Where every answer is longer,
+     the lookup still confirms the artist and the spelling, as for a variant, and attaches no id
+     and no length. (Gating the search itself lost `ASP — Schneefall in der Hölle (Plakat Mix)`'s
+     title cleanup.)
+   - Fixture: vol1's `Schandmaul — Prinzessin` (210-s video) now takes the 211-s recording instead
+     of the 301-s one.
+   - A track whose audio comes from another video (`source_override`) is not measured by this one.
+   - Stored ids are untouched (the merge keeps a stored id against a fresh None). So are
+     release-seated tracks (another path) and q25-paired ones (they keep their own recording).
+   - Not read: the "live, …" disambiguation. A 216-s live broadcast would still fit a 218-s video.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

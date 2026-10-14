@@ -1,0 +1,362 @@
+{
+ "query": "recording?fmt=json&limit=10&query=recording:\"Going Under\" AND artist:\"Evanescence\"",
+ "recordings": [
+  {
+   "id": "f9686f62-d829-4e79-a49a-98e613fb4e62",
+   "score": 100,
+   "title": "Going Under",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "4b2c91a9-1261-44d3-8a16-917967249fe1",
+     "title": "Evanescence",
+     "status": "Promotion",
+     "release-group": {
+      "id": "263aff22-c612-47a8-a667-5bda0befc947",
+      "type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+      "primary-type-id": "6d0c5bf6-7a33-3420-a519-44fc63eedebf",
+      "title": "Evanescence",
+      "primary-type": "EP"
+     }
+    }
+   ]
+  },
+  {
+   "id": "954b2a1f-5239-432b-bd48-cf6573a69ec8",
+   "score": 100,
+   "title": "Going Under",
+   "length": 261375,
+   "disambiguation": "live, 2023-10-21: Sao Paolo",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "4009204d-c8cc-44c8-b47e-9a378d6f309d",
+     "title": "Sanctuary",
+     "status": "Official",
+     "release-group": {
+      "id": "07de8cfe-5ef6-448f-888f-3eeb9d3fb112",
+      "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "Sanctuary",
+      "primary-type": "Album"
+     }
+    },
+    {
+     "id": "c16071c5-ffc3-4128-ae3b-442cd985b0aa",
+     "title": "Sanctuary",
+     "status": "Official",
+     "release-group": {
+      "id": "07de8cfe-5ef6-448f-888f-3eeb9d3fb112",
+      "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "Sanctuary",
+      "primary-type": "Album"
+     }
+    }
+   ]
+  },
+  {
+   "id": "6641a409-8078-4732-90eb-55496e43820f",
+   "score": 100,
+   "title": "Going Under",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "14ae84c3-69df-4342-ade1-f748b84ce389",
+     "title": "The Open Door",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "e7e5eaa6-baf3-3539-b163-759431597f3a",
+      "type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "The Open Door",
+      "primary-type": "Album"
+     }
+    }
+   ]
+  },
+  {
+   "id": "063cd9ee-105b-4cad-a412-c002d5715ba0",
+   "score": 100,
+   "title": "Going Under",
+   "length": 306880,
+   "disambiguation": "live, 2003-06-07: Rock am Ring, Nürburgring, Germany",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "e5470a2e-4fba-4b90-895c-b169d4565e78",
+     "title": "2003‐06‐07: Rock am Ring, Nürburgring, Germany",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "8ff29e39-7bcd-3d3b-81f5-39f6a6b4adc9",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "2003-06-07: Rock am Ring, Nürburgring, Germany",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "33ada467-7303-4a53-a3dc-c4af43226033",
+   "score": 100,
+   "title": "Going Under",
+   "length": 247000,
+   "disambiguation": "live, 2003-04-14: Norva, Norfolk, VA, USA",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "6b49f334-6da5-47b7-bfdc-96acabc4e69a",
+     "title": "2003‐04‐14: Norva, Norfolk, VA, USA",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "cc2a77e1-b302-36c2-8d26-56f45c2d2abb",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "2003-04-14: Norva, Norfolk, VA, USA",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "25774686-f67d-4b6b-8b49-0d3a6af7a729",
+   "score": 100,
+   "title": "Going Under",
+   "length": 326000,
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "1837cef1-7e63-411a-b390-feb6cf015263",
+     "title": "Body Balance 28",
+     "release-group": {
+      "id": "5be40eb8-fe74-3bc5-a4ef-4130450767e9",
+      "type-id": "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "Body Balance 28",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Compilation"
+      ],
+      "secondary-type-ids": [
+       "dd2a21e1-0c00-3729-a7a0-de60b84eb5d1"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "d325719e-4add-4782-8991-c4716cbc555b",
+   "score": 100,
+   "title": "Going Under",
+   "disambiguation": "live, 2003-12-13: Colisée Pepsi, Québec, QC, Canada",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "daf8a27d-277d-4f54-aa91-5595ece9b0be",
+     "title": "2003‐12‐13: Colisée Pepsi, Quebec City, QC, Canada",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "1ea9ff42-cae5-30c5-9f2f-645133b367b6",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "2003-12-13: Colisée Pepsi, Quebec City, QC, Canada",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "a9c17fa0-6a4e-4840-94b6-be4cae95daf0",
+   "score": 100,
+   "title": "Going Under",
+   "length": 216000,
+   "disambiguation": "live, 2021-05-13: Private Venue, USA",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "b2d377cd-ee9b-4a52-91e1-7c6af2a698ba",
+     "title": "Driven to Perform",
+     "status": "Official",
+     "release-group": {
+      "id": "814df7b9-999c-43b6-b50b-2175003b2569",
+      "type-id": "3b2e49e1-2875-37b8-9fa9-1f7cf3f49900",
+      "primary-type-id": "3b2e49e1-2875-37b8-9fa9-1f7cf3f49900",
+      "title": "Driven to Perform Live",
+      "primary-type": "Broadcast",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "1edf7b9f-5023-4c99-b14c-8110c610de46",
+   "score": 100,
+   "title": "Going Under",
+   "length": 239000,
+   "disambiguation": "live, 2006-10-10: The Electric Factory, Philadelphia, PA, USA",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "8cbabc0c-be92-4789-b9b2-c1da730ee798",
+     "title": "2006‐10‐10: The Electric Factory, Philadelphia, PA, USA",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "8c4eca4f-3d16-3605-a389-0bde15078fdd",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "2006-10-10: The Electric Factory, Philadelphia, PA, USA",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "e0a6cec4-3e80-440f-95e0-ebff367d3b0d",
+   "score": 100,
+   "title": "Going Under",
+   "length": 248000,
+   "disambiguation": "live, 2006-10-09: Hammerstein Ballroom, New York City, NY, USA",
+   "artist-credit": [
+    {
+     "name": "Evanescence",
+     "joinphrase": "",
+     "artist": {
+      "id": "f4a31f0a-51dd-4fa7-986d-3095c40c5ed9",
+      "name": "Evanescence"
+     }
+    }
+   ],
+   "releases": [
+    {
+     "id": "0db722dd-c869-40c4-b872-354d60b6e136",
+     "title": "2006‐10‐09: Hammerstein Ballroom, New York City, NY, USA",
+     "status": "Bootleg",
+     "release-group": {
+      "id": "1bd00263-b066-3291-a035-e3195b9c16ca",
+      "type-id": "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0",
+      "primary-type-id": "f529b476-6e62-324f-b0aa-1f3e33d313fc",
+      "title": "2006-10-09: Hammerstein Ballroom, New York City, NY, USA",
+      "primary-type": "Album",
+      "secondary-types": [
+       "Live"
+      ],
+      "secondary-type-ids": [
+       "6fd474e2-6b58-3102-9d17-d6f7eb7da0a0"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

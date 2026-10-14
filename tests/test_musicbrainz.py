@@ -231,10 +231,10 @@ def test_recording_length_is_kept_for_the_trim_suggestion():
     enrich(plan, RecordedMB())
     known = [t for t in plan.tracks if t.mb_length]
     assert len(known) >= 10
-    # MusicBrainz sometimes knows another, longer version: "Prinzessin" is 3:30 on YouTube,
-    # the matched recording is 5:01 — the UI must not suggest an end past the file
+    # MusicBrainz sometimes knows another, longer version: "Prinzessin" is 3:30 on YouTube and the
+    # first answer is 5:01 — since slice 204 (q26) the next in rank that is not longer is taken
     schandmaul = next(t for t in plan.tracks if t.artist == "Schandmaul")
-    assert (schandmaul.mb_length, round(schandmaul.duration)) == (301.0, 210)
+    assert (schandmaul.mb_length, round(schandmaul.duration)) == (211.0, 210)
 
 
 def test_release_tracks_keep_their_length_too():

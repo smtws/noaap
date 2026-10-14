@@ -160,9 +160,20 @@ def artist_matches(ours: str, ac: list[dict[str, Any]]) -> bool:
 # -- track level ---------------------------------------------------------------------------
 
 
-def pick_recording(artist: str, title: str, recordings: list[dict[str, Any]]) -> dict[str, Any] | None:
+def pick_recording(artist: str, title: str, recordings: list[dict[str, Any]],
+                   seconds: float | None = None) -> dict[str, Any] | None:
+    """The recording this track is, of a search's answers — or None.
+
+    **Not one longer than the video** (§9, slice 204; q26, R-688). `Evanescence — Going Under`, a
+    219-s video, took `954b2a1f`, the São Paulo 2023 live recording of 261 s: the only answer on an
+    official album, none of the ten the studio one. With the video's `seconds`, a recording longer
+    by more than `LENGTH_SLACK` is not this one and the next in rank is taken. Shorter stays
+    allowed — a video with film around the song is longer than its recording, and that length is
+    what the trim suggestion cuts to — and a recording of no known length passes, as before.
+    """
     want, feat = title_key(core(title)), feat_text(title)
-    ok = [r for r in recordings if title_key(core(r.get("title", ""))) == want and artist_matches(artist, r.get("artist-credit", []))]
+    ok = [r for r in recordings if title_key(core(r.get("title", ""))) == want and artist_matches(artist, r.get("artist-credit", []))
+          and not (seconds and r.get("length") and r["length"] / 1000 > seconds + LENGTH_SLACK)]
     if not ok:
         return None
 
@@ -200,17 +211,28 @@ def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, An
 
 
 def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
-    rec = pick_recording(t.artist, t.title, mb.search_recordings(t.artist, core(t.title) or t.title))
+    asked = (t.artist, t.title, mb.search_recordings(t.artist, core(t.title) or t.title))
+    rec = pick_recording(*asked)
     title_source = t.title
     if rec is None:  # maybe "Song - Artist": swap
         swapped_artist, swapped_title = core(t.title), t.artist
         if swapped_artist and swapped_title:
-            rec = pick_recording(swapped_artist, swapped_title, mb.search_recordings(swapped_artist, swapped_title))
+            asked = (swapped_artist, swapped_title, mb.search_recordings(swapped_artist, swapped_title))
+            rec = pick_recording(*asked)
             title_source = swapped_title
     if rec is None and uploader_stood_in(t, source) and (found := split_lookup(t.title, mb)):
         _, title_source, rec = found
+        asked = (found[0], found[1], [rec])
     if rec is None:
         return False
+    # **not a recording longer than the video** (§9, slice 204; q26): the one attached is the next in
+    # rank that is not, and where none is the lookup still confirms the artist and spelling, as a
+    # variant does, and attaches nothing
+    seconds = None if t.source_override else t.duration     # the video's; not one whose audio is another's
+    too_long = not pick_recording(asked[0], asked[1], [rec], seconds)
+    if too_long and not kept_suffixes(title_source, rec["title"], [r.get("title", "") for r in rec.get("releases", [])]):
+        rec = pick_recording(*asked, seconds) or rec
+        too_long = not pick_recording(asked[0], asked[1], [rec], seconds)
 
     ac = rec["artist-credit"]
     extra = kept_suffixes(title_source, rec["title"], [r.get("title", "") for r in rec.get("releases", [])])
@@ -219,7 +241,7 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
         title += "".join(f" {g}" for g in re.findall(r"\([^)]*feat[^)]*\)", title_source, re.I))
     artist, title = move_feat(credit_phrase(ac), title)  # "A feat. B" - "Song" -> "A" - "Song feat. B"
     _set(t, "artist", artist)
-    if extra:
+    if extra or too_long:
         # "(Live)", "(Behind The Scenes Documentary)": the artist is confirmed, but this is
         # not that recording - keep our title, attach no recording id, and take no length
         # from it either (a live cut measured against the studio one reads as 2 minutes off)
