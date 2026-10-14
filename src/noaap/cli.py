@@ -121,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
     cp.add_argument("--apply", action="store_true", help="fetch them; without it nothing is written or downloaded")
     cp.add_argument("--only", metavar="SLOTS", help="only these, as the dry run names them: 1-06,1-13")
 
+    rc = sub.add_parser("recording", help="take each chosen track's audio from the video that is its recording "
+                                         "(shows first)")
+    rc.add_argument("album_dir", type=Path)
+    rc.add_argument("--apply", action="store_true", help="switch and fetch them; without it nothing is written or downloaded")
+    rc.add_argument("--only", metavar="TRACKS", help="only these, as the dry run names them: 1-04,1-12 "
+                    "(default: every track whose recording is longer than its file)")
+    rc.add_argument("--no-lyrics", action="store_true", help="do not look lyrics up at lrclib.net")
+
     u = sub.add_parser("update", help="re-check every album in the library against its source")
     u.add_argument("--library", type=Path)
     u.add_argument("--dry-run", action="store_true", help="only report what changed")
@@ -394,6 +402,8 @@ def main(argv: list[str] | None = None) -> int:
                 return _delete(args, cfg)
             case "complete":
                 return _complete(args, cfg)
+            case "recording":
+                return _recording(args, cfg)
             case "repair":
                 library = _library(args, cfg, required=True)
                 if library is None:
@@ -1236,6 +1246,29 @@ def _complete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
     if outcome.message.startswith(UNKNOWN_SLOT):
         return 2
     return 0 if outcome.status == "dry" else 1 if outcome.status == "held" else exit_code(outcome)
+
+
+def _recording(args: argparse.Namespace, cfg: config_mod.Config) -> int:
+    """`noaap recording DIR [--apply] [--only 1-04]` (§9, slice 207): the dry run is the default."""
+    from .complete import parse_only
+    from .download import load_plan
+
+    try:
+        only = parse_only(args.only)
+    except ValueError as e:
+        print(f"--only: {e}", file=sys.stderr)
+        return 2
+    plan = load_plan(args.album_dir)
+    if not plan:
+        print(f"no plan in {args.album_dir}", file=sys.stderr)
+        return 2
+    service = _service(cfg, args.album_dir.resolve().parents[1])
+    outcome = service.take_recordings(plan.source_id, only=only, dry_run=not args.apply)
+    if outcome.message:
+        print(outcome.message, file=sys.stderr)
+    if outcome.message.startswith("this album has no track"):
+        return 2
+    return 0 if outcome.status == "dry" else exit_code(outcome)
 
 
 def _serve(args: argparse.Namespace, cfg: config_mod.Config) -> int:

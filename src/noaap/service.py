@@ -51,7 +51,7 @@ from .download import (
     tracks_elsewhere,
     would_do,
 )
-from .enrich import carry_the_pin, enrich, pinned_release
+from .enrich import carry_the_pin, core, enrich, pinned_release
 from .lyrics import (
     Lrclib,
     LyricsAPI,
@@ -77,6 +77,7 @@ from .mb import MusicBrainz, MusicBrainzError, default_cache_path
 from .mend import mend
 from .models import AlbumPlan, Candidate, Failure, Kind, PlanTrack, Provenance, SourceRef
 from .plan import (
+    LENGTH_SLACK,
     as_the_plan_knows_them,
     build_plan,
     changes_from,
@@ -2648,6 +2649,100 @@ class Service:
         outcome.changes = lines
         outcome.offered = offered
         return outcome
+
+    def take_recordings(self, source_id: str, only: set[str] | None = None, dry_run: bool = True) -> Outcome:
+        """**A done track's audio from the video that is its recording** (§9, slice 207; q30, R-698).
+
+        `My Dark Lullabies` holds original recordings in the curator's shorter edits: `Schandmaul —
+        Prinzessin` is a 210-s video of the 301-s album version its recording id names. The user's
+        word (R-697): keep the ids, replace the audio with the recording on record. For each track
+        chosen — `only`, else every done track whose recording is longer than its file by more than
+        `LENGTH_SLACK`, with an id and a length and its audio still the playlist's — YouTube is
+        searched as slice 162 searches for a missing track: `artist - title`, and `artist title
+        <the recording's release>` in place of the album's name, which for a curator's volume says
+        nothing. Hits are ranked by `complete.rank` (another version refused, more than 30 s off
+        refused), a hit within `LENGTH_SLACK` of the recording first. The dry run names, per track,
+        the hit, its channel, its length and its distance to the recording; the apply points the
+        track at it (`switch_source`; the playlist's video stays the identity, the other hits wait
+        as candidates) and fetches. Never part of an update pass.
+        """
+        from .complete import Slot, queries, rank
+
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        named = {f"{t.disc}-{t.number:02d}": t for t in plan.tracks}
+        if only is not None and (unknown := sorted(only - set(named))):
+            return Outcome("failed", plan, album_dir, f"this album has no track {', '.join(unknown)} — nothing fetched")
+        provider = self._track_finder()
+        if provider is None:
+            return Outcome("failed", plan, album_dir, "no provider here can look for single recordings")
+
+        def wanted(t: PlanTrack) -> bool:
+            if t.state != "done" or not t.mbid or not t.mb_length:
+                return False
+            if only is not None:
+                return f"{t.disc}-{t.number:02d}" in only
+            return not t.source_override and bool(t.file_length) and t.mb_length > t.file_length + LENGTH_SLACK
+
+        lines, chosen = [], []
+        for t in (t for t in plan.tracks if wanted(t)):
+            self.check()
+            slot = Slot(disc=t.disc, number=t.number, title=t.title, artist=t.artist,
+                        recording=t.mbid, length=t.mb_length)
+            # the recording's release names it; a curator's volume (a compilation) names nothing
+            on = self._release_of_recording(t) or (plan.album if plan.kind != Kind.COMPILATION else "")
+            hits: dict[str, dict] = {}
+            for q in queries(slot, on)[:2 if on else 1]:
+                for hit in provider.find_tracks(q):
+                    if hit["ref"] not in (t.video_id, t.source_override) and hit["ref"] not in t.refused_candidates:
+                        hits.setdefault(hit["ref"], hit)
+            ranked = sorted(rank(slot, list(hits.values()), on),
+                            key=lambda h: (h["off"] is None or h["off"] > LENGTH_SLACK, -h["score"],
+                                           h["off"] if h["off"] is not None else 999))
+            best = ranked[0] if ranked else None
+            took = f"{int(t.mb_length) // 60}:{int(t.mb_length) % 60:02d}"
+            lines.append(f"{slot.name} {t.title} (recording {took}, file {t.file_length or 0:.0f} s): " + (
+                f"“{best['title']}” by {best.get('channel') or '?'}, "
+                + (f"{best['length']:.0f} s, {best['length'] - t.mb_length:+.1f} s"
+                   if best.get("length") else "of no known length")
+                + (f" — and {len(ranked) - 1} more" if len(ranked) > 1 else "")
+                if best else "nothing close enough was found"))
+            if best:
+                chosen.append((t, best, ranked))
+        for line in lines:
+            self.log(line)
+        if dry_run or not chosen:
+            return Outcome("dry" if dry_run else "ok", plan, album_dir,
+                           "" if dry_run else "nothing to fetch", changes=lines)
+        for t, best, ranked in chosen:
+            switch_source(t, best["ref"])
+            for h in ranked[1:]:
+                if not t.candidate(h["ref"]):
+                    t.candidates.append(Candidate(ref=h["ref"], provider=provider.name, length=h.get("length"),
+                                                  added_by="pass", why=f"found for its recording: “{h['title']}”"))
+            t.sync_candidates()
+        save_plan(plan, album_dir)
+        self.log(f"taking {len(chosen)} recording(s) for {plan.albumartist} — {plan.album}")
+        outcome = self.execute(plan, album_dir)
+        outcome.changes = lines
+        return outcome
+
+    def _release_of_recording(self, t: PlanTrack) -> str | None:
+        """The title of a release the track's recording is on, from the search that found it — one
+        MusicBrainz request, usually cached (§9, slice 207)."""
+        if not self.mb:
+            return None
+        try:
+            answers = self.mb.search_recordings(t.artist, core(t.title) or t.title)
+        except MusicBrainzError:
+            return None
+        rec = next((r for r in answers if r.get("id") == t.mbid), None)
+        releases = (rec or {}).get("releases") or []
+        best = next((r for r in releases if r.get("status") == "Official"
+                     and (r.get("release-group") or {}).get("primary-type") == "Album"), None)
+        return (best or (releases[0] if releases else {})).get("title")
 
     def delete_track(self, source_id: str, video_id: str) -> Outcome:
         """Delete one track: its files go, and it leaves the album.

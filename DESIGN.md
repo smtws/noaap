@@ -5160,6 +5160,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      274-s `(Alternative Version)` and its title.
      - A stored track with `refused_recordings` and no `mbid` is marked `ask_again` on every read.
      - It is asked only the strict way, and never given a refused id (`refused_ids`).
+207. ✅ **A done track's audio from the video that is its recording** (2026-10-15, R-697/R-698/R-717,
+   q30). `My Dark Lullabies` holds original recordings in the curator's shorter edits. The user's
+   word: keep the ids and take the recording on record. `noaap recording DIR [--only 1-04]
+   [--apply] [--no-lyrics]`, a dry run by default and never part of an update pass.
+   - Chosen tracks: `--only`, else every done track with an id and a length whose recording is
+     longer than its file by more than `LENGTH_SLACK` and whose audio is still the playlist's.
+   - Search, as slice 162 does for a missing track: `artist - title`, then `artist title
+     <release>`. The release is the recording's own, from one MusicBrainz search, an official
+     album first. Where none is known, only an album that is not a compilation lends its name; a
+     curator's volume names nothing.
+   - Ranking is `complete.rank` (another version refused, more than 30 s off refused), with a hit
+     within `LENGTH_SLACK` of the recording first. The track's own videos and refused candidates
+     are never offered.
+   - Dry line: `1-04 Prinzessin (recording 3:32, file 210 s): "Schandmaul - Prinzessin" by
+     condeorlok1921, 212 s, +0.0 s — and N more`, or `nothing close enough was found`.
+   - Apply: `switch_source` to the best hit (the playlist's video stays the identity, the id and
+     the recording's length stay), the other hits as candidates, then the normal fetch.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
