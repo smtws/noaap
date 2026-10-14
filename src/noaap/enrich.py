@@ -22,7 +22,7 @@ from typing import Any
 from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import FOLDER, LENGTH_SLACK, owner_artist_of, refresh_derived
+from .plan import FOLDER, LENGTH_SLACK, owner_artist_of, refresh_derived, without_album_name
 from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
@@ -298,7 +298,8 @@ def media_of(release: dict[str, Any], only: int | None = None) -> list[list[dict
 
 def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
                          pinned: bool = False,
-                         medium: int | None = None) -> dict[int, dict[str, Any]] | None:
+                         medium: int | None = None,
+                         stored: bool = False) -> dict[int, dict[str, Any]] | None:
     """plan track index -> MB track (with 'disc' added), or None if too few tracks match.
 
     **A pinned release is only asked about the plan's own tracks** (§9, slice 137). The second test
@@ -319,11 +320,11 @@ def match_release_tracks(plan: AlbumPlan, release: dict[str, Any],
             # must be the length of the folder, and then the usual title bar decides.
             if abs(len(one) - len(plan.tracks)) > 1:
                 continue
-            if (got := _seat(plan, one, pinned=True)) is not None:
+            if (got := _seat(plan, one, pinned=True, stored=stored)) is not None:
                 return got
         return None
     mb_tracks = [t for one in media_of(release) for t in one]
-    return _seat(plan, mb_tracks, pinned=pinned)
+    return _seat(plan, mb_tracks, pinned=pinned, stored=stored)
 
 
 def edits(a: str, b: str) -> int:
@@ -366,8 +367,15 @@ def length_fits(mine: float, m: dict[str, Any]) -> bool:
 
 
 def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
-          pinned: bool = False) -> dict[int, dict[str, Any]] | None:
-    """plan track index -> one of `mb_tracks`, or None if too few fit."""
+          pinned: bool = False, stored: bool = False) -> dict[int, dict[str, Any]] | None:
+    """plan track index -> one of `mb_tracks`, or None if too few fit.
+
+    **The album's own release is recognised by its recordings, whatever the files' lengths**
+    (§9, slice 198; q23, R-666): `Mono Inc. — Symphonic Live` holds files cut elsewhere than
+    MusicBrainz cuts them (424 s against 282 s), and with the length asked here too only 7 of its 18
+    stored recordings held their release, which then did not fit at all. With `stored`, the first
+    pass seats a track by its stored recording; where it sits is still `_places`' question.
+    """
     unused = list(range(len(mb_tracks)))
     matches: dict[int, dict[str, Any]] = {}
     def pick(t: PlanTrack, among: list[int]) -> int:
@@ -400,8 +408,8 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
         if knowns[known] > 1:
             continue    # one recording stored for two files says nothing about either (slice 192)
         held = [j for j in unused if (mb_tracks[j].get("recording") or {}).get("id") == known]
-        if len(held) == 1 and ((mine := file_seconds(t)) is None or length_fits(mine, mb_tracks[held[0]])
-                               or not mb_seconds(mb_tracks[held[0]])):
+        if len(held) == 1 and (stored or (mine := file_seconds(t)) is None
+                               or length_fits(mine, mb_tracks[held[0]]) or not mb_seconds(mb_tracks[held[0]])):
             matches[i] = mb_tracks[held[0]]
             unused.remove(held[0])
     # **the whole title first** (§9, slice 164): `Life Goes Around (Previously Unreleased)` came before
@@ -495,12 +503,18 @@ def fit_measure(plan: AlbumPlan, release: dict[str, Any]) -> tuple[int, int, flo
     titles the plan holds the release has **with the same take**, then how many tracks are the recording they
     already were, then — smaller is better — how far the lengths are apart on average."""
     left = [t for one in media_of(release) for t in one]
+    # **a bracket that repeats the album's name is not a take** (§9, slice 198; q23, R-668):
+    # `Mono Inc. — Symphonic Live`'s own release titles every track `… (Symphonic Live)`, and read
+    # as a take that made it fit none of the plain titles its folder has. The same album-wide rule
+    # `drop_album_name` applies after enrichment, asked here of the release's own titles.
+    named = dict(zip(map(id, left), without_album_name(release.get("title") or "", [m["title"] for m in left]),
+                     strict=True))
     same = recs = 0
     off: list[float] = []
     for t in plan.tracks:
         title = getattr(t, "known_title", None) or t.title     # the plan's own, on a fresh read
-        hit = next((m for m in left if title_key(m["title"]) == title_key(title)
-                    and takes(m["title"]) == takes(title)), None)
+        hit = next((m for m in left if title_key(named[id(m)]) == title_key(title)
+                    and takes(named[id(m)]) == takes(title)), None)
         if hit is None:
             continue
         left.remove(hit)
@@ -513,9 +527,6 @@ def fit_measure(plan: AlbumPlan, release: dict[str, Any]) -> tuple[int, int, flo
     return same, recs, round(sum(off) / len(off), 1) if off else float("inf")
 
 
-#: lengths that differ by less than this on average are the same record measured twice
-LENGTH_TIE = 1.0
-
 
 def strictly_better(plan: AlbumPlan, found: dict[str, Any], stored: dict[str, Any]) -> bool:
     """Whether a release a search found fits this album strictly better than the one it already is."""
@@ -526,7 +537,10 @@ def strictly_better(plan: AlbumPlan, found: dict[str, Any], stored: dict[str, An
         return theirs[0] > ours[0]
     if theirs[1] != ours[1]:
         return theirs[1] > ours[1]
-    return ours[2] - theirs[2] >= LENGTH_TIE
+    # **and never on the lengths alone** (§9, slice 198; q23, R-666): with the same titles and the
+    # same recordings, a closer average measures how complete MusicBrainz' data is, not another
+    # edition. `Feuerschwanz — Knightclub`'s stored release has 4 lengths, a later one has all 12.
+    return False
 
 
 def release_rank(cand: dict[str, Any], release: dict[str, Any],
@@ -621,7 +635,8 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         release = mb.release(cand["id"])
         if not release:
             continue
-        matches = match_release_tracks(plan, release, pinned=bool(pinned), medium=which)
+        matches = match_release_tracks(plan, release, pinned=bool(pinned), medium=which,
+                                       stored=bool(cand.get("stored")))
         flat = [t for one in media_of(release) for t in one]
         looked[cand["id"]] = offered_from(cand, release,
                                           matched=len(matches or {}) or _fits(plan, flat),

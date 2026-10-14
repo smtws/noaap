@@ -358,15 +358,24 @@ def drop_album_name(album: str, tracks: list[PlanTrack]) -> int:
     # the whole reason this rule runs again after enrichment. What keeps it safe is the guard inside
     # `strip_album_name`: a remainder that is nothing but a version marker is refused, so
     # `Ai Vis Lo Lop (vocal remix)` is no longer turned into `vocal remix` (§9, slices 149-150).
-    shorter = {t.video_id: strip_album_name(album, t.title) for t in tracks}
-    hits = [t for t in tracks if shorter[t.video_id] != t.title]
-    if len(hits) < 3 or len(hits) < PREFIXED_SHARE * len(tracks):
-        return 0
-    for t in hits:
-        t.title = shorter[t.video_id]
+    shorter = without_album_name(album, [t.title for t in tracks])
+    hits = [(t, new) for t, new in zip(tracks, shorter, strict=True) if new != t.title]
+    for t, new in hits:
+        t.title = new
         if "title" in t.auto:
             t.auto["title"] = t.title
     return len(hits)
+
+
+def without_album_name(album: str, titles: list[str]) -> list[str]:
+    """These titles without the album's name, where almost all of them carry it; else as they are.
+
+    `drop_album_name`'s album-wide decision, for anyone who asks it of titles that are not a plan's:
+    `fit_measure` asks it of a release's own titles (§9, slice 198).
+    """
+    shorter = [strip_album_name(album, title) for title in titles]
+    hits = sum(new != old for new, old in zip(shorter, titles, strict=True))
+    return titles if hits < 3 or hits < PREFIXED_SHARE * len(titles) else shorter
 
 
 def name_single_after_its_song(plan: AlbumPlan) -> str | None:

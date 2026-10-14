@@ -5005,6 +5005,23 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      (`_reindex`), so a later album is asked about an earlier one as before.
    - The index is never written anywhere and is closed when the pass ends. A lone `fetch` reads
      the disk as it always did.
+198. ✅ **A stored release that still exists and fits is kept** (2026-10-14, R-666/R-668, q23).
+   r660 moved two unchanged folders to another release.
+   - `Mono Inc. — Symphonic Live`: its files are cut elsewhere than MusicBrainz cuts them (424 s
+     against 282 s). Since slice 192 the length gate let only 7 of its 18 stored recordings hold
+     their release, so that release fitted not at all.
+   - `Feuerschwanz — Knightclub`: the same 12 recordings on two releases. The stored one has 4
+     lengths and a later one has all 12, and the closer length average replaced the stored release.
+
+   The rules:
+   - `_seat(…, stored=True)` recognises the stored release by its stored recordings without the
+     length gate. Where a track then sits is still `_places`' question, `length_fits` included.
+   - `strictly_better` replaces a stored release only on strictly more same-take titles or strictly
+     more same recordings. The length average (`LENGTH_TIE`) is gone: with the same titles and
+     recordings it measures how complete MusicBrainz' data is, not another edition.
+   - `fit_measure` drops a bracket that repeats the release's name before comparing takes, by
+     `drop_album_name`'s album-wide rule. Otherwise `… (Symphonic Live)` reads as a take, and the
+     stored release would be kept only while its id happened to sort first.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
