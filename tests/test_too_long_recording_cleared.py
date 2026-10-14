@@ -137,7 +137,7 @@ class Answering:
         self.asked.append(title)
         if title != "Lullaby":
             return []
-        return [{"id": "fits-the-video", "title": "Lullaby", "length": 99_000, "score": 100,
+        return [{"id": "fits-the-video", "title": "Lullaby", "length": 268_000, "score": 100,
                  "artist-credit": [{"name": artist, "joinphrase": "", "artist": {"id": "a", "name": artist}}],
                  "releases": []}]
 
@@ -155,7 +155,7 @@ def test_a_taken_back_recording_is_asked_again_and_the_answer_attached(album, op
     lib, album_dir = album
     plan = load_plan(album_dir)
     one = plan.tracks[0]
-    one.title, one.mbid, one.mb_length, one.duration = "Lullaby", "e5332cbe", 215.5, 100.0
+    one.title, one.mbid, one.mb_length, one.duration = "Lullaby", "e5332cbe", 315.5, 270.0   # vol1's video
     one.provenance["title"] = Provenance.MB
     save_plan(plan, album_dir)
     mb = Answering()
@@ -163,7 +163,7 @@ def test_a_taken_back_recording_is_asked_again_and_the_answer_attached(album, op
     Service(Config(musicbrainz=True, lyrics=False), lib, log=said.append, yt=FakeYouTube(opus_template),
             mb=mb).update_all(report_only=True, deep=True)
     assert "Lullaby" in mb.asked, mb.asked
-    assert [s for s in said if "e5332cbe" in s and "the lookup gives fits-the-video (99.0 s)" in s], said
+    assert [s for s in said if "e5332cbe" in s and "the lookup gives fits-the-video (268.0 s)" in s], said
 
 
 def test_a_taken_back_track_with_a_music_brainz_title_is_worth_asking():
@@ -176,3 +176,48 @@ def test_a_taken_back_track_with_a_music_brainz_title_is_worth_asking():
     assert not _worth_looking_up(plan, t)
     t.ask_again = True
     assert _worth_looking_up(plan, t)
+
+
+# -- a re-ask attaches only what fits (q29c, R-706) -------------------------------------------------
+
+
+def a_reasked_track(video_s=316.0, title="Ruins"):
+    t = build_plan(vol1()).tracks[0]
+    t.artist, t.title, t.duration, t.mbid, t.mb_length = "Lord of the Lost", title, video_s, None, None
+    t.ask_again = True
+    return t
+
+
+class Ruins:
+    """Thornstar 13, as MusicBrainz answered on 2026-10-14: the take of 274 s, and others."""
+
+    def __init__(self, *answers):
+        self.answers = answers
+
+    def search_recordings(self, artist, title):
+        return [{"id": rid, "title": rtitle, "length": length, "score": 100,
+                 "artist-credit": [{"name": artist, "joinphrase": "", "artist": {"id": "a", "name": artist}}],
+                 "releases": [{"title": "Thornstar", "status": "Official", "release-group": {"primary-type": "Album"}}]}
+                for rid, rtitle, length in self.answers]
+
+
+def test_a_shorter_take_is_no_answer_and_changes_no_title():
+    t = a_reasked_track()
+    from noaap.enrich import enrich_track
+    assert not enrich_track(t, Ruins(("7e54b224", "Ruins (Alternative Version)", 274_000)))
+    assert (t.mbid, t.mb_length, t.title, t.artist) == (None, None, "Ruins", "Lord of the Lost")
+
+
+def test_a_recording_of_no_known_length_is_no_answer_on_a_re_ask():
+    t = a_reasked_track(242.0, "Die Hörner hoch")
+    from noaap.enrich import enrich_track
+    assert not enrich_track(t, Ruins(("e1c99981", "Die Hörner Hoch", None)))
+    assert (t.mbid, t.title) == (None, "Die Hörner hoch")
+
+
+def test_a_fitting_recording_is_attached_either_side_and_the_title_kept():
+    from noaap.enrich import enrich_track
+    for length in (312_000, 320_000):
+        t = a_reasked_track()
+        assert enrich_track(t, Ruins(("7e54b224", "Ruins (Alternative Version)", 274_000), ("fits", "Ruins", length)))
+        assert (t.mbid, t.mb_length, t.title) == ("fits", length / 1000, "Ruins")

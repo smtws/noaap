@@ -5138,6 +5138,13 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
        `ask_again`, which `_worth_looking_up` honours.
      - Sabaton `Attero Dominatus` 07, offline: `e0fc1871` (194.7 s).
      - A track that was not asked is said to be: `— not asked`.
+   - **A re-ask attaches only what fits** (R-706, q29c). Round H's second dry, under slice 204's
+     one-sided gate, gave `Lord of the Lost — Ruins` (a 316-s video) a 274-s recording and the
+     title `Ruins (Alternative Version)`. Five answers were 35–79 s short, and three had no length.
+     - `ask_again` searches as before but takes only a recording of known length that `fits` the
+       video, either way.
+     - It attaches the id and length and nothing else: no title, no artist.
+     - A recording that does not fit confirms nothing, and one of no known length is no answer.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

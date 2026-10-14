@@ -22,7 +22,7 @@ from typing import Any
 from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import FOLDER, LENGTH_SLACK, owner_artist_of, refresh_derived, without_album_name
+from .plan import FOLDER, LENGTH_SLACK, fits, owner_artist_of, refresh_derived, without_album_name
 from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
@@ -210,7 +210,29 @@ def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, An
     return None
 
 
+def ask_again(t: PlanTrack, mb: MusicBrainzAPI) -> bool:
+    """**A re-ask after a take-back attaches only a recording that fits** (§9, slice 206; q29c, R-706).
+
+    Round H's second dry, asked under slice 204's one-sided gate, offered `Lord of the Lost — Ruins`
+    (a 316-s video) a 274-s recording and with it the title `Ruins (Alternative Version)`, and
+    `Saltatio Mortis — Früher war alles besser` (317 s) one of 238 s. A track whose recording was
+    just taken back is asked more strictly: a recording of known length within `LENGTH_SLACK` of
+    the video, either way. One that does not fit confirms nothing — no id, and the title and
+    artist stay as they are; one of no known length is no answer either.
+    """
+    if not t.duration:
+        return False
+    found = [r for r in mb.search_recordings(t.artist, core(t.title) or t.title)
+             if r.get("length") and fits(r["length"] / 1000, t.duration)]
+    if (rec := pick_recording(t.artist, t.title, found)) is None:
+        return False
+    t.mbid, t.mb_length = rec["id"], round(rec["length"] / 1000, 1)
+    return True
+
+
 def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
+    if getattr(t, "ask_again", False):
+        return ask_again(t, mb)
     asked = (t.artist, t.title, mb.search_recordings(t.artist, core(t.title) or t.title))
     rec = pick_recording(*asked)
     title_source = t.title
