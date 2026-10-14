@@ -256,3 +256,12 @@ def test_live_in_the_recording_s_own_title_is_refused_too():
     from noaap.enrich import enrich_track
     t = a_reasked_track(242.0, "Die Hörner hoch")
     assert not enrich_track(t, Versions(("ca7b0922", "Die Hörner hoch (live)", 237_000, "")), album="Best Of")
+
+
+def test_a_studio_take_on_a_live_album_is_refused():
+    """R-710: `Wildlive (Live at Olympiahalle)` 09 `1589` (246 s) was offered 857ecab7, the studio take
+    of `Wake Up the Wicked` (244.8 s, no disambiguation) — the rule is symmetric."""
+    from noaap.enrich import enrich_track
+    t = a_reasked_track(246.0, "1589")
+    assert not enrich_track(t, Versions(("857ecab7", "1589", 244_781, "")), album="Wildlive (Live at Olympiahalle)")
+    assert t.mbid is None

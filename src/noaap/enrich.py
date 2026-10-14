@@ -217,12 +217,17 @@ OTHER_VERSIONS = ("live", "unplugged", "acoustic", "remix", "cover", "karaoke", 
 
 
 def other_version(rec: dict[str, Any], *ours: str) -> bool:
-    """Whether a recording says it is another version — `live, 2006-10-10: Philadelphia`, `(live)` —
-    that none of `ours` (the track's title, the album's) says too (§9, slice 206; q29d, R-709)."""
+    """Whether a recording is another version than ours: it says a marker — `live, 2006-10-10:
+    Philadelphia`, `(live)` — that none of `ours` (the track's title, the album's) says (§9, slice 206;
+    q29d, R-709), or one of ours says a marker it does not (q29e, R-710): `Wildlive`'s `1589` is not
+    the `Wake Up the Wicked` studio take, whatever its length."""
     theirs = f"{rec.get('title') or ''} {rec.get('disambiguation') or ''}".casefold()
     mine = " ".join(ours).casefold()
-    return any(re.search(rf"\b{re.escape(w)}\b", theirs) and not re.search(rf"\b{re.escape(w)}\b", mine)
-               for w in OTHER_VERSIONS)
+
+    def says(text: str, w: str) -> bool:
+        return bool(re.search(rf"\b{re.escape(w)}\b", text))
+
+    return any(says(theirs, w) != says(mine, w) for w in OTHER_VERSIONS)
 
 
 def ask_again(t: PlanTrack, mb: MusicBrainzAPI, album: str = "") -> bool:

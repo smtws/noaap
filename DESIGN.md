@@ -5152,8 +5152,9 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
        disambiguation carries an `OTHER_VERSIONS` marker (`live`, `acoustic`, …, now kept in
        `enrich` and imported by `complete`) that neither title carries.
      - `Powerwolf — Wildlive (Live at Olympiahalle)` takes its Olympiahalle recordings.
-     - A studio recording on a live album is not refused by this: `1589` takes `857ecab7`, the
-       `Wake Up the Wicked` studio take, at 244.8 s for a 246-s video.
+     - The rule is symmetric (R-710, q29e): a marker our titles carry and the recording does not
+       refuses it too. `Wildlive`'s `1589` (246 s) was offered `857ecab7`, the `Wake Up the
+       Wicked` studio take (244.8 s), and now takes none.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
