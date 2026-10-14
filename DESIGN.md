@@ -4994,6 +4994,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    named only the plan's `another recording id` line.
    - The check now holds them back where the writer does: `plan.adopted`. The line reads
      `NN would be retagged: musicbrainz_trackid “X” → “Y”`.
+197. ✅ **An update pass reads the library once** (2026-10-14, R-665, q22 (i)).
+   r660, the library-wide deep check, took 11.5 h, and about 4.5 h of it was reading the library.
+   `_spellings`, `_named_like` and `find_plan` each read all 1547 plans again for every album, at
+   ≈10 s per album on the share.
+   - `update_all` reads the plans once and opens an index for the pass. `_spellings`,
+     `_named_like` and `_find_plan` ask the index. The index is a copy: `_find_plan` hands out a
+     copy of its plan, because the merge works on it.
+   - An apply puts each album it has just written back into the index as the disk now has it
+     (`_reindex`), so a later album is asked about an earlier one as before.
+   - The index is never written anywhere and is closed when the pass ends. A lone `fetch` reads
+     the disk as it always did.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

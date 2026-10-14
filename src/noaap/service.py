@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -267,6 +268,8 @@ class Service:
         self._cancel = cancel
         self._mb = mb
         self._file_work_seen: Counter[str] = Counter()   # what an update check found for the files
+        # **the library's plans, read once for a whole pass** (§9, slice 197; q22): None outside one
+        self._index: list[tuple[Path, AlbumPlan]] | None = None
         self._lrclib = lrclib
         # what MusicBrainz calls each artist key, asked once per key per pass (§9, slice 138)
         self._artist_names: dict[str, str | None] = {}
@@ -358,7 +361,7 @@ class Service:
         # **the pin is the stored plan's, and what gets enriched is this fresh one** (slice 137).
         # Looked up once, here, and reused by both branches below — `find_plan` reads every plan in
         # the library, and over the user's 1,311 albums on a NAS that is not a question to ask twice.
-        here = find_plan(self.library, plan.source_id) if self.library and self.library.exists() else None
+        here = self._find_plan(plan.source_id)
         if here and (pin := carry_the_pin(here[1], plan)):
             self.log(f"  the release you pinned: {pin}")
         elif here and here[1].mbid:
@@ -694,7 +697,7 @@ class Service:
         """Every spelling the *rest* of the library has for this artist key, and where each came from."""
         key = text_key(plan.albumartist)
         seen: dict[str, set[str | None]] = {}
-        for _, other in iter_plans(self.library) if self.library else []:
+        for _, other in self._plans():
             if other.source_id != plan.source_id and text_key(other.albumartist) == key:
                 seen.setdefault(other.albumartist, set()).add(other.provenance.get("albumartist"))
         return seen
@@ -877,6 +880,18 @@ class Service:
         """Check every album (or one artist's, or the ones `--only` names). Unchanged, complete
         albums cost one request."""
         albums = list(iter_plans(self.library)) if self.library and self.library.exists() else []
+        # **one read of the library for the whole pass** (§9, slice 197; q22, R-665). `_spellings`,
+        # `_named_like` and `find_plan` each read every plan of the library again for every album:
+        # on the share, ≈10 s per album, ≈4.5 h of r660's 11.5. A copy, so nothing this pass does to
+        # an album's plan in memory reaches the index; an apply puts each album back as the disk has it.
+        self._index = deepcopy(albums)
+        try:
+            return self._update_these(albums, report_only, deep, artist, only)
+        finally:
+            self._index = None
+
+    def _update_these(self, albums: list[tuple[Path, AlbumPlan]], report_only: bool, deep: bool,
+                      artist: str | None, only: Iterable[str]) -> list[Outcome]:
         if artist:
             albums = [(d, p) for d, p in albums if p.albumartist.casefold() == artist.casefold()]
         albums = self._only_these(albums, only)
@@ -907,6 +922,8 @@ class Service:
                 if not report_only:
                     save_plan(plan, album_dir)
             outcomes.append(self._guarded(lambda: self.fetch(plan.source_url, report_only=report_only)))
+            if not report_only:
+                self._reindex(album_dir, outcomes[-1].album_dir)
             if outcomes[-1].blocked:
                 self.log(f"stopping: YouTube is blocking requests; {len(albums) - i} album(s) not checked")
                 break
@@ -921,6 +938,18 @@ class Service:
                      f"{seen['rewritten']} audio file(s) would be rewritten (their tags)"
                      + (f", and {seen['downloaded']} track(s) would be downloaded" if seen["downloaded"] else ""))
         return outcomes
+
+    def _reindex(self, was: Path, now: Path | None) -> None:
+        """An album this pass has written, back into the index as the disk now has it (§9, slice 197)."""
+        if self._index is None:
+            return
+        where = next((i for i, (d, _) in enumerate(self._index) if d == was), None)
+        plan = load_plan(now or was) if (now or was).is_dir() else None
+        if where is not None:
+            if plan is None:
+                del self._index[where]
+            else:
+                self._index[where] = (now or was, plan)
 
     def measure_lengths(self, plan: AlbumPlan, album_dir: Path, *, dry_run: bool = False) -> int:
         """Give every finished track with a file the length of that file (§9, slice 56).
@@ -1368,10 +1397,24 @@ class Service:
         if not self.library or not self.library.exists():
             return None
         want = (text_key(plan.albumartist), text_key(plan.album))
-        for album_dir, existing in iter_plans(self.library):
+        for album_dir, existing in self._plans():
             if existing.source_id != plan.source_id and (text_key(existing.albumartist), text_key(existing.album)) == want:
                 return album_dir, existing
         return None
+
+    def _plans(self) -> Iterable[tuple[Path, AlbumPlan]]:
+        """Every album of the library: the pass's index where one is open, else read from disk."""
+        if self._index is not None:
+            return self._index
+        return iter_plans(self.library) if self.library and self.library.exists() else []
+
+    def _find_plan(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
+        """The album already made from this source — `find_plan`, asked of the pass's index. What it
+        hands out is a copy: the merge works on it, and the index must stay what the disk said."""
+        if self._index is None:
+            return find_plan(self.library, source_id) if self.library and self.library.exists() else None
+        found = next(((d, p) for d, p in self._index if p.source_id == source_id), None)
+        return (found[0], deepcopy(found[1])) if found else None
 
     def source_for_address(self, address: str):
         """Whose address this is. The core cannot tell one from another; each provider can.
@@ -2905,7 +2948,7 @@ class Service:
         return outcomes
 
     def find_album(self, source_id: str) -> tuple[Path, AlbumPlan] | None:
-        return find_plan(self.library, source_id) if self.library and self.library.exists() else None
+        return self._find_plan(source_id)
 
     # the picture formats a browser will show and this program can write into a file
     COVER_TYPES: ClassVar[dict[str, str]] = {"image/jpeg": "jpg", "image/png": "png",
