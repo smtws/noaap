@@ -5057,6 +5057,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `measure(digest=False)` asks and keeps nothing.
    - Only the folder read uses the cache. The precautions around a write still digest the file in
      hand.
+202. ✅ **A new video whose title only drops a bracket is the same slot, by length** (2026-10-14,
+   R-682, q25). `Evanescence — Fallen (Deluxe)` held `Going Under (Remastered 2023)` (215 s) and
+   `My Immortal (Band Version)` (274 s). The playlist then listed `Going Under` (218 s) and
+   `My Immortal` (270 s). Slice 163 pairs only equal titles, so the check offered two downloads and
+   moved both files last.
+   - Where no title is equal, a gone track and a new entry pair when one title is the other's with
+     its bracket groups dropped, the artist is equal and the file fits the video's length
+     (`fits`, `LENGTH_SLACK`). The pairing is one to one.
+   - Both titles bracketed is no pair: `My Immortal (Strings Version)` (274 s) is not the
+     `Band Version`, whatever its length.
+   - A gone track an equal title is waiting for is never taken by its stem.
+   - The slot keeps the file's title and recording, at this read and every later one, while its
+     audio is another video's (`source_override`). No rename to the video's title, and no
+     recording the lookup gave the video.
+   - Equal titles behave as before, lengths not asked.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

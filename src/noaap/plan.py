@@ -667,7 +667,9 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         known.add(t.video_id)
         f = fresh_by_id.get(t.video_id)
         t.in_source = t.video_id in listed
-        if f:
+        if f and t.source_override and _stem_pair(t, f):
+            pass    # the file stays, and so do its title and recording: it is not this video's audio
+        elif f:
             _merge_fields(t, f, TRACK_FIELDS)
             if t.provenance.get("title") != Provenance.USER:
                 t.mbid = f.mbid or t.mbid
@@ -794,6 +796,22 @@ def keep_the_seats(rest: list[PlanTrack], ordered: list[PlanTrack],
     return notes
 
 
+_BRACKETS = re.compile(r"\s*[(\[][^()\[\]]*[)\]]")
+
+
+def _unbracketed(title: str) -> str:
+    """`Going Under (Remastered 2023)` -> `Going Under`."""
+    return _BRACKETS.sub("", title).strip()
+
+
+def _stem_pair(t: PlanTrack, f: PlanTrack) -> bool:
+    """`t`'s file and the entry `f` are one song by its stem and its length (§9, slice 202)."""
+    return (key(t.artist) == key(f.artist) and key(t.title) != key(f.title)
+            and key(_unbracketed(t.title)) == key(_unbracketed(f.title))
+            and key(_unbracketed(t.title)) in (key(t.title), key(f.title))
+            and fits(t.file_length, f.duration))
+
+
 def _same_slot_new_video(merged: AlbumPlan, fresh: AlbumPlan, listed: set[str]) -> None:
     """**A new video for a song the album already holds is that song's, not a second track**
     (§9, slice 163; R-566).
@@ -806,15 +824,32 @@ def _same_slot_new_video(merged: AlbumPlan, fresh: AlbumPlan, listed: set[str]) 
     track's identity, the audio stays the file the album holds (`source_override`), and both are its
     candidates. Nothing is downloaded; taking the new audio is one choice in the panel.
     A folder is not asked: its ids are paths, and slice 135 answers that case.
+
+    **A title the playlist now gives without its bracket is the same slot when the length says so**
+    (§9, slice 202; q25, R-682). `Evanescence — Fallen (Deluxe)` held `Going Under (Remastered 2023)`
+    (215 s) and `My Immortal (Band Version)` (274 s); the playlist now lists `Going Under` (219 s)
+    and `My Immortal` (271 s), other videos of the same songs, and the check offered both as
+    downloads and moved the files last. Where no title is equal, a gone track and a new entry pair
+    when one title is the other's with a bracket group dropped and the file is the video's length
+    (`fits`), one to one. Both sides bracketed is no pair: `My Immortal (Strings Version)` (275 s)
+    is not the `Band Version`, whatever its length. A slot paired so keeps its title and recording,
+    then and at every later read: they are the file's, and the file stays.
     """
     if fresh.provider == FOLDER:
         return
     mine = {t.video_id for t in merged.tracks}
     gone = [t for t in merged.tracks if t.video_id not in listed and t.state == "done"]
     new = [f for f in fresh.tracks if f.video_id not in mine]
+
+    def one(t: PlanTrack, f: PlanTrack) -> bool:
+        return key(t.title) == key(f.title) and key(t.artist) == key(f.artist)
+
     for f in new:
-        same = [t for t in gone if key(t.title) == key(f.title) and key(t.artist) == key(f.artist)]
-        rivals = [g for g in new if key(g.title) == key(f.title) and key(g.artist) == key(f.artist)]
+        same = [t for t in gone if one(t, f)]
+        rivals = [g for g in new if one(g, f)]
+        if not same:      # a gone track an equal title is waiting for is not anybody's by its stem
+            same = [t for t in gone if _stem_pair(t, f) and not any(one(t, g) for g in new)]
+            rivals = [g for g in new if len(same) == 1 and _stem_pair(same[0], g)]
         if len(same) != 1 or len(rivals) != 1:
             continue
         old = same[0]
