@@ -5130,6 +5130,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      every key and writes the plan's, so a kept key (`KEEP_IF_PRESENT`) the plan no longer has goes
      too. `would_do` held those back on every album and said nothing; it now says
      `<key> would be dropped`. On an adopted album it names only a refused recording id.
+   - **And the lookup is really asked** (R-703, q29b). Round H's first dry said "the lookup gives
+     none" for all 16 tracks, but none of them was asked. Slice 164 handed the stored id to the
+     fresh read as `known_recording`, and the per-track search skips a track that has one. A
+     title MusicBrainz gave is not looked up at all (`_worth_looking_up`).
+     - A stored id `longer_than_its_video` is no longer handed in; the fresh track is marked
+       `ask_again`, which `_worth_looking_up` honours.
+     - Sabaton `Attero Dominatus` 07, offline: `e0fc1871` (194.7 s).
+     - A track that was not asked is said to be: `— not asked`.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

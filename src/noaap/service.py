@@ -82,6 +82,7 @@ from .plan import (
     changes_from,
     drop_album_name,
     keep_the_release,
+    longer_than_its_video,
     merge_plans,
     refresh_derived,
     set_single_album_name,
@@ -378,12 +379,18 @@ class Service:
             # seat fell to the lengths and an update traded the two files' places
             # A hint for the seat only, not the track's `mbid`: a track that has one is not looked
             # up on its own, and the plan it is merged into keeps its own value anyway.
-            ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid}
+            # **but not a recording slice 206 takes back** (q29b, R-703): handed in, it kept the track
+            # from being asked at all, and the check said "the lookup gives none" of a lookup that
+            # never ran. Such a track is asked again, under slice 204's gate.
+            again = {t.video_id for t in here[1].tracks if longer_than_its_video(t, here[1])}
+            ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid and t.video_id not in again}
             names = {t.video_id: t.title for t in here[1].tracks}
             stored = {t.video_id: t for t in here[1].tracks}
             for mine, same in zip(plan.tracks, as_the_plan_knows_them(here[1], plan).tracks):
                 if known := ids.get(same.video_id):
                     mine.known_recording = known
+                elif same.video_id in again:
+                    mine.ask_again = True
                 # **and the seat it has and the length its file was measured at** (§9, slice 192;
                 # q16): a seat nothing on the release earns is kept, and a seat is earned by length
                 if (was := stored.get(same.video_id)) is not None:

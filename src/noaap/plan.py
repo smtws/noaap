@@ -675,6 +675,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
                 # the fresh lookup answers again, gated, and the old id is never this track's again
                 t.refused_recordings.append(t.mbid)
                 t.mbid, t.mb_length = None, None
+                t.recording_asked = getattr(f, "recording_asked", False)   # for the line (q29b)
             refused = f.mbid in t.refused_recordings
             if t.provenance.get("title") != Provenance.USER and not refused:
                 t.mbid = f.mbid or t.mbid
@@ -1199,7 +1200,8 @@ def changes_from(was: AlbumPlan, now: AlbumPlan) -> list[str]:
                        f"is longer than the video ({before.duration:.0f} s) and goes"
                        + (f" — the lookup gives {track.mbid}"
                           + (f" ({track.mb_length} s)" if track.mb_length else " (of no known length)")
-                          if track.mbid else " — the lookup gives none"))
+                          if track.mbid else " — the lookup gives none"
+                          if getattr(track, "recording_asked", False) else " — not asked"))
         elif not before.mbid and track.mbid:
             out.append(f"{track.number:02d} {track.title}: a recording id")
         elif before.mbid and track.mbid and before.mbid != track.mbid:

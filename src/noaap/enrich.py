@@ -912,6 +912,7 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
         for i, t in enumerate(todo, 1):
             progress(f"MusicBrainz: track {i}/{len(todo)} {t.artist} - {t.title}")
             stats["looked_up"] += 1
+            t.recording_asked = True      # what a line about this track may then say (slice 206)
             stats["tracks"] += int(enrich_track(t, mb, source))
     except MusicBrainzError as e:
         log.warning("MusicBrainz unavailable, continuing without it: %s", e)
@@ -922,6 +923,8 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
 def _worth_looking_up(plan: AlbumPlan, t: PlanTrack) -> bool:
     if Provenance.USER in t.provenance.values():
         return False
+    if getattr(t, "ask_again", False):
+        return True     # its stored recording was longer than the video and goes (§9, slice 206; q29b)
     # YouTube Music data is already good for albums; in compilations MB still fixes spelling
     return Provenance.SOURCE_TITLE in t.provenance.values() or plan.kind == Kind.COMPILATION
 

@@ -17,7 +17,8 @@ from noaap.plan import build_plan, changes_from, merge_plans
 from noaap.tag import tag_file, tags_in
 
 
-def stored_and_fresh(fresh_mbid=None, fresh_len=None, stored_len=215.5, album_mbid=None, override=None):
+def stored_and_fresh(fresh_mbid=None, fresh_len=None, stored_len=215.5, album_mbid=None, override=None,
+                     asked=False):
     stored = build_plan(vol1())
     for t in stored.tracks:
         t.state = "done"
@@ -28,6 +29,8 @@ def stored_and_fresh(fresh_mbid=None, fresh_len=None, stored_len=215.5, album_mb
     fresh.mbid = album_mbid
     f = next(t for t in fresh.tracks if t.video_id == one.video_id)
     f.mbid, f.mb_length, f.duration = fresh_mbid, fresh_len, 100.0
+    if asked:
+        f.recording_asked = True
     return stored, merge_plans(stored, fresh), one.video_id
 
 
@@ -44,10 +47,17 @@ def test_the_too_long_id_goes_and_the_gated_lookup_s_answer_is_taken():
 
 
 def test_where_the_lookup_gives_none_the_track_has_none():
-    stored, merged, vid = stored_and_fresh()
+    stored, merged, vid = stored_and_fresh(asked=True)
     assert (track(merged, vid).mbid, track(merged, vid).mb_length) == (None, None)
     assert any("e5332cbe (215.5 s) is longer than the video (100 s) and goes — the lookup gives none" in s
                for s in changes_from(stored, merged))
+
+
+def test_a_track_nobody_asked_about_is_said_to_be_not_asked():
+    """R-703: "the lookup gives none" of a lookup that never ran was round H's first dry, 16 times."""
+    stored, merged, vid = stored_and_fresh()
+    lines = [s for s in changes_from(stored, merged) if "e5332cbe" in s]
+    assert lines and lines[0].endswith("and goes — not asked"), lines
 
 
 def test_a_stored_id_within_the_slack_stays():
@@ -112,3 +122,57 @@ def test_a_refused_id_is_never_attached_again():
     f = next(x for x in fresh_again.tracks if x.video_id == vid)
     f.mbid, f.duration = "e5332cbe", 100.0
     assert track(merge_plans(merged, fresh_again), vid).mbid is None
+
+
+# -- the lookup is really asked (q29b, R-703) --------------------------------------------------------
+
+
+class Answering:
+    """MusicBrainz as far as one track's search: a recording of the video's length for `Lullaby`."""
+
+    def __init__(self):
+        self.asked = []
+
+    def search_recordings(self, artist, title):
+        self.asked.append(title)
+        if title != "Lullaby":
+            return []
+        return [{"id": "fits-the-video", "title": "Lullaby", "length": 99_000, "score": 100,
+                 "artist-credit": [{"name": artist, "joinphrase": "", "artist": {"id": "a", "name": artist}}],
+                 "releases": []}]
+
+    def __getattr__(self, name):
+        return lambda *a, **k: []          # no release search answers
+
+
+def test_a_taken_back_recording_is_asked_again_and_the_answer_attached(album, opus_template):
+    """Sabaton's shape: the stored id was handed to the fresh read as the recording it already is, and
+    a title MusicBrainz gave is not looked up — so 01 was never asked."""
+    from noaap.config import Config
+    from noaap.models import Provenance
+    from noaap.service import Service
+
+    lib, album_dir = album
+    plan = load_plan(album_dir)
+    one = plan.tracks[0]
+    one.title, one.mbid, one.mb_length, one.duration = "Lullaby", "e5332cbe", 215.5, 100.0
+    one.provenance["title"] = Provenance.MB
+    save_plan(plan, album_dir)
+    mb = Answering()
+    said: list[str] = []
+    Service(Config(musicbrainz=True, lyrics=False), lib, log=said.append, yt=FakeYouTube(opus_template),
+            mb=mb).update_all(report_only=True, deep=True)
+    assert "Lullaby" in mb.asked, mb.asked
+    assert [s for s in said if "e5332cbe" in s and "the lookup gives fits-the-video (99.0 s)" in s], said
+
+
+def test_a_taken_back_track_with_a_music_brainz_title_is_worth_asking():
+    from noaap.enrich import _worth_looking_up
+    from noaap.models import Kind, Provenance
+    plan = build_plan(vol1())
+    plan.kind = Kind.OFFICIAL_ALBUM
+    t = plan.tracks[0]
+    t.provenance = {"title": Provenance.MB, "artist": Provenance.MB}
+    assert not _worth_looking_up(plan, t)
+    t.ask_again = True
+    assert _worth_looking_up(plan, t)
