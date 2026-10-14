@@ -210,7 +210,22 @@ def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, An
     return None
 
 
-def ask_again(t: PlanTrack, mb: MusicBrainzAPI) -> bool:
+# a hit that is another version of the song, unless the release's own title says so too (§9, slice
+# 162); here since slice 206 asks it of a recording too (q29d), and `complete` imports it from here
+OTHER_VERSIONS = ("live", "unplugged", "acoustic", "remix", "cover", "karaoke", "instrumental",
+                  "nightcore", "sped up", "slowed", "8d", "reaction", "tutorial", "piano")
+
+
+def other_version(rec: dict[str, Any], *ours: str) -> bool:
+    """Whether a recording says it is another version — `live, 2006-10-10: Philadelphia`, `(live)` —
+    that none of `ours` (the track's title, the album's) says too (§9, slice 206; q29d, R-709)."""
+    theirs = f"{rec.get('title') or ''} {rec.get('disambiguation') or ''}".casefold()
+    mine = " ".join(ours).casefold()
+    return any(re.search(rf"\b{re.escape(w)}\b", theirs) and not re.search(rf"\b{re.escape(w)}\b", mine)
+               for w in OTHER_VERSIONS)
+
+
+def ask_again(t: PlanTrack, mb: MusicBrainzAPI, album: str = "") -> bool:
     """**A re-ask after a take-back attaches only a recording that fits** (§9, slice 206; q29c, R-706).
 
     Round H's second dry, asked under slice 204's one-sided gate, offered `Lord of the Lost — Ruins`
@@ -219,20 +234,26 @@ def ask_again(t: PlanTrack, mb: MusicBrainzAPI) -> bool:
     just taken back is asked more strictly: a recording of known length within `LENGTH_SLACK` of
     the video, either way. One that does not fit confirms nothing — no id, and the title and
     artist stay as they are; one of no known length is no answer either.
+
+    **And not another version of the song** (q29d, R-709): the length alone gave `Bring Me to Life`
+    a 2006 Philadelphia bootleg and `Attero Dominatus` a 2016 live video. A recording whose title or
+    disambiguation says `live`, `acoustic`, … is refused unless the track's or the album's title
+    says it too — `Powerwolf — Wildlive`'s `Stossgebet` takes the Olympiahalle recording.
     """
     if not t.duration:
         return False
     found = [r for r in mb.search_recordings(t.artist, core(t.title) or t.title)
-             if r.get("length") and fits(r["length"] / 1000, t.duration)]
+             if r.get("length") and fits(r["length"] / 1000, t.duration)
+             and not other_version(r, t.title, album)]   # length alone took live bootlegs (q29d)
     if (rec := pick_recording(t.artist, t.title, found)) is None:
         return False
     t.mbid, t.mb_length = rec["id"], round(rec["length"] / 1000, 1)
     return True
 
 
-def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None) -> bool:
+def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None, album: str = "") -> bool:
     if getattr(t, "ask_again", False):
-        return ask_again(t, mb)
+        return ask_again(t, mb, album)
     asked = (t.artist, t.title, mb.search_recordings(t.artist, core(t.title) or t.title))
     rec = pick_recording(*asked)
     title_source = t.title
@@ -935,7 +956,7 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
             progress(f"MusicBrainz: track {i}/{len(todo)} {t.artist} - {t.title}")
             stats["looked_up"] += 1
             t.recording_asked = True      # what a line about this track may then say (slice 206)
-            stats["tracks"] += int(enrich_track(t, mb, source))
+            stats["tracks"] += int(enrich_track(t, mb, source, plan.album))
     except MusicBrainzError as e:
         log.warning("MusicBrainz unavailable, continuing without it: %s", e)
     refresh_derived(plan)

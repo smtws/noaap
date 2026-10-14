@@ -198,7 +198,7 @@ class Ruins:
         return [{"id": rid, "title": rtitle, "length": length, "score": 100,
                  "artist-credit": [{"name": artist, "joinphrase": "", "artist": {"id": "a", "name": artist}}],
                  "releases": [{"title": "Thornstar", "status": "Official", "release-group": {"primary-type": "Album"}}]}
-                for rid, rtitle, length in self.answers]
+                for rid, rtitle, length, *_ in self.answers]
 
 
 def test_a_shorter_take_is_no_answer_and_changes_no_title():
@@ -221,3 +221,38 @@ def test_a_fitting_recording_is_attached_either_side_and_the_title_kept():
         t = a_reasked_track()
         assert enrich_track(t, Ruins(("7e54b224", "Ruins (Alternative Version)", 274_000), ("fits", "Ruins", length)))
         assert (t.mbid, t.mb_length, t.title) == ("fits", length / 1000, "Ruins")
+
+
+# -- and not another version of the song (q29d, R-709) ----------------------------------------------
+
+
+class Versions(Ruins):
+    def search_recordings(self, artist, title):
+        out = super().search_recordings(artist, title)
+        for r, (_, _, _, dis) in zip(out, self.answers, strict=True):
+            r["disambiguation"] = dis
+        return out
+
+
+def test_a_live_bootleg_of_the_right_length_is_refused():
+    """Evanescence 02: e408cf50, `live, 2006-10-10: The Electric Factory, Philadelphia`, 252 s for 254."""
+    from noaap.enrich import enrich_track
+    t = a_reasked_track(254.0, "Bring Me to Life")
+    answer = ("e408cf50", "Bring Me to Life", 252_000, "live, 2006-10-10: The Electric Factory, Philadelphia")
+    assert not enrich_track(t, Versions(answer), album="Fallen (Deluxe Edition / Remastered 2023)")
+    assert t.mbid is None
+
+
+def test_live_on_a_live_album_passes():
+    """Powerwolf — Wildlive (Live at Olympiahalle) 11: f31146f0, the Olympiahalle recording."""
+    from noaap.enrich import enrich_track
+    t = a_reasked_track(244.0, "Stossgebet")
+    answer = ("f31146f0", "Stossgebet", 245_176, "live, 2024-10-25: Olympiahalle, Munich, Germany")
+    assert enrich_track(t, Versions(answer), album="Wildlive (Live at Olympiahalle)")
+    assert t.mbid == "f31146f0"
+
+
+def test_live_in_the_recording_s_own_title_is_refused_too():
+    from noaap.enrich import enrich_track
+    t = a_reasked_track(242.0, "Die Hörner hoch")
+    assert not enrich_track(t, Versions(("ca7b0922", "Die Hörner hoch (live)", 237_000, "")), album="Best Of")

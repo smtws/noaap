@@ -14,15 +14,12 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .enrich import core, credit_phrase, near_enough, takes
+from .enrich import OTHER_VERSIONS, core, credit_phrase, near_enough, takes
 from .models import AlbumPlan
 from .text import key, title_key
 
 # a medium that holds pictures, not sound: its tracks are reported, never searched (R-562, 2)
 VIDEO_FORMATS = ("dvd", "blu-ray", "vhs", "video", "vcd", "umd")
-# a hit that is another version of the song, unless the release's own title says so too
-OTHER_VERSIONS = ("live", "unplugged", "acoustic", "remix", "cover", "karaoke", "instrumental",
-                  "nightcore", "sped up", "slowed", "8d", "reaction", "tutorial", "piano")
 CLOSE_LENGTH = 10.0     # seconds: as close as two masterings of one recording are
 FAR_LENGTH = 30.0       # beyond this a hit is another recording, whatever it is called
 

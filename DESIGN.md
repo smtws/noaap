@@ -5145,6 +5145,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
        video, either way.
      - It attaches the id and length and nothing else: no title, no artist.
      - A recording that does not fit confirms nothing, and one of no known length is no answer.
+   - **And not another version of the song** (R-709, q29d). Length alone took live bootlegs:
+     `Bring Me to Life` got `e408cf50`, a 2006 Philadelphia show (252 s for a 254-s video), and
+     `Attero Dominatus` got a 2016 live video.
+     - `other_version(rec, track title, album title)` refuses a recording whose title or
+       disambiguation carries an `OTHER_VERSIONS` marker (`live`, `acoustic`, …, now kept in
+       `enrich` and imported by `complete`) that neither title carries.
+     - `Powerwolf — Wildlive (Live at Olympiahalle)` takes its Olympiahalle recordings.
+     - A studio recording on a live album is not refused by this: `1589` takes `857ecab7`, the
+       `Wake Up the Wicked` studio take, at 244.8 s for a 246-s video.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
