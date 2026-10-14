@@ -735,6 +735,11 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     return refresh_derived(merged)
 
 
+def fits(file_seconds: float | None, mb_seconds: float | None) -> bool:
+    """Whether a file is the length of a release track, within `LENGTH_SLACK`."""
+    return bool(file_seconds and mb_seconds) and abs(file_seconds - mb_seconds) <= LENGTH_SLACK
+
+
 def keep_the_seats(rest: list[PlanTrack], ordered: list[PlanTrack],
                    was: dict[int, tuple[int, int]]) -> list[str]:
     """A track the source still lists but this read skipped keeps the seat it has (§9, slice 192; q16).
@@ -747,6 +752,24 @@ def keep_the_seats(rest: list[PlanTrack], ordered: list[PlanTrack],
     """
     notes: list[str] = []
     kept: dict[tuple[int, int], PlanTrack] = {}
+    # **of two files of one recording, the one the release's length fits keeps the seat** (§9, slice
+    # 199; q24, R-671). `Feuerschwanz — Das Elfte Gebot (YouTube)` holds `Kampfzwerg` twice: 1-04
+    # (219.6 s) and the official video at 2-12 (237.6 s); the release's 1-04 is 215.5 s. When the
+    # playlist swapped which of the two it lists, the read seated the listed 238-s video on 1-04 and
+    # the 220-s file, dropped from the source, went last — the seats followed the playlist.
+    for t in ordered:
+        seat, mine = (t.disc, t.number), was.get(id(t))
+        if mine is None or seat == mine or not t.mbid or not t.mb_length or fits(t.file_length, t.mb_length):
+            continue
+        twin = next((d for d in rest if not d.in_source and was.get(id(d)) == seat and d.mbid == t.mbid
+                     and fits(d.file_length, t.mb_length)), None)
+        if twin is None:
+            continue
+        notes.append(f"{seat[0]}-{seat[1]:02d} {twin.title} ({twin.file_length:.1f} s) keeps its seat — it is "
+                     f"the release's length; {mine[0]}-{mine[1]:02d} {t.title} ({t.file_length:.1f} s, listed) "
+                     "goes last")
+        (t.disc, t.number), (twin.disc, twin.number) = (twin.disc, twin.number), seat
+        kept[seat] = twin
     for t in rest:
         if (seat := was.get(id(t))) is None or not t.in_source:
             continue    # one the source dropped goes last, as always (slice 3): the curator's order rules

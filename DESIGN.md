@@ -5022,6 +5022,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `fit_measure` drops a bracket that repeats the release's name before comparing takes, by
      `drop_album_name`'s album-wide rule. Otherwise `… (Symphonic Live)` reads as a take, and the
      stored release would be kept only while its id happened to sort first.
+199. ✅ **Of two files of one recording, the one the release's length fits keeps the seat**
+   (2026-10-14, R-671, q24). `Feuerschwanz — Das Elfte Gebot (YouTube)` holds `Kampfzwerg` twice:
+   1-04 at 219.6 s and the official video at 2-12 at 237.6 s, both recording 63c35ba7. The
+   release's 1-04 is 215.5 s. When the playlist listed the official video at 4, the read seated it
+   on 1-04 (slice 192's whole-title exception), and the 220-s file, now dropped from the source, went
+   last. The seats followed whichever video the playlist listed.
+   - `keep_the_seats`: a listed track the read moves onto a seat, and a track the source dropped from
+     that seat, hold the same recording. If the dropped file fits the slot's MB length and the
+     listed one does not, the dropped one keeps the seat and the listed one goes last. One line
+     names both. Everything else stays as it was: slice 3's last place for a dropped track without
+     such a twin, and the listed track keeping the seat when both fit.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
