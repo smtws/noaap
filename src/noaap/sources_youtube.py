@@ -41,8 +41,12 @@ class YouTubeSource:
 
     # -- required ----------------------------------------------------------------------
 
-    def collection(self, address: str) -> Collection:
-        return self.yt.fetch(address)
+    #: `collection` takes the ids an album's plan recorded, to read an unchanged playlist from the
+    #: entry cache (§9, slice 200)
+    keeps_entries = True
+
+    def collection(self, address: str, known_ids: list[str] | None = None) -> Collection:
+        return self.yt.fetch(address, known_ids=known_ids)
 
     def audio(self, ref: str, into: Path, choice: str = "best") -> Path:
         try:

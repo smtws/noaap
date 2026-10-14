@@ -319,7 +319,10 @@ class Service:
         self.check()
         source = self.source_for_address(url)
         self.log(f"reading {self._said(url, source)} …")
-        collection = source.collection(url)
+        # **within a pass, an unchanged playlist is read from the entry cache** (§9, slice 200)
+        known = next(((p.source_state or {}).get("ids") for _, p in self._index or () if p.source_url == url), None)
+        collection = (source.collection(url, known_ids=known) if known and getattr(source, "keeps_entries", False)
+                      else source.collection(url))
         self.check()
         if dump:
             dump.write_text(json.dumps(collection.to_dict(), indent=2, ensure_ascii=False) + "\n")

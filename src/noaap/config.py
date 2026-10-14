@@ -137,6 +137,8 @@ class Config:
     js_runtime: str | None = None
     js_runtime_path: str | None = None
     concurrency: int = 2  # parallel YouTube requests; more trips YouTube's bot check sooner
+    # how long a video's own read stays good in the entry cache, in days; 0 = no cache (§9, slice 200)
+    entry_days: int = 30
     musicbrainz: bool = True
     lyrics: bool = True  # look lyrics up at lrclib.net and keep them as .lrc + LYRICS tag
     # **the state the library is in** (§9, slice 100): what every album should have. A later pass
@@ -281,6 +283,7 @@ def load(path: Path | None = None) -> Config:
         js_runtime=data.get("js_runtime"),
         js_runtime_path=data.get("js_runtime_path"),
         concurrency=int(data.get("concurrency", 2)),
+        entry_days=int(data.get("entry_days", 30)),
         musicbrainz=bool(data.get("musicbrainz", True)),
         lyrics=bool(data.get("lyrics", True)),
         # the state the library is in: what every album should have (§9, slice 100)

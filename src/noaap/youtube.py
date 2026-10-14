@@ -9,13 +9,16 @@ entry was found in, not the entry's own size (DESIGN.md §3.1).
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import sqlite3
 import threading
 import time
 import unicodedata
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,8 +28,8 @@ from yt_dlp.utils import DownloadCancelled, DownloadError
 
 from . import pot as pot_server
 from . import sources, ytdlp
-from .config import Config
-from .models import Collection, Entry, Failure, Music, SourceRef
+from .config import Config, cache_dir
+from .models import Candidate, Collection, Entry, Failure, Music, SourceRef
 
 log = logging.getLogger(__name__)
 
@@ -94,10 +97,50 @@ def one_video(text: str) -> str | None:
     return m["id"] if m else None
 
 
+class EntryCache:
+    """What `_inspect` learned about one video, kept for `entry_days` (§9, slice 200; q22 (ii)).
+
+    Only a video that was read whole is kept, never one the read skipped or failed on. Beside it, the
+    title and duration the playlist's own flat listing gave for it then: an answer is only given
+    while the listing still says the same, so a video YouTube renamed or recut is read again.
+    """
+
+    def __init__(self, path: Path, days: int) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.days = days
+        self._lock = threading.Lock()
+        self._db = sqlite3.connect(path, check_same_thread=False)
+        self._db.execute("CREATE TABLE IF NOT EXISTS entries (id TEXT PRIMARY KEY, entry TEXT, "
+                         "flat_title TEXT, flat_duration REAL, at REAL)")
+
+    def get(self, flat: dict[str, Any]) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._db.execute("SELECT entry, flat_title, flat_duration, at FROM entries WHERE id = ?",
+                                   (flat.get("id"),)).fetchone()
+        if not row or time.time() - row[3] > self.days * 86400:
+            return None
+        if (row[1], row[2]) != (nfc(flat.get("title")), flat.get("duration")):
+            return None
+        return json.loads(row[0])
+
+    def put(self, flat: dict[str, Any], entry: Entry) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?)",
+                             (entry.video_id, json.dumps(asdict(entry)), nfc(flat.get("title")),
+                              flat.get("duration"), time.time()))
+            self._db.commit()
+
+
+def _entry(d: dict[str, Any], position: int) -> Entry:
+    return Entry(**{**d, "position": position, "music": Music(**d.get("music") or {}),
+                    "copies": [Candidate(**c) for c in d.get("copies") or []]})
+
+
 class YouTube:
     def __init__(self, cfg: Config, cancel: threading.Event | None = None) -> None:
         self.cfg = cfg
         self.cancel = cancel
+        self._entries: EntryCache | None = None
         self._pot_checked = False
         self._pot_lock = threading.Lock()
         self._last_beat = 0.0
@@ -240,8 +283,31 @@ class YouTube:
 
     # -- stage 1+2: resolve and inspect ------------------------------------------
 
-    def fetch(self, url: str) -> Collection:
-        """Resolve a playlist or video URL into a Collection with fully inspected entries."""
+    def entry_cache(self) -> EntryCache | None:
+        if self._entries is None and self.cfg.entry_days > 0:
+            self._entries = EntryCache(cache_dir() / "youtube-entries.sqlite3", self.cfg.entry_days)
+        return self._entries
+
+    def _from_cache(self, flat: list[dict[str, Any]]) -> list[Entry] | None:
+        """Every entry of this listing from the cache, or None as soon as one is not there as it was."""
+        if (cache := self.entry_cache()) is None:
+            return None
+        entries = []
+        for position, f in enumerate(flat, 1):
+            if (d := cache.get(f)) is None:
+                return None
+            entries.append(_entry(d, position))
+        return entries
+
+    def fetch(self, url: str, known_ids: list[str] | None = None) -> Collection:
+        """Resolve a playlist or video URL into a Collection with fully inspected entries.
+
+        **`known_ids`: the ids the album's plan recorded, in its order** (§9, slice 200; q22 (ii)). Where
+        the flat listing has exactly these, in this order, and the entry cache knows every one as the
+        listing still describes it, the entries come from the cache and no video is asked; anything
+        else is the full read, which then refreshes the cache. A deep check of an unchanged playlist
+        was ≈2.2 s per video, one yt-dlp extract each.
+        """
         self.ensure_pot_server()
         with YoutubeDL(self._params(extract_flat="in_playlist")) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -263,9 +329,17 @@ class YouTube:
             raise NotSupported("this is a channel, not a playlist — use list_channel()")
 
         flat = list(info.get("entries") or [])
-        blocked = threading.Event()  # after the first bot check, stop asking
-        with ThreadPoolExecutor(max_workers=max(1, self.cfg.concurrency)) as pool:
-            entries = list(pool.map(lambda pos, f: self._inspect(pos, f, blocked), range(1, len(flat) + 1), flat))
+        entries = None
+        if known_ids is not None and [f.get("id") for f in flat] == list(known_ids):
+            entries = self._from_cache(flat)
+        if entries is None:
+            blocked = threading.Event()  # after the first bot check, stop asking
+            with ThreadPoolExecutor(max_workers=max(1, self.cfg.concurrency)) as pool:
+                entries = list(pool.map(lambda pos, f: self._inspect(pos, f, blocked), range(1, len(flat) + 1), flat))
+            if (cache := self.entry_cache()) is not None:
+                for f, entry in zip(flat, entries, strict=True):
+                    if entry.skipped is None:   # a read that failed or skipped is never kept
+                        cache.put(f, entry)
 
         return Collection(
             source_url=url,

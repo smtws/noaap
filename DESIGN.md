@@ -5033,6 +5033,20 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      listed one does not, the dropped one keeps the seat and the listed one goes last. One line
      names both. Everything else stays as it was: slice 3's last place for a dropped track without
      such a twin, and the listed track keeping the seat when both fit.
+200. ✅ **An unchanged playlist is read from the entry cache** (2026-10-14, R-674, q22 (ii)).
+   A deep check read every video of every YouTube album again, one yt-dlp extract each. That is
+   ≈2.2 s per video, 3 to 5 h of r660, for playlists that had not changed.
+   - `EntryCache` (`youtube-entries.sqlite3` in the cache directory) keeps what `_inspect` read
+     for each video, beside the title and duration the flat listing gave for it then.
+   - Only a whole read is kept, never one that was skipped or failed.
+   - An entry is good for `entry_days` (30; 0 turns the cache off).
+   - `YouTube.fetch(url, known_ids=…)` answers from the cache only when all of these hold: the flat
+     ids are the plan's `source_state.ids` in the same order, every video is cached and inside
+     its time, and the listing still gives each video the title and duration it gave then.
+   - Anything else is the full read, as before, and it refreshes the cache.
+   - `Service.fetch` passes the plan's ids only within a pass (slice 197's index) and only to a
+     source that says `keeps_entries`. A lone fetch reads as it always did.
+   - The cache is the only thing a check writes.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
