@@ -20,11 +20,13 @@ from __future__ import annotations
 import datetime as dt
 import re
 import shutil
+import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
 from . import sources
-from .config import Config
+from .config import Config, cache_dir
 from .models import Candidate, Collection, Entry, Music, Provenance, SourceRef
 from .tag import (
     audio_length,
@@ -335,6 +337,45 @@ def stream_sha(path: Path) -> str | None:
     return out.removeprefix("MD5=") if out.startswith("MD5=") else None
 
 
+_digest_dbs: dict[Path, sqlite3.Connection] = {}
+_digest_lock = threading.Lock()
+
+
+def _digests() -> sqlite3.Connection:
+    """The digest cache of this cache directory, opened once (§9, slice 201)."""
+    path = cache_dir() / "stream-digests.sqlite3"
+    with _digest_lock:
+        if (db := _digest_dbs.get(path)) is None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            db = _digest_dbs[path] = sqlite3.connect(path, check_same_thread=False)
+            db.execute("CREATE TABLE IF NOT EXISTS digests (path TEXT, size INTEGER, mtime_ns INTEGER, "
+                       "sha TEXT, PRIMARY KEY (path, size, mtime_ns))")
+        return db
+
+
+def kept_stream_sha(path: Path) -> str | None:
+    """`stream_sha`, asked of the file only when it is not the file the cache has seen (§9, slice 201;
+    q22 (iii), R-676).
+
+    A deep check read every byte of every folder album's files again for a digest of files that had
+    not changed: ≈0.27 s a file on the share, ≈1.3 s for a large flac. The key is the file's own
+    path, size and mtime, so a file that changed in any of them is read again; there is no other
+    expiry, because the key is the freshness. A digest that could not be made is not kept.
+    """
+    st = path.stat()
+    key = (str(path.resolve()), st.st_size, st.st_mtime_ns)
+    db = _digests()
+    with _digest_lock:
+        row = db.execute("SELECT sha FROM digests WHERE path = ? AND size = ? AND mtime_ns = ?", key).fetchone()
+    if row:
+        return row[0]
+    if (sha := stream_sha(path)) is not None:
+        with _digest_lock:
+            db.execute("INSERT OR REPLACE INTO digests VALUES (?, ?, ?, ?)", (*key, sha))
+            db.commit()
+    return sha
+
+
 def measure(path: Path, digest: bool = True, one: Any = None) -> Candidate:
     """Everything about this file that ranking will ever want, read from the file itself.
 
@@ -348,7 +389,7 @@ def measure(path: Path, digest: bool = True, one: Any = None) -> Candidate:
     if length is None and (length := decoded_length(path)) is not None:
         how = "decoded"
     return Candidate(ref=str(path), provider=NAME, length=length, length_by=how,
-                     bytes=path.stat().st_size, stream_sha=stream_sha(path) if digest else None,
+                     bytes=path.stat().st_size, stream_sha=kept_stream_sha(path) if digest else None,
                      added_by="source", why=UNRANKED,
                      when=dt.date.today().isoformat(), **audio_quality(path, one))
 

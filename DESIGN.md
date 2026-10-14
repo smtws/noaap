@@ -5047,6 +5047,16 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `Service.fetch` passes the plan's ids only within a pass (slice 197's index) and only to a
      source that says `keeps_entries`. A lone fetch reads as it always did.
    - The cache is the only thing a check writes.
+201. ✅ **A file's digest is kept while the file is the same** (2026-10-14, R-676, q22 (iii)).
+   A deep check digested every file of every folder album again (`stream_sha`, an ffmpeg remux
+   that reads the whole file): ≈0.27 s a file on the share, ≈1.3 s for a large flac.
+   - `kept_stream_sha` keeps the digest in `stream-digests.sqlite3` in the cache directory, under
+     the file's resolved path, size and mtime_ns. The same key gives the kept digest; any change
+     digests the file again.
+   - There is no expiry: the key is the freshness. A digest that could not be made is not kept.
+   - `measure(digest=False)` asks and keeps nothing.
+   - Only the folder read uses the cache. The precautions around a write still digest the file in
+     hand.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
