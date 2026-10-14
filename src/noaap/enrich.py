@@ -249,7 +249,8 @@ def ask_again(t: PlanTrack, mb: MusicBrainzAPI, album: str = "") -> bool:
         return False
     found = [r for r in mb.search_recordings(t.artist, core(t.title) or t.title)
              if r.get("length") and fits(r["length"] / 1000, t.duration)
-             and not other_version(r, t.title, album)]   # length alone took live bootlegs (q29d)
+             and not other_version(r, t.title, album)    # length alone took live bootlegs (q29d)
+             and r.get("id") not in getattr(t, "refused_ids", ())]   # nor one taken back (q29f)
     if (rec := pick_recording(t.artist, t.title, found)) is None:
         return False
     t.mbid, t.mb_length = rec["id"], round(rec["length"] / 1000, 1)

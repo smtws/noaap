@@ -5155,6 +5155,11 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      - The rule is symmetric (R-710, q29e): a marker our titles carry and the recording does not
        refuses it too. `Wildlive`'s `1589` (246 s) was offered `857ecab7`, the `Wake Up the
        Wicked` studio take (244.8 s), and now takes none.
+   - **And at every later read** (R-714, q29f). Round H's proof re-attached 9 of the 16. The ids
+     were gone, so the plain lookup asked, with slice 204's one-sided gate, and gave `Ruins` the
+     274-s `(Alternative Version)` and its title.
+     - A stored track with `refused_recordings` and no `mbid` is marked `ask_again` on every read.
+     - It is asked only the strict way, and never given a refused id (`refused_ids`).
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

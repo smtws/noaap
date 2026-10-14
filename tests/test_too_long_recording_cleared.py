@@ -265,3 +265,36 @@ def test_a_studio_take_on_a_live_album_is_refused():
     t = a_reasked_track(246.0, "1589")
     assert not enrich_track(t, Versions(("857ecab7", "1589", 244_781, "")), album="Wildlive (Live at Olympiahalle)")
     assert t.mbid is None
+
+
+# -- and at every later read (q29f, R-714) -----------------------------------------------------------
+
+
+class AlternativeTake(Answering):
+    """Thornstar 13's answer at the proof: a shorter take, with a bracket the plain lookup took along."""
+
+    def search_recordings(self, artist, title):
+        self.asked.append(title)
+        return [{"id": "7e54b224", "title": "Lullaby (Alternative Version)", "length": 230_000, "score": 100,
+                 "artist-credit": [{"name": artist, "joinphrase": "", "artist": {"id": "a", "name": artist}}],
+                 "releases": []}]
+
+
+def test_after_the_take_back_the_next_read_asks_the_strict_way(album, opus_template):
+    """Round H's proof: the id was gone, so the plain lookup asked and gave `Ruins` the 274-s
+    `(Alternative Version)` and its title."""
+    from noaap.config import Config
+    from noaap.service import Service
+
+    lib, album_dir = album
+    plan = load_plan(album_dir)
+    one = plan.tracks[0]
+    one.title, one.mbid, one.mb_length, one.refused_recordings = "Lullaby", None, None, ["cc61384f"]
+    save_plan(plan, album_dir)
+    mb = AlternativeTake()
+    said: list[str] = []
+    Service(Config(musicbrainz=True, lyrics=False), lib, log=said.append, yt=FakeYouTube(opus_template),
+            mb=mb).update_all(report_only=True, deep=True)
+    assert "Lullaby" in mb.asked, mb.asked                        # asked — the strict way
+    mine = [s for s in said if s.startswith(f"  {one.number:02d} ")]   # vol1's 13 is a `Lullaby` too
+    assert not [s for s in mine if "7e54b224" in s or "Alternative Version" in s or "recording id" in s], mine
