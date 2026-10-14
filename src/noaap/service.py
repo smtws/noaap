@@ -1554,17 +1554,16 @@ class Service:
         same `renames`/`retags` the apply's `run` uses — and the cover an apply would save where an
         address says it answers, with the files that would then be rewritten to hold it.
         """
+        written: set[tuple[int, int]] = set()     # files, not lines, by disc and number (slice 205)
         try:
             lines = would_do(plan, album_dir, self._cover_of(plan, album_dir), self.library,
-                             for_album(self.cfg, plan))
+                             for_album(self.cfg, plan), written)
         except Exception as e:  # a report may not fail over a file it cannot read
             return [f"what an apply would do to the files could not be read: {e}"]
         work = [line for line in lines
                 if re.match(r"\d\d ", line) or line.startswith(("⚠", "the album folder would move"))]
         self._file_work_seen["renamed"] += sum(bool(re.match(r"\d\d would be renamed", line)) for line in work)
-        # files, not lines: one file can be retagged and given the picture in the same write
-        rewritten = {line[:2] for line in work
-                     if re.match(r"\d\d (would be retagged|would be rewritten|would get the album's picture)", line)}
+        rewritten = written
         # **and the cover an apply would save, where an address says it answers** (§9, slice 182).
         # Heilig's apply saved its group's front and rewrote all 14 files to hold it, after a check
         # that said nothing. A hedged line counts where it names an address behind the files
@@ -1582,7 +1581,7 @@ class Service:
                     and embedded_cover(album_dir / t.filename) is None]   # what is in a file is said by its bytes
             if held and retags(plan, want):
                 work.append(f"{len(held)} file(s) without a picture would get the album's once it is saved")
-                rewritten |= {f"{t.number:02d}" for t in held}
+                rewritten |= {(t.disc, t.number) for t in held}
         self._file_work_seen["rewritten"] += len(rewritten)
         # **and every track it would download** (§9, slice 195; q20): round A's check named none of
         # `Crematory/Crematory`'s 2 failed tracks without a file, and its apply downloaded both

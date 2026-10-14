@@ -157,3 +157,31 @@ def test_the_check_names_the_cover_an_apply_would_save_and_the_files_it_goes_int
     said.clear()
     service.update_all(report_only=True, deep=True)
     assert not [line for line in said if "cover would be" in line], said
+
+
+def test_the_summary_counts_files_by_disc_and_number(tmp_path, one_second_of_sound):
+    """q27 (§9, slice 205): `dArtagnan — Herzblut`'s check said 15 audio files and its apply rewrote 20 —
+    the lines say `04`, and 1-04 and 2-04 counted once."""
+    from mutagen import File as MFile
+
+    root = tmp_path / "collection"
+    album = an_album(root / "A Band" / "An Album", ["One", "Two", "Three", "Four"], one_second_of_sound)
+    for path, (disc, number) in zip(sorted(album.glob("*.opus")), ((1, 1), (1, 2), (2, 1), (2, 2)), strict=True):
+        audio = MFile(path)
+        audio["discnumber"], audio["tracknumber"] = [str(disc)], [str(number)]
+        audio.save()
+    intake.take_in(a_library(root), root, QUIET, dry_run=False, log=lambda s: None)
+    a_library(root).repair()
+    plan = load_plan(album)
+    assert sorted((t.disc, t.number) for t in plan.tracks) == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    for t in plan.tracks:
+        t.title, t.provenance["title"] = f"{t.title} (edited)", Provenance.USER
+    save_plan(plan, album)
+
+    said: list[str] = []
+    service = a_library(root)
+    service.log = said.append
+    service.update_all(report_only=True, deep=True)
+
+    assert sum("would be retagged:" in line for line in said) == 4, said
+    assert any("4 audio file(s) would be rewritten (their tags)" in line for line in said), said

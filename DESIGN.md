@@ -5103,6 +5103,15 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - Stored ids are untouched (the merge keeps a stored id against a fresh None). So are
      release-seated tracks (another path) and q25-paired ones (they keep their own recording).
    - Not read: the "live, …" disambiguation. A 216-s live broadcast would still fit a 218-s video.
+205. ✅ **The check's summary counts files by disc and number** (2026-10-14, R-685, q27). Round F's
+   dry said "15 audio file(s) would be rewritten" for `dArtagnan — Herzblut` and two other albums,
+   and the apply rewrote 20. The lines say `04`, and the summary counted their distinct two-digit
+   numbers, so 1-04 and 2-04 were one file.
+   - `would_do(…, written=)` adds `(disc, number)` for every file it says it would write. That
+     covers a retag (or one it cannot read), the picture, and a rewrite for a tail, comments or
+     Windows Media frames.
+   - The summary counts that set, and the files that would get a saved cover join it the same way.
+   - The lines themselves are unchanged.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

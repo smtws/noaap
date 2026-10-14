@@ -670,7 +670,8 @@ def from_its_files(album_dir: Path | str) -> str:
 
 
 def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
-             library: Path | None = None, want: Treatment | None = None) -> list[str]:
+             library: Path | None = None, want: Treatment | None = None,
+             written: set[tuple[int, int]] | None = None) -> list[str]:
     """Everything `run(..., download=False)` would change about this album, one line each.
 
     **The dry run's source of truth** (§9, slice 85). It asks the same three questions the pass itself
@@ -758,6 +759,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
             have = tags_in(path)
         except (MutagenError, OSError) as e:
             said.append(f"{track.number:02d} would be retagged — the file cannot be read: {e}")
+            _count(written, track)
             continue
         wanted_tags = build_tags(plan, track, text)
         kept = kept_from_the_file(plan)
@@ -785,11 +787,22 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                 + ([f"{wm} Windows Media frame(s) would be dropped"] if wm else []) \
                 + (["without its ID3v1 tail"] if tail else [])
             said.append(f"{track.number:02d} would be rewritten: " + ", ".join(why))
-        # **and otherwise nothing is said, because nothing is written** (R-410, ruling 7). This used
-        # to report "would be rewritten with the same tag values (the plan's record of them is out
-        # of date)" and the pass then rewrote the file for the record's sake — 455 files of the
-        # user's collection, each read, copied, replaced and verified to end up as it already was.
+        else:
+            # **and otherwise nothing is said, because nothing is written** (R-410, ruling 7). This
+            # used to report "would be rewritten with the same tag values (the plan's record of them
+            # is out of date)" and the pass then rewrote the file for the record's sake — 455 files
+            # of the user's collection, each read, copied, replaced and verified to end up as it was.
+            continue
+        _count(written, track)
     return said
+
+
+def _count(written: set[tuple[int, int]] | None, track: PlanTrack) -> None:
+    """**Which file a line is about, by disc and number** (§9, slice 205; q27, R-685). The lines say
+    `04`, and a summary that counted those counted `dArtagnan — Herzblut`'s 1-04 and 2-04 once: 15
+    files said, 20 rewritten."""
+    if written is not None:
+        written.add((track.disc, track.number))
 
 
 def points_elsewhere(plan: AlbumPlan, album_dir: Path) -> bool:
