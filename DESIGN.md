@@ -5072,6 +5072,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      audio is another video's (`source_override`). No rename to the video's title, and no
      recording the lookup gave the video.
    - Equal titles behave as before, lengths not asked.
+203. ✅ **A new entry whose seat a kept file holds goes last** (2026-10-14, R-686, q28). On
+   `Evanescence — Fallen (Deluxe)` the read skipped the album's last track, `Everybody's Fool`
+   (1-20), and the playlist listed `My Immortal (Strings Version)` at 15. Every track behind 15
+   would have moved up one, ending on the skipped track's seat, so none moved ("neither moves",
+   slice 192). The new entry has no seat to go back to and was to be fetched as a second 1-15
+   beside `Bring Me to Life (Demo)`.
+   - After the chain settles, a new entry whose seat a kept track holds takes the first number
+     after the last one on its disc.
+   - One line says so: `1-15 My Immortal (Strings Version): its seat is 1-15 Bring Me to Life
+     (Demo)'s — goes last as 1-21`.
+   - A new entry on a free seat is placed as before.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

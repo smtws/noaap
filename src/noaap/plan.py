@@ -793,6 +793,19 @@ def keep_the_seats(rest: list[PlanTrack], ordered: list[PlanTrack],
             t.disc, t.number = mine
             kept[mine] = t
             changed = True
+    # **and a new entry whose seat a kept file holds goes last** (§9, slice 203; q28, R-686). The
+    # chain above puts every track the album holds back on its seat; a new entry has none to go
+    # back to, and `Evanescence — Fallen (Deluxe)` would have fetched `My Immortal (Strings
+    # Version)` as a second 1-15 beside `Bring Me to Life (Demo)`.
+    for t in ordered:
+        seat = (t.disc, t.number)
+        if was.get(id(t)) is not None or seat not in kept or kept[seat] is t:
+            continue
+        last = max(o.number for o in (*ordered, *rest) if o.disc == t.disc)
+        notes.append(f"{seat[0]}-{seat[1]:02d} {t.title}: its seat is {seat[0]}-{seat[1]:02d} "
+                     f"{kept[seat].title}'s — goes last as {t.disc}-{last + 1:02d}")
+        t.number = last + 1
+        kept[(t.disc, t.number)] = t
     return notes
 
 
