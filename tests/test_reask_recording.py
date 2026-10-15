@@ -45,6 +45,7 @@ def sleeping_sun(album_dir, template, stored=LIVE, stored_s=295.2):
     assert plan.kind == Kind.COMPILATION
     one = plan.tracks[0]
     one.artist, one.title, one.mbid, one.mb_length = "Nightwish", "Sleeping Sun", stored, stored_s
+    one.auto["artist"], one.auto["title"] = one.artist, one.title   # as a lookup wrote them, not a hand
     run(plan, album_dir, FakeYouTube(template), download=False)   # the file says the stored id
     plan = load_plan(album_dir)
     plan.tracks[0].file_length = 242.0
@@ -126,3 +127,54 @@ def test_a_track_the_album_does_not_have_changes_nothing(album, opus_template):
         plan.source_id, only={"1-01", "9-99"}, dry_run=False)
     assert out.status == "failed" and "9-99" in out.message
     assert load_plan(album_dir).tracks[0].mbid == LIVE
+
+
+class AnyTitle:
+    """MusicBrainz answering every recording search with the same rows, under the asked artist and
+    title — the fresh read's own are the video's, not ours."""
+
+    def __init__(self, *answers):
+        self.answers, self.asked = list(answers), []
+
+    def search_recordings(self, artist, title):
+        self.asked.append(title)
+        return [{**r, "title": title, "artist-credit": [{"name": artist, "joinphrase": "",
+                                                          "artist": {"id": "a", "name": artist}}]}
+                for r in self.answers]
+
+    def __getattr__(self, name):
+        return lambda *a, **k: []
+
+
+def reasked_to_nothing(lib, album_dir, template):
+    """The proof's shape (I-546): a compilation track whose live id `--reask` took back, no id left."""
+    plan, one = sleeping_sun(album_dir, template)
+    a_service(lib, template, Answering(*ANSWERS[:2]), []).reask_recordings(plan.source_id, only={"1-01"}, dry_run=False)
+    after = load_plan(album_dir)
+    assert after.kind == Kind.COMPILATION and (after.tracks[0].mbid, after.tracks[0].refused_recordings) == (None, [LIVE])
+    return after, after.tracks[0]
+
+
+def test_the_next_update_does_not_attach_a_recording_shorter_than_the_video(album, opus_template):
+    """`Nothing Else Matters` (386 s) was given a 338-s recording by the plain lookup (F12, q33b)."""
+    lib, album_dir = album
+    plan, one = reasked_to_nothing(lib, album_dir, opus_template)
+    seconds = one.duration
+    mb = AnyTitle(rec("too-short", "Lullaby", seconds - 48))
+    said: list[str] = []
+    Service(Config(musicbrainz=True, lyrics=False), lib, log=said.append, yt=FakeYouTube(opus_template),
+            mb=mb).update_all(report_only=True, deep=True)
+    assert mb.asked, "the track is asked"
+    assert not [s for s in said if s.startswith("  01 ") and ("recording id" in s or "too-short" in s)], said
+
+
+def test_the_next_update_attaches_a_recording_that_fits_the_video(album, opus_template):
+    lib, album_dir = album
+    plan, one = reasked_to_nothing(lib, album_dir, opus_template)
+    seconds = one.duration
+    mb = AnyTitle(rec("too-short", "Lullaby", seconds - 48), rec("fits-it", "Lullaby", seconds + 1))
+    said: list[str] = []
+    Service(Config(musicbrainz=True, lyrics=False), lib, log=said.append, yt=FakeYouTube(opus_template),
+            mb=mb).update_all(report_only=True, deep=True)
+    assert [s for s in said if s.startswith("  01 ") and "fits-it" in s], "\n".join(said)
+    assert not [s for s in said if s.startswith("  01 ") and ("too-short" in s or LIVE in s)], said

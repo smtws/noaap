@@ -387,8 +387,12 @@ class Service:
             # **and every later read of such a track** (q29f, R-714): once the apply has taken the id
             # back it sits in `refused_recordings`, and the plain lookup then took the first answer
             # not longer than the video — a shorter take, a live one, and its title with it
+            # **on every kind of album** (q33b, R-731): slice 208 keeps a compilation out of the
+            # take-back, not out of this. `noaap recording --reask` takes ids back on curator's
+            # volumes, and the next update's plain lookup gave `Nothing Else Matters` (386 s) a 338-s
+            # recording and `Dorian` (303 s) one of 288 s
             again = {t.video_id for t in here[1].tracks if longer_than_its_video(t, here[1])
-                     or (t.refused_recordings and not t.mbid and here[1].kind != Kind.COMPILATION)}
+                     or (t.refused_recordings and not t.mbid)}
             refused = {t.video_id: list(t.refused_recordings) for t in here[1].tracks}
             ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid and t.video_id not in again}
             names = {t.video_id: t.title for t in here[1].tracks}

@@ -5227,6 +5227,12 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - The apply puts the stored id in `refused_recordings`, so the writer drops it from the file and
      no merge attaches it again. It sets the new id and length, or neither, and retags through the
      ordinary pass (`download=False`). Nothing is downloaded.
+   - **And every later read asks it the same way** (q33b, R-731). Before this fix, the proof after the
+     share's apply (I-546) found the next update's plain per-track lookup giving `Nothing Else
+     Matters` (386 s) a 338-s recording and `Dorian` (303 s) one of 288 s, because slice 204's
+     gate refuses only a recording that is too long. Now a done track with `refused_recordings` and
+     no id goes to `ask_again` (two-sided fit, not another version, not refused) on every kind of
+     album. Slice 208 keeps a compilation out of the take-back only.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
