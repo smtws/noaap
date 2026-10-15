@@ -213,7 +213,10 @@ def split_lookup(title: str, mb: MusicBrainzAPI) -> tuple[str, str, dict[str, An
 # a hit that is another version of the song, unless the release's own title says so too (§9, slice
 # 162); here since slice 206 asks it of a recording too (q29d), and `complete` imports it from here
 OTHER_VERSIONS = ("live", "unplugged", "acoustic", "remix", "cover", "karaoke", "instrumental",
-                  "nightcore", "sped up", "slowed", "8d", "reaction", "tutorial", "piano")
+                  "nightcore", "sped up", "slowed", "8d", "reaction", "tutorial", "piano",
+                  # round I (R-720, q31): `Watching Over Me (Alive in Athens 1999)`, `Elegy (Dvd)`,
+                  # `Where You Are (Club Version)` were offered as the album take
+                  "alive", "dvd", "club version")
 
 
 def other_version(rec: dict[str, Any], *ours: str) -> bool:
@@ -276,12 +279,18 @@ def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None, album: st
         return False
     # **not a recording longer than the video** (§9, slice 204; q26): the one attached is the next in
     # rank that is not, and where none is the lookup still confirms the artist and spelling, as a
-    # variant does, and attaches nothing
+    # variant does, and attaches nothing. **Nor another version of the song** (§9, slice 209; q31,
+    # R-724): a first lookup took the 2006 Philadelphia bootleg of `Bring Me to Life` as readily as
+    # the re-ask of slice 206 did before q29d — the same symmetric marker rule, on every pick.
     seconds = None if t.source_override else t.duration     # the video's; not one whose audio is another's
-    too_long = not pick_recording(asked[0], asked[1], [rec], seconds)
+
+    def unfit(r: dict[str, Any]) -> bool:
+        return not pick_recording(asked[0], asked[1], [r], seconds) or other_version(r, asked[1], album)
+
+    too_long = unfit(rec)
     if too_long and not kept_suffixes(title_source, rec["title"], [r.get("title", "") for r in rec.get("releases", [])]):
-        rec = pick_recording(*asked, seconds) or rec
-        too_long = not pick_recording(asked[0], asked[1], [rec], seconds)
+        rec = pick_recording(asked[0], asked[1], [r for r in asked[2] if not unfit(r)], seconds) or rec
+        too_long = unfit(rec)
 
     ac = rec["artist-credit"]
     extra = kept_suffixes(title_source, rec["title"], [r.get("title", "") for r in rec.get("releases", [])])

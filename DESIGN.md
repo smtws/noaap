@@ -5194,6 +5194,19 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      after a download or on a done track, renames the sidecar to `<name>.lrc.<id>` (kept, never
      deleted), clears the mark and resets the lyrics status, so a lyrics pass asks again by the new
      length.
+209. ✅ **Another version of the song is refused on every pick, either way** (2026-10-15, R-720/R-724,
+   q31). Slice 206 (q29d/e) refused another version only on a re-ask after a take-back. A first
+   lookup still took the 2006 Philadelphia bootleg of `Bring Me to Life`, and round I's
+   `noaap recording` offered `Watching Over Me (Alive in Athens 1999)`, `Elegy (Dvd)` and
+   `Where You Are (Club Version)` as the album take.
+   - `OTHER_VERSIONS` gains `alive`, `dvd` and `club version`.
+   - `enrich_track`: a recording that `other_version` (the track's and the album's titles against
+     the recording's title and disambiguation, either way) refuses is not attached. The next in rank
+     that fits is taken; where none does, the lookup confirms the spelling and attaches nothing, as
+     for a recording longer than the video.
+   - `complete.score`, which ranks hits for `noaap complete` and `noaap recording`, asks the same
+     symmetric rule: on `Wildlive (Live at Olympiahalle)` a hit that does not say live is refused
+     too.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

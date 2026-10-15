@@ -93,9 +93,11 @@ def test_a_title_the_source_itself_wrote_is_not_firsthand():
     a recording MusicBrainz knows by name is better than that."""
     t = a_track("Kaleid", Provenance.SOURCE_TITLE)
 
-    enrich_track(t, OneRecording("Kaleid (remix)"))
+    # not `(remix)` since slice 209: another version is refused on every pick, so it would confirm
+    # nothing at all here; a bracket that names no other version is still MusicBrainz' to give
+    enrich_track(t, OneRecording("Kaleid (Radio Edit)"))
 
-    assert t.title == "Kaleid (remix)"
+    assert t.title == "Kaleid (Radio Edit)"
     assert t.provenance["title"] == Provenance.MB
 
 

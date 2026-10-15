@@ -25,6 +25,15 @@ class Cached:
         return RECS if title == "Going Under" else []
 
 
+class AsIfStudio(Cached):
+    """The same answers with 954b2a1f's `live, …` taken off: the length rule alone, since slice 209
+    refuses a live recording for a track that does not say live whatever its length."""
+
+    def search_recordings(self, artist, title):
+        return [{**r, "disambiguation": ""} if r["id"].startswith("954b2a1f") else r
+                for r in super().search_recordings(artist, title)]
+
+
 def a_track(seconds, override=None):
     t = build_plan(vol1()).tracks[0]
     t.artist, t.title, t.duration, t.source_override = "Evanescence", "Going Under", seconds, override
@@ -44,20 +53,20 @@ def test_a_recording_longer_than_the_video_is_refused_and_the_next_is_taken():
 def test_a_shorter_recording_still_passes():
     """Film around the song: a 300-s video keeps the 261-s recording, whose length the trim cuts to."""
     t = a_track(300.0)
-    assert enrich_track(t, Cached())
+    assert enrich_track(t, AsIfStudio())
     assert t.mbid.startswith("954b2a1f") and t.mb_length == 261.4
 
 
 @pytest.mark.parametrize("seconds", [258.0, 266.0])
 def test_within_the_slack_it_passes(seconds):
     t = a_track(seconds)
-    enrich_track(t, Cached())
+    enrich_track(t, AsIfStudio())
     assert t.mbid.startswith("954b2a1f")
 
 
 def test_a_track_whose_audio_is_another_video_s_is_not_measured_by_this_one():
     t = a_track(218.0, override="2qhLxfZJlbs")
-    enrich_track(t, Cached())
+    enrich_track(t, AsIfStudio())
     assert t.mbid.startswith("954b2a1f")
 
 

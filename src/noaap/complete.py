@@ -14,7 +14,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .enrich import OTHER_VERSIONS, core, credit_phrase, near_enough, takes
+from .enrich import core, credit_phrase, near_enough, other_version, takes
 from .models import AlbumPlan
 from .text import key, title_key
 
@@ -115,9 +115,9 @@ def _cleaned(hit_title: str, artist: str, album: str) -> str:
 def score(slot: Slot, hit: dict[str, Any], album: str) -> float | None:
     """How well a hit answers for a slot, or None where it is not this recording at all."""
     title = hit.get("title") or ""
-    low, want = title.casefold(), slot.title.casefold()
-    if any(re.search(rf"\b{re.escape(w)}\b", low) and not re.search(rf"\b{re.escape(w)}\b", want)
-           for w in OTHER_VERSIONS):
+    # **another version either way** (§9, slice 209; q31, R-724): a marker the hit says and neither
+    # the slot nor the album does, or one they say and the hit does not
+    if other_version({"title": title}, slot.title, album):
         return None
     cleaned = _cleaned(title, slot.artist, album)
     if comparable(cleaned) == comparable(slot.title):
