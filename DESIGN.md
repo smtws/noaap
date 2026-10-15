@@ -5207,6 +5207,26 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `complete.score`, which ranks hits for `noaap complete` and `noaap recording`, asks the same
      symmetric rule: on `Wildlive (Live at Olympiahalle)` a hit that does not say live is refused
      too.
+210. ✅ **A wrong stored recording id is taken back and asked again by the file's length** (2026-10-15,
+   R-728, q33). Round I's second dry offered five `My Dark Lullabies` tracks the live take their
+   stored id names, `Sleeping Sun` from *End of an Era* and `Eos` from the Oslo opera among them.
+   The files are the studio recordings at full length (Oceanborn's 243 s, Shadows of the Sun's
+   305 s), so the id was wrong, not the audio. A curator's volume is a compilation, which slice 208
+   keeps out of the update's take-back.
+   - `noaap recording DIR [--only …] --reask [--apply]` (`Service.reask_recordings`). The chosen
+     tracks are `--only`, or else every done track whose recording is longer than its file by more
+     than `LENGTH_SLACK`.
+   - Each chosen track gets one search by artist and title, answered by `enrich.fitting_recording`.
+     This is slice 206's re-ask rule, now shared: a recording of known length within
+     `LENGTH_SLACK` of the file (`file_length`, else the video's), not another version (against
+     the track's title, plus the album's unless it is a compilation), and not refused (the stored
+     id included).
+   - The dry run is the default and writes nothing. It says per track `old id (title [disambiguation],
+     length, release) → new id (…)` or `→ — nothing fits`. A track whose stored recording already
+     fits its file says `… already fits the file (N s) — left`.
+   - The apply puts the stored id in `refused_recordings`, so the writer drops it from the file and
+     no merge attaches it again. It sets the new id and length, or neither, and retags through the
+     ordinary pass (`download=False`). Nothing is downloaded.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

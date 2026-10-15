@@ -51,7 +51,7 @@ from .download import (
     tracks_elsewhere,
     would_do,
 )
-from .enrich import carry_the_pin, core, enrich, pinned_release
+from .enrich import carry_the_pin, core, enrich, fitting_recording, pinned_release
 from .lyrics import (
     Lrclib,
     LyricsAPI,
@@ -82,6 +82,7 @@ from .plan import (
     build_plan,
     changes_from,
     drop_album_name,
+    fits,
     keep_the_release,
     longer_than_its_video,
     merge_plans,
@@ -2728,6 +2729,84 @@ class Service:
         outcome = self.execute(plan, album_dir)
         outcome.changes = lines
         return outcome
+
+    def reask_recordings(self, source_id: str, only: set[str] | None = None, dry_run: bool = True) -> Outcome:
+        """Take a stored recording id back and ask again by the file's length (§9, slice 210; q33, R-728).
+
+        Round I's second dry offered five `My Dark Lullabies` tracks the live take their stored id
+        names — `Sleeping Sun` from *End of an Era*, `Eos` from the Oslo opera — while the files are
+        the studio recordings at full length (Oceanborn's 243 s, Shadows of the Sun's 305 s). The id
+        was the error, not the audio, and a curator's volume is a compilation, which slice 208 keeps
+        out of the update's take-back. This is the explicit door: for each track chosen — `only`,
+        else every done track whose recording is longer than its file by more than `LENGTH_SLACK` —
+        the stored id is refused, and one search by artist and title answers with a recording of
+        known length within `LENGTH_SLACK` of the file, not another version, not refused (the rule
+        of slice 206's re-ask). Its id and length are set and the file retagged; where none fits,
+        the track keeps no id. A track whose stored recording already fits its file is left, and
+        says so. The dry run is the default and writes nothing.
+        """
+        found = self.find_album(source_id)
+        if not found:
+            return Outcome("failed", message=f"unknown album {source_id}")
+        album_dir, plan = found
+        named = {f"{t.disc}-{t.number:02d}": t for t in plan.tracks}
+        if only is not None and (unknown := sorted(only - set(named))):
+            return Outcome("failed", plan, album_dir, f"this album has no track {', '.join(unknown)} — nothing changed")
+        if not self.mb:
+            return Outcome("failed", plan, album_dir, "MusicBrainz is switched off here — nothing to ask")
+        album = plan.album if plan.kind != Kind.COMPILATION else ""   # a curator's volume names nothing
+
+        def wanted(t: PlanTrack) -> bool:
+            if t.state != "done" or not t.mbid:
+                return False
+            if only is not None:
+                return f"{t.disc}-{t.number:02d}" in only
+            return bool(t.mb_length and t.file_length) and t.mb_length > t.file_length + LENGTH_SLACK
+
+        def told(rec: dict[str, Any] | None, rid: str, length: float | None) -> str:
+            if rec is None:
+                return f"{rid[:8]} ({length or 0:.0f} s)"
+            releases = rec.get("releases") or []
+            on = next((r for r in releases if r.get("status") == "Official"
+                       and (r.get("release-group") or {}).get("primary-type") == "Album"), None)
+            on = (on or (releases[0] if releases else {})).get("title") or "no release"
+            what = rec.get("title") or "?"
+            if dis := rec.get("disambiguation"):
+                what += f" [{dis}]"
+            return f"{rid[:8]} ({what}, {(rec.get('length') or 0) / 1000:.0f} s, {on})"
+
+        lines, changed = [], []
+        for t in (t for t in plan.tracks if wanted(t)):
+            self.check()
+            seconds = t.file_length or t.duration
+            name = f"{t.disc}-{t.number:02d} {t.title}"
+            if fits(seconds, t.mb_length):
+                lines.append(f"{name}: {t.mbid[:8]} ({t.mb_length:.0f} s) already fits the file ({seconds:.0f} s) — left")
+                continue
+            try:
+                answers = self.mb.search_recordings(t.artist, core(t.title) or t.title)
+            except MusicBrainzError as e:
+                lines.append(f"{name}: not asked — {e}")
+                continue
+            old = next((r for r in answers if r.get("id") == t.mbid), None)
+            refused = {*t.refused_recordings, t.mbid}
+            new = fitting_recording(t, answers, seconds, album, refused)
+            lines.append(f"{name} (file {seconds:.0f} s): {told(old, t.mbid, t.mb_length)} → "
+                         + (told(new, new["id"], None) if new else "— nothing fits"))
+            changed.append((t, new))
+        for line in lines:
+            self.log(line)
+        if dry_run or not changed:
+            return Outcome("dry" if dry_run else "ok", plan, album_dir,
+                           "" if dry_run else "nothing to change", changes=lines)
+        for t, new in changed:
+            if t.mbid not in t.refused_recordings:
+                t.refused_recordings.append(t.mbid)
+            t.mbid, t.mb_length = (new["id"], round(new["length"] / 1000, 1)) if new else (None, None)
+        save_plan(plan, album_dir)
+        self.log(f"retagging {len(changed)} track(s) of {plan.albumartist} — {plan.album}")
+        self._run(plan, album_dir, download=False, say=self.log, lyrics=None)
+        return Outcome("ok", plan, album_dir, changes=lines)
 
     def _release_of_recording(self, t: PlanTrack) -> str | None:
         """The title of a release the track's recording is on, from the search that found it — one

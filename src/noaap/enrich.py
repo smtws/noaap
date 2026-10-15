@@ -16,7 +16,7 @@ import logging
 import math
 import re
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from typing import Any
 
 from .download import CAA, caa_release_front
@@ -250,14 +250,25 @@ def ask_again(t: PlanTrack, mb: MusicBrainzAPI, album: str = "") -> bool:
     """
     if not t.duration:
         return False
-    found = [r for r in mb.search_recordings(t.artist, core(t.title) or t.title)
-             if r.get("length") and fits(r["length"] / 1000, t.duration)
-             and not other_version(r, t.title, album)    # length alone took live bootlegs (q29d)
-             and r.get("id") not in getattr(t, "refused_ids", ())]   # nor one taken back (q29f)
-    if (rec := pick_recording(t.artist, t.title, found)) is None:
+    rec = fitting_recording(t, mb.search_recordings(t.artist, core(t.title) or t.title), t.duration,
+                            album, getattr(t, "refused_ids", ()))
+    if rec is None:
         return False
     t.mbid, t.mb_length = rec["id"], round(rec["length"] / 1000, 1)
     return True
+
+
+def fitting_recording(t: PlanTrack, answers: list[dict[str, Any]], seconds: float | None, album: str = "",
+                      refused: Collection[str] = ()) -> dict[str, Any] | None:
+    """The recording among `answers` that is this track's at `seconds`: of known length within
+    `LENGTH_SLACK` either way, not another version, not one refused (§9, slices 206, 210)."""
+    if not seconds:
+        return None
+    found = [r for r in answers
+             if r.get("length") and fits(r["length"] / 1000, seconds)
+             and not other_version(r, t.title, album)    # length alone took live bootlegs (q29d)
+             and r.get("id") not in refused]              # nor one taken back (q29f)
+    return pick_recording(t.artist, t.title, found)
 
 
 def enrich_track(t: PlanTrack, mb: MusicBrainzAPI, source: Any = None, album: str = "") -> bool:

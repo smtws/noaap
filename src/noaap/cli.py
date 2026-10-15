@@ -128,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     rc.add_argument("--only", metavar="TRACKS", help="only these, as the dry run names them: 1-04,1-12 "
                     "(default: every track whose recording is longer than its file)")
     rc.add_argument("--no-lyrics", action="store_true", help="do not look lyrics up at lrclib.net")
+    rc.add_argument("--reask", action="store_true", help="the stored recording id is wrong, not the audio: refuse it, "
+                    "ask MusicBrainz again by the file's length and retag; nothing is downloaded")
 
     u = sub.add_parser("update", help="re-check every album in the library against its source")
     u.add_argument("--library", type=Path)
@@ -1249,7 +1251,7 @@ def _complete(args: argparse.Namespace, cfg: config_mod.Config) -> int:
 
 
 def _recording(args: argparse.Namespace, cfg: config_mod.Config) -> int:
-    """`noaap recording DIR [--apply] [--only 1-04]` (§9, slice 207): the dry run is the default."""
+    """`noaap recording DIR [--apply] [--only 1-04] [--reask]` (§9, slices 207, 210): the dry run is the default."""
     from .complete import parse_only
     from .download import load_plan
 
@@ -1263,7 +1265,8 @@ def _recording(args: argparse.Namespace, cfg: config_mod.Config) -> int:
         print(f"no plan in {args.album_dir}", file=sys.stderr)
         return 2
     service = _service(cfg, args.album_dir.resolve().parents[1])
-    outcome = service.take_recordings(plan.source_id, only=only, dry_run=not args.apply)
+    ask = service.reask_recordings if args.reask else service.take_recordings
+    outcome = ask(plan.source_id, only=only, dry_run=not args.apply)
     if outcome.message:
         print(outcome.message, file=sys.stderr)
     if outcome.message.startswith("this album has no track"):
