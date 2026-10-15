@@ -753,6 +753,12 @@ def longer_than_its_video(t: PlanTrack, plan: AlbumPlan) -> bool:
     release id — and the audio is the playlist's own video (no `source_override`, which also leaves
     slice 202's pairs alone); a recording of no known length is not asked about.
     """
+    if plan.kind == Kind.COMPILATION:
+        # **not on a curator's compilation** (q29g, R-721): there the stored recording is the song
+        # the curator means and the video any cut of it — `My Dark Lullabies — Prinzessin` is a 210-s
+        # edit of a 301-s recording, and the user's word is to keep it; `noaap recording` (slice 207)
+        # is the way to align the audio
+        return False
     return (not plan.mbid and not t.source_override and bool(t.mbid and t.mb_length and t.duration)
             and t.mb_length > t.duration + LENGTH_SLACK)
 

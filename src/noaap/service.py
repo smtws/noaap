@@ -387,7 +387,7 @@ class Service:
             # back it sits in `refused_recordings`, and the plain lookup then took the first answer
             # not longer than the video — a shorter take, a live one, and its title with it
             again = {t.video_id for t in here[1].tracks if longer_than_its_video(t, here[1])
-                     or (t.refused_recordings and not t.mbid)}
+                     or (t.refused_recordings and not t.mbid and here[1].kind != Kind.COMPILATION)}
             refused = {t.video_id: list(t.refused_recordings) for t in here[1].tracks}
             ids = {t.video_id: t.mbid for t in here[1].tracks if t.mbid and t.video_id not in again}
             names = {t.video_id: t.title for t in here[1].tracks}
@@ -3229,6 +3229,9 @@ def switch_source(track: PlanTrack, video_id: str | None) -> bool:
         return False
     if video_id and video_id in track.refused_candidates:
         return False          # somebody already turned this one down for this track
+    # **the words beside it were timed for the audio it had** (§9, slice 208; q32, R-721): said once,
+    # for the first audio, however often the source is switched before a pass sets them aside
+    track.sidecar_timed_for = track.sidecar_timed_for or track.source_override or track.video_id
     track.source_override = video_id
     if video_id and not track.candidate(video_id):
         track.candidates.append(Candidate(

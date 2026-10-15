@@ -458,6 +458,37 @@ def read_sidecar(album_dir: Path, track: PlanTrack) -> str | None:
         return None
 
 
+def stale_sidecar(album_dir: Path, track: PlanTrack) -> str | None:
+    """The audio a sidecar beside this track was timed for, where that is not the audio it has now —
+    or None (§9, slice 208; q32, R-721).
+
+    `My Dark Lullabies — Ghost Tears` was switched from the curator's 243-s edit to the 254-s album
+    version (slice 207), and the check then offered to embed the edit's `.lrc`, its times now wrong.
+    `switch_source` says which audio the words were timed for; a track switched before it said so
+    (round I, 2026-10-15) is known by its reset status: a chosen other video, no lyrics status, and
+    a sidecar still there — timed for the playlist's own video.
+    """
+    if not sidecar_path(album_dir, track.filename).exists():
+        return None
+    now = track.source_override or track.video_id
+    was = track.sidecar_timed_for or (track.video_id if track.source_override and track.lyrics is None else None)
+    return was if was and was != now else None
+
+
+def set_aside(album_dir: Path, track: PlanTrack, was: str) -> Path:
+    """`<name>.lrc` → `<name>.lrc.<was>`: kept, never deleted, out of every player's way."""
+    side = sidecar_path(album_dir, track.filename)
+    target = side.with_name(f"{side.name}.{was}")
+    n = 1
+    while target.exists():
+        n += 1
+        target = side.with_name(f"{side.name}.{was}.{n}")
+    side.rename(target)
+    track.sidecar_timed_for = None
+    track.lyrics = None          # a later lyrics pass looks it up again, by the new length
+    return target
+
+
 def sidecar_sha(album_dir: Path, track: PlanTrack) -> str | None:
     """The fingerprint of the sidecar on disk, or None when there is none."""
     try:

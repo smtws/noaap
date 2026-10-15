@@ -319,6 +319,9 @@ class PlanTrack:
     # recording ids taken back from this track, never attached to it again, and dropped from its file
     # where the file still says one (§9, slice 206; q29, R-699)
     refused_recordings: list[str] = field(default_factory=list)
+    # the audio the sidecar beside this track was timed for, set when its source is switched; the
+    # next pass sets such a sidecar aside rather than embed it (§9, slice 208; q32, R-721)
+    sidecar_timed_for: str | None = None
     # the date a near-miss pass asked lrclib and was told there is nothing else for this title
     # (§9, slice 46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
     # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —

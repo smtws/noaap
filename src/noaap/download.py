@@ -28,6 +28,8 @@ from .lyrics import (
     read_sidecar,
     reconcile,
     rename_sidecar,
+    set_aside,
+    stale_sidecar,
     status_of,
     update_track,
     write_sidecar,
@@ -738,6 +740,8 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
                         f"{track.number:02d} starts at {before:.3f} s and cannot be cut again: "
                         "no untouched original is kept beside it")
         path = final if final.exists() else here
+        if was := stale_sidecar(album_dir, track):
+            said.append(f"{track.number:02d} lyrics set aside — timed for {was}")   # slice 208
         # **a file 1.31.2 wrote still has its ID3v1 tail** (R-434), and nothing else can see it: the
         # signature is of what the plan asked for, and that is exactly what the file holds. The
         # block goes wherever this program wrote the file's tags — `tagged` is set only then — so a
@@ -749,7 +753,7 @@ def would_do(plan: AlbumPlan, album_dir: Path, cover: bytes | None = None,
         wm = wm_frames_in(path) if drop_wm else 0
         if not retag and not tail:
             continue   # nothing is written into this file: adopted, and the library does not ask
-        text = read_sidecar(album_dir, track)
+        text = None if stale_sidecar(album_dir, track) else read_sidecar(album_dir, track)
         if want is not None and not want.lyrics_embedded:
             text = None   # the words stay beside the track, not in it
         if track.tagged == signature(plan, track, cover, text) and not tail and not comments \
@@ -1318,6 +1322,9 @@ def run(
             # whose words are beside this track, and does the plan still agree with the disk?
             # Asked before the lookup, so an edited sidecar is known to be the user's by the
             # time anything would overwrite it (a trim clears the status and asks again).
+            if was := stale_sidecar(album_dir, track):
+                moved = set_aside(album_dir, track, was)
+                say(f"{track.number:02d} lyrics set aside — timed for {was} ({moved.name})")
             text, reconciled = reconcile(album_dir, track, final)
             looked_up = lyrics is not None and track.lyrics is None
             if looked_up:
@@ -1441,6 +1448,9 @@ def run(
                                        "not overwritten; run `noaap repair`")
                 os.replace(tmp, final)
                 _put_away(album_dir, plan, track, final)
+                if was := stale_sidecar(album_dir, track):     # words timed for the old audio (slice 208)
+                    moved = set_aside(album_dir, track, was)
+                    say(f"{track.number:02d} lyrics set aside — timed for {was} ({moved.name})")
                 # a fresh download is by definition untouched, whatever the plan said before:
                 # the trim points stay and the next pass applies them to this file
                 track.state, track.error, track.error_kind, track.trimmed = "done", None, None, None

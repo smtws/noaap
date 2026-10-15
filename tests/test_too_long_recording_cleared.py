@@ -13,6 +13,7 @@ from test_incremental import FakeYouTube, opus_template, vol1
 from test_same_slot import album
 
 from noaap.download import load_plan, run, save_plan, would_do
+from noaap.models import Kind
 from noaap.plan import build_plan, changes_from, merge_plans
 from noaap.tag import tag_file, tags_in
 
@@ -22,11 +23,11 @@ def stored_and_fresh(fresh_mbid=None, fresh_len=None, stored_len=215.5, album_mb
     stored = build_plan(vol1())
     for t in stored.tracks:
         t.state = "done"
-    stored.mbid = album_mbid
+    stored.mbid, stored.kind = album_mbid, Kind.OFFICIAL_ALBUM   # vol1 is a compilation: slice 206 leaves those (q29g)
     one = stored.tracks[0]
     one.mbid, one.mb_length, one.duration, one.source_override = "e5332cbe", stored_len, 100.0, override
     fresh = build_plan(vol1())
-    fresh.mbid = album_mbid
+    fresh.mbid, fresh.kind = album_mbid, Kind.OFFICIAL_ALBUM
     f = next(t for t in fresh.tracks if t.video_id == one.video_id)
     f.mbid, f.mb_length, f.duration = fresh_mbid, fresh_len, 100.0
     if asked:
@@ -119,6 +120,7 @@ def test_a_refused_id_is_never_attached_again():
     t = track(merged, vid)
     assert (t.mbid, t.mb_length, t.refused_recordings) == (None, None, ["e5332cbe"])
     fresh_again = build_plan(vol1())
+    fresh_again.kind = Kind.OFFICIAL_ALBUM
     f = next(x for x in fresh_again.tracks if x.video_id == vid)
     f.mbid, f.duration = "e5332cbe", 100.0
     assert track(merge_plans(merged, fresh_again), vid).mbid is None
@@ -157,6 +159,7 @@ def test_a_taken_back_recording_is_asked_again_and_the_answer_attached(album, op
     one = plan.tracks[0]
     one.title, one.mbid, one.mb_length, one.duration = "Lullaby", "e5332cbe", 315.5, 270.0   # vol1's video
     one.provenance["title"] = Provenance.MB
+    plan.kind, plan.provenance["kind"] = Kind.OFFICIAL_ALBUM, Provenance.USER   # not a compilation (q29g)
     save_plan(plan, album_dir)
     mb = Answering()
     said: list[str] = []
@@ -290,6 +293,8 @@ def test_after_the_take_back_the_next_read_asks_the_strict_way(album, opus_templ
     plan = load_plan(album_dir)
     one = plan.tracks[0]
     one.title, one.mbid, one.mb_length, one.refused_recordings = "Lullaby", None, None, ["cc61384f"]
+    from noaap.models import Provenance
+    plan.kind, plan.provenance["kind"] = Kind.OFFICIAL_ALBUM, Provenance.USER   # not a compilation (q29g)
     save_plan(plan, album_dir)
     mb = AlternativeTake()
     said: list[str] = []
@@ -298,3 +303,19 @@ def test_after_the_take_back_the_next_read_asks_the_strict_way(album, opus_templ
     assert "Lullaby" in mb.asked, mb.asked                        # asked — the strict way
     mine = [s for s in said if s.startswith(f"  {one.number:02d} ")]   # vol1's 13 is a `Lullaby` too
     assert not [s for s in mine if "7e54b224" in s or "Alternative Version" in s or "recording id" in s], mine
+
+
+
+def test_a_compilation_keeps_its_stored_recording():
+    """q29g, R-721: `My Dark Lullabies — Prinzessin`, a 210-s video of the 301-s recording the
+    curator means. No line, the id stays."""
+    stored = build_plan(vol1())
+    assert stored.kind == Kind.COMPILATION
+    for t in stored.tracks:
+        t.state = "done"
+    four = next(t for t in stored.tracks if t.video_id == "Lkrs1eggmBg")
+    four.mbid, four.mb_length, four.duration = "prinzessin-301", 301.0, 210.0
+    merged = merge_plans(stored, build_plan(vol1()))
+    t = next(t for t in merged.tracks if t.video_id == "Lkrs1eggmBg")
+    assert (t.mbid, t.refused_recordings) == ("prinzessin-301", [])
+    assert not [s for s in changes_from(stored, merged) if "prinzessin-301" in s]

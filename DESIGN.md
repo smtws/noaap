@@ -5160,6 +5160,11 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      274-s `(Alternative Version)` and its title.
      - A stored track with `refused_recordings` and no `mbid` is marked `ask_again` on every read.
      - It is asked only the strict way, and never given a refused id (`refused_ids`).
+   - **Not on a compilation** (R-721, q29g). On a curator's album the stored recording is the song
+     the curator means, and the video is any cut of it: `My Dark Lullabies — Prinzessin` is a 210-s
+     edit of a 301-s recording, and the user's word (R-697) is to keep it. `longer_than_its_video`
+     and the re-ask after it do not apply where `kind` is `compilation`; `noaap recording`
+     (slice 207) aligns the audio instead.
 207. ✅ **A done track's audio from the video that is its recording** (2026-10-15, R-697/R-698/R-717,
    q30). `My Dark Lullabies` holds original recordings in the curator's shorter edits. The user's
    word: keep the ids and take the recording on record. `noaap recording DIR [--only 1-04]
@@ -5177,6 +5182,18 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      condeorlok1921, 212 s, +0.0 s — and N more`, or `nothing close enough was found`.
    - Apply: `switch_source` to the best hit (the playlist's video stays the identity, the id and
      the recording's length stay), the other hits as candidates, then the normal fetch.
+208. ✅ **Words timed for audio a track no longer has are set aside** (2026-10-15, R-721, q32). After
+   round I switched `My Dark Lullabies — Ghost Tears` from the curator's 243-s edit to the 254-s
+   album version, the next check offered to embed the edit's `.lrc`, with the edit's times.
+   - `switch_source` records `sidecar_timed_for`: the audio the words beside the track were timed
+     for, set once however often the source changes before a pass.
+   - A track switched before the field existed is known by its reset state: another video chosen,
+     no lyrics status, a sidecar still there.
+   - `stale_sidecar` answers which audio that was, where it is not the audio the track has now.
+   - The check says `NN lyrics set aside — timed for <id>` and never embeds those words. The apply,
+     after a download or on a done track, renames the sidecar to `<name>.lrc.<id>` (kept, never
+     deleted), clears the mark and resets the lyrics status, so a lyrics pass asks again by the new
+     length.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
