@@ -5287,6 +5287,14 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - `noaap recording` takes it as the track's recording: the dry run says `(recording 3:53, the
      seat's, withheld, file 284 s)`. A swap to a full-length video sets the id and length from it.
      `--reask` refuses it like a stored id.
+214. ✅ **A title track's uploads are found although the song's name is the album's** (2026-10-16,
+   R-759, q37; F17). `Limp Bizkit — Gold Cobra` 1-03 `Gold Cobra`: `noaap recording` found "nothing
+   close enough", though YouTube has the band's own 234-s upload. `complete.score` takes the
+   album's name out of a hit title before comparing it with the slot's (`_cleaned`, for titles like
+   `Letzte Instanz   Heilig   06   Fur Dich`). On a title track that left an empty title, or only
+   `[ 2011 HD-HQ]`, so every hit scored None, in `complete` and in `recording` alike.
+   - When the album's name is the slot's own title (`comparable`, i.e. core and title key), it is
+     not taken out. On every other track it still is.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

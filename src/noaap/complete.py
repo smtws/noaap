@@ -126,7 +126,9 @@ def score(slot: Slot, hit: dict[str, Any], album: str) -> float | None:
     # the slot nor the album does, or one they say and the hit does not
     if other_version({"title": title}, slot.title, album):
         return None
-    cleaned = _cleaned(title, slot.artist, album)
+    # **a title track's name is the album's too** (§9, slice 214; q37, R-759): stripping the album
+    # from `Limp Bizkit - Gold Cobra` left nothing, and every upload of `Gold Cobra` scored None
+    cleaned = _cleaned(title, slot.artist, "" if comparable(album) == comparable(slot.title) else album)
     if comparable(cleaned) == comparable(slot.title):
         points = 3.0
     elif same_song(cleaned, slot.title):
