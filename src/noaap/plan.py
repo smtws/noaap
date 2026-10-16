@@ -683,6 +683,12 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
                 t.mbid = f.mbid or t.mbid
             if not refused:
                 t.mb_length = f.mb_length or t.mb_length
+            # **a seat's recording withheld is never this track's id** (§9, slice 213; q36, R-755): the
+            # stored id goes where it is that recording, and one refused is not kept to offer either
+            seat = f.seat_recording
+            t.seat_recording = seat if seat and seat["id"] not in t.refused_recordings else None
+            if seat and t.mbid == seat["id"]:
+                t.mbid, t.mb_length = None, None
             if not t.source_override:
                 # both describe the *video*, and a track pointed at another one (§9, slice 34) is not
                 # taking its audio from the playlist's: its uploader decides which channel-wide
@@ -1113,6 +1119,7 @@ def track_filename(
 # all of them — LENGTH_SLACK exists only for that mirror. Change a number here and there.
 LENGTH_SLACK = 5.0  # below this nothing is said: masters, fades and count-ins differ
 LENGTH_BIG = 20.0  # a gap worth marking on the track
+FAR_LENGTH = 30.0  # beyond this a file is another recording than the one named, whatever it is called
 LENGTH_STUB = 0.6  # a file this much shorter than the song is not that recording at all
 ALBUM_SHARE = 0.5  # this many of an album's comparable tracks off the same way flags the album
 

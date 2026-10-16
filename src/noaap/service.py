@@ -2697,20 +2697,32 @@ class Service:
         if provider is None:
             return Outcome("failed", plan, album_dir, "no provider here can look for single recordings")
 
+        def recording_of(t: PlanTrack) -> tuple[str | None, float | None]:
+            # **or the seat's, withheld** (§9, slice 213; q36, R-755): `Gold Cobra`'s 03 has no id
+            # because its file is a video edit, and this is the door to the full-length recording
+            if t.mbid:
+                return t.mbid, t.mb_length
+            seat = t.seat_recording or {}
+            return seat.get("id"), seat.get("length")
+
         def wanted(t: PlanTrack) -> bool:
-            if t.state != "done" or not t.mbid or not t.mb_length:
+            rid, length = recording_of(t)
+            if t.state != "done" or not rid or not length:
                 return False
             if only is not None:
                 return f"{t.disc}-{t.number:02d}" in only
-            return not t.source_override and bool(t.file_length) and t.mb_length > t.file_length + LENGTH_SLACK
+            if not t.mbid:
+                return not t.source_override      # a withheld seat's recording is never the file's length
+            return not t.source_override and bool(t.file_length) and length > t.file_length + LENGTH_SLACK
 
         lines, chosen = [], []
         for t in (t for t in plan.tracks if wanted(t)):
             self.check()
+            rid, length = recording_of(t)
             slot = Slot(disc=t.disc, number=t.number, title=t.title, artist=t.artist,
-                        recording=t.mbid, length=t.mb_length)
+                        recording=rid, length=length)
             # the recording's release names it; a curator's volume (a compilation) names nothing
-            on = self._release_of_recording(t) or (plan.album if plan.kind != Kind.COMPILATION else "")
+            on = self._release_of_recording(t, rid) or (plan.album if plan.kind != Kind.COMPILATION else "")
             hits: dict[str, dict] = {}
             for q in queries(slot, on)[:2 if on else 1]:
                 for hit in provider.find_tracks(q):
@@ -2720,10 +2732,11 @@ class Service:
                             key=lambda h: (h["off"] is None or h["off"] > LENGTH_SLACK, -h["score"],
                                            h["off"] if h["off"] is not None else 999))
             best = ranked[0] if ranked else None
-            took = f"{int(t.mb_length) // 60}:{int(t.mb_length) % 60:02d}"
-            lines.append(f"{slot.name} {t.title} (recording {took}, file {t.file_length or 0:.0f} s): " + (
+            took = f"{int(length) // 60}:{int(length) % 60:02d}"
+            withheld = "" if t.mbid else ", the seat's, withheld"
+            lines.append(f"{slot.name} {t.title} (recording {took}{withheld}, file {t.file_length or 0:.0f} s): " + (
                 f"“{best['title']}” by {best.get('channel') or '?'}, "
-                + (f"{best['length']:.0f} s, {best['length'] - t.mb_length:+.1f} s"
+                + (f"{best['length']:.0f} s, {best['length'] - length:+.1f} s"
                    if best.get("length") else "of no known length")
                 + (f" — and {len(ranked) - 1} more" if len(ranked) > 1 else "")
                 if best else "nothing close enough was found"))
@@ -2735,6 +2748,9 @@ class Service:
             return Outcome("dry" if dry_run else "ok", plan, album_dir,
                            "" if dry_run else "nothing to fetch", changes=lines)
         for t, best, ranked in chosen:
+            if not t.mbid and (seat := t.seat_recording):
+                # the audio is now the seat's recording, so its id is the track's
+                t.mbid, t.mb_length, t.seat_recording = seat["id"], seat.get("length"), None
             switch_source(t, best["ref"])
             for h in ranked[1:]:
                 if not t.candidate(h["ref"]):
@@ -2773,12 +2789,20 @@ class Service:
             return Outcome("failed", plan, album_dir, "MusicBrainz is switched off here — nothing to ask")
         album = plan.album if plan.kind != Kind.COMPILATION else ""   # a curator's volume names nothing
 
+        def stored(t: PlanTrack) -> tuple[str | None, float | None]:
+            # a seat's recording, withheld (§9, slice 213), is refused here like a stored id
+            if t.mbid:
+                return t.mbid, t.mb_length
+            seat = t.seat_recording or {}
+            return seat.get("id"), seat.get("length")
+
         def wanted(t: PlanTrack) -> bool:
-            if t.state != "done" or not t.mbid:
+            rid, length = stored(t)
+            if t.state != "done" or not rid:
                 return False
             if only is not None:
                 return f"{t.disc}-{t.number:02d}" in only
-            return bool(t.mb_length and t.file_length) and t.mb_length > t.file_length + LENGTH_SLACK
+            return bool(length and t.file_length) and length > t.file_length + LENGTH_SLACK
 
         def told(rec: dict[str, Any] | None, rid: str, length: float | None) -> str:
             if rec is None:
@@ -2797,18 +2821,19 @@ class Service:
             self.check()
             seconds = t.file_length or t.duration
             name = f"{t.disc}-{t.number:02d} {t.title}"
-            if fits(seconds, t.mb_length):
-                lines.append(f"{name}: {t.mbid[:8]} ({t.mb_length:.0f} s) already fits the file ({seconds:.0f} s) — left")
+            rid, length = stored(t)
+            if fits(seconds, length):
+                lines.append(f"{name}: {rid[:8]} ({length:.0f} s) already fits the file ({seconds:.0f} s) — left")
                 continue
             try:
                 answers = self.mb.search_recordings(t.artist, core(t.title) or t.title)
             except MusicBrainzError as e:
                 lines.append(f"{name}: not asked — {e}")
                 continue
-            old = next((r for r in answers if r.get("id") == t.mbid), None)
-            refused = {*t.refused_recordings, t.mbid}
+            old = next((r for r in answers if r.get("id") == rid), None)
+            refused = {*t.refused_recordings, rid}
             new = fitting_recording(t, answers, seconds, album, refused)
-            lines.append(f"{name} (file {seconds:.0f} s): {told(old, t.mbid, t.mb_length)} → "
+            lines.append(f"{name} (file {seconds:.0f} s): {told(old, rid, length)} → "
                          + (told(new, new["id"], None) if new else "— nothing fits"))
             changed.append((t, new))
         for line in lines:
@@ -2817,15 +2842,17 @@ class Service:
             return Outcome("dry" if dry_run else "ok", plan, album_dir,
                            "" if dry_run else "nothing to change", changes=lines)
         for t, new in changed:
-            if t.mbid not in t.refused_recordings:
-                t.refused_recordings.append(t.mbid)
+            rid, _ = stored(t)
+            if rid not in t.refused_recordings:
+                t.refused_recordings.append(rid)
+            t.seat_recording = None
             t.mbid, t.mb_length = (new["id"], round(new["length"] / 1000, 1)) if new else (None, None)
         save_plan(plan, album_dir)
         self.log(f"retagging {len(changed)} track(s) of {plan.albumartist} — {plan.album}")
         self._run(plan, album_dir, download=False, say=self.log, lyrics=None)
         return Outcome("ok", plan, album_dir, changes=lines)
 
-    def _release_of_recording(self, t: PlanTrack) -> str | None:
+    def _release_of_recording(self, t: PlanTrack, rid: str | None = None) -> str | None:
         """The title of a release the track's recording is on, from the search that found it — one
         MusicBrainz request, usually cached (§9, slice 207)."""
         if not self.mb:
@@ -2834,7 +2861,7 @@ class Service:
             answers = self.mb.search_recordings(t.artist, core(t.title) or t.title)
         except MusicBrainzError:
             return None
-        rec = next((r for r in answers if r.get("id") == t.mbid), None)
+        rec = next((r for r in answers if r.get("id") == (rid or t.mbid)), None)
         releases = (rec or {}).get("releases") or []
         best = next((r for r in releases if r.get("status") == "Official"
                      and (r.get("release-group") or {}).get("primary-type") == "Album"), None)

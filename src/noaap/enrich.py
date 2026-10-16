@@ -22,7 +22,7 @@ from typing import Any
 from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import FOLDER, LENGTH_SLACK, fits, owner_artist_of, pinned_release, refresh_derived, without_album_name
+from .plan import FAR_LENGTH, FOLDER, LENGTH_SLACK, fits, owner_artist_of, pinned_release, refresh_derived, without_album_name
 from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
@@ -779,6 +779,13 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         next_number = max((int(m["position"]) for m in matches.values()), default=0) + 1
         places, plan.seat_notes, refused = _places(plan, release, matches)
         fitting, known = lengths_fitting(plan, matches)
+        # **an outlier in a release that otherwise fits keeps the seat and not the id** (§9, slice
+        # 213; q36, R-755/R-756): `Gold Cobra`'s 03 is a 284-s video on the seat of a 233-s recording,
+        # and it took that recording's id with the seat. Only beyond `FAR_LENGTH`, the bound
+        # `complete` calls another recording: a live album's drift (`Depeche Mode — 101`, 9-12 s,
+        # slice 192) keeps its ids. Where under half the lengths fit, the album is cut elsewhere as a
+        # whole (`Mono Inc. — Symphonic Live`, slice 198) and keeps its ids.
+        gate = bool(known) and fitting * 2 >= known
         if known and fitting * 2 < known:
             # a fact, not a refusal (R-746): the release may still be the right one, cut elsewhere
             plan.seat_notes = [*plan.seat_notes, f"MusicBrainz: release {release['id']} — {fitting} of "
@@ -790,9 +797,18 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
                 artist, title = move_feat(credit_phrase(m.get("artist-credit") or release["artist-credit"]), m["title"])
                 _set(t, "title", title, matched=True)
                 _set(t, "artist", artist, matched=True)
-                t.mbid = m["recording"]["id"]
-                if length := m.get("length") or m["recording"].get("length"):
-                    t.mb_length = round(int(length) / 1000, 1)
+                mine, theirs = file_seconds(t), mb_seconds(m)
+                if gate and mine and theirs and abs(theirs - mine) > FAR_LENGTH:
+                    t.mbid, t.mb_length = None, None
+                    t.seat_recording = {"id": m["recording"]["id"], "length": round(theirs, 1)}
+                    plan.seat_notes = [*plan.seat_notes, f"{m['disc']}-{int(m['position']):02d} {t.title}: keeps "
+                                       f"the release's seat — its recording is {theirs:.0f} s, the file "
+                                       f"{mine:.0f} s; no id"]
+                else:
+                    t.seat_recording = None
+                    t.mbid = m["recording"]["id"]
+                    if length := m.get("length") or m["recording"].get("length"):
+                        t.mb_length = round(int(length) / 1000, 1)
             if i in places:
                 t.disc, t.number = places[i]
             else:
@@ -996,7 +1012,7 @@ def enrich(plan: AlbumPlan, mb: MusicBrainzAPI, progress: Callable[[str], None] 
         # recording the search put first — 35084d78 on 2026-10-10, a031426b since. The release
         # lookup above still seats it against a release; this search has no better answer.
         todo = [t for t in plan.tracks if not t.mbid and not getattr(t, "known_recording", None)
-                and _worth_looking_up(plan, t)]
+                and not t.seat_recording and _worth_looking_up(plan, t)]
         for i, t in enumerate(todo, 1):
             progress(f"MusicBrainz: track {i}/{len(todo)} {t.artist} - {t.title}")
             stats["looked_up"] += 1

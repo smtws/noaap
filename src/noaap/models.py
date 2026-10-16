@@ -326,6 +326,10 @@ class PlanTrack:
     # q34, R-745): its identity is a hit the playlist never lists, and while the album is still pinned
     # to that release the update counts it as present and leaves it on the release's seat
     completed_from: str | None = None
+    # the release seat's recording, withheld because the file is another length (§9, slice 213; q36,
+    # R-755): {"id", "length"}. Never written as the track's id and never promoted to `mbid` by a
+    # merge; `noaap recording` looks for a full-length video of it, and `--reask` refuses it
+    seat_recording: dict[str, Any] | None = None
     # the date a near-miss pass asked lrclib and was told there is nothing else for this title
     # (§9, slice 46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
     # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —

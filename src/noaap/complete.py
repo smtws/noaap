@@ -16,12 +16,12 @@ from typing import Any
 
 from .enrich import core, credit_phrase, near_enough, other_version, takes
 from .models import AlbumPlan, PlanTrack
+from .plan import FAR_LENGTH
 from .text import key, title_key
 
 # a medium that holds pictures, not sound: its tracks are reported, never searched (R-562, 2)
 VIDEO_FORMATS = ("dvd", "blu-ray", "vhs", "video", "vcd", "umd")
 CLOSE_LENGTH = 10.0     # seconds: as close as two masterings of one recording are
-FAR_LENGTH = 30.0       # beyond this a hit is another recording, whatever it is called
 
 
 @dataclass

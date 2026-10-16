@@ -5266,6 +5266,27 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      Within one year a full date goes before a bare year.
    - The pick says it when fewer than half of the lengths fit: `MusicBrainz: release X — N of M
      lengths fit the files`. This is a fact, not a refusal.
+213. ✅ **An outlier in a release that otherwise fits keeps the seat and not the id** (2026-10-16,
+   R-755, q36; F16). `Limp Bizkit — Gold Cobra`, pinned to `dd3e8e1d`: track 03 is the 284-s
+   music video on the seat of a 233-s recording. Slice 198 seats a track by title and recording,
+   deliberately not by length, and `enrich_release` then wrote the seat's recording id with no
+   length test. `Chocolate Starfish`'s 05, 06 and 12 got their ids the same way before the cleanup.
+   The per-track path has had its gate since slice 204; the release path had none.
+   - Where the release fits the album (`lengths_fitting`: fitting·2 ≥ known), a matched track
+     more than `FAR_LENGTH` (30 s) off its seat's recording either way keeps its seat and its title
+     but gets no id. 30 s is the bound `complete` already calls another recording (R-756). With
+     `LENGTH_SLACK` as the bound, slice 192's live album (`Depeche Mode — 101`, 9-12 s of drift)
+     lost its ids; within 30 s the seat's id stays. The line: `1-03 Gold Cobra: keeps the release's seat — its recording is
+     233 s, the file 284 s; no id`.
+   - Where under half of the lengths fit, the album is cut elsewhere as a whole (`Mono Inc. —
+     Symphonic Live`, slice 198). There the ids stay, with slice 212's fact line.
+   - The recording is kept as `PlanTrack.seat_recording` ({id, length}). It is never written as
+     the track's id, so the writer drops `musicbrainz_trackid`. The per-track lookup skips the
+     track. `merge_plans` never promotes it: a stored id that is the withheld one goes, and a
+     refused one is not kept.
+   - `noaap recording` takes it as the track's recording: the dry run says `(recording 3:53, the
+     seat's, withheld, file 284 s)`. A swap to a full-length video sets the id and length from it.
+     `--reask` refuses it like a stored id.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 
