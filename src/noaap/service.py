@@ -87,6 +87,7 @@ from .plan import (
     longer_than_its_video,
     merge_plans,
     refresh_derived,
+    seat_the_completed,
     set_single_album_name,
     states_numbers,
     wanted_filename,
@@ -2559,7 +2560,7 @@ class Service:
         until `repair` has done them. Videos on the release and files the release does not list
         (another edition's) are reported and left alone.
         """
-        from .complete import UNKNOWN_SLOT, gaps, queries, rank, slots_of
+        from .complete import UNKNOWN_SLOT, Slot, gaps_and_extras, queries, rank, slots_of
 
         found = self.find_album(source_id)
         if not found:
@@ -2577,7 +2578,8 @@ class Service:
         if only is not None and (unknown := sorted(only - {s.name for s in slots_of(release, plan.albumartist)})):
             # **a slot the release does not have is a typo, not a choice** (R-564): nothing is fetched
             return Outcome("failed", plan, album_dir, f"{UNKNOWN_SLOT} {', '.join(unknown)} — nothing fetched")
-        missing, extras = gaps(plan, release)
+        missing, extra_tracks = gaps_and_extras(plan, release)
+        extras = [t.title for t in extra_tracks]
         audio = [s for s in missing if not s.video and (only is None or s.name in only)]
         lines = [f"release “{release.get('title')}” ({release_id[:8]}), "
                  f"{sum(len(m.get('tracks') or []) for m in release.get('media') or [])} tracks; "
@@ -2609,46 +2611,57 @@ class Service:
         for slot in missing:
             if slot.video:
                 lines.append(f"{slot.name} {slot.title}: a video on the release — not completed")
-        for title in extras:
-            lines.append(f"extra: “{title}” is not on this release (another edition?) — left as it is")
         if any(s.hits for s in audio):
             lines.append(f"fetched as {getattr(provider, 'delivers', None) or 'the provider sends it'}, "
                          f"beside the album's {'/'.join(theirs) or 'nothing'}"
                          + ("; the album's files are retagged only where its track total changes" if plan.tracks else ""))
         offered = [s.to_dict() for s in missing]
+
+        def completed(slot: Slot) -> PlanTrack:
+            best = slot.hits[0]
+            prov = {k: Provenance.MB for k in ("title", "artist", "number", "disc")}
+            return PlanTrack(video_id=best["ref"], number=slot.number, disc=slot.disc, artist=slot.artist,
+                             title=slot.title, filename="", provenance=prov,
+                             auto={"artist": slot.artist, "title": slot.title},
+                             mbid=slot.recording, mb_length=slot.length, duration=best.get("length"),
+                             channel=best.get("channel"), completed_from=release_id,
+                             candidates=[Candidate(ref=h["ref"], provider=provider.name, length=h.get("length"),
+                                                   added_by="pass", why=f"found by completing the album: “{h['title']}”")
+                                         for h in slot.hits])
+
+        # **an extra on a release track's seat goes behind the release's tracks** (§9, slice 211; F14,
+        # R-745): `Results May Vary`'s 18 was the playlist's `Sam Rivers Forever` when `Drown` came
+        # for it, and two files numbered 18 is what completing used to leave
+        trial = deepcopy(plan)
+        trial.seat_notes = []
+        seat_the_completed(trial, [completed(s) for s in audio if s.hits],
+                           movable=[t for t in trial.tracks if any(t.video_id == x.video_id for x in extra_tracks)])
+        for title in extras:
+            if not any(f" {title}: the release's seat of " in n for n in trial.seat_notes):
+                lines.append(f"extra: “{title}” is not on this release (another edition?) — left as it is")
+        lines.extend(f"extra: {n}" for n in trial.seat_notes)
         if dry_run or pending:
             for line in lines:
                 self.log(line)
             return Outcome("dry" if dry_run else "held", plan, album_dir,
                            "" if dry_run else "renames pending — nothing fetched", changes=lines, offered=offered)
         before = {t.video_id: t.filename for t in plan.tracks}
-        added = 0
-        for slot in audio:
-            if not slot.hits:
-                continue
-            best = slot.hits[0]
-            prov = {k: Provenance.MB for k in ("title", "artist", "number", "disc")}
-            track = PlanTrack(video_id=best["ref"], number=slot.number, disc=slot.disc, artist=slot.artist,
-                              title=slot.title, filename="", provenance=prov,
-                              auto={"artist": slot.artist, "title": slot.title},
-                              mbid=slot.recording, mb_length=slot.length, duration=best.get("length"),
-                              channel=best.get("channel"),
-                              candidates=[Candidate(ref=h["ref"], provider=provider.name, length=h.get("length"),
-                                                    added_by="pass", why=f"found by completing the album: “{h['title']}”")
-                                          for h in slot.hits])
-            track.filename = wanted_filename(plan, track)
-            plan.tracks.append(track)
-            added += 1
+        fetched = [completed(slot) for slot in audio if slot.hits]
+        added = len(fetched)
         if not added:
             for line in lines:
                 self.log(line)
             return Outcome("ok", plan, album_dir, "nothing to fetch", changes=lines, offered=offered)
-        plan.tracks.sort(key=lambda t: (t.disc, t.number))
+        plan.seat_notes = []
+        seat_the_completed(plan, fetched, movable=extra_tracks)
+        moving = {t.video_id for t in extra_tracks if t.filename != wanted_filename(plan, t)}
+        for track in fetched:
+            track.filename = wanted_filename(plan, track)
         save_plan(plan, album_dir)
         self.log(f"completing {plan.albumartist} — {plan.album}: {added} track(s) to fetch")
         outcome = self.execute(plan, album_dir)
-        moved = [f for vid, f in before.items()
-                 if (t := next((x for x in plan.tracks if x.video_id == vid), None)) is None or t.filename != f]
+        moved = [f for vid, f in before.items() if vid not in moving
+                 and ((t := next((x for x in plan.tracks if x.video_id == vid), None)) is None or t.filename != f)]
         if moved:   # the promise above, checked rather than assumed
             log.warning("completing %s changed existing file(s): %s", plan.album, moved)
         outcome.changes = lines

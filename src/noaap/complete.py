@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .enrich import core, credit_phrase, near_enough, other_version, takes
-from .models import AlbumPlan
+from .models import AlbumPlan, PlanTrack
 from .text import key, title_key
 
 # a medium that holds pictures, not sound: its tracks are reported, never searched (R-562, 2)
@@ -87,6 +87,13 @@ def gaps(plan: AlbumPlan, release: dict[str, Any]) -> tuple[list[Slot], list[str
 
     A file answers for a slot by its recording id first, then by its title; each file answers once.
     """
+    missing, extras = gaps_and_extras(plan, release)
+    return missing, [t.title for t in extras]
+
+
+def gaps_and_extras(plan: AlbumPlan, release: dict[str, Any]) -> tuple[list[Slot], list[PlanTrack]]:
+    """`gaps`, with the extras as the album's own tracks — the ones a completed track may seat
+    behind it (§9, slice 211; F14)."""
     slots = slots_of(release, plan.albumartist)
     free = list(range(len(plan.tracks)))
     missing = []
@@ -98,7 +105,7 @@ def gaps(plan: AlbumPlan, release: dict[str, Any]) -> tuple[list[Slot], list[str
             missing.append(slot)
         else:
             free.remove(found)
-    return missing, [plan.tracks[i].title for i in free]
+    return missing, [plan.tracks[i] for i in free]
 
 
 def _cleaned(hit_title: str, artist: str, album: str) -> str:

@@ -322,6 +322,10 @@ class PlanTrack:
     # the audio the sidecar beside this track was timed for, set when its source is switched; the
     # next pass sets such a sidecar aside rather than embed it (§9, slice 208; q32, R-721)
     sidecar_timed_for: str | None = None
+    # the pinned release this track was fetched to complete, not a video of the source (§9, slice 211;
+    # q34, R-745): its identity is a hit the playlist never lists, and while the album is still pinned
+    # to that release the update counts it as present and leaves it on the release's seat
+    completed_from: str | None = None
     # the date a near-miss pass asked lrclib and was told there is nothing else for this title
     # (§9, slice 46). Deliberately NOT a `lyrics_fit` verdict: there is no entry, so there is nothing for a
     # person to decide and the panel says nothing. It exists so a later pass can skip the lookup —

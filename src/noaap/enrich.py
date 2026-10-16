@@ -22,7 +22,7 @@ from typing import Any
 from .download import CAA, caa_release_front
 from .mb import MusicBrainzAPI, MusicBrainzError
 from .models import AlbumPlan, Kind, PlanTrack, Provenance
-from .plan import FOLDER, LENGTH_SLACK, fits, owner_artist_of, refresh_derived, without_album_name
+from .plan import FOLDER, LENGTH_SLACK, fits, owner_artist_of, pinned_release, refresh_derived, without_album_name
 from .text import key, move_feat, title_key
 
 log = logging.getLogger(__name__)
@@ -560,18 +560,6 @@ def _seat(plan: AlbumPlan, mb_tracks: list[dict[str, Any]],
     theirs = len(matches) >= math.ceil(MIN_TRACK_MATCH * len(mb_tracks))
     enough = mine if pinned else (mine and theirs)
     return matches if mb_tracks and enough else None
-
-
-def pinned_release(plan: AlbumPlan) -> str | None:
-    """The release a person said this album is, or None (§9, slice 137; R-489).
-
-    `mbid` was the one album field no edit could hold: `merge_plans` took the fresh value
-    unconditionally and nothing ever wrote a provenance for it, so a hand-set release was gone at the
-    next update. The user's own `Night is Calling` is the case — a rip of **disc 1 of a 2-CD
-    release**, which the search can only ever answer with the 13-track single-disc edition, because
-    a half-present release is exactly what a search is built to reject.
-    """
-    return plan.mbid if plan.provenance.get("mbid") == Provenance.USER and plan.mbid else None
 
 
 def carry_the_pin(existing: AlbumPlan, fresh: AlbumPlan) -> str | None:

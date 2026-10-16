@@ -5233,6 +5233,24 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      gate refuses only a recording that is too long. Now a done track with `refused_recordings` and
      no id goes to `ask_again` (two-sided fit, not another version, not refused) on every kind of
      album. Slice 208 keeps a compilation out of the take-back only.
+211. ✅ **A completed track stays the album's while its release is pinned** (2026-10-16, R-745, q34;
+   F15, F14). `noaap complete` fetched `Drown` for `Limp Bizkit — Results May Vary` (pinned to
+   `bc4de5d9`) from a hit the playlist never lists. The proof update then called it "no longer in
+   the source" and moved it from 18 to 20, behind the playlist's `Sam Rivers Forever`, and `prune`
+   would have offered it. Before the apply, `complete` had also put it on 18, where that extra
+   already sat, so two files were numbered 18.
+   - `PlanTrack.completed_from` is the release id. `complete`'s apply sets it.
+   - `merge_plans` (`completed_and_held`): a track whose `completed_from` is the plan's pinned
+     release, and whose video the fresh read does not list, counts as present. It keeps
+     `in_source`, gets no "no longer in the source" line, `prune` leaves it, and it keeps its own
+     seat instead of joining the tracks that go last. If the pin is changed or dropped, the old rule
+     (slice 3) applies again.
+   - **An extra on a release track's seat goes behind the release's tracks** (`seat_the_completed`,
+     on both paths). The extra moves to the end of its disc with the line `1-18 Sam Rivers Forever:
+     the release's seat of Drown — goes behind its tracks, to 1-19`. `complete`'s dry run says it
+     too, and its apply moves only files the release does not list. On an update an extra that ends
+     where it already was gets no line.
+   - `pinned_release` moved from `enrich` to `plan`, which needs it and which `enrich` imports.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

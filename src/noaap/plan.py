@@ -662,11 +662,13 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
     fresh_by_id = {t.video_id: t for t in fresh.tracks}  # a repeated video is one entry
     listed = set(fresh_by_id) | {s["video_id"] for s in fresh.skipped}  # skipped videos are still in the source
     _same_slot_new_video(merged, fresh, listed)
+    held = completed_and_held(merged, fresh_by_id)
+    seated = {id(t): (t.disc, t.number) for t in merged.tracks}     # before the numbering below
     known = set()
     for t in merged.tracks:
         known.add(t.video_id)
         f = fresh_by_id.get(t.video_id)
-        t.in_source = t.video_id in listed
+        t.in_source = t.video_id in listed or any(t is h for h in held)
         if f and t.source_override and _stem_pair(t, f):
             pass    # the file stays, and so do its title and recording: it is not this video's audio
         elif f:
@@ -699,14 +701,15 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         if f.video_id not in placed:
             placed.add(f.video_id)
             ordered.append(by_id[f.video_id])
-    rest = sorted((t for t in merged.tracks if t.video_id not in fresh_by_id), key=lambda t: (t.disc, t.number))
+    rest = sorted((t for t in merged.tracks if t.video_id not in fresh_by_id and not any(t is h for h in held)),
+                  key=lambda t: (t.disc, t.number))
     # **where the source states its numbers, they are kept and nothing is counted off** (R-375).
     # An update of a folder album read every number out of the files again; position-counting them
     # here would renumber a gapped disc one update after adoption stopped doing it.
     if states_numbers(fresh):
         merged.tracks = ordered + rest
         keep_stated_numbers(merged, fresh_by_id)
-        return refresh_derived(merged)
+        return refresh_derived(seat_the_completed(merged, held, was=seated))
     # The order is the user's when they said so: a YouTube playlist's sequence is often just
     # the order things were added in, while the album may follow a release or another shop.
     if merged.provenance.get("order") == Provenance.USER:
@@ -716,7 +719,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
                 last += 1
                 t.number = last
         merged.tracks = sorted(ordered + rest, key=lambda t: (t.disc, t.number))
-        return refresh_derived(merged)
+        return refresh_derived(seat_the_completed(merged, held, was=seated))
 
     # A flat source says nothing about a disc split this album already has - YouTube playlists
     # have no media - so a split (by hand, or from a release MusicBrainz matched earlier)
@@ -730,7 +733,7 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
                 next_number += 1
                 t.disc, t.number = last_disc, next_number
         merged.tracks = sorted(ordered + rest, key=lambda t: (t.disc, t.number))
-        return refresh_derived(merged)
+        return refresh_derived(seat_the_completed(merged, held, was=seated))
 
     was = {id(t): (t.disc, t.number) for t in merged.tracks if t.video_id in known}
     for number, t in enumerate(ordered, 1):
@@ -741,7 +744,68 @@ def merge_plans(existing: AlbumPlan, fresh: AlbumPlan) -> AlbumPlan:
         t.number, t.disc = last + i, max((f.disc for f in fresh.tracks), default=1)
     merged.seat_notes = keep_the_seats(rest, ordered, was)
     merged.tracks = ordered + rest
-    return refresh_derived(merged)
+    return refresh_derived(seat_the_completed(merged, held, was=seated))
+
+
+def completed_and_held(plan: AlbumPlan, fresh_by_id: dict[str, PlanTrack]) -> list[PlanTrack]:
+    """The tracks `complete` fetched from the release this album is still pinned to (§9, slice 211;
+    q34, R-745).
+
+    Their identity is a hit the playlist never lists, so the merge read them as gone: `Limp Bizkit —
+    Results May Vary`'s 18 `Drown`, completed from `bc4de5d9`, would have gone to 20 behind the
+    playlist's extra and been offered to `prune`. While the pin stands they are present and keep the
+    release's seat; a pin changed or dropped puts them back under the old rule (slice 3).
+    """
+    pin = pinned_release(plan)
+    if not pin:
+        return []
+    return [t for t in plan.tracks if t.completed_from == pin and t.video_id not in fresh_by_id]
+
+
+def seat_the_completed(plan: AlbumPlan, held: list[PlanTrack], movable: list[PlanTrack] | None = None,
+                       was: dict[int, tuple[int, int]] | None = None) -> AlbumPlan:
+    """Put the held tracks among the others on their own seats; **an extra on a release track's
+    number goes behind the release's tracks** (§9, slice 211; F14, R-745).
+
+    `Sam Rivers Forever` is on the playlist and not on the release; `complete` gave `Drown` the
+    release's 18, which the playlist's order gave the extra. The release's track keeps the number the
+    release gives it, and the extra moves to the end of its disc, with a line saying so. `movable`
+    narrows who may move (`complete` moves only the files its release does not list). With `was`, the
+    seats before an update, an extra that ends where it already was is no change and gets no line.
+    """
+    if not held:
+        return plan
+    tracks = [t for t in plan.tracks if not any(t is h for h in held)]
+    seats = {(h.disc, h.number) for h in held}
+    moving = [t for t in tracks if (t.disc, t.number) in seats
+              and (movable is None or any(t is m for m in movable))]
+    notes = list(getattr(plan, "seat_notes", None) or [])
+    for t in moving:
+        stays = [x for x in [*tracks, *held] if x.disc == t.disc and not any(x is m for m in moving)]
+        seat = (t.disc, t.number)
+        t.number = max((x.number for x in stays), default=0) + 1
+        moving = [m for m in moving if m is not t]
+        tracks = [x for x in tracks if x is not t] + [t]
+        owner = next(h for h in held if (h.disc, h.number) == seat)
+        if was is not None and was.get(id(t)) == (t.disc, t.number):
+            continue
+        notes.append(f"{seat[0]}-{seat[1]:02d} {t.title}: the release's seat of {owner.title} — goes behind "
+                     f"its tracks, to {t.disc}-{t.number:02d}")
+    plan.tracks = sorted([*tracks, *held], key=lambda t: (t.disc, t.number))
+    plan.seat_notes = notes
+    return plan
+
+
+def pinned_release(plan: AlbumPlan) -> str | None:
+    """The release a person said this album is, or None (§9, slice 137; R-489).
+
+    `mbid` was the one album field no edit could hold: `merge_plans` took the fresh value
+    unconditionally and nothing ever wrote a provenance for it, so a hand-set release was gone at the
+    next update. The user's own `Night is Calling` is the case — a rip of **disc 1 of a 2-CD
+    release**, which the search can only ever answer with the 13-track single-disc edition, because
+    a half-present release is exactly what a search is built to reject.
+    """
+    return plan.mbid if plan.provenance.get("mbid") == Provenance.USER and plan.mbid else None
 
 
 def longer_than_its_video(t: PlanTrack, plan: AlbumPlan) -> bool:
