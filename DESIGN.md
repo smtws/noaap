@@ -5251,6 +5251,21 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
      too, and its apply moves only files the release does not list. On an update an extra that ends
      where it already was gets no line.
    - `pinned_release` moved from `enrich` to `plan`, which needs it and which `enrich` imports.
+212. ✅ **Of several matching releases, the one the files are by their lengths** (2026-10-16, R-746,
+   q35; F13). The 2000 playlist of `Limp Bizkit — Chocolate Starfish and the Hot Dog Flavored Water`
+   matched all 15 titles of the 2024 clean edition `7fd0e76d`, which alone spells `Getcha Groove On
+   (Dirt Road mix)` as the playlist does. It matched 14 titles of the 2000 pressing `b8d852cc`. The
+   pass pinned the clean edition, whose `The One` is 222 s against a 343-s file. On `Gold Cobra` the
+   year-only worldwide clean edition beat the dated European one only because the string `2011` sorts
+   before `2011-06-24`.
+   - `enrich_release` ranks the releases that already match by how many matched tracks fit the
+     file's length (`lengths_fitting`, `LENGTH_SLACK`), then by `release_rank`. This applies only when
+     every matching release has lengths to compare. Matching itself (slice 198) is unchanged. Here
+     `b8d852cc` fits 11 of its matched tracks and `7fd0e76d` 10.
+   - `release_rank`: official, then not `clean` (MusicBrainz' disambiguation), then the date by year.
+     Within one year a full date goes before a bare year.
+   - The pick says it when fewer than half of the lengths fit: `MusicBrainz: release X — N of M
+     lengths fit the files`. This is a fact, not a refusal.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

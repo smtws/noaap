@@ -104,7 +104,7 @@ def test_the_release_answers_where_the_candidate_is_silent():
     """A search result carries status and date; a pinned candidate is only an id."""
     rel = a_release("a", date="1998", status="Official")
     assert release_rank({"id": "a"}, rel, {0: {}})[1] is False, "official, from the release"
-    assert release_rank({"id": "a"}, rel, {0: {}})[2] == "1998"
+    assert release_rank({"id": "a"}, rel, {0: {}})[3] == "1998"
 
 
 # -- what the pass does with it ------------------------------------------------------------------

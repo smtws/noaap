@@ -626,13 +626,30 @@ def release_rank(cand: dict[str, Any], release: dict[str, Any],
                  matches: dict[int, dict[str, Any]]) -> tuple[Any, ...]:
     """Which of several fitting releases this album is: best first (§9, slice 147).
 
-    **Most of its titles matched**, then an official release over a promo or a bootleg, then the
-    earliest date — a reissue is the same record and the first pressing is the one to name. The id
-    breaks a remaining tie so the answer does not depend on the order a search happened to return.
+    **Most of its titles matched**, then an official release over a promo or a bootleg, then one
+    MusicBrainz does not call `clean`, then the earliest date — a reissue is the same record and the
+    first pressing is the one to name. The id breaks a remaining tie so the answer does not depend on
+    the order a search happened to return.
+
+    **A date is compared by its year first** (§9, slice 212; q35, R-746): as a string `2011` sorted
+    before `2011-06-24`, so `Gold Cobra`'s year-only worldwide clean edition beat the dated European
+    one on nothing but the shorter date. Inside one year a full date goes before a bare year.
     """
     official = (cand.get("status") or release.get("status")) == "Official"
+    clean = "clean" in str(cand.get("disambiguation") or release.get("disambiguation") or "").casefold()
     when = str(cand.get("date") or release.get("date") or "9999")
-    return (-len(matches), not official, when, str(cand.get("id") or ""))
+    return (-len(matches), not official, clean, when[:4], len(when) == 4, when, str(cand.get("id") or ""))
+
+
+def lengths_fitting(plan: AlbumPlan, matches: dict[int, dict[str, Any]]) -> tuple[int, int]:
+    """Of the matched tracks whose length both sides know, how many fit the file (§9, slice 212):
+    (fitting, known)."""
+    known = fitting = 0
+    for i, m in matches.items():
+        if (mine := file_seconds(plan.tracks[i])) and mb_seconds(m):
+            known += 1
+            fitting += length_fits(mine, m)
+    return fitting, known
 
 
 def says_offer(one: dict[str, Any]) -> str:
@@ -723,6 +740,15 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
         if matches is not None:
             fits.append((release_rank(cand, release, matches), cand, release, matches))
     if fits:
+        # **the release the files are, by their lengths, before the titles** (§9, slice 212; q35, R-746):
+        # `Chocolate Starfish`'s 2000 playlist matched 15 titles of the 2024 clean edition — which alone
+        # spells `Getcha Groove On (Dirt Road mix)` as the playlist does — and 14 of the 2000 pressing,
+        # whose `The One` is the 343-s file the clean edition cuts to 222 s. Lengths only rank releases
+        # that already match (slice 198 leaves matching alone), and only where every one of them has
+        # lengths to compare; otherwise the order is the one before.
+        measured = {id(f): lengths_fitting(plan, f[3]) for f in fits}
+        if all(known for _, known in measured.values()):
+            fits = [((-measured[id(f)][0], *f[0]), *f[1:]) for f in fits]
         _, cand, release, matches = min(fits, key=lambda f: f[0])
         if kept := next((f for f in fits if f[1].get("stored")), None):
             # a search result replaces the stored release only when it fits strictly better, and
@@ -752,6 +778,11 @@ def enrich_release(plan: AlbumPlan, mb: MusicBrainzAPI) -> bool:
 
         next_number = max((int(m["position"]) for m in matches.values()), default=0) + 1
         places, plan.seat_notes, refused = _places(plan, release, matches)
+        fitting, known = lengths_fitting(plan, matches)
+        if known and fitting * 2 < known:
+            # a fact, not a refusal (R-746): the release may still be the right one, cut elsewhere
+            plan.seat_notes = [*plan.seat_notes, f"MusicBrainz: release {release['id']} — {fitting} of "
+                               f"{known} lengths fit the files"]
         for i in refused:
             del matches[i]       # not this recording: nothing of it is written either
         for i, t in enumerate(plan.tracks):
