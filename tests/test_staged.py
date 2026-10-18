@@ -16,6 +16,7 @@ import socket
 import time
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from mutagen import File as MFile
@@ -73,10 +74,22 @@ def test_the_free_space_is_the_staging_filesystems_and_no_other(tmp_path):
     assert named != where, (named, where)
 
 
-def test_the_free_space_of_a_folder_that_is_not_there_yet(tmp_path):
-    """A staging folder is named before it is made, and still has to answer for its filesystem."""
-    free, _ = staged.free_space(tmp_path / "not" / "yet" / "made")
-    assert free == staged.free_space(tmp_path)[0]
+def test_the_free_space_of_a_folder_that_is_not_there_yet(tmp_path, monkeypatch):
+    """A staging folder is named before it is made, and still has to answer for its filesystem.
+
+    `statvfs` is stubbed (q38c, R-766): two live reads of a tmpfs that another suite writes to
+    between them differ, and the test failed beside a parallel run.
+    """
+    asked = []
+
+    def statvfs(path):
+        asked.append(Path(path))
+        return SimpleNamespace(f_bavail=1000, f_frsize=4096)
+
+    monkeypatch.setattr(staged.os, "statvfs", statvfs)
+    free, device = staged.free_space(tmp_path / "not" / "yet" / "made")
+    assert (free, asked) == (4096000, [tmp_path]), "the nearest folder that exists answers"
+    assert device == staged.free_space(tmp_path)[1]
 
 
 def test_albums_are_grouped_into_batches_that_fit():
