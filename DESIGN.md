@@ -5306,6 +5306,11 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    - **Words a pass writes are timed for the audio the track has** (R-763a): `write_sidecar` sets
      `sidecar_timed_for` to the effective id. The re-download wrote the new audio's words, the field
      still named the old file, and the same pass set the fresh words aside.
+216. ✅ **A fetch sets the old words aside before it writes new ones** (2026-10-18, R-765, q38b).
+   The fetch of a switched track looks its words up (captions, LRCLIB) and writes the sidecar before
+   the new audio is put in place; the stale check ran only after that, so the old file's words were
+   already overwritten and never kept as `<name>.lrc.<id>`. The check now runs once the audio is
+   downloaded and before anything writes words; the check after the replace stays for the rest.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

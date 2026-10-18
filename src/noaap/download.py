@@ -1434,6 +1434,10 @@ def run(
                 tmp = provider.audio(track.effective_id, parts, track.audio_choice)
                 if line := transfer_line(provider):
                     say(f"  {track.number:02d} {line}")
+                # **the old words go aside before anything writes new ones** (§9, slice 216; q38b,
+                # R-765): the captions and the lookup below write the sidecar, and a set-aside after
+                # them found the old words already overwritten
+                _set_aside_stale(album_dir, track, say)
                 captions_said = _words_from_source(provider, plan, track, album_dir)
                 # **the file decides what it is.** `ext` was only ever set from a YouTube audio
                 # choice — opus, or m4a for a combined stream — so a provider that hands over an

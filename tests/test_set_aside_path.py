@@ -102,6 +102,23 @@ def test_words_written_for_the_new_audio_are_not_set_aside(album, opus_template)
     assert (after.state, after.error, after.lyrics) == ("done", None, "synced")
     assert sidecar_path(album_dir, after.filename).read_text(encoding="utf-8") == NEW_WORDS
     assert after.sidecar_timed_for == "u9Dg-g7t2l4"
-    assert not [s for s in said if "set aside" in s], said
     side = sidecar_path(album_dir, after.filename)
-    assert not list(album_dir.glob(f"{side.name}.*")), "nothing was set aside: the old words were overwritten"
+    assert [p.name for p in album_dir.glob(f"{side.name}.*")] == [f"{side.name}.taken-in"], "the new words stay"
+
+
+def test_the_old_words_are_kept_beside_the_new_ones(album, opus_template):
+    """q38b, R-765: the fetch's lookup wrote the new words over the old ones before the stale check
+    ran, so the old file's words were lost instead of set aside as `<name>.lrc.<id>`."""
+    _, album_dir = album
+    plan, t = with_a_sidecar(album_dir)
+    old = t.video_id
+    switch_source(t, "ALBUMVERSN1")
+    save_plan(plan, album_dir)
+    said = []
+    run(plan, album_dir, FakeYouTube(opus_template), lyrics=Lrclib(), say=said.append)
+    after = next(x for x in load_plan(album_dir).tracks if x.video_id == old)
+    side = sidecar_path(album_dir, after.filename)
+    assert side.with_name(f"{side.name}.{old}").read_text(encoding="utf-8") == WORDS
+    assert side.read_text(encoding="utf-8") == NEW_WORDS
+    assert (after.state, after.lyrics, after.sidecar_timed_for) == ("done", "synced", "ALBUMVERSN1")
+    assert [s for s in said if s.startswith(f"01 lyrics set aside — timed for {old}")], said
