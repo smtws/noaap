@@ -120,7 +120,8 @@ button.cancel { margin-left: auto; flex: none; }
 .job strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .job .line { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job pre { max-height: 16rem; overflow: auto; white-space: pre-wrap; font-size: .78rem; margin: .4rem 0 0; }
-.job button { padding: .1rem .5rem; font-size: .78rem; }
+.job button { padding: .1rem .5rem; font-size: .78rem; flex: none; white-space: nowrap; }
+.job .log-copy.bad { color: var(--bad); }
 @media (max-width: 40rem) { .fields { grid-template-columns: 1fr; } td.src { display: none; } }
 /* **a narrow window makes rows taller, never the page wider** (§9, slice 186). At 500 px the trim
    cell's two inputs side by side and the ✓♪✕ cell that would not wrap made the panel 631 px wide.

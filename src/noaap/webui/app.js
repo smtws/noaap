@@ -1,4 +1,4 @@
-import { CLAIM_LABEL, LENGTH, completeRows, movedTo, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
+import { CLAIM_LABEL, COPIED, LENGTH, completeRows, copyLog, logText, movedTo, unsavedEdits, alignNotice, applyStamps, asTime, audioRequest, canSeed, claimOffer, draftNotice, draftText,
          editorRows, effectiveId, fixConfirm, fmt,
          fold, foldMap, foldedBoth, hits, hitsIn, lengthBand, lengthFix, lineAt, lineStart, lyricsPanelState, maps, markedTrim, movedRow,
          identifyLines, identifyState, inSlices, offersState, offersToChoose, talkBlock,
@@ -2139,7 +2139,7 @@ function jobRow(j, row) {
       onclick: () => { openLog = openLog === j.id ? null : j.id; poll(); } }, "log");
     row = h("div", { "data-id": j.id },
       h("div", { class: "job-head" }, h("strong", {}, j.label), " ", h("span", { class: "badge" }), " ",
-        h("span", { class: "cancel-slot" }), " ", logButton),
+        h("span", { class: "cancel-slot" }), " ", h("span", { class: "copy-slot" }), logButton),
       h("div", { class: "line" }));
   }
   row.className = `job ${j.state}`;
@@ -2155,6 +2155,9 @@ function jobRow(j, row) {
     b.textContent = "Stopping…";
   }
   row.querySelector(".log-toggle").textContent = openLog === j.id ? "hide log" : "log";
+  const copySlot = row.querySelector(".copy-slot");
+  if (openLog !== j.id) copySlot.replaceChildren();
+  else if (!copySlot.firstChild) copySlot.replaceChildren(copyButton(j));
   const body = row.lastElementChild;
   if (openLog === j.id) {
     if (body.tagName !== "PRE") row.replaceChild(h("pre", { id: `log-${j.id}` }), body);
@@ -2167,7 +2170,30 @@ function jobRow(j, row) {
 
 function renderLog(job) {
   const pre = job && document.getElementById(`log-${job.id}`);
-  if (pre) { pre.textContent = job.log.join("\n"); pre.scrollTop = pre.scrollHeight; }
+  if (pre) { pre.textContent = logText(job); pre.scrollTop = pre.scrollHeight; }
+}
+
+// **the expanded log copies as it is shown** (q38, R-764): the text of its `pre`, every line. The
+// button says how it went for a moment, then is "copy" again.
+function copyButton(j) {
+  const button = h("button", { class: "quiet log-copy", type: "button", onclick: async () => {
+    const pre = document.getElementById(`log-${j.id}`);
+    const said = await copyLog(pre ? pre.textContent : logText(j), navigator.clipboard, selectAndCopy);
+    button.textContent = said;
+    button.classList.toggle("bad", said !== COPIED);
+    clearTimeout(button.reset);
+    button.reset = setTimeout(() => { button.textContent = "copy"; button.classList.remove("bad"); }, 1500);
+  } }, "copy");
+  return button;
+}
+
+// `navigator.clipboard` exists only in a secure context; the LAN address is plain http
+function selectAndCopy(text) {
+  const area = h("textarea", { readonly: "", style: "position:fixed;top:0;left:0;opacity:0" });
+  area.value = text;
+  document.body.append(area);
+  area.select();
+  try { return document.execCommand("copy"); } catch { return false; } finally { area.remove(); }
 }
 
 // -- settings ----------------------------------------------------------------------------

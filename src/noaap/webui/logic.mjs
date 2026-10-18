@@ -1488,3 +1488,24 @@ export function movedTo(job, id) {
   const now = results.map((r) => r?.plan?.source_id).find(Boolean);
   return now && now !== id ? now : null;
 }
+
+/** A job's full log as its expanded view shows it: every line, in order (q38, R-764). */
+export function logText(job) {
+  return (job?.log || []).join("\n");
+}
+
+export const COPIED = "copied ✓";
+export const COPY_FAILED = "copy failed";
+
+/** Copy a log to the clipboard and say how it went, in the words the button shows for a moment
+ * (q38, R-764). `clipboard` is `navigator.clipboard`; a page served over plain http on the LAN has
+ * none, so `fallback` (a select-and-copy) is asked instead. */
+export async function copyLog(text, clipboard, fallback = () => false) {
+  try {
+    if (clipboard?.writeText) await clipboard.writeText(text);
+    else if (!fallback(text)) return COPY_FAILED;
+    return COPIED;
+  } catch {
+    return COPY_FAILED;
+  }
+}
