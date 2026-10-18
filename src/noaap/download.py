@@ -1193,6 +1193,24 @@ def _short(value: object, empty: str = "nothing") -> str:
     return f"“{shown}”"
 
 
+def _set_aside_stale(album_dir: Path, track: PlanTrack, say: Callable[[str], None]) -> None:
+    """Move words timed for the old audio out of the way (slice 208) — and never fail the track for it.
+
+    **The new audio is already in place when this runs** (§9, slice 215; q38a, R-763): a move that
+    failed left the plan `pending` with no length, and every later save failed the same way. A
+    sidecar that cannot be moved stays where it is, still known as stale, and is never embedded.
+    """
+    if not (was := stale_sidecar(album_dir, track)):
+        return
+    try:
+        moved = set_aside(album_dir, track, was)
+    except (OSError, ValueError) as e:
+        log.warning("%s: lyrics timed for %s not set aside: %s", track.filename, was, e)
+        say(f"{track.number:02d} lyrics timed for {was} could not be set aside: {e}")
+        return
+    say(f"{track.number:02d} lyrics set aside — timed for {was} ({moved.name})")
+
+
 def run(
     plan: AlbumPlan,
     album_dir: Path,
@@ -1322,9 +1340,7 @@ def run(
             # whose words are beside this track, and does the plan still agree with the disk?
             # Asked before the lookup, so an edited sidecar is known to be the user's by the
             # time anything would overwrite it (a trim clears the status and asks again).
-            if was := stale_sidecar(album_dir, track):
-                moved = set_aside(album_dir, track, was)
-                say(f"{track.number:02d} lyrics set aside — timed for {was} ({moved.name})")
+            _set_aside_stale(album_dir, track, say)
             text, reconciled = reconcile(album_dir, track, final)
             looked_up = lyrics is not None and track.lyrics is None
             if looked_up:
@@ -1448,9 +1464,7 @@ def run(
                                        "not overwritten; run `noaap repair`")
                 os.replace(tmp, final)
                 _put_away(album_dir, plan, track, final)
-                if was := stale_sidecar(album_dir, track):     # words timed for the old audio (slice 208)
-                    moved = set_aside(album_dir, track, was)
-                    say(f"{track.number:02d} lyrics set aside — timed for {was} ({moved.name})")
+                _set_aside_stale(album_dir, track, say)     # words timed for the old audio (slice 208)
                 # a fresh download is by definition untouched, whatever the plan said before:
                 # the trim points stay and the next pass applies them to this file
                 track.state, track.error, track.error_kind, track.trimmed = "done", None, None, None

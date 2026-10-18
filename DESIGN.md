@@ -5295,6 +5295,17 @@ PlanTrack   { video_id, number, disc, artist, title, filename, state: pending|do
    `[ 2011 HD-HQ]`, so every hit scored None, in `complete` and in `recording` alike.
    - When the album's name is the slot's own title (`comparable`, i.e. core and title key), it is
      not taken out. On every other track it still is.
+215. ✅ **Words timed for a taken-in file are set aside under a name that is one** (2026-10-18,
+   R-763, q38a; F18). `Disturbed — Immortalized` 11, a taken-in NAS file switched in the UI to
+   another video: `set_aside` named the old sidecar `<name>.lrc.<was>`, and `was` was the file's id —
+   a path — so the rename raised. It ran after the new audio was in place, so the plan stayed
+   `pending` with no length, and every later save failed the same way.
+   - An id holding a path separator is set aside as `<name>.lrc.taken-in` (`.2`, … when taken).
+   - A move that fails is a warning: the track still reaches `done`, the sidecar stays known as
+     stale and is never embedded. Both places a pass sets words aside go through one helper.
+   - **Words a pass writes are timed for the audio the track has** (R-763a): `write_sidecar` sets
+     `sidecar_timed_for` to the effective id. The re-download wrote the new audio's words, the field
+     still named the old file, and the same pass set the fresh words aside.
 
 ## 10. Rules for whoever implements this (lessons from the v2 loop)
 

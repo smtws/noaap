@@ -475,14 +475,28 @@ def stale_sidecar(album_dir: Path, track: PlanTrack) -> str | None:
     return was if was and was != now else None
 
 
+TAKEN_IN = "taken-in"
+
+
+def aside_suffix(was: str) -> str:
+    """What a set-aside sidecar is named after: the id it was timed for, or `taken-in` for a file's.
+
+    **A taken-in track's id is a path** (§9, slice 215; q38a, R-763): `Disturbed — Immortalized` 11,
+    switched in the UI from `./Disturbed - Immortalized - 11 - The Sound of Silence.opus`, made the
+    name `….lrc./mnt/…opus`, and the save failed on every try with the new audio already in place.
+    """
+    return TAKEN_IN if "/" in was or "\\" in was else was
+
+
 def set_aside(album_dir: Path, track: PlanTrack, was: str) -> Path:
     """`<name>.lrc` → `<name>.lrc.<was>`: kept, never deleted, out of every player's way."""
     side = sidecar_path(album_dir, track.filename)
-    target = side.with_name(f"{side.name}.{was}")
+    suffix = aside_suffix(was)
+    target = side.with_name(f"{side.name}.{suffix}")
     n = 1
     while target.exists():
         n += 1
-        target = side.with_name(f"{side.name}.{was}.{n}")
+        target = side.with_name(f"{side.name}.{suffix}.{n}")
     side.rename(target)
     track.sidecar_timed_for = None
     track.lyrics = None          # a later lyrics pass looks it up again, by the new length
@@ -513,11 +527,16 @@ def write_sidecar(album_dir: Path, track: PlanTrack, text: str, length: float | 
     Also remembers *which audio* these words were written against — the video they were timed to
     and how long that file was — so a later change of either can say so instead of leaving
     timestamps that quietly point at the wrong seconds (§9, slice 34).
+
+    **Words written now are timed for the audio the track has now** (§9, slice 215; R-763a): the
+    re-download of `Disturbed — Immortalized` 11 wrote the new audio's words, `sidecar_timed_for`
+    still named the old file, and the same pass set the fresh words aside as stale.
     """
     path = sidecar_path(album_dir, track.filename)
     path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
     track.lyrics_sha = hashlib.sha1(path.read_bytes()).hexdigest()[:16]
     track.lyrics_for_source = track.effective_id
+    track.sidecar_timed_for = track.effective_id
     track.lyrics_for_length = track.file_length if length is None else length
     return path
 
